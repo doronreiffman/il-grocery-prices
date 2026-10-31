@@ -1,9 +1,11 @@
 """Payload checks: a downloaded body must start like a price file, not an error or block page.
 
-The starts seen (docs/portals.md): gzip (holding XML); `<?xml`; a UTF-8 BOM before `<?xml` or
-`<Root>`; a UTF-16 LE BOM before `<` (Rami Levy's and Carrefour's Stores files, which carry no XML
-declaration). Anything else is refused: empty, HTML, or unknown.
+The starts seen (docs/portals.md): gzip; `<?xml`; a UTF-8 BOM before `<?xml` or `<Root>`; a UTF-16
+LE BOM before `<` (Rami Levy's and Carrefour's Stores files, which carry no XML declaration). A gzip
+is unzipped whole, so a cut-short or corrupt one is refused (its length and CRC are checked), and
+what it holds must start like XML. Anything else is refused: empty, HTML, or unknown.
 """
+import gzip
 import zlib
 
 GZIP_MAGIC = b"\x1f\x8b"
@@ -43,10 +45,11 @@ def check_payload(name: str, data: bytes) -> None:
     if looks_like_html(data):
         raise BadPayload(f"{name}: HTML where a file belongs")
     if data.startswith(GZIP_MAGIC):
-        head = _gunzip_head(data)
-        if head is None:
-            raise BadPayload(f"{name}: starts like gzip but does not unzip")
-        if not head.startswith(XML_STARTS):
-            raise BadPayload(f"{name}: the gzip holds no XML (it starts {head[:8]!r})")
+        try:
+            content = gzip.decompress(data)
+        except (EOFError, OSError, zlib.error) as exc:  # cut short; bad CRC, length or header; bad data
+            raise BadPayload(f"{name}: the gzip is cut short or corrupt ({exc})") from exc
+        if not content.startswith(XML_STARTS):
+            raise BadPayload(f"{name}: the gzip holds no XML (it starts {content[:8]!r})")
     elif not data.startswith(XML_STARTS):
         raise BadPayload(f"{name}: neither gzip nor XML (it starts {data[:8]!r})")

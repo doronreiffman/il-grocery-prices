@@ -70,12 +70,39 @@ def test_html_refused_as_html(data):
     pytest.param(gzip.compress(b"hello"), "the gzip holds no XML", id="gzip of text"),
     pytest.param(gzip.compress(b""), "the gzip holds no XML", id="gzip of nothing"),
     pytest.param(gzip.compress(gzip.compress(HTML_PAGE)), "the gzip holds no XML", id="gzip of a gzip"),
-    pytest.param(b"\x1f\x8b\x08junkjunkjunk", "does not unzip", id="corrupt gzip"),
+    pytest.param(b"\x1f\x8b\x08junkjunkjunk", "cut short or corrupt", id="corrupt gzip header"),
+    pytest.param(gzip.compress(HTML_PAGE, mtime=0)[:10] + b"\xff" * 16, "cut short or corrupt", id="corrupt gzip data"),
+    pytest.param(gzip.compress(UTF8_BOM + b"<Root></Root>") + b"garbage", "cut short or corrupt",
+                 id="bytes after the gzip"),
 ])
 def test_anything_else_refused(data, reason):
     assert not looks_like_html(data)
     with pytest.raises(BadPayload, match=reason):
         check_payload(NAME, data)
+
+
+def _gzip_fixtures():
+    files = [p for p in _fixture_files() if p.suffix == ".gz"]
+    assert len(files) == 7
+    return files
+
+
+@pytest.mark.parametrize("cut", [1, 8, 20])  # into the length, past the whole trailer, into the data
+def test_cut_short_gzip_refused(cut):
+    for path in _gzip_fixtures():
+        data = path.read_bytes()[:-cut]
+        assert not looks_like_html(data)
+        with pytest.raises(BadPayload, match="cut short or corrupt"):
+            check_payload(path.name, data)
+
+
+@pytest.mark.parametrize("offset", [-8, -1], ids=["CRC", "length"])  # the trailer: CRC-32, then length
+def test_gzip_with_a_wrong_trailer_refused(offset):
+    for path in _gzip_fixtures():
+        data = bytearray(path.read_bytes())
+        data[offset] ^= 0x01
+        with pytest.raises(BadPayload, match="cut short or corrupt"):
+            check_payload(path.name, bytes(data))
 
 
 def test_refusal_names_the_file():
