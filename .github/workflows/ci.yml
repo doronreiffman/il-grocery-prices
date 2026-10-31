@@ -17,3 +17,4 @@ jobs:
           python-version: "3.13"
       - run: pip install -r requirements-dev.txt
       - run: pytest --cov=collector --cov-fail-under=95
+      - run: python scripts/mutation_check.py
