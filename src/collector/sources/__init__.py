@@ -12,6 +12,12 @@ from collector.http import Http
 from collector.names import FileName
 
 
+class ListingUnreadable(Exception):
+    """A listing that does not read as the portal's file list: no rows, or a page, row or link of
+    another shape. The portal changed: the run fails and alerts, never reads it as "nothing
+    published". Neither a block (no latch) nor an HttpError (no retry)."""
+
+
 @dataclass(frozen=True)
 class Listed:
     """One file a portal lists: its parsed name and the absolute URL that downloads it."""
@@ -23,9 +29,12 @@ class Listed:
 class Source(Protocol):
     """A portal adapter."""
 
+    unparsed: int  # listed names the last listing skipped because they did not parse; final once it is used up
+
     def listing(self, http: Http, kinds: tuple[str, ...]) -> Iterator[Listed]:
         """Every file the portal lists whose kind is in `kinds` (names.KINDS spelling), skipping names
-        that do not parse."""
+        that do not parse (counted in `unparsed`). Raises ListingUnreadable when the listing does not
+        read as one."""
 
     def download(self, http: Http, item: Listed) -> bytes:
         """The body of `item`, as received."""

@@ -25,6 +25,7 @@ STORELIST = ("src/collector/storelist.py", ["tests/test_storelist.py"])
 HTTP = ("src/collector/http.py", ["tests/test_http.py"])
 CHAINS = ("src/collector/chains.py", ["tests/test_chains.py"])
 SOURCES = ("src/collector/sources/__init__.py", ["tests/test_chains.py"])
+SHUFERSAL = ("src/collector/sources/shufersal.py", ["tests/test_shufersal.py"])
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
 MUTATIONS = {
@@ -106,6 +107,52 @@ MUTATIONS = {
     "listing takes no kinds": (SOURCES, "def listing(self, http: Http, kinds: tuple[str, ...])", "def listing(self, http: Http)"),
     "download takes a URL, not the listed item": (SOURCES, "def download(self, http: Http, item: Listed)", "def download(self, http: Http, item: str)"),
     "download returns text": (SOURCES, ") -> bytes:", ") -> str:"),
+    "ListingUnreadable is an HttpError": (SOURCES, "class ListingUnreadable(Exception):", 'class ListingUnreadable(__import__("collector.http").http.HttpError):'),
+    "Source without its unparsed count": (SOURCES, "    unparsed: int  #", "    #"),
+    # shufersal: paging (ruling R11) and one page at a time (R16)
+    "stops after page 1": (SHUFERSAL, "    for page in range(2, last + 1):", "    for page in range(2, 2):"),
+    "a page past the last read": (SHUFERSAL, "range(2, last + 1)", "range(2, last + 2)"),
+    "last page taken from the > link": (SHUFERSAL, 'LAST_PAGE = ">>"', 'LAST_PAGE = ">"'),
+    "pager text read with its entities": (SHUFERSAL, "super().__init__(convert_charrefs=True)", "super().__init__(convert_charrefs=False)"),
+    "no pager read as two pages": (SHUFERSAL, "        return 1\n    if first.last_href is None:", "        return 2\n    if first.last_href is None:"),
+    "pager without >> read as one page": (SHUFERSAL, '        raise ListingUnreadable(f"{kind} page 1: the pager names no last page")', "        return 1"),
+    "last-page link naming two pages read as its first": (SHUFERSAL, "    if len(pages) != 1 or not pages[0].isdecimal():", "    if not pages or not pages[0].isdecimal():"),
+    "last page that is no number escapes as ValueError": (SHUFERSAL, " or not pages[0].isdecimal():", ":"),
+    "zero rows read as empty day": (SHUFERSAL, "    if not grid.rows:", "    if False:"),
+    "all pages read before the first row": (SHUFERSAL, "    yield 1, first\n    for page in range(2, last + 1):\n        yield page, _page(http, kind, page)\n",
+                                            "    rest = [(page, _page(http, kind, page)) for page in range(2, last + 1)]\n    yield 1, first\n    yield from rest\n"),
+    "a page's rows given before all are checked": (SHUFERSAL, "            rows.append((name, _checked_link(cells[0].href, name, where)))\n        yield from rows\n",
+                                                   "            yield name, _checked_link(cells[0].href, name, where)\n"),
+    "listing URL without storeId=0": (SHUFERSAL, "&storeId=0&page={page}", "&page={page}"),
+    "categories swapped": (SHUFERSAL, '"Promo": 3, "PromoFull": 4', '"Promo": 4, "PromoFull": 3'),
+    # shufersal: rows and links (ruling R15)
+    "row of another shape read": (SHUFERSAL, "            if len(cells) != CELLS:", "            if False:"),
+    "name read from the branch cell": (SHUFERSAL, "NAME_CELL = 6", "NAME_CELL = 5"),
+    "row without a link read": (SHUFERSAL, "    if not href:", "    if False:"),
+    "link on another host accepted": (SHUFERSAL, '    return parts.scheme == "https" and parts.netloc == FILE_HOST', '    return parts.scheme == "https"'),
+    "http link accepted": (SHUFERSAL, '    return parts.scheme == "https" and parts.netloc == FILE_HOST', "    return parts.netloc == FILE_HOST"),
+    "link outside ASCII accepted": (SHUFERSAL, "    if not (href.isascii() and href.isprintable()) or", "    if not href.isprintable() or"),
+    "control character in a link accepted": (SHUFERSAL, "    if not (href.isascii() and href.isprintable()) or", "    if not href.isascii() or"),
+    "space in a link accepted": (SHUFERSAL, ' or " " in href:', ":"),
+    "unsplittable link escapes as ValueError": (SHUFERSAL, "    except ValueError:\n        raise ListingUnreadable(malformed)", "    except TypeError:\n        raise ListingUnreadable(malformed)"),
+    "link not matched to its row's name": (SHUFERSAL, '    if linked != f"{name}.gz":', "    if False:"),
+    # shufersal: names
+    "unparsed names not counted": (SHUFERSAL, "                    self.unparsed += 1", "                    pass"),
+    "unparsed count carried over from the last listing": (SHUFERSAL, "        self.unparsed = 0\n        for kind in kinds:", "        for kind in kinds:"),
+    "rows of another kind listed": (SHUFERSAL, "                elif name.kind in kinds:", "                else:"),
+    # shufersal: expired links
+    "expiry refresh on any 403": (SHUFERSAL, "        return expires is not None and expires <= self._now()", "        return True"),
+    "refresh on any refusal from the file host": (SHUFERSAL, "if block.status != 403 or not _on_file_host", "if not _on_file_host"),
+    "refresh on a 403 from another host": (SHUFERSAL, " or not _on_file_host(urllib.parse.urlsplit(block.url)):", ":"),
+    "no refresh at se= exactly": (SHUFERSAL, "expires <= self._now()", "expires < self._now()"),
+    "se= read as Israel time": (SHUFERSAL, ".replace(tzinfo=timezone.utc)", '.replace(tzinfo=__import__("zoneinfo").ZoneInfo("Asia/Jerusalem"))'),
+    "default clock without a time zone": (SHUFERSAL, "    return datetime.now(timezone.utc)", "    return datetime.now()"),
+    "unreadable se= escapes as ValueError": (SHUFERSAL, "    except (IndexError, ValueError):", "    except IndexError:"),
+    "missing se= escapes as IndexError": (SHUFERSAL, "    except (IndexError, ValueError):", "    except ValueError:"),
+    "refresh takes another file's link": (SHUFERSAL, "        if name_cell == item.name.raw:", "        if True:"),
+    "refreshed link not used": (SHUFERSAL, "        return http.get(_fresh_link(http, item)).body", "        _fresh_link(http, item)\n        return http.get(item.url).body"),
+    "refreshed more than once": (SHUFERSAL, "        return http.get(_fresh_link(http, item)).body", "        return self.download(http, Listed(item.name, _fresh_link(http, item)))"),
+    "file gone after expiry read as unreadable": (SHUFERSAL, '    raise HttpError(f"{item.name.raw}: its link expired', '    raise ListingUnreadable(f"{item.name.raw}: its link expired'),
 }
 
 

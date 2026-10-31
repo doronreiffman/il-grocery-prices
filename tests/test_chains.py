@@ -9,9 +9,9 @@ import pytest
 
 from collector import chains
 from collector.chains import CHAINS, Chain
-from collector.http import Http
+from collector.http import Blocked, Http, HttpError
 from collector.names import parse_file_name
-from collector.sources import Listed, Source
+from collector.sources import Listed, ListingUnreadable, Source
 
 GOV_IL = "https://www.gov.il/he/pages/cpfta_prices_regulations"
 
@@ -96,3 +96,14 @@ def test_source_interface():
     assert list(inspect.signature(Source.download).parameters) == ["self", "http", "item"]
     assert get_type_hints(Source.listing) == {"http": Http, "kinds": tuple[str, ...], "return": Iterator[Listed]}
     assert get_type_hints(Source.download) == {"http": Http, "item": Listed, "return": bytes}
+
+
+def test_source_counts_the_names_it_skipped():
+    """The run loop records how many listed names did not parse (the manifest's `unparsed`)."""
+    assert get_type_hints(Source)["unparsed"] is int
+
+
+def test_listing_unreadable_is_neither_a_block_nor_an_http_error():
+    """The run loop fails the run on it (no latch, no retry): it must not be caught as either."""
+    assert issubclass(ListingUnreadable, Exception)
+    assert not issubclass(ListingUnreadable, (Blocked, HttpError))
