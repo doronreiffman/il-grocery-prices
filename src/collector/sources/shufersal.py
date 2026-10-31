@@ -14,13 +14,14 @@ What the portal does (docs/portals.md, "Shufersal", seen 2026-10-31):
   page's files before the next page is read. A link that is not https on the file host, or does not
   name its row's file, means the portal changed: ListingUnreadable, and nothing on that page is
   fetched.
-- A 403 from the file host at or after the link's `se=` is the link expiring, not a block: download
-  reads the category again for a fresh link and fetches it once. Any other refusal is a block.
+- A 403 from the file host from two minutes before the link's `se=` on is the link expiring, not a
+  block (ruling R17: the slack covers Azure's clock running ahead of ours): download reads the
+  category again for a fresh link and fetches it once. Any other refusal is a block.
 """
 import urllib.parse
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
 
 from collector.http import Blocked, Http, HttpError
@@ -34,6 +35,7 @@ CELLS = 8  # link, update time, size, type, category, branch, file name, row num
 NAME_CELL = 6
 LAST_PAGE = ">>"  # the pager's link to the last page
 EXPIRY = "%Y-%m-%dT%H:%M:%SZ"  # se=, as the links carry it
+EXPIRY_SLACK = timedelta(seconds=120)  # a 403 this long before se= is already expiry (ruling R17)
 
 
 def _utc_now() -> datetime:
@@ -69,11 +71,11 @@ class ShufersalSource(Source):
         return http.get(_fresh_link(http, item)).body
 
     def _expired(self, block: Blocked) -> bool:
-        """Whether `block` is the file host refusing a link at or after its `se=` time."""
+        """Whether `block` is the file host refusing a link from EXPIRY_SLACK before its `se=` on."""
         if block.status != 403 or not _on_file_host(urllib.parse.urlsplit(block.url)):
             return False
         expires = _expiry(block.url)
-        return expires is not None and expires <= self._now()
+        return expires is not None and expires - EXPIRY_SLACK <= self._now()
 
 
 def _fresh_link(http: Http, item: Listed) -> str:

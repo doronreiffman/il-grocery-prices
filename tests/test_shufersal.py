@@ -419,14 +419,18 @@ def test_download_returns_the_body_as_received():
 
 
 @pytest.mark.parametrize("now", [
+    pytest.param(SE - timedelta(seconds=120), id="two minutes before se=, the slack's edge"),
+    pytest.param(SE - timedelta(seconds=119), id="119 s before se="),
     pytest.param(SE, id="at se="),
     pytest.param(SE + timedelta(seconds=1), id="a second after"),
     pytest.param(SE + timedelta(hours=3), id="hours after"),
     pytest.param(datetime(2026, 11, 1, 0, 36, 2, tzinfo=ZoneInfo("Asia/Jerusalem")), id="at se=, on an Israel clock"),
+    pytest.param(datetime(2026, 11, 1, 0, 34, 3, tzinfo=ZoneInfo("Asia/Jerusalem")), id="119 s before, on an Israel clock"),
 ])
 def test_expired_link_refreshes(now):
-    """A 403 from the file host at or after the link's se= is the link expiring, not a block: the
-    category is read again from page 1 and the fresh link is downloaded once."""
+    """A 403 from the file host from two minutes before the link's se= on is the link expiring, not
+    a block (ruling R17: the slack covers Azure's clock running ahead of ours): the category is read
+    again from page 1 and the fresh link is downloaded once."""
     routes = {listing_url(2, 1): [served(fixture(2)), served(fixture(2).replace(OLD_SIGNATURE, FRESH_SIGNATURE))],
               OLD_LINK: refused(), FRESH_LINK: gz()}
     http, portal = connect(routes)
@@ -466,11 +470,12 @@ def test_refreshed_link_is_downloaded_once():
 
 
 @pytest.mark.parametrize("now", [
-    pytest.param(SE - timedelta(seconds=1), id="a second before"),
+    pytest.param(SE - timedelta(seconds=121), id="121 s before se="),
     pytest.param(SE - timedelta(minutes=29), id="just after the listing"),
-    pytest.param(datetime(2026, 11, 1, 0, 36, 1, tzinfo=ZoneInfo("Asia/Jerusalem")), id="a second before, on an Israel clock"),
+    pytest.param(datetime(2026, 11, 1, 0, 34, 1, tzinfo=ZoneInfo("Asia/Jerusalem")), id="121 s before, on an Israel clock"),
 ])
 def test_403_before_expiry_blocks(now):
+    """More than the two minutes' slack before se=, a 403 is a refusal, not expiry."""
     http, portal = connect({OLD_LINK: refused(), listing_url(2, 1): served(fixture(2))})
     with pytest.raises(Blocked) as caught:
         ShufersalSource(now=lambda: now).download(http, item_030())
