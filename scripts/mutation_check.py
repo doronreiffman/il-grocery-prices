@@ -23,6 +23,8 @@ NAMES = ("src/collector/names.py", ["tests/test_names.py"])
 PAYLOAD = ("src/collector/payload.py", ["tests/test_payload.py"])
 STORELIST = ("src/collector/storelist.py", ["tests/test_storelist.py"])
 HTTP = ("src/collector/http.py", ["tests/test_http.py"])
+CHAINS = ("src/collector/chains.py", ["tests/test_chains.py"])
+SOURCES = ("src/collector/sources/__init__.py", ["tests/test_chains.py"])
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
 MUTATIONS = {
@@ -80,6 +82,30 @@ MUTATIONS = {
     "signed query in the block message": (HTTP, 'super().__init__(f"{reason}: {_without_query(url)}")', 'super().__init__(f"{reason}: {url}")'),
     "first URL reported, not where redirects landed": (HTTP, "answer = Response(resp.geturl(), resp.status", "answer = Response(req.full_url, resp.status"),
     "form not url-encoded": (HTTP, "        data = urllib.parse.urlencode(form).encode()", "        data = str(form).encode()"),
+    # chains
+    "a sixth chain added": (CHAINS, '    Chain("yochananof", "Yochananof", "ncr", NCR_URL, username="yohananof"),\n', '    Chain("yochananof", "Yochananof", "ncr", NCR_URL, username="yohananof"),\n    Chain("extra", "Extra", "carrefour", "https://example.org"),\n'),
+    "a chain dropped": (CHAINS, '    Chain("carrefour", "Carrefour", "carrefour", "https://prices.carrefour.co.il"),\n', ""),
+    "a chain filed under its name, not its slug": (CHAINS, "{chain.slug: chain for chain in (", "{chain.name: chain for chain in ("),
+    "a chain's name changed": (CHAINS, '"Osher Ad"', '"osherad"'),
+    "a chain on the wrong portal": (CHAINS, 'Chain("osherad", "Osher Ad", "ncr"', 'Chain("osherad", "Osher Ad", "shufersal"'),
+    "a password field": (CHAINS, "    username: str | None = None\n", '    username: str | None = None\n    password: str = ""\n'),
+    "a password attribute that is not a field": (CHAINS, "    username: str | None = None\n", '    username: str | None = None\n    password = ""\n'),
+    "username defaults to empty, not None": (CHAINS, "    username: str | None = None", '    username: str | None = ""'),
+    "an http base URL": (CHAINS, '"https://prices.carrefour.co.il"', '"http://prices.carrefour.co.il"'),
+    "the NCR portal over http": (CHAINS, 'NCR_URL = "https://url.publishedprices.co.il"', 'NCR_URL = "http://url.publishedprices.co.il"'),
+    "Rami Levy's username in the wrong case": (CHAINS, 'username="RamiLevi"', 'username="ramilevi"'),
+    "Yochananof's username spelled as its slug": (CHAINS, 'username="yohananof"', 'username="yochananof"'),
+    "Osher Ad without a username": (CHAINS, 'NCR_URL, username="osherad"),', "NCR_URL),"),
+    "a username on a portal with no login": (CHAINS, '"https://prices.carrefour.co.il"),', '"https://prices.carrefour.co.il", username="carrefour"),'),
+    "Chain not frozen": (CHAINS, "@dataclass(frozen=True)\nclass Chain:", "@dataclass\nclass Chain:"),
+    "gov.il citation dropped": (CHAINS, "https://www.gov.il/he/pages/cpfta_prices_regulations", "the gov.il page"),
+    "citation without its update date": (CHAINS, "(updated 12.08.2026)", "()"),
+    # sources
+    "Listed not frozen": (SOURCES, "@dataclass(frozen=True)\nclass Listed:", "@dataclass\nclass Listed:"),
+    "Listed without its URL": (SOURCES, "    name: FileName\n    url: str\n", "    name: FileName\n"),
+    "listing takes no kinds": (SOURCES, "def listing(self, http: Http, kinds: tuple[str, ...])", "def listing(self, http: Http)"),
+    "download takes a URL, not the listed item": (SOURCES, "def download(self, http: Http, item: Listed)", "def download(self, http: Http, item: str)"),
+    "download returns text": (SOURCES, ") -> bytes:", ") -> str:"),
 }
 
 
