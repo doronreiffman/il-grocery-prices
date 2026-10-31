@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.coverage
+.aws-sam/
+
+probe-out/
+.superpowers/
+CLAUDE.local.md

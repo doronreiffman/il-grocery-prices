@@ -1,0 +1,10 @@
+[project]
+name = "il-grocery-prices"
+version = "0.1.0"
+description = "Collects the price files Israeli supermarket chains publish under the food-competition law"
+requires-python = ">=3.13"
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "tests"]
+testpaths = ["tests"]
+addopts = "-q"

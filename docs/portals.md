@@ -1,0 +1,56 @@
+# The portals: how each one serves its files
+
+What `scripts/probe.py` saw from the owner's Mac in Israel on 2026-10-31 between 22:05 and 22:13 UTC (00:05 to 00:13 on 1 November, Israel time), one request at a time, 2 s apart. Later tasks code against this note and the fixtures in `tests/fixtures/`. Anything marked "not seen" was not observed and is a rule or a guess, not a fact.
+
+Common to all three portals:
+
+- The full price and full promotions files share one layout: UTF-8 with a BOM, gzipped, no XML declaration, CRLF line ends, `<Root>` holding `ChainID`, `SubChainID`, `StoreID`, `BikoretNo`, then `<Items>` of `<Item>` (prices) or `<Promotions>` of `<Promotion>`, each with `<Groups>/<Group>/<PromotionItems>/<PromotionItem>` (promotions).
+- The Stores file differs by portal (encoding, gzip or not, root element); see each section.
+- File names are `<Kind><13-digit chain id>-...`, with the kind one of `PriceFull`, `PromoFull`, `Price`, `Promo`, `Stores`; the date is the first `YYYYMMDD` in the rest of the name. Exceptions are listed per portal.
+- No refusal (401, 403, 429, captcha or verification page) was seen from any portal. The probe and the collector treat any of those, or an HTML page where a file belongs, as a block.
+
+## Shufersal
+
+- **Listing:** `GET https://prices.shufersal.co.il/FileObject/UpdateCategory?catID=<n>&storeId=0&page=<p>`, no cookies or tokens needed (the first request carried none). `catID`: 1 Price, 2 PriceFull, 3 Promo, 4 PromoFull, 5 Stores. `storeId=0` lists every store.
+- **Response:** `text/html; charset=utf-8` (IIS, ASP.NET MVC 5.2): an HTML fragment, `<div id="gridContainer">` holding a WebGrid `<table class="webgrid">`. Each `<tbody>` row has eight cells: a download link (text "לחץ להורדה"), the update time (`10/31/2026 3:00:00 AM`, month first), the size (`326.5 KB`, `12.38 KB`), the type (`GZ`), the category (`pricefull`), the branch (`1 - שלי ת"א- בן יהודה`, or `All` for Stores), the file name without `.gz`, and the row's number on the page.
+- **Paging:** 20 rows a page. The `<tfoot>` pager links pages 1 to 5, `>` (next) and `>>` (last); the last page was 22 for categories 1 to 4. **A page number past the last returns the last page again, not an empty page** (page 2 of category 5, which has one row, came back identical to page 1 apart from the link's `sig` and `se`). Stop at the last page the pager names, never on "a page with no rows". Header links sort by `sort=Time|Size|Type|Category|Branch|Name&sortdir=ASC`.
+- **Download link:** the row's `href`, a signed Azure blob URL: `https://pricesprodpublic.blob.core.windows.net/<category>/<name>.gz?sv=2014-02-14&sr=b&sig=<signature>&se=<expiry>&sp=r`. `se` is a UTC time exactly 30 minutes after the listing's answer (server `Date` 22:06:02 GMT, `se=2026-10-31T22%3A36%3A02Z`). Downloads answered `200`, `application/octet-stream`, gzip, with a `content-md5` header. The listing host sets `ARRAffinity` and `ARRAffinitySameSite` cookies (load-balancer affinity; not needed).
+- **File names:** `PriceFull7290027600007-001-030-20261031-030000` (kind, chain, sub-chain, store, date, time `HHMMSS`); the listing shows the name without `.gz`, the blob path has it. PromoFull files seen under sub-chain `000` (`PromoFull7290027600007-000-878-20261031-030000`). Stores: `Stores7290027600007-000-20261031-020`; its last group has three digits and was listed at 00:20, so it may be the time without its leading digit (one sample; unconfirmed).
+- **Old files stay listed:** page 1 of PromoFull carried a 2026-07-15 file (store 550), page 1 of Promo files from 10-27 and 10-30.
+- **Stores file:** gzipped, UTF-8 with a BOM and `<?xml version="1.0" encoding="UTF-8"?>`, one line, root `<Chain>` → `<SubChains>` (11) → `<SubChain>` → `<Stores>` → `<Store>` (418 in all). `StoreID` is unpadded (`93`) while file names pad it (`093`): compare store numbers as numbers.
+- **Sizes seen:** Stores 12.4 KB (93 KB unzipped); the smallest PriceFull on page 1, 216 KB (3.6 MB unzipped); the smallest PromoFull, 55 KB (4.9 MB unzipped).
+- **Refusal:** none seen. The one expected 403 is the blob host's answer to a link past its `se=` time (the collector re-reads the listing once for that).
+
+## Rami Levy, through NCR "Published Prices" (Osher Ad and Yochananof use the same portal; not probed)
+
+- **Entry:** `https://url.publishedprices.co.il` (the link on the gov.il list) answers `302` to `/login`. Server header `CerberusFTPServer/12.0`. Every response sets `cftpSID` (session cookie, `Secure; HttpOnly; SameSite=Lax`); keep it for the session.
+- **Login page:** `GET /login`, title "Cerberus Web Client", text "Welcome to Public Published Prices Server ... Created by NCR L.T.D". `<form id="login-form" action="/login/user" method="post">` with `r` (hidden, empty), `username`, `password` and a submit button `Submit` = `Sign in`. The token sits in `<meta name="csrftoken" content="...">`; the site's `common.min.js` appends a hidden `csrftoken` input with that value to every form, and `csrftoken=<value>` to every AJAX POST.
+- **Login:** `POST /login/user`, form-encoded: `r=`, `username=RamiLevi`, `password=` (empty), `Submit=Sign in`, `csrftoken=<the login page's meta value>`. Answer: `302` to `/file`. `GET /file` is the file browser (44 KB HTML) showing "Logged in as 'RamiLevi'". A failed login was not tried; the probe treats landing on `/login`, or a page with the login form, as a refusal.
+- **File page:** carries a fresh `<meta name="csrftoken">` (use it for the listing), `<input type="hidden" id="cd" name="cd" value="/">`, and the browser's settings in `<script id="cftptemplate" data-cftp="{...}">` (HTML-escaped JSON): `curDir` `/`, `curDirParam` `/`, `dtDisplayLength` (rows a listing page; 100000, 5000 and 10000 in three sessions). The HTML table is empty: the list comes from a JSON call the page's script makes.
+- **Listing:** `POST /file/json/dir`, form-encoded, the DataTables 1.9 server-side parameters `cftp.file.min.js` sends: `sEcho=1`, `iColumns=5`, `sColumns=,,,,`, `iDisplayStart=0`, `iDisplayLength=<dtDisplayLength>`, per column `i` 0 to 4 `mDataProp_i` (`fname`, `typeLabel`, `size`, `ftime`, empty), `sSearch_i=`, `bRegex_i=false`, `bSearchable_i=true`, `bSortable_i` (`true`, `false`, `true`, `true`, `false`); then `sSearch=`, `bRegex=false`, `iSortingCols=0`, `cd=/`, `csrftoken=<file page value>`. The probe also sent `X-Requested-With: XMLHttpRequest`, as jQuery does.
+- **Listing response:** `application/json; charset=utf-8`, `{"aaData":[...],"iTotalDisplayRecords":2362,"iTotalRecords":2362,"sEcho":1}`, all 2,362 entries in one answer (840 KB). Each entry: `DT_RowId`, `fname`, `name`, `value` (all the file name), `type` (`file`), `typeLabel`, `icon`, `size` (bytes), `ftime` (`10/31/2026 07:10`, Israel time), `time` (`2026-10-31T05:10:03Z`, UTC). Since the page size changes per session, compare `iTotalDisplayRecords` with the entries received.
+- **What the directory held:** Stores for 10-29, 10-30, 10-31; PriceFull 314 and PromoFull 321 for 10-31, 81 each for 11-01 (already, at 00:13); Price 1,206 and Promo 105 for 10-31. Rami Levy published on Saturday 10-31. Store 039 publishes under an older scheme, kept back to 10-11 (251 files).
+- **File names:** `PriceFull7290058140886-001-722-20261101-001016.gz` (kind, chain, sub-chain, store, date, time `HHMMSS`); Stores `Stores7290058140886-000-20261031-050500.xml`. **Store 039's names are lower case with no sub-chain and a 12-digit timestamp**: `pricefull7290058140886-039-202610310517.gz`, `promofull...`, `price...`, `promo7290058140886-039-202611010004.gz`.
+- **Download link:** the page's rule is `/file/` + `d` + `value` when `value` starts with `/`, else `d` + `curDirParam` + (`/` unless `curDir` is `/`) + `fname`; at the root that is `GET /file/d/<fname>`, with the session cookie. Answers: `.gz` as `application/x-gzip`, `.xml` as `text/xml`.
+- **Stores file:** plain XML, not gzipped, **UTF-16 little-endian with a BOM (`FF FE`) and no XML declaration**; root `<Root>` → `<SubChains>` → one `<SubChain>` → `<Stores>` → 99 `<Store>`; `StoreID` padded (`001`).
+- **Refusal:** none seen. The site's Content-Security-Policy allows Google reCAPTCHA frames, but no captcha was served.
+
+## Carrefour
+
+- **Listing:** `GET https://prices.carrefour.co.il/` shows today's files (Israel date); `GET https://prices.carrefour.co.il/?date=YYYYMMDD` shows that day's, the request the page's own date picker makes. No cookies set, no tokens. Server `Apache/2.4.52 (Ubuntu)`; footer "Powered by U-CODE.NET".
+- **Response:** `text/html; charset=UTF-8`. The file list is not in the HTML markup but in an inline script, as data: `const path = '20261031';` and, on one line, `const files = [{"name": "...", "size": <bytes>, "modified": "08:00 31-10-2026"}, ...];` (time first, then day-month-year). `const branches = {"002": "<branch name>", ...}` maps store numbers to names (some names contain `@`). No JavaScript needs to run: both are JSON literals.
+- **Paging:** none on the server; the page shows 10 rows at a time in the browser. One answer held the whole day: 575 files for 10-31 (97 KB): Price 233, PriceFull 169, PromoFull 172, Stores 1, no Promo. At 00:07 on 11-01 the page for today held 3 files, all dated 11-01: the day's folder fills through the night and morning.
+- **Download link:** `https://prices.carrefour.co.il/<path>/<name>` (the page builds `window.location.origin + '/' + path + '/' + filename`). Answers: `.gz` as `application/x-gzip`, `.xml` as `application/xml`.
+- **File names:** `PriceFull7290055700007-001-472-20261031-051016.gz` (kind, chain, sub-chain, store, date, time `HHMMSS`); Stores `Stores7290055700007-000-20261031-000100.xml`.
+- **Stores file:** plain XML, **UTF-16 little-endian with a BOM, no XML declaration**, same layout as Rami Levy's: `<Root>` → one `<SubChain>` → 147 `<Store>`, `StoreID` padded (`002`).
+- **Store number inside a file can differ from its name:** `PriceFull7290055700007-001-472-20261031-051016.gz` holds `<StoreID>903</StoreID>` (its PromoFull holds 472). Coverage counts from file names, not from inside the files.
+- **Refusal:** none seen from Israel. An open-source project reports the site blocked from outside Israel (not checked here); Task 11 retries from il-central-1 and drops the chain if refused.
+
+## What the later tasks must handle
+
+- **Payload check (Task 2):** a valid file can start with gzip magic, `<?xml`, a UTF-8 BOM before `<Root>`, or a UTF-16 LE BOM (`FF FE 3C 00`). Only gzip and `<?xml` were in the plan.
+- **File names (Task 2):** NCR store 039's lower-case, sub-chain-less names; Shufersal's listed names without `.gz`; Carrefour and NCR names with `.gz` or `.xml`.
+- **Store list (Task 2):** decode UTF-16 as well as UTF-8; Shufersal's root is `Chain`, the others' `Root`; Shufersal's ids are unpadded.
+- **Shufersal paging (Task 5):** stop at the pager's last page; a page past the end repeats the last one, so "until a page has no rows" never ends.
+- **NCR (Task 6):** the session cookie, two different `csrftoken` values (login page for the login, file page for the listing), the page size from `data-cftp`, and `iTotalDisplayRecords` checked against the entries.
+- **Old files (Task 8):** all three listings carry files from earlier days.
