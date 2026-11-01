@@ -382,6 +382,27 @@ def test_post_sends_the_form_url_encoded():
     assert sent.get_method() == "POST"
     assert sent.data == b"sEcho=1&sColumns=%2C%2C%2C%2C&cd=%2F&Submit=Sign+in&password="
     assert sent.get_header("Content-type") == "application/x-www-form-urlencoded"
+    assert sent.get_header("X-requested-with") is None
+
+
+def test_post_sends_the_headers_given():
+    """NCR's listing is an AJAX call; jQuery, and the probe, send X-Requested-With with it."""
+    h, net, _ = client(answer(200, b'{"aaData":[]}', [("Content-Type", "application/json; charset=utf-8")]))
+    h.post(f"{NCR}/file/json/dir", {"cd": "/"}, headers={"X-Requested-With": "XMLHttpRequest"})
+    sent = net.requests[0]
+    assert sent.get_header("X-requested-with") == "XMLHttpRequest"
+    assert sent.get_header("User-agent") == UA
+    assert sent.get_header("Content-type") == "application/x-www-form-urlencoded"
+
+
+@pytest.mark.parametrize("name", ["User-Agent", "user-agent", "USER-AGENT", "Content-Type", "content-type"])
+def test_headers_given_cannot_replace_the_user_agent_or_the_content_type(name):
+    h, net, _ = client(answer())
+    h.post(f"{NCR}/file/json/dir", {"cd": "/"}, headers={name: "Mozilla/5.0 (Macintosh)"})
+    sent = net.requests[0]
+    assert sent.get_header("User-agent") == UA
+    assert sent.get_header("Content-type") == "application/x-www-form-urlencoded"
+    assert "Mozilla/5.0 (Macintosh)" not in [value for _, value in sent.header_items()]
 
 
 def test_response_carries_url_status_body_and_lower_case_headers():

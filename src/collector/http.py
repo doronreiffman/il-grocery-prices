@@ -101,11 +101,14 @@ class Http:
     def get(self, url: str) -> Response:
         return self._send(urllib.request.Request(url, headers={"User-Agent": self.user_agent}))
 
-    def post(self, url: str, form: dict[str, str]) -> Response:
-        """POST `form` url-encoded, as an HTML form does."""
+    def post(self, url: str, form: dict[str, str], headers: dict[str, str] | None = None) -> Response:
+        """POST `form` url-encoded, as an HTML form does. `headers` are sent too (NCR's listing is an
+        AJAX call: `X-Requested-With`); they cannot replace the User-Agent or the Content-Type, which
+        come last (urllib files every header name in one case, so the last of a name wins)."""
         data = urllib.parse.urlencode(form).encode()
-        return self._send(urllib.request.Request(url, data=data, method="POST",
-                                                 headers={"User-Agent": self.user_agent, "Content-Type": FORM}))
+        return self._send(urllib.request.Request(
+            url, data=data, method="POST",
+            headers={**(headers or {}), "User-Agent": self.user_agent, "Content-Type": FORM}))
 
     def _send(self, req: urllib.request.Request) -> Response:
         if self._sent:

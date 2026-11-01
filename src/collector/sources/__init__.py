@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from collector.http import Http
-from collector.names import FileName
+from collector.names import FileName, parse_file_name
 
 
 class ListingUnreadable(Exception):
@@ -38,3 +38,17 @@ class Source(Protocol):
 
     def download(self, http: Http, item: Listed) -> bytes:
         """The body of `item`, as received."""
+
+
+UNSAFE = ("/", "\\", "..", "?", "#", " ")  # could leave the folder, end the path or split the request; other whitespace is not printable
+
+
+def checked_name(name: str, where: str) -> FileName | None:
+    """`name`, a listed file name that a download link is built from, parsed; None if it does not parse
+    (the adapter skips it and counts it in `unparsed`). A name that is not printable ASCII, or holds any
+    of UNSAFE, raises ListingUnreadable naming it, whether or not it parses (ruling R19, as R15 for
+    Shufersal's links): the parser's \\d takes Arabic-Indic digits too, and urllib would fail on them
+    outside Http's handling."""
+    if not (name.isascii() and name.isprintable()) or any(part in name for part in UNSAFE):
+        raise ListingUnreadable(f"{where}: the file name {name!r} is not safe to put in a link")
+    return parse_file_name(name)

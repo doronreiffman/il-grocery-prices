@@ -26,6 +26,9 @@ HTTP = ("src/collector/http.py", ["tests/test_http.py"])
 CHAINS = ("src/collector/chains.py", ["tests/test_chains.py"])
 SOURCES = ("src/collector/sources/__init__.py", ["tests/test_chains.py"])
 SHUFERSAL = ("src/collector/sources/shufersal.py", ["tests/test_shufersal.py"])
+NAME_CHECK = ("src/collector/sources/__init__.py", ["tests/test_chains.py"])
+NCR = ("src/collector/sources/ncr.py", ["tests/test_ncr.py"])
+CARREFOUR = ("src/collector/sources/carrefour.py", ["tests/test_carrefour.py"])
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
 MUTATIONS = {
@@ -64,7 +67,9 @@ MUTATIONS = {
     "markers sought outside HTML": (HTTP, '    if "text/html" not in answer.headers.get("content-type", "").lower() and not looks_like_html(answer.body):', "    if False:"),
     "markers sought in gzip bodies": (HTTP, "    if answer.body.startswith(GZIP_MAGIC):", "    if False:"),
     "User-Agent dropped": (HTTP, 'headers={"User-Agent": self.user_agent}))', "headers={}))"),
-    "User-Agent dropped from POST": (HTTP, '{"User-Agent": self.user_agent, "Content-Type": FORM}', '{"Content-Type": FORM}'),
+    "User-Agent dropped from POST": (HTTP, '**(headers or {}), "User-Agent": self.user_agent, "Content-Type": FORM}', '**(headers or {}), "Content-Type": FORM}'),
+    "headers given to POST dropped": (HTTP, '{**(headers or {}), "User-Agent"', '{"User-Agent"'),
+    "a header given replaces the User-Agent or the Content-Type": (HTTP, '{**(headers or {}), "User-Agent": self.user_agent, "Content-Type": FORM}', '{"User-Agent": self.user_agent, "Content-Type": FORM, **(headers or {})}'),
     "User-Agent without +https:// accepted": (HTTP, 'if "+https://" not in user_agent or "@" not in user_agent:', 'if "@" not in user_agent:'),
     "User-Agent without @ accepted": (HTTP, 'if "+https://" not in user_agent or "@" not in user_agent:', 'if "+https://" not in user_agent:'),
     "pause skipped": (HTTP, "            self._sleep(self.pause)", "            pass"),
@@ -101,6 +106,13 @@ MUTATIONS = {
     "Chain not frozen": (CHAINS, "@dataclass(frozen=True)\nclass Chain:", "@dataclass\nclass Chain:"),
     "gov.il citation dropped": (CHAINS, "https://www.gov.il/he/pages/cpfta_prices_regulations", "the gov.il page"),
     "citation without its update date": (CHAINS, "(updated 12.08.2026)", "()"),
+    # chains: the adapter each chain gets (ruling R1)
+    "Shufersal given another adapter": (CHAINS, "            return ShufersalSource()", "            return CarrefourSource()"),
+    "an NCR chain given another adapter": (CHAINS, "            return NcrSource(chain.username)", "            return ShufersalSource()"),
+    "Carrefour given another adapter": (CHAINS, "            return CarrefourSource()", "            return ShufersalSource()"),
+    "NCR adapter given the slug as its username": (CHAINS, "NcrSource(chain.username)", "NcrSource(chain.slug)"),
+    "one adapter shared between calls": (CHAINS, "            return CarrefourSource()", '            return globals().setdefault("_shared", CarrefourSource())'),
+    "a portal outside version one given an adapter": (CHAINS, '    raise ValueError(f"no adapter for the {chain.portal!r} portal")', "    return ShufersalSource()"),
     # sources
     "Listed not frozen": (SOURCES, "@dataclass(frozen=True)\nclass Listed:", "@dataclass\nclass Listed:"),
     "Listed without its URL": (SOURCES, "    name: FileName\n    url: str\n", "    name: FileName\n"),
@@ -156,6 +168,74 @@ MUTATIONS = {
     "refreshed link not used": (SHUFERSAL, "        return http.get(_fresh_link(http, item)).body", "        _fresh_link(http, item)\n        return http.get(item.url).body"),
     "refreshed more than once": (SHUFERSAL, "        return http.get(_fresh_link(http, item)).body", "        return self.download(http, Listed(item.name, _fresh_link(http, item)))"),
     "file gone after expiry read as unreadable": (SHUFERSAL, '    raise HttpError(f"{item.name.raw}: its link expired', '    raise ListingUnreadable(f"{item.name.raw}: its link expired'),
+    # names a link is built from (ruling R19)
+    "slash in a linked name accepted": (NAME_CHECK, 'UNSAFE = ("/", ', "UNSAFE = ("),
+    "backslash in a linked name accepted": (NAME_CHECK, r'"\\", "..", ', '"..", '),
+    "two dots in a linked name accepted": (NAME_CHECK, ', "..", ', ", "),
+    "question mark in a linked name accepted": (NAME_CHECK, ', "?", ', ", "),
+    "hash in a linked name accepted": (NAME_CHECK, ', "#", ', ", "),
+    "space in a linked name accepted": (NAME_CHECK, ', " ")', ")"),
+    "non-ASCII linked name accepted": (NAME_CHECK, "if not (name.isascii() and name.isprintable())", "if not name.isprintable()"),
+    "control character in a linked name accepted": (NAME_CHECK, "if not (name.isascii() and name.isprintable())", "if not name.isascii()"),
+    "unsafe name counted as unparsed": (NAME_CHECK, '        raise ListingUnreadable(f"{where}: the file name {name!r} is not safe to put in a link")', "        return None"),
+    # ncr: the login
+    "NCR sends a password": (NCR, '"password": "", "Submit"', '"password": self.username, "Submit"'),
+    "NCR sends no username": (NCR, '"username": self.username, ', '"username": "", '),
+    "login without the login page's token": (NCR, '"Submit": "Sign in", "csrftoken": token}', '"Submit": "Sign in"}'),
+    "login page without a token posted anyway": (NCR, 'raise ListingUnreadable("the NCR login page carries no csrftoken")', "pass"),
+    "failed login treated as success": (NCR, "        if path != FILE_BROWSER or page.login_form:", "        if False:"),
+    "landing elsewhere than /file accepted": (NCR, "if path != FILE_BROWSER or page.login_form:", "if page.login_form:"),
+    "login form on the file browser accepted": (NCR, "if path != FILE_BROWSER or page.login_form:", "if path != FILE_BROWSER:"),
+    "login form seen by its id alone": (NCR, '(attrs.get("id") == "login-form" or attrs.get("action") == "/login/user")', 'attrs.get("id") == "login-form"'),
+    "login form seen by its action alone": (NCR, '(attrs.get("id") == "login-form" or attrs.get("action") == "/login/user")', 'attrs.get("action") == "/login/user"'),
+    "NCR username not required": (NCR, "        if not username:", "        if False:"),
+    # ncr: the file page and the listing request
+    "listing sent the login page's token": (NCR, "        return page\n", "        page.csrftoken = token\n        return page\n"),
+    "file page without a token accepted": (NCR, 'raise ListingUnreadable("the NCR file page carries no csrftoken")', "pass"),
+    "listing request without the token": (NCR, ', "cd": ROOT, "csrftoken": token}', ', "cd": ROOT}'),
+    "directory other than / accepted": (NCR, "    if file_page.cd != ROOT:", "    if False:"),
+    "file page without a directory read as another directory": (NCR, "    if file_page.cd is None:", "    if False:"),
+    "page size not taken from the file page": (NCR, '"iDisplayLength": str(length)}', '"iDisplayLength": "10000"}'),
+    "page size of 0 accepted": (NCR, "if type(length) is not int or length < 1:", "if type(length) is not int:"),
+    "true accepted as a page size": (NCR, "if type(length) is not int or length < 1:", "if not isinstance(length, int) or length < 1:"),
+    "settings not JSON escape as ValueError": (NCR, "    except ValueError:\n        raise ListingUnreadable(\"the NCR file page's data-cftp", "    except TypeError:\n        raise ListingUnreadable(\"the NCR file page's data-cftp"),
+    "listing sent without X-Requested-With": (NCR, ", headers=AJAX).body", ").body"),
+    "a column's sorting flag changed": (NCR, '("typeLabel", "false")', '("typeLabel", "true")'),
+    # ncr: paging (ruling R18) and the answer
+    "paging stops after the first answer": (NCR, "    while total is None or len(fnames) < total:", "    for _ in range(1):"),
+    "paging restarts from the first entry": (NCR, "_form(len(fnames), length, token)", "_form(0, length, token)"),
+    "empty answer before the total read as the end": (NCR, '            raise ListingUnreadable(f"the NCR listing stopped at', '            break\n            raise ListingUnreadable(f"the NCR listing stopped at'),
+    "zero total read as an empty day": (NCR, "            if total < 1:", "            if False:"),
+    "listing not JSON escapes as ValueError": (NCR, "    except ValueError:  # bad JSON", "    except TypeError:  # bad JSON"),
+    "true accepted as a total": (NCR, "or type(total) is not int:", "or not isinstance(total, int):"),
+    "entry without a file name read": (NCR, "        if not isinstance(fname, str):", "        if False:"),
+    "link built from another field": (NCR, 'fname = entry.get("fname")', 'fname = entry.get("value")'),
+    "download link not under /file/d/": (NCR, 'DOWNLOAD = f"{BASE_URL}/file/d/"', 'DOWNLOAD = f"{BASE_URL}/file/"'),
+    # ncr: names and kinds
+    "NCR kinds filter ignored": (NCR, "            elif name.kind in kinds:", "            else:"),
+    "NCR names not checked": (NCR, 'checked_name(fname, f"the NCR listing, entry {number}")', '__import__("collector.names").names.parse_file_name(fname)'),
+    "NCR names checked only as they are given": (NCR, "                listed.append(Listed(name, DOWNLOAD + fname))\n        yield from listed\n", "                yield Listed(name, DOWNLOAD + fname)\n"),
+    "NCR unparsed names not counted": (NCR, "                self.unparsed += 1", "                pass"),
+    "NCR unparsed count carried over from the last listing": (NCR, "        self.unparsed = 0\n        file_page", "        file_page"),
+    "NCR download returns nothing": (NCR, "        return http.get(item.url).body", '        return b""'),
+    # carrefour
+    "Carrefour listing not today's page": (CARREFOUR, 'http.get(f"{BASE_URL}/")', 'http.get(f"{BASE_URL}/?date=20261031")'),
+    "Carrefour kinds filter ignored": (CARREFOUR, "            elif parsed.kind in kinds:", "            else:"),
+    "zero Carrefour files read as an empty day": (CARREFOUR, "    if not files:", "    if False:"),
+    "Carrefour path not checked": (CARREFOUR, "    if not DAY.fullmatch(found.group(1)):", "    if False:"),
+    "Carrefour path read in part": (CARREFOUR, "DAY.fullmatch(found.group(1))", "DAY.match(found.group(1))"),
+    "other scripts' digits taken in the Carrefour path": (CARREFOUR, 'DAY = re.compile(r"[0-9]{8}")', r'DAY = re.compile(r"\d{8}")'),
+    "Carrefour link without the day's folder": (CARREFOUR, 'f"{BASE_URL}/{folder}/{name}"', 'f"{BASE_URL}/{name}"'),
+    "page without const path escapes as AttributeError": (CARREFOUR, '    if found is None:\n        raise ListingUnreadable("the Carrefour page has no const path")', '    if False:\n        raise ListingUnreadable("the Carrefour page has no const path")'),
+    "page without const files escapes as AttributeError": (CARREFOUR, '    if found is None:\n        raise ListingUnreadable("the Carrefour page has no const files")', '    if False:\n        raise ListingUnreadable("the Carrefour page has no const files")'),
+    "Carrefour files not JSON escape as ValueError": (CARREFOUR, "    except ValueError:", "    except TypeError:"),
+    "Carrefour files that are not a list read": (CARREFOUR, "    if not isinstance(files, list):", "    if False:"),
+    "Carrefour file without a name read": (CARREFOUR, "        if not isinstance(name, str):", "        if False:"),
+    "Carrefour names not checked": (CARREFOUR, 'checked_name(name, f"the Carrefour page, file {number}")', '__import__("collector.names").names.parse_file_name(name)'),
+    "Carrefour names checked only as they are given": (CARREFOUR, '                listed.append(Listed(parsed, f"{BASE_URL}/{folder}/{name}"))\n        yield from listed\n', '                yield Listed(parsed, f"{BASE_URL}/{folder}/{name}")\n'),
+    "Carrefour unparsed names not counted": (CARREFOUR, "                self.unparsed += 1", "                pass"),
+    "Carrefour unparsed count carried over from the last listing": (CARREFOUR, "        self.unparsed = 0\n        text", "        text"),
+    "Carrefour download returns nothing": (CARREFOUR, "        return http.get(item.url).body", '        return b""'),
 }
 
 
