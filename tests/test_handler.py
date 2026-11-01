@@ -396,6 +396,31 @@ def test_a_failed_email_fails_the_check_and_sends_no_ping():
     assert [e if isinstance(e, str) else e[0] for e in deps.events] == ["record", "publish"]
 
 
+def test_alerts_are_logged_before_the_record_is_written(caplog):
+    """A record write that fails (an S3 error, a missing checks/ permission) still leaves the alerts
+    in the logs; nothing is emailed, marked or pinged, and the error propagates."""
+    class NoCheckRecords(EventStore):
+        def put_record(self, key, body, now):
+            if key.startswith("checks/"):
+                self.events.append(("record", key))
+                raise RuntimeError("AccessDenied on checks/")
+            super().put_record(key, body, now)
+
+    deps = make_deps()
+    deps.store = NoCheckRecords(deps.events)
+    clean_day(deps.store)
+    deps.store.write_state("carrefour", LATCH)
+    deps.events.clear()
+    with caplog.at_level(logging.WARNING, logger="collector.handler"), pytest.raises(RuntimeError, match="AccessDenied"):
+        run(CFG, {"mode": "check"}, deps, NOW)
+    logged = "\n".join(r.getMessage() for r in caplog.records)
+    assert "il-grocery-prices 2026-10-31: 1 alert (carrefour)" in logged
+    assert "- carrefour is stopped since x: HTTP 429." in logged
+    assert [e[0] for e in deps.events] == ["record"]  # the failed write only: no email, no mark, no ping
+    assert deps.publish.calls == [] and deps.ping.calls == []
+    assert deps.store.read_state("carrefour") == LATCH
+
+
 def test_the_email_is_logged_before_it_is_sent(caplog):
     deps = make_deps(publish_raises=RuntimeError("SNS is down"))
     with caplog.at_level(logging.WARNING, logger="collector.handler"), pytest.raises(RuntimeError):

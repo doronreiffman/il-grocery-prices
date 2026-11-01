@@ -149,11 +149,12 @@ def _check(cfg: Config, deps: Deps, day: date, now: datetime) -> dict:
     alerts, record = check_day(deps.store, list(CHAINS), day)
     run_id = new_run_id(now, "check")
     key = check_key(day, run_id)
+    if alerts:
+        subject, body = message(day, alerts, key)
+        log.warning("%s\n%s", subject, body)  # logged first: the record write or the email can still fail
     record |= {"run_id": run_id, "checked_at": now.astimezone(timezone.utc).isoformat(), "code_sha": deps.code_sha}
     deps.store.put_record(key, json.dumps(record, sort_keys=True, indent=1).encode(), now)
     if alerts:
-        subject, body = message(day, alerts, key)
-        log.warning("%s\n%s", subject, body)  # kept in the logs should the email fail
         deps.publish(subject, body)
         mark_alerted(deps.store, alerts)  # only now: a failed email leaves them to alert again (R26)
     summary = {"mode": "check", "day": day.isoformat(), "run_id": run_id, "record": key, "alerts": len(alerts)}
