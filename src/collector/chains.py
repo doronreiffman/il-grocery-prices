@@ -16,13 +16,15 @@ from collector.sources.shufersal import ShufersalSource
 class Chain:
     """`slug` names the chain in storage keys; `portal` picks the adapter; `base_url` is the portal's
     https address with no trailing slash; `username` is the NCR login, None where the portal has no
-    login. There is no password: the NCR chains in scope log in with an empty one."""
+    login. There is no password: the NCR chains in scope log in with an empty one. `timeout` is how
+    long the chain's Http waits on one socket operation, in seconds."""
 
     slug: str
     name: str
     portal: Literal["shufersal", "ncr", "carrefour"]
     base_url: str
     username: str | None = None
+    timeout: float = 30.0
 
 
 NCR_URL = "https://url.publishedprices.co.il"
@@ -30,8 +32,10 @@ NCR_URL = "https://url.publishedprices.co.il"
 # The NCR usernames are the ones the Consumer Protection Authority's chain list prints, saying no
 # password is needed and the field can be left empty: https://www.gov.il/he/pages/cpfta_prices_regulations
 # (updated 12.08.2026). They are public. The base URLs are the portals docs/portals.md records.
+# Shufersal's listing pages took 23 to 28 s each from il-central-1 on 2026-11-01 (7 to 9 s from the Mac
+# on 2026-10-31), and 30 s cut two runs short: it gets 60.
 CHAINS: dict[str, Chain] = {chain.slug: chain for chain in (
-    Chain("shufersal", "Shufersal", "shufersal", "https://prices.shufersal.co.il"),
+    Chain("shufersal", "Shufersal", "shufersal", "https://prices.shufersal.co.il", timeout=60.0),
     Chain("ramilevy", "Rami Levy", "ncr", NCR_URL, username="RamiLevi"),
     Chain("osherad", "Osher Ad", "ncr", NCR_URL, username="osherad"),
     Chain("carrefour", "Carrefour", "carrefour", "https://prices.carrefour.co.il"),

@@ -36,7 +36,11 @@ LISTING = f"{BASE_URL}/file/json/dir"
 DOWNLOAD = f"{BASE_URL}/file/d/"
 ROOT = "/"
 COLUMNS = (("fname", "true"), ("typeLabel", "false"), ("size", "true"), ("ftime", "true"), ("", "false"))  # (mDataProp, bSortable)
-AJAX = {"X-Requested-With": "XMLHttpRequest"}  # as jQuery sends it with the listing, and the probe did
+# As jQuery sends them with the listing, and the probe did. The first deployed run sent no Accept and got
+# an answer with no aaData (2026-11-01).
+AJAX = {"X-Requested-With": "XMLHttpRequest", "Accept": "application/json, text/javascript, */*; q=0.01"}
+SHOWN_KEYS = 10  # an unreadable answer's keys named in its error, at most
+KEY_CHARS = 40  # each cut to this length
 
 
 class NcrSource(Source):
@@ -138,7 +142,7 @@ def _answer(body: bytes) -> tuple[list[str], int]:
     entries = data.get("aaData") if isinstance(data, dict) else None
     total = data.get("iTotalDisplayRecords") if isinstance(data, dict) else None
     if not isinstance(entries, list) or type(total) is not int:
-        raise ListingUnreadable("the NCR listing has no aaData list and iTotalDisplayRecords count")
+        raise ListingUnreadable(f"the NCR listing has no aaData list and iTotalDisplayRecords count (it held {_held(data)})")
     fnames = []
     for number, entry in enumerate(entries, 1):
         fname = entry.get("fname") if isinstance(entry, dict) else None
@@ -146,6 +150,31 @@ def _answer(body: bytes) -> tuple[list[str], int]:
             raise ListingUnreadable(f"the NCR listing, entry {number} names no file (fname)")
         fnames.append(fname)
     return fnames, total
+
+
+def _held(data) -> str:
+    """What an answer of another layout held: its type, and an object's keys with their values' types,
+    sorted, at most SHOWN_KEYS, each cut to KEY_CHARS and written as ascii() writes it (quoted, with
+    control characters and anything outside ASCII escaped), so a key can add no line to the log or the
+    email and no character SNS cannot send. Never a value: a token or a session id could be one."""
+    if isinstance(data, list):
+        return f"a list of {len(data)}"
+    if not isinstance(data, dict):
+        return f"a {_type(data)}"
+    if not data:
+        return "an object with no keys"
+    keys = sorted(data)
+    shown = ", ".join(f"{ascii(key[:KEY_CHARS] + '...' if len(key) > KEY_CHARS else key)}: {_type(data[key])}"
+                      for key in keys[:SHOWN_KEYS])
+    more = f" and {len(keys) - SHOWN_KEYS} more" if len(keys) > SHOWN_KEYS else ""
+    return f"an object with keys {shown}{more}"
+
+
+def _type(value) -> str:
+    """A JSON value's type, in the words the error uses."""
+    if value is None:
+        return "null"
+    return "object" if isinstance(value, dict) else type(value).__name__
 
 
 def _read(body: bytes) -> "_Page":

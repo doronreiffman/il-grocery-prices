@@ -46,12 +46,23 @@ def test_ncr_chains_carry_the_usernames_the_gov_il_list_prints_and_no_one_else_h
         "carrefour": None, "yochananof": "yohananof"}
 
 
+def test_shufersal_waits_60_s_for_an_answer_and_the_others_30():
+    """Shufersal's listing pages took 23 to 28 s each from il-central-1 on 2026-11-01 (7 to 9 s from the
+    Mac on 2026-10-31), and 30 s cut two runs short."""
+    assert {slug: c.timeout for slug, c in CHAINS.items()} == {
+        "shufersal": 60.0, "ramilevy": 30.0, "osherad": 30.0, "carrefour": 30.0, "yochananof": 30.0}
+
+
+def test_timeout_defaults_to_30_s():
+    assert Chain("x", "X", "carrefour", "https://example.org").timeout == 30.0
+
+
 def test_username_defaults_to_none():
     assert Chain("x", "X", "carrefour", "https://example.org").username is None
 
 
 def test_no_password_anywhere_on_chain():
-    assert [f.name for f in fields(Chain)] == ["slug", "name", "portal", "base_url", "username"]
+    assert [f.name for f in fields(Chain)] == ["slug", "name", "portal", "base_url", "username", "timeout"]
     for chain in CHAINS.values():
         assert [a for a in dir(chain) if "pass" in a.lower() or "pwd" in a.lower()] == []
 

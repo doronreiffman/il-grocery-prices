@@ -128,6 +128,6 @@ The usernames are public (the government prints them) and there are no passwords
 
 - The NCR portal's mechanics, through a first probe: one login with a published username, today's file list, one download.
 - Whether Carrefour answers from il-central-1, through the same kind of probe; dropped if it doesn't.
-- The pause length, timeouts, and the split of long chains into several invocations.
+- The pause length, timeouts, and the split of long chains into several invocations. (Set: a 0.5 s pause, a 30 s timeout per socket operation, 60 s for Shufersal (`Chain.timeout`); the split is open, `.claude/OPEN_ISSUES.md`.)
 - Each chain's coverage threshold, set from the first two weeks.
 - Code layout, the test fixtures, the deploy template.

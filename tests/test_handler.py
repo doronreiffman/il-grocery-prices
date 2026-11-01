@@ -643,6 +643,12 @@ def test_deps_for_gives_each_chain_run_its_own_http():
     assert first is not second and first._opener is not second._opener
 
 
+def test_deps_for_gives_each_chain_run_its_chains_timeout():
+    deps = deps_for(CFG, FakeContext(1), aws_client("s3"), aws_client("sns"))
+    assert {slug: deps.http_for(slug).timeout for slug in CHAINS} == {slug: c.timeout for slug, c in CHAINS.items()}
+    assert deps.http_for("shufersal").timeout == 60.0
+
+
 def test_deps_for_publishes_to_the_alert_topic():
     """botocore's Stubber checks the call against the SNS model, so a misnamed parameter fails here,
     not on the first real alert."""

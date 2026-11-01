@@ -205,11 +205,11 @@ def ping_user_agent(user_agent: str) -> str:
 
 def deps_for(cfg: Config, context, s3, sns) -> Deps:
     """The production Deps: the bucket through the boto3 client `s3`, the email through `sns`, a fresh
-    Http (own cookies) for each chain run (ruling R6), the ping identified without the contact email
-    (R27), and Lambda's countdown."""
+    Http (own cookies) for each chain run (ruling R6) that waits the chain's timeout, the ping identified
+    without the contact email (R27), and Lambda's countdown."""
     return Deps(
         store=S3Store(s3, cfg.bucket, cfg.retention_days),
-        http_for=lambda slug: Http(cfg.user_agent),
+        http_for=lambda slug: Http(cfg.user_agent, timeout=CHAINS[slug].timeout),
         publish=lambda subject, body: sns.publish(TopicArn=cfg.alert_topic_arn, Subject=subject, Message=body),
         ping=partial(ping, user_agent=ping_user_agent(cfg.user_agent)),
         time_left=lambda: context.get_remaining_time_in_millis() / 1000,

@@ -21,10 +21,10 @@ Personal portfolio project. Collects, every morning, the price files Israeli sup
 
 ## Active threads
 
-- Collector: built and reviewed on branch `collector`, not merged, not deployed · next: the owner's go for merge, push and the first deploy (plan Task 11) · `.claude/QUEUE.md` q1.
+- Collector: merged and deployed 2026-11-01 with the schedules off; first manual runs found two fixes (branch `fix-first-deploy`) and a Shufersal timetable redesign · `.claude/QUEUE.md` q1, `.claude/OPEN_ISSUES.md` Collector.
 
 ## Working notes
 
-- Test baseline (2026-11-01): 661 tests, 100% coverage on `collector`, 483 mutations, all caught.
+- Test baseline (2026-11-01): 673 tests, 100% coverage on `collector`, 497 mutations, all caught.
 
 - Work queue `.claude/QUEUE.md`; open issues `.claude/OPEN_ISSUES.md`; decisions `.claude/DECISIONS.md`.

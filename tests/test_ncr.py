@@ -285,12 +285,14 @@ def test_login_page_without_a_token_is_unreadable(text):
 
 def test_listing_sends_the_datatables_parameters_and_the_file_pages_fresh_token():
     """docs/portals.md: the file page's own token, not the login page's; its page size; cd=/; and
-    X-Requested-With, as jQuery and the probe sent it."""
+    X-Requested-With and Accept, as jQuery and the probe sent them. The first deployed run sent no
+    Accept and got an answer with no aaData (2026-11-01)."""
     http, portal = connect()
     list(NcrSource("RamiLevi").listing(http, ("PriceFull",)))
     assert portal.sent("POST", LISTING) == [listing_form()]
     listing = portal.requests[3]
     assert listing.get_header("X-requested-with") == "XMLHttpRequest"
+    assert listing.get_header("Accept") == "application/json, text/javascript, */*; q=0.01"
     assert listing.get_header("Content-type") == "application/x-www-form-urlencoded"
 
 
@@ -446,6 +448,32 @@ def test_listing_answer_of_another_shape_is_unreadable(answer, problem):
     assert str(caught.value).startswith("the NCR listing")
     assert problem in str(caught.value)
     assert portal.requested == THROUGH_THE_LISTING
+
+
+@pytest.mark.parametrize("answer, held", [
+    pytest.param(as_json([ENTRIES]), "(it held a list of 1)", id="a list"),
+    pytest.param(as_json({"error": "SECRET-1", "code": 7}), "(it held an object with keys 'code': int, 'error': str)", id="an error object"),
+    pytest.param(as_json({}), "(it held an object with no keys)", id="an empty object"),
+    pytest.param(as_json("SECRET-1"), "(it held a str)", id="a string"),
+    pytest.param(as_json({"aaData": [], "iTotalDisplayRecords": "14", "n": None, "o": {}, "f": 1.5, "b": True}),
+                 "(it held an object with keys 'aaData': list, 'b': bool, 'f': float, 'iTotalDisplayRecords': str, 'n': null, 'o': object)",
+                 id="each type named"),
+    pytest.param(as_json({f"k{i:02}": "SECRET-1" for i in range(12)}),
+                 "(it held an object with keys " + ", ".join(f"'k{i:02}': str" for i in range(10)) + " and 2 more)", id="many keys"),
+    pytest.param(as_json({"x" * 50: 1}), "(it held an object with keys '" + "x" * 40 + "...': int)", id="a long key"),
+    pytest.param(as_json({"a\nERROR forged line": 1}), "(it held an object with keys 'a\\nERROR forged line': int)", id="a line break in a key"),
+    pytest.param(as_json({"\ud800": 1, "\u05e9\u05dd": 2, "\x1b[31m": 3}),
+                 "(it held an object with keys '\\x1b[31m': int, '\\u05e9\\u05dd': int, '\\ud800': int)", id="control, Hebrew and a lone surrogate"),
+])
+def test_unreadable_listing_says_what_the_answer_held_and_none_of_its_values(answer, held):
+    """So the next unreadable answer shows its layout in the log, the manifest and the alert, and no
+    value from it (a token or a session id could be one)."""
+    http, portal = connect(listing=answer)
+    with pytest.raises(ListingUnreadable) as caught:
+        list(NcrSource("RamiLevi").listing(http, ("PriceFull",)))
+    assert str(caught.value) == "the NCR listing has no aaData list and iTotalDisplayRecords count " + held
+    assert "SECRET-1" not in str(caught.value)
+    assert str(caught.value).isascii() and str(caught.value).isprintable()
 
 
 def test_names_that_do_not_parse_are_skipped_and_counted():
