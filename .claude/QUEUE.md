@@ -5,6 +5,7 @@ Most important first. One line per item: a `[qN]` id (never reused), what it is,
 ## Queue
 
 - [q1] Collector live: schedules on since 2026-11-01 (Shufersal full files only, check 10:45); left: the first scheduled morning, 2026-11-02: read its check record after 10:45 Israel time; done when every chain's files are stored and no alert remains but Shufersal retries out of time with nothing missing (owner, 2026-11-01). State: `.claude/OPEN_ISSUES.md`, Collector, "Live".
+- [q10] Full kinds on Saturdays and holidays: read the first Saturday's check record (2026-11-07) for "no run listed a PriceFull / PromoFull"; a chain that skips Saturdays → the owner decides on an exemption. State: `.claude/OPEN_ISSUES.md`, Collector, "Full kinds on Saturdays and holidays: unknown".
 - [q9] Shufersal's link refresh and NCR's second listing read have no time check. State: `.claude/OPEN_ISSUES.md`, Collector, "Shufersal's link refresh and NCR's second listing read have no time check".
 - [q6] Mutation check counts any non-zero exit as caught. State: `.claude/OPEN_ISSUES.md`, Collector, "Mutation check counts any non-zero exit as caught".
 - [q3] The rest of the project: the site, the processing pipeline (Airflow, dbt) and the AI parts, designed in conversation from the picture the owner approved on 2026-10-31 (one headline basket of identical barcodes; an AI that reads promotion fine print). Research and state: `/Users/doronreiffman/Projects/flights-archive/.remember/q19/` (local, untracked: `STATE.md`, `supermarket/`).
