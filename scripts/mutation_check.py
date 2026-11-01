@@ -486,9 +486,10 @@ MUTATIONS = {
     "an unreadable store list stops the check": (CHECK, "    except Exception as exc:  # coverage is a record only", "    except ZeroDivisionError as exc:  # coverage is a record only"),
     "store ids that are not numbers stop the coverage": (CHECK, " if i.isascii() and i.isdigit()}", "}"),
     "other scripts' digits read as store numbers": (CHECK, " if i.isascii() and i.isdigit()}", " if i.isdigit()}"),
-    "a full kind no run listed passes": (CHECK, "    return \"; \".join(problems + _unlisted(manifests, kinds)) or None", "    return \"; \".join(problems) or None"),
-    "a full kind counted from the retry runs alone": (CHECK, "problems + _unlisted(manifests, kinds)", "problems + _unlisted(retries, kinds)"),
-    "a blocked run leaves the full-kind alarm on": (CHECK, '    if any(manifest["blocked"] for manifest in manifests):\n        return []\n', ""),
+    "a full kind no run listed passes": (CHECK, "    return \"; \".join(problems + _unlisted(manifests, retries, kinds)) or None", "    return \"; \".join(problems) or None"),
+    "a full kind counted from the retry runs alone": (CHECK, "problems + _unlisted(manifests, retries, kinds)", "problems + _unlisted(retries, retries, kinds)"),
+    "a blocked run leaves the full-kind alarm on": (CHECK, '    if any(manifest["blocked"] for manifest in retries):\n        return []\n', ""),
+    "a main run's block silences the full-kind alarm": (CHECK, 'if any(manifest["blocked"] for manifest in retries):', 'if any(manifest["blocked"] for manifest in manifests):'),
     "a full kind the chain does not collect required": (CHECK, "if kind in kinds and kind not in listed]", "if kind not in listed]"),
     "PromoFull left out of the full kinds": (CHECK, 'FULL_KINDS = ("PriceFull", "PromoFull")', 'FULL_KINDS = ("PriceFull",)'),
     # handler: main and retry

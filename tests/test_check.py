@@ -103,7 +103,7 @@ def test_retry_runs_need_cover_only_the_kinds_the_chain_collects():
     stored(store, "shufersal", price("030"))
     alerts, record = check_day(store, SLUGS, DAY, kinds=kinds)
     assert kinds_of(alerts) == [("shufersal", "failed")]
-    assert alerts[0].text == ("shufersal: a retry run is missing or failed: no retry run covered PromoFull; "
+    assert alerts[0].text == ("shufersal: the day's runs fell short: no retry run covered PromoFull; "
                               "no run listed a PromoFull for the day.")
     manifest(store, "shufersal", "retry", kinds=["PromoFull"], listed=[price("030", kind="PromoFull")])
     stored(store, "shufersal", price("030", kind="PromoFull"))
@@ -334,7 +334,7 @@ def test_shufersals_three_retry_runs_together_cover_the_five_kinds():
     stored(store, "shufersal", price("030"))
     alerts, _ = check_day(store, SLUGS, DAY)
     assert kinds_of(alerts) == [("shufersal", "failed")]
-    assert alerts[0].text == ("shufersal: a retry run is missing or failed: no retry run covered PromoFull, Promo; "
+    assert alerts[0].text == ("shufersal: the day's runs fell short: no retry run covered PromoFull, Promo; "
                               "no run listed a PromoFull for the day.")
     manifest(store, "shufersal", "retry", kinds=["PromoFull", "Promo"], listed=[price("030", kind="PromoFull")])
     stored(store, "shufersal", price("030", kind="PromoFull"))
@@ -413,7 +413,7 @@ def test_retry_runs_that_list_nothing_are_a_failed_run():
     assert kinds_of(alerts) == [("ramilevy", "failed")]
     nothing = ("the retry runs listed nothing for the day (unparsed names: 2362); "
                "no run listed a PriceFull for the day; no run listed a PromoFull for the day")
-    assert alerts[0].text == f"ramilevy: a retry run is missing or failed: {nothing}."
+    assert alerts[0].text == f"ramilevy: the day's runs fell short: {nothing}."
     assert record["chains"]["ramilevy"]["failed"] == nothing
 
 
@@ -481,8 +481,22 @@ def test_a_full_kind_no_run_listed_is_a_failed_run(kind):
     shufersal_morning(store, price_full=kind != "PriceFull", promo_full=kind != "PromoFull")
     alerts, record = check_day(store, SLUGS, DAY, kinds=SHUFERSAL_KINDS)
     assert kinds_of(alerts) == [("shufersal", "failed")]
-    assert alerts[0].text == f"shufersal: a retry run is missing or failed: no run listed a {kind} for the day."
+    assert alerts[0].text == f"shufersal: the day's runs fell short: no run listed a {kind} for the day."
     assert record["chains"]["shufersal"]["failed"] == f"no run listed a {kind} for the day"
+
+
+def test_a_block_cleared_before_the_retries_leaves_the_alarm_on():
+    """Only a blocked retry run silences the alarm, as in R31: a main run blocked and cleared before
+    the retry runs leaves no stopped alert, so a full kind the retries did not list must still alert."""
+    store = MemoryStore()
+    clean_day(store, SLUGS[1:])
+    manifest(store, "shufersal", "main", kinds=["Stores"], blocked="HTTP 403: https://x")
+    manifest(store, "shufersal", "main", kinds=["PriceFull"], blocked="stopped earlier")
+    manifest(store, "shufersal", "main", kinds=["PromoFull"], blocked="stopped earlier")
+    shufersal_morning(store, price_full=False)  # the owner cleared the latch before 09:30
+    alerts, record = check_day(store, SLUGS, DAY, kinds=SHUFERSAL_KINDS)
+    assert kinds_of(alerts) == [("shufersal", "failed")]
+    assert record["chains"]["shufersal"]["failed"] == "no run listed a PriceFull for the day"
 
 
 def test_both_full_kinds_listed_is_a_clean_morning():
@@ -513,7 +527,7 @@ def test_update_files_do_not_stand_in_for_full_files():
     stored(store, "ramilevy", *names)
     alerts, _ = check_day(store, SLUGS, DAY)
     assert kinds_of(alerts) == [("ramilevy", "failed")]
-    assert alerts[0].text == ("ramilevy: a retry run is missing or failed: "
+    assert alerts[0].text == ("ramilevy: the day's runs fell short: "
                               "no run listed a PriceFull for the day; no run listed a PromoFull for the day.")
 
 
