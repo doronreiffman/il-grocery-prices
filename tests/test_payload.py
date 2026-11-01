@@ -1,6 +1,10 @@
 """Payload checks: a downloaded body must start like a price file, never like an HTML page."""
 import gzip
+import io
 import re
+import struct
+import warnings
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -66,7 +70,7 @@ def test_html_refused_as_html(data):
 @pytest.mark.parametrize("data, reason", [
     pytest.param(b"hello", "neither gzip nor XML", id="text"),
     pytest.param(b'{"error": "not found"}', "neither gzip nor XML", id="JSON"),
-    pytest.param(b"PK\x03\x04\x14\x00", "neither gzip nor XML", id="zip"),
+    pytest.param(b"PK\x03\x04\x14\x00", "the zip is cut short or corrupt", id="a zip header alone"),
     pytest.param(gzip.compress(b"hello"), "the gzip holds no XML", id="gzip of text"),
     pytest.param(gzip.compress(b""), "the gzip holds no XML", id="gzip of nothing"),
     pytest.param(gzip.compress(gzip.compress(HTML_PAGE)), "the gzip holds no XML", id="gzip of a gzip"),
@@ -103,6 +107,152 @@ def test_gzip_with_a_wrong_trailer_refused(offset):
         data[offset] ^= 0x01
         with pytest.raises(BadPayload, match="cut short or corrupt"):
             check_payload(path.name, bytes(data))
+
+
+# Rami Levy store 039's files are ZIP archives under .gz names: the first deployed run refused four
+# of them, "neither gzip nor XML (it starts b'PK\\x03\\x04...')" (2026-11-01).
+PRICE_XML = UTF8_BOM + b'<?xml version="1.0" encoding="utf-8"?><root><ChainId>7290058140886</ChainId></root>'
+
+
+def a_zip(*members, compression=zipfile.ZIP_DEFLATED):
+    """A ZIP holding (name, bytes) members, as Python's zipfile writes one."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=compression) as archive, warnings.catch_warnings():
+        warnings.filterwarnings("ignore", "Duplicate name", UserWarning)  # one test repeats a name on purpose
+        for name, data in members:
+            archive.writestr(name, data)
+    return buffer.getvalue()
+
+
+@pytest.mark.parametrize("data", [
+    pytest.param(a_zip(("price.xml", PRICE_XML)), id="one XML member"),
+    pytest.param(a_zip(("price.xml", PRICE_XML), compression=zipfile.ZIP_STORED), id="stored, not deflated"),
+    pytest.param(a_zip(("a.xml", PRICE_XML), ("b.xml", b'<?xml version="1.0"?><Root/>')), id="two XML members"),
+    pytest.param(a_zip(("stores.xml", UTF16LE_BOM + "<Root/>".encode("utf-16-le"))), id="a UTF-16 member"),
+])
+def test_a_zip_of_xml_is_accepted(data):
+    check_payload(NAME, data)
+    assert not looks_like_html(data)
+
+
+def _corrupt_member(data: bytes) -> bytes:
+    """The ZIP with one byte of its first member's compressed data flipped: its CRC no longer holds."""
+    corrupt = bytearray(data)
+    corrupt[30 + len("price.xml") + 4] ^= 0xFF  # past the 30-byte local header and the name
+    return bytes(corrupt)
+
+
+def _central_directory_past_the_end(data: bytes) -> bytes:
+    """The end record's central-directory offset moved past the file: zipfile raises ValueError."""
+    patched = bytearray(data)
+    end = patched.rfind(b"PK\x05\x06")
+    patched[end + 16:end + 20] = struct.pack("<I", 10**6)
+    return bytes(patched)
+
+
+def _undecodable_utf8_name(data: bytes) -> bytes:
+    """The central directory's UTF-8 flag set on a name that is not UTF-8: zipfile raises
+    UnicodeDecodeError."""
+    patched = bytearray(data)
+    entry = patched.find(b"PK\x01\x02")
+    flags = struct.unpack("<H", patched[entry + 8:entry + 10])[0] | 0x800
+    patched[entry + 8:entry + 10] = struct.pack("<H", flags)
+    patched[entry + 46:entry + 51] = b"\xff\xfe\xfd.x"
+    return bytes(patched)
+
+
+def _corrupt_far_in(data: bytes) -> bytes:
+    """One byte flipped 5,000 bytes into the first member's data, past the 16 bytes a head read takes
+    and past the 4 KB zipfile reads ahead: only reading the member through to its end finds it."""
+    corrupt = bytearray(data)
+    corrupt[30 + 9 + 5000] ^= 0xFF  # 9: the length of "price.xml"; "a.xml" is 5, still inside the data
+    return bytes(corrupt)
+
+
+
+
+def _marked_encrypted(data: bytes) -> bytes:
+    """The central directory's first entry flagged encrypted: zipfile raises RuntimeError, quoting the
+    member's name."""
+    patched = bytearray(data)
+    entry = patched.find(b"PK\x01\x02")
+    flags = struct.unpack("<H", patched[entry + 8:entry + 10])[0] | 0x1
+    patched[entry + 8:entry + 10] = struct.pack("<H", flags)
+    return bytes(patched)
+
+
+def _garbled_lzma(data: bytes) -> bytes:
+    """Two bytes of an LZMA member's data flipped: lzma raises LZMAError."""
+    patched = bytearray(data)
+    patched[43] ^= 0xFF
+    patched[50] ^= 0xFF
+    return bytes(patched)
+
+
+@pytest.mark.parametrize("data", [
+    pytest.param(a_zip(*[("n" * 60_000 + str(i), b"hello") for i in range(3)]), id="names shown"),
+    pytest.param(_marked_encrypted(a_zip(("n" * 60_000, PRICE_XML))), id="a name in zipfile's error text"),
+])
+def test_a_refusal_stays_short_whatever_the_names(data):
+    with pytest.raises(BadPayload) as caught:
+        check_payload(NAME, data)
+    assert len(str(caught.value)) < 1_000
+
+
+def test_a_folder_entry_in_a_zip_is_skipped():
+    """A directory entry holds no data; the files beside it are what is checked."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.mkdir("prices")
+        archive.writestr("prices/price.xml", PRICE_XML)
+    check_payload(NAME, buffer.getvalue())
+
+
+def test_a_zip_of_folders_alone_holds_no_file():
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.mkdir("prices")
+    with pytest.raises(BadPayload, match="the zip holds no file"):
+        check_payload(NAME, buffer.getvalue())
+
+
+@pytest.mark.parametrize("data, reason", [
+    pytest.param(a_zip(), "the zip holds no file", id="an empty zip"),
+    pytest.param(a_zip(("price.xml", b"")), "not XML: 'price.xml' starts b''", id="an empty file inside"),
+    pytest.param(_central_directory_past_the_end(a_zip(("a.xml", PRICE_XML))), "the zip is cut short or corrupt (ValueError:",
+                 id="a central directory past the end"),
+    pytest.param(_undecodable_utf8_name(a_zip(("a.xml", PRICE_XML))), "the zip is cut short or corrupt (UnicodeDecodeError:",
+                 id="a name that is not UTF-8"),
+    pytest.param(_garbled_lzma(a_zip(("price.xml", PRICE_XML * 50), compression=zipfile.ZIP_LZMA)),
+                 "the zip is cut short or corrupt (LZMAError:", id="garbled LZMA data"),
+    pytest.param(_marked_encrypted(a_zip(("\u05de\u05d7\u05d9\u05e8.xml", PRICE_XML))),
+                 "\\u05de\\u05d7\\u05d9\\u05e8.xml'",  # the name, escaped; zipfile's own wording around it varies by version
+                 id="an encrypted member with a Hebrew name"),
+    pytest.param(a_zip(("price.xml", PRICE_XML))[:-30], "the zip is cut short or corrupt", id="cut short"),
+    pytest.param(b"PK\x03\x04" + b"\x00" * 40, "the zip is cut short or corrupt", id="a header and nothing"),
+    pytest.param(_corrupt_member(a_zip(("price.xml", PRICE_XML * 20))), "the zip is cut short or corrupt", id="a corrupt member"),
+    pytest.param(_corrupt_far_in(a_zip(("price.xml", PRICE_XML * 200), compression=zipfile.ZIP_STORED)),
+                 "the zip is cut short or corrupt (BadZipFile: Bad CRC-32 for file 'price.xml')", id="a stored member corrupt past its head"),
+    pytest.param(_corrupt_far_in(a_zip(("a.xml", PRICE_XML * 200), ("a.xml", PRICE_XML), compression=zipfile.ZIP_STORED)),
+                 "the zip is cut short or corrupt (BadZipFile: Bad CRC-32 for file 'a.xml')", id="the first of two members of one name corrupt"),
+    pytest.param(a_zip(("page.html", HTML_PAGE)), "the zip holds a file that is not XML: 'page.html' starts b'<!DOCTYPE html><'", id="HTML inside"),
+    pytest.param(a_zip(("a.xml", PRICE_XML), ("b.txt", b"hello")), "not XML: 'b.txt' starts b'hello'", id="one member of two not XML"),
+    pytest.param(a_zip(("inner.gz", gzip.compress(PRICE_XML))), "not XML: 'inner.gz' starts b'\\x1f\\x8b", id="a gzip inside"),
+    pytest.param(a_zip(("a\nERROR forged.txt", b"x")), "not XML: 'a\\nERROR forged.txt' starts b'x'", id="a line break in a member name"),
+])
+def test_a_zip_that_is_not_a_zip_of_xml_is_refused(data, reason):
+    with pytest.raises(BadPayload) as caught:
+        check_payload(NAME, data)
+    assert str(caught.value).startswith(NAME + ": ")
+    assert reason in str(caught.value)
+    assert str(caught.value).isascii() and str(caught.value).isprintable()
+
+
+def test_a_refused_zip_names_at_most_three_members():
+    data = a_zip(*[(f"m{i}.txt", b"hello") for i in range(5)])
+    with pytest.raises(BadPayload) as caught:
+        check_payload(NAME, data)
+    assert "'m0.txt' starts b'hello', 'm1.txt' starts b'hello', 'm2.txt' starts b'hello' and 2 more" in str(caught.value)
 
 
 def test_refusal_names_the_file():
