@@ -25,6 +25,6 @@ Personal portfolio project. Collects, every morning, the price files Israeli sup
 
 ## Working notes
 
-- Test baseline (2026-11-01): 734 tests, 100% coverage on `collector`, 531 mutations, all caught.
+- Test baseline (2026-11-01): 741 tests, 100% coverage on `collector`, 537 mutations, all caught.
 
 - Work queue `.claude/QUEUE.md`; open issues `.claude/OPEN_ISSUES.md`; decisions `.claude/DECISIONS.md`.

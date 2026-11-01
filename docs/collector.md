@@ -39,7 +39,7 @@ Every morning, in AWS's Tel Aviv region, for each chain in scope: read the chain
 
 ## Anti-goals (a failure even if everything else works)
 
-- Working around a block. A 401, 403 or 429, a captcha or verification page, or an HTML page where a file belongs stops that chain and raises one alert; the chain stays stopped until the owner clears it (or drops the chain), as in flights-archive. Never a browser User-Agent, another IP, a proxy, or any other way around it. One exception: a refusal from Shufersal's file host after a signed link's expiry time is our own slowness, not a block; the collector reads the listing again for fresh links.
+- Working around a block. A 401, 403 or 429, a captcha or verification page, or an HTML page where a file belongs stops that chain and raises one alert; the chain stays stopped until the owner clears it (or drops the chain), as in flights-archive. Never a browser User-Agent, another IP, a proxy, or any other way around it. One exception: a refusal from Shufersal's file host after a signed link's expiry time is the collector's own slowness, not a block; the collector reads the listing again for fresh links.
 - Losing a morning silently.
 - An alert flood from errors that recover by themselves. (flights-archive's alarm emailed on every error in two consecutive 5-minute windows and flooded the inbox on 2026-10-31 with nothing lost; this collector alerts on missing data, not on errors.)
 - Credentials, the owner's email or a health-check URL in the repo.
