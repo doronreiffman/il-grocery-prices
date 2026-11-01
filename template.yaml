@@ -115,9 +115,11 @@ Resources:
               Action: sns:Publish
               Resource: !Ref AlertTopic
       # Israel time, so daylight saving needs no handling. Shufersal's three invocations start 15
-      # minutes apart (Lambda's longest run), so one chain never gets two requests at once; the
-      # retry runs start three hours after the main ones; the check starts at 10:30, after the
-      # last retry run (10:00) can have finished. No flexible window and no Scheduler retries.
+      # minutes apart (Lambda's longest run), so one chain never gets two requests at once, and so
+      # do the three NCR chains (ruling R30: they share url.publishedprices.co.il), so their
+      # sessions never overlap. The retry runs start three hours after the main ones; the check
+      # starts at 10:30, after the last retry run (10:03) can have finished. No flexible window
+      # and no Scheduler retries.
       Events:
         MainShufersalStores:
           Type: ScheduleV2
@@ -137,30 +139,12 @@ Resources:
             State: !Ref ScheduleState
             FlexibleTimeWindow: {Mode: "OFF"}
             RetryPolicy: {MaximumRetryAttempts: 0}
-        MainOsherAd:
-          Type: ScheduleV2
-          Properties:
-            ScheduleExpression: "cron(36 6 * * ? *)"
-            ScheduleExpressionTimezone: Asia/Jerusalem
-            Input: '{"mode": "main", "chain": "osherad"}'
-            State: !Ref ScheduleState
-            FlexibleTimeWindow: {Mode: "OFF"}
-            RetryPolicy: {MaximumRetryAttempts: 0}
         MainCarrefour:
           Type: ScheduleV2
           Properties:
             ScheduleExpression: "cron(39 6 * * ? *)"
             ScheduleExpressionTimezone: Asia/Jerusalem
             Input: '{"mode": "main", "chain": "carrefour"}'
-            State: !Ref ScheduleState
-            FlexibleTimeWindow: {Mode: "OFF"}
-            RetryPolicy: {MaximumRetryAttempts: 0}
-        MainYochananof:
-          Type: ScheduleV2
-          Properties:
-            ScheduleExpression: "cron(42 6 * * ? *)"
-            ScheduleExpressionTimezone: Asia/Jerusalem
-            Input: '{"mode": "main", "chain": "yochananof"}'
             State: !Ref ScheduleState
             FlexibleTimeWindow: {Mode: "OFF"}
             RetryPolicy: {MaximumRetryAttempts: 0}
@@ -173,12 +157,30 @@ Resources:
             State: !Ref ScheduleState
             FlexibleTimeWindow: {Mode: "OFF"}
             RetryPolicy: {MaximumRetryAttempts: 0}
+        MainOsherAd:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(48 6 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "main", "chain": "osherad"}'
+            State: !Ref ScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
         MainShufersalPromos:
           Type: ScheduleV2
           Properties:
             ScheduleExpression: "cron(0 7 * * ? *)"
             ScheduleExpressionTimezone: Asia/Jerusalem
             Input: '{"mode": "main", "chain": "shufersal", "kinds": ["PromoFull", "Promo"]}'
+            State: !Ref ScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        MainYochananof:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(3 7 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "main", "chain": "yochananof"}'
             State: !Ref ScheduleState
             FlexibleTimeWindow: {Mode: "OFF"}
             RetryPolicy: {MaximumRetryAttempts: 0}
@@ -200,30 +202,12 @@ Resources:
             State: !Ref ScheduleState
             FlexibleTimeWindow: {Mode: "OFF"}
             RetryPolicy: {MaximumRetryAttempts: 0}
-        RetryOsherAd:
-          Type: ScheduleV2
-          Properties:
-            ScheduleExpression: "cron(36 9 * * ? *)"
-            ScheduleExpressionTimezone: Asia/Jerusalem
-            Input: '{"mode": "retry", "chain": "osherad"}'
-            State: !Ref ScheduleState
-            FlexibleTimeWindow: {Mode: "OFF"}
-            RetryPolicy: {MaximumRetryAttempts: 0}
         RetryCarrefour:
           Type: ScheduleV2
           Properties:
             ScheduleExpression: "cron(39 9 * * ? *)"
             ScheduleExpressionTimezone: Asia/Jerusalem
             Input: '{"mode": "retry", "chain": "carrefour"}'
-            State: !Ref ScheduleState
-            FlexibleTimeWindow: {Mode: "OFF"}
-            RetryPolicy: {MaximumRetryAttempts: 0}
-        RetryYochananof:
-          Type: ScheduleV2
-          Properties:
-            ScheduleExpression: "cron(42 9 * * ? *)"
-            ScheduleExpressionTimezone: Asia/Jerusalem
-            Input: '{"mode": "retry", "chain": "yochananof"}'
             State: !Ref ScheduleState
             FlexibleTimeWindow: {Mode: "OFF"}
             RetryPolicy: {MaximumRetryAttempts: 0}
@@ -236,12 +220,30 @@ Resources:
             State: !Ref ScheduleState
             FlexibleTimeWindow: {Mode: "OFF"}
             RetryPolicy: {MaximumRetryAttempts: 0}
+        RetryOsherAd:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(48 9 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "retry", "chain": "osherad"}'
+            State: !Ref ScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
         RetryShufersalPromos:
           Type: ScheduleV2
           Properties:
             ScheduleExpression: "cron(0 10 * * ? *)"
             ScheduleExpressionTimezone: Asia/Jerusalem
             Input: '{"mode": "retry", "chain": "shufersal", "kinds": ["PromoFull", "Promo"]}'
+            State: !Ref ScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        RetryYochananof:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(3 10 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "retry", "chain": "yochananof"}'
             State: !Ref ScheduleState
             FlexibleTimeWindow: {Mode: "OFF"}
             RetryPolicy: {MaximumRetryAttempts: 0}
@@ -254,7 +256,6 @@ Resources:
             State: !Ref ScheduleState
             FlexibleTimeWindow: {Mode: "OFF"}
             RetryPolicy: {MaximumRetryAttempts: 0}
-
   # Created before the function, under its own name, so the first run can't race CloudFormation
   # by creating /aws/lambda/<name> with no retention.
   CollectorLogs:

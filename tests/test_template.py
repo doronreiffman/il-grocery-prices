@@ -8,6 +8,7 @@ which understands the CloudFormation tags (!Ref, !Sub, !GetAtt).
 """
 import json
 import re
+import urllib.parse
 from datetime import date
 from pathlib import Path
 
@@ -28,25 +29,27 @@ ISRAEL = "Asia/Jerusalem"
 # schedule runs once a day, every day.
 DAILY = re.compile(r"cron\((?P<minute>[0-9]{1,2}) (?P<hour>[0-9]{1,2}) \* \* \? \*\)")
 
-# Ruling R7 (the controller's ledger): Shufersal's long invocations start 15 minutes apart, Lambda's
-# longest run, so one chain never gets two requests at once; the retry runs start three hours after
-# the main ones; the check starts after the last retry run can have finished (10:00 + 15 min), at
-# 10:30 rather than the design's 10:00. The four other chains fetch all five kinds in one run.
+# Rulings R7 and R30 (the controller's ledger): Shufersal's long invocations start 15 minutes apart,
+# Lambda's longest run, so one chain never gets two requests at once; so do the three NCR chains,
+# which share one portal host, so their sessions never overlap (R30); the retry runs start three
+# hours after the main ones; the check starts after the last retry run can have finished (10:03 +
+# 15 min), at 10:30 rather than the design's 10:00. The four other chains fetch all five kinds in
+# one run.
 SCHEDULES = {
     "MainShufersalStores": ("06:30", {"mode": "main", "chain": "shufersal", "kinds": ["Stores"]}),
     "MainRamiLevy": ("06:33", {"mode": "main", "chain": "ramilevy"}),
-    "MainOsherAd": ("06:36", {"mode": "main", "chain": "osherad"}),
     "MainCarrefour": ("06:39", {"mode": "main", "chain": "carrefour"}),
-    "MainYochananof": ("06:42", {"mode": "main", "chain": "yochananof"}),
     "MainShufersalPrices": ("06:45", {"mode": "main", "chain": "shufersal", "kinds": ["PriceFull", "Price"]}),
+    "MainOsherAd": ("06:48", {"mode": "main", "chain": "osherad"}),
     "MainShufersalPromos": ("07:00", {"mode": "main", "chain": "shufersal", "kinds": ["PromoFull", "Promo"]}),
+    "MainYochananof": ("07:03", {"mode": "main", "chain": "yochananof"}),
     "RetryShufersalStores": ("09:30", {"mode": "retry", "chain": "shufersal", "kinds": ["Stores"]}),
     "RetryRamiLevy": ("09:33", {"mode": "retry", "chain": "ramilevy"}),
-    "RetryOsherAd": ("09:36", {"mode": "retry", "chain": "osherad"}),
     "RetryCarrefour": ("09:39", {"mode": "retry", "chain": "carrefour"}),
-    "RetryYochananof": ("09:42", {"mode": "retry", "chain": "yochananof"}),
     "RetryShufersalPrices": ("09:45", {"mode": "retry", "chain": "shufersal", "kinds": ["PriceFull", "Price"]}),
+    "RetryOsherAd": ("09:48", {"mode": "retry", "chain": "osherad"}),
     "RetryShufersalPromos": ("10:00", {"mode": "retry", "chain": "shufersal", "kinds": ["PromoFull", "Promo"]}),
+    "RetryYochananof": ("10:03", {"mode": "retry", "chain": "yochananof"}),
     "Check": ("10:30", {"mode": "check"}),
 }
 SHUFERSAL_GROUPS = [{"Stores"}, {"PriceFull", "Price"}, {"PromoFull", "Promo"}]
@@ -292,7 +295,7 @@ def test_health_check_url_is_a_hidden_healthchecks_ping_url(template):
 # --- the schedules ---
 
 
-def test_schedules_are_ruling_r7(schedules):
+def test_schedules_are_rulings_r7_and_r30(schedules):
     assert schedules == {name: (_minutes(clock), event) for name, (clock, event) in SCHEDULES.items()}
 
 
@@ -362,6 +365,21 @@ def test_one_chain_never_runs_twice_at_once(schedules, function):
     for slug, times in starts.items():
         times.sort()
         assert all(later - earlier >= longest for earlier, later in zip(times, times[1:])), (slug, times)
+
+
+def test_one_portal_host_never_serves_two_runs_at_once(schedules, function):
+    """Ruling R30: chains on one portal host (the three NCR chains on url.publishedprices.co.il)
+    start at least Lambda's timeout apart, whatever their mode, so their sessions never overlap."""
+    longest = function["Timeout"] / 60
+    hosts = {slug: urllib.parse.urlsplit(chain.base_url).netloc for slug, chain in CHAINS.items()}
+    assert len(set(hosts.values())) < len(hosts)  # some chains do share a host
+    starts = {}
+    for start, event in schedules.values():
+        if event["mode"] != "check":
+            starts.setdefault(hosts[event["chain"]], []).append(start)
+    for host, times in starts.items():
+        times.sort()
+        assert all(later - earlier >= longest for earlier, later in zip(times, times[1:])), (host, times)
 
 
 def test_one_check_after_the_last_retry_run_can_have_finished(schedules, function):

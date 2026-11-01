@@ -10,15 +10,15 @@ One Lambda function (stack `il-grocery-prices`, region il-central-1, Tel Aviv) r
 |---|---|---|
 | 06:30 | Shufersal store list | `{"mode": "main", "chain": "shufersal", "kinds": ["Stores"]}` |
 | 06:33 | Rami Levy, every kind | `{"mode": "main", "chain": "ramilevy"}` |
-| 06:36 | Osher Ad, every kind | `{"mode": "main", "chain": "osherad"}` |
 | 06:39 | Carrefour, every kind | `{"mode": "main", "chain": "carrefour"}` |
-| 06:42 | Yochananof, every kind | `{"mode": "main", "chain": "yochananof"}` |
 | 06:45 | Shufersal price files | `{"mode": "main", "chain": "shufersal", "kinds": ["PriceFull", "Price"]}` |
+| 06:48 | Osher Ad, every kind | `{"mode": "main", "chain": "osherad"}` |
 | 07:00 | Shufersal promotion files | `{"mode": "main", "chain": "shufersal", "kinds": ["PromoFull", "Promo"]}` |
-| 09:30 to 10:00 | The same seven, three hours later | the same events with `"mode": "retry"` |
+| 07:03 | Yochananof, every kind | `{"mode": "main", "chain": "yochananof"}` |
+| 09:30 to 10:03 | The same seven, three hours later | the same events with `"mode": "retry"` |
 | 10:30 | The check | `{"mode": "check"}` |
 
-A run can take up to 15 minutes (Lambda's longest), so Shufersal's three runs start 15 minutes apart and one chain never gets two requests at once. A retry run fetches only what is still not stored. The check starts after the last retry run can have finished; it writes a check record, emails when a chain's morning is incomplete, a chain is stopped or a retry run failed, and pings healthchecks.io. The design gave 10:00 for the check; it moved to 10:30 because Shufersal's last retry run starts at 10:00 and may run until 10:15.
+A run can take up to 15 minutes (Lambda's longest), so Shufersal's three runs start 15 minutes apart and one chain never gets two requests at once. Rami Levy, Osher Ad and Yochananof share one portal host (`url.publishedprices.co.il`), so their runs start 15 minutes apart too, and their sessions never overlap. A retry run fetches only what is still not stored. The check starts after the last retry run can have finished; it writes a check record, emails when a chain's morning is incomplete, a chain is stopped or a retry run failed, and pings healthchecks.io. The design gave 10:00 for the check; it moved to 10:30 because the last retry run (Yochananof's) starts at 10:03 and may run until 10:18.
 
 Neither the schedules nor Lambda retry a failed invocation: the retry run is the retry. A block (a 401, 403 or 429, a captcha or verification page, or an HTML page where a file belongs) stops that chain until you clear it (below).
 
@@ -71,7 +71,7 @@ You need the personal AWS account (nothing from an employer) with il-central-1 e
 
    The User-Agent must read exactly as you gave it.
 
-6. **One manual run per chain.** Start each run asynchronously (`--invocation-type Event`), the way the schedules do. A run can take 15 minutes; a plain invoke waits for the answer, the CLI gives up after 60 seconds and sends the invoke again, and the chain then has two runs at once. Each command answers `"StatusCode": 202` at once. Start them one at a time and let each finish before the next: Shufersal's three runs must never overlap (one request at a time per chain), and one at a time keeps the logs readable.
+6. **One manual run per chain.** Start each run asynchronously (`--invocation-type Event`), the way the schedules do. A run can take 15 minutes; a plain invoke waits for the answer, the CLI gives up after 60 seconds and sends the invoke again, and the chain then has two runs at once. Each command answers `"StatusCode": 202` at once. Start them one at a time and let each finish before the next: Shufersal's three runs must never overlap (one request at a time per chain), nor may the three chains on the NCR portal, and one at a time keeps the logs readable.
 
    ```bash
    aws lambda invoke --function-name "$FN" --invocation-type Event --payload '{"mode": "main", "chain": "shufersal", "kinds": ["Stores"]}' --cli-binary-format raw-in-base64-out /dev/null --profile flights-sam --region il-central-1

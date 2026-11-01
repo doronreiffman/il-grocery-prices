@@ -36,12 +36,13 @@ STORE_FOR_CHECK = ("src/collector/store.py", ["tests/test_check.py"])
 HANDLER = ("src/collector/handler.py", ["tests/test_handler.py"])
 TEMPLATE = ("template.yaml", ["tests/test_template.py"])
 OPERATIONS = ("docs/operations.md", ["tests/test_template.py"])
-# Rules the R7 table in test_template.py also pins: each of these names the one test that must
+# Rules the R7/R30 table in test_template.py also pins: each of these names the one test that must
 # catch it by itself, so the rule's own test is proved, not only the table.
 _T = "tests/test_template.py::"
-R7_TABLE = ("template.yaml", [_T + "test_schedules_are_ruling_r7"])
+R7_TABLE = ("template.yaml", [_T + "test_schedules_are_rulings_r7_and_r30"])
 ONE_MINUTE_EACH = ("template.yaml", [_T + "test_no_two_schedules_share_a_start_minute"])
 ONE_RUN_AT_A_TIME = ("template.yaml", [_T + "test_one_chain_never_runs_twice_at_once"])
+ONE_HOST_AT_A_TIME = ("template.yaml", [_T + "test_one_portal_host_never_serves_two_runs_at_once"])
 RETRY_THREE_HOURS_ON = ("template.yaml", [_T + "test_retry_runs_start_three_hours_after_their_main_run"])
 CHECK_LAST = ("template.yaml", [_T + "test_one_check_after_the_last_retry_run_can_have_finished"])
 ALL_KINDS = ("template.yaml", [_T + "test_each_chain_has_a_run_of_each_mode_over_all_five_kinds"])
@@ -574,10 +575,11 @@ MUTATIONS = {
     "Scheduler retries a failed invoke": (TEMPLATE, "Input: '{\"mode\": \"retry\", \"chain\": \"carrefour\"}'\n            State: !Ref ScheduleState\n            FlexibleTimeWindow: {Mode: \"OFF\"}\n            RetryPolicy: {MaximumRetryAttempts: 0}",
                                           "Input: '{\"mode\": \"retry\", \"chain\": \"carrefour\"}'\n            State: !Ref ScheduleState\n            FlexibleTimeWindow: {Mode: \"OFF\"}\n            RetryPolicy: {MaximumRetryAttempts: 185}"),
     "a schedule weekly, not daily": (TEMPLATE, '"cron(39 9 * * ? *)"', '"cron(39 9 ? * SUN *)"'),
-    "a run moved off ruling R7": (R7_TABLE, '"cron(33 6 * * ? *)"', '"cron(34 6 * * ? *)"'),
-    "two schedules share a start minute": (ONE_MINUTE_EACH, '"cron(36 6 * * ? *)"', '"cron(33 6 * * ? *)"'),
+    "a run moved off rulings R7 and R30": (R7_TABLE, '"cron(33 6 * * ? *)"', '"cron(34 6 * * ? *)"'),
+    "two schedules share a start minute": (ONE_MINUTE_EACH, '"cron(39 6 * * ? *)"', '"cron(33 6 * * ? *)"'),
     "Shufersal's runs overlap": (ONE_RUN_AT_A_TIME, '"cron(0 7 * * ? *)"', '"cron(50 6 * * ? *)"'),
-    "a retry run not three hours after its main run": (RETRY_THREE_HOURS_ON, '"cron(42 9 * * ? *)"', '"cron(44 9 * * ? *)"'),
+    "two NCR chains 3 minutes apart (R30)": (ONE_HOST_AT_A_TIME, '"cron(48 6 * * ? *)"', '"cron(36 6 * * ? *)"'),
+    "a retry run not three hours after its main run": (RETRY_THREE_HOURS_ON, '"cron(3 10 * * ? *)"', '"cron(5 10 * * ? *)"'),
     "check at the design's 10:00": (CHECK_LAST, '"cron(30 10 * * ? *)"', '"cron(0 10 * * ? *)"'),
     "check before the last retry run can finish": (CHECK_LAST, '"cron(30 10 * * ? *)"', '"cron(10 10 * * ? *)"'),
     "a Shufersal group short of a kind (R4)": (ALL_KINDS, "Input: '{\"mode\": \"retry\", \"chain\": \"shufersal\", \"kinds\": [\"PromoFull\", \"Promo\"]}'", "Input: '{\"mode\": \"retry\", \"chain\": \"shufersal\", \"kinds\": [\"PromoFull\"]}'"),
