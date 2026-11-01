@@ -387,8 +387,11 @@ MUTATIONS = {
     # check: stopped chains
     "stopped alerted every check": (CHECK, 'if state.get("stopped") and not state.get("alerted"):', 'if state.get("stopped"):'),
     "a state that is not stopped alerts": (CHECK, 'if state.get("stopped") and not state.get("alerted"):', 'if not state.get("alerted"):'),
-    "stopped state not marked alerted": (CHECK, '        store.write_state(slug, state | {"alerted": True})', "        pass"),
-    "stopped state replaced, not updated": (CHECK, 'store.write_state(slug, state | {"alerted": True})', 'store.write_state(slug, {"alerted": True})'),
+    "stopped state not marked alerted": (CHECK, '                store.write_state(alert.chain, state | {"alerted": True})', "                pass"),
+    "stopped state replaced, not updated": (CHECK, 'store.write_state(alert.chain, state | {"alerted": True})', 'store.write_state(alert.chain, {"alerted": True})'),
+    "check_day marks the state itself (R26)": (CHECK, "        alerts += chain_alerts\n    return alerts, {", "        alerts += chain_alerts\n    mark_alerted(store, alerts)\n    return alerts, {"),
+    "chains with other alerts marked alerted (R26)": (CHECK, '        if alert.kind == "stopped":\n', "        if True:\n"),
+    "a chain cleared since the check marked alerted (R26)": (CHECK, '            if state.get("stopped"):\n                store.write_state(alert.chain', "            if True:\n                store.write_state(alert.chain"),
     "stopped alert without its reason": (CHECK, "{state.get('since')}: {state.get('reason')}. ", "{state.get('since')}. "),
     "stopped chain not in the record": (CHECK, '"stopped": {"since": state.get("since"), "reason": state.get("reason")} if state.get("stopped") else None,', '"stopped": None,'),
     # check: failed runs (R4)
@@ -472,13 +475,24 @@ MUTATIONS = {
     "fingerprint leaves out subpackages": (HANDLER, 'package.rglob("*.py")', 'package.glob("*.py")'),
     "fingerprint ignores paths": (HANDLER, 'digest.update(rel.encode() + b"\\0" + hashlib', "digest.update(hashlib"),
     "fingerprint not 12 hex": (HANDLER, "    return digest.hexdigest()[:12]", "    return digest.hexdigest()"),
+    "stopped chains marked before the email (R26)": (HANDLER, "        deps.publish(subject, body)\n        mark_alerted(deps.store, alerts)", "        mark_alerted(deps.store, alerts)\n        deps.publish(subject, body)"),
+    "stopped chains never marked by the check (R26)": (HANDLER, "        mark_alerted(deps.store, alerts)  # only now", "        pass  # only now"),
+    "stopped chains marked after the ping (R26)": (HANDLER, '        mark_alerted(deps.store, alerts)  # only now: a failed email leaves them to alert again (R26)\n    summary = {"mode": "check", "day": day.isoformat(), "run_id": run_id, "record": key, "alerts": len(alerts)}\n    try:\n        deps.ping(cfg.healthcheck_url, json.dumps(summary, sort_keys=True))\n    except Exception as exc:  # the morning is checked and recorded; a missed ping makes healthchecks.io email\n        log.warning("health-check ping failed: %s: %s", type(exc).__name__, exc)\n',
+                                                   '    summary = {"mode": "check", "day": day.isoformat(), "run_id": run_id, "record": key, "alerts": len(alerts)}\n    try:\n        deps.ping(cfg.healthcheck_url, json.dumps(summary, sort_keys=True))\n    except Exception as exc:  # the morning is checked and recorded; a missed ping makes healthchecks.io email\n        log.warning("health-check ping failed: %s: %s", type(exc).__name__, exc)\n    if alerts:\n        mark_alerted(deps.store, alerts)  # only now: a failed email leaves them to alert again (R26)\n'),
+    # handler: the ping's User-Agent (R27) and the log level (R28)
+    "ping carries the contact email (R27)": (HANDLER, "ping=partial(ping, user_agent=ping_user_agent(cfg.user_agent)),", "ping=partial(ping, user_agent=cfg.user_agent),"),
+    "ping User-Agent without the project URL (R27)": (HANDLER, '    return f"{product} ({url[0]})" if url else product', "    return product"),
+    "an @ in the first word kept in the ping's User-Agent (R27)": (HANDLER, 'if words and "@" not in words[0] else', "if words else"),
+    "a project URL holding an @ kept whole (R27)": (HANDLER, r'_PROJECT_URL = re.compile(r"\+https://[^\s;()@]+")', r'_PROJECT_URL = re.compile(r"\+https://[^\s;()]+")'),
+    "collector logs below INFO dropped (R28)": (HANDLER, 'logging.getLogger("collector").setLevel(logging.INFO)', 'logging.getLogger("collector").setLevel(logging.WARNING)'),
+    "collector log level left to the runtime (R28)": (HANDLER, 'logging.getLogger("collector").setLevel(logging.INFO)\n', "\n"),
     # handler: the production wiring
     "one Http for every chain run (R6)": (HANDLER, "        http_for=lambda slug: Http(cfg.user_agent),", "        http_for=lambda slug, shared=Http(cfg.user_agent): shared,"),
     "email to another topic": (HANDLER, "sns.publish(TopicArn=cfg.alert_topic_arn,", "sns.publish(TopicArn=cfg.bucket,"),
     "email without its subject": (HANDLER, "Subject=subject, Message=body)", "Message=body)"),
     "time left read in milliseconds": (HANDLER, "context.get_remaining_time_in_millis() / 1000", "context.get_remaining_time_in_millis()"),
     "store retention not the config's": (HANDLER, "S3Store(s3, cfg.bucket, cfg.retention_days)", "S3Store(s3, cfg.bucket)"),
-    "production ping unidentified": (HANDLER, "ping=partial(ping, user_agent=cfg.user_agent),", 'ping=partial(ping, user_agent=""),'),
+    "production ping unidentified": (HANDLER, "ping=partial(ping, user_agent=ping_user_agent(cfg.user_agent)),", 'ping=partial(ping, user_agent=""),'),
     "production code_sha not the package's": (HANDLER, "        code_sha=CODE_SHA,\n    )", '        code_sha="",\n    )'),
 }
 

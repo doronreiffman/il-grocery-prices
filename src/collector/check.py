@@ -6,8 +6,10 @@ For each chain, from that day's manifests (every run's, main and retry alike) an
 - missing: names any of the manifests listed that are not stored (a conflict copy counts as its
   original) → one `missing` alert for the chain, with the count and up to ten names; the check
   record holds them all. Names are the stored names, the link's last segment (ruling R16).
-- stopped: the chain's state says stopped and not yet alerted → one `stopped` alert, and the state
-  is marked `alerted: true` (its reason kept), so later checks stay quiet until the owner clears it.
+- stopped: the chain's state says stopped and not yet alerted → one `stopped` alert. check_day
+  changes no state: once the email has gone, mark_alerted marks the chain `alerted: true` (its
+  reason kept), so later checks stay quiet until the owner clears it; an email that fails leaves
+  the state alone, and the next check alerts again (ruling R26).
 - failed (ruling R4): that day's retry manifests do not together cover all five kinds (Shufersal
   runs as three invocations), or one of them has an error → one `failed` alert. A retry manifest
   that is blocked with no error is not a failed run: the `stopped` alert covers it. A main run's
@@ -41,20 +43,25 @@ class Alert:
 
 def check_day(store, slugs: list[str], day: date) -> tuple[list[Alert], dict]:
     """The alerts for `day` and the check record: per chain, the listed and stored counts, the
-    missing names, whether it is stopped, why its runs failed, and its coverage. A stopped chain
-    alerted here has its state marked alerted, once every chain has been checked."""
+    missing names, whether it is stopped, why its runs failed, and its coverage. Reads only."""
     manifests = _manifests(store, day)
     alerts: list[Alert] = []
     chains = {}
-    to_mark = {}
     for slug in slugs:
-        chain_alerts, chains[slug], state = _check_chain(store, slug, day, manifests.get(slug, []))
+        chain_alerts, chains[slug] = _check_chain(store, slug, day, manifests.get(slug, []))
         alerts += chain_alerts
-        if state is not None:
-            to_mark[slug] = state
-    for slug, state in to_mark.items():
-        store.write_state(slug, state | {"alerted": True})
     return alerts, {"day": day.isoformat(), "chains": chains, "alerts": [asdict(alert) for alert in alerts]}
+
+
+def mark_alerted(store, alerts: list[Alert]) -> None:
+    """Mark each chain a `stopped` alert names as alerted, its other state kept; call it only once
+    the email holding the alerts has gone (ruling R26). A chain whose state no longer says stopped
+    (cleared since the check read it) is left as it is."""
+    for alert in alerts:
+        if alert.kind == "stopped":
+            state = store.read_state(alert.chain)
+            if state.get("stopped"):
+                store.write_state(alert.chain, state | {"alerted": True})
 
 
 def _manifests(store, day: date) -> dict[str, list[dict]]:
@@ -67,8 +74,8 @@ def _manifests(store, day: date) -> dict[str, list[dict]]:
     return by_chain
 
 
-def _check_chain(store, slug: str, day: date, manifests: list[dict]) -> tuple[list[Alert], dict, dict | None]:
-    """The chain's alerts, its part of the record, and its state when a stopped alert is due."""
+def _check_chain(store, slug: str, day: date, manifests: list[dict]) -> tuple[list[Alert], dict]:
+    """The chain's alerts and its part of the record."""
     alerts = []
     listed = {name for manifest in manifests for name in manifest["listed"]}
     stored = store.stored_names(slug, day)
@@ -76,11 +83,9 @@ def _check_chain(store, slug: str, day: date, manifests: list[dict]) -> tuple[li
     if missing:
         alerts.append(Alert(slug, "missing", _missing_text(slug, day, missing)))
     state = store.read_state(slug)
-    due = None
     if state.get("stopped") and not state.get("alerted"):
         alerts.append(Alert(slug, "stopped", f"{slug} is stopped since {state.get('since')}: {state.get('reason')}. "
                                              "Nothing is fetched from it until an unblock run clears it."))
-        due = state
     failure = _failure(manifests)
     if failure:
         alerts.append(Alert(slug, "failed", f"{slug}: a retry run is missing or failed: {failure}."))
@@ -93,7 +98,7 @@ def _check_chain(store, slug: str, day: date, manifests: list[dict]) -> tuple[li
         "failed": failure,
         "coverage": _coverage(store, slug, day, stored),
     }
-    return alerts, record, due
+    return alerts, record
 
 
 def _missing_text(slug: str, day: date, missing: list[str]) -> str:

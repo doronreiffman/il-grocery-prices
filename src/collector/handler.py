@@ -8,9 +8,11 @@ runs", and "Alerts"). EventBridge Scheduler sends the first three events; the ow
 
 `kinds` is optional: all five when absent. The day is the Israel calendar date when the invocation
 starts. main and retry never email: their errors are logged and the check judges what they left.
-The check writes its record whatever it finds, sends one email only when there are alerts, then
-pings healthchecks.io; a failed ping is logged, not raised. If the check itself fails, nothing
-pings, and healthchecks.io emails about the missing ping.
+The check writes its record whatever it finds, sends one email only when there are alerts, marks
+the stopped chains it named as alerted once that email has gone (ruling R26), then pings
+healthchecks.io; a failed ping is logged, not raised. If the check itself fails, the email
+included, nothing is marked and nothing pings, and healthchecks.io emails about the missing ping.
+The ping's User-Agent names the project and its URL, never the contact email (ruling R27).
 
 Environment: BUCKET, USER_AGENT, ALERT_TOPIC_ARN, HEALTHCHECK_URL (each required), RETENTION_DAYS
 (default 3650).
@@ -19,6 +21,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import urllib.request
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -29,20 +32,23 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from collector.chains import CHAINS, Chain, source_for
-from collector.check import Alert, check_day
+from collector.check import Alert, check_day, mark_alerted
 from collector.http import Http, build_opener, check_user_agent
 from collector.names import KINDS
 from collector.run import collect_chain, new_run_id
 from collector.store import RETENTION_DAYS, S3Store, check_key
 
+# INFO on the package's logger itself, so the runs' summaries reach CloudWatch whatever level the
+# runtime gives the root logger (ruling R28); the records go to the runtime's handler on the root.
+logging.getLogger("collector").setLevel(logging.INFO)
 log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
 
 ISRAEL = ZoneInfo("Asia/Jerusalem")
 REQUIRED = ("BUCKET", "USER_AGENT", "ALERT_TOPIC_ARN", "HEALTHCHECK_URL")
 COLLECTING = ("main", "retry")
 SUBJECT_LIMIT = 100  # SNS takes a subject of fewer than 100 characters
 PING_TIMEOUT = 10  # seconds
+_PROJECT_URL = re.compile(r"\+https://[^\s;()@]+")
 
 
 def code_sha(package: Path) -> str:
@@ -149,6 +155,7 @@ def _check(cfg: Config, deps: Deps, day: date, now: datetime) -> dict:
         subject, body = message(day, alerts, key)
         log.warning("%s\n%s", subject, body)  # kept in the logs should the email fail
         deps.publish(subject, body)
+        mark_alerted(deps.store, alerts)  # only now: a failed email leaves them to alert again (R26)
     summary = {"mode": "check", "day": day.isoformat(), "run_id": run_id, "record": key, "alerts": len(alerts)}
     try:
         deps.ping(cfg.healthcheck_url, json.dumps(summary, sort_keys=True))
@@ -185,14 +192,25 @@ def ping(url: str, message: str, user_agent: str, opener: urllib.request.OpenerD
         answer.read()
 
 
+def ping_user_agent(user_agent: str) -> str:
+    """The deploy's User-Agent without its contact email, for healthchecks.io (ruling R27):
+    `il-grocery-prices/<version> (+<repo URL>)`, built from the first word and the `+https://` URL.
+    A first word holding an @ gives way to the project's name."""
+    words = user_agent.split()
+    product = words[0] if words and "@" not in words[0] else "il-grocery-prices"
+    url = _PROJECT_URL.search(user_agent)
+    return f"{product} ({url[0]})" if url else product
+
+
 def deps_for(cfg: Config, context, s3, sns) -> Deps:
     """The production Deps: the bucket through the boto3 client `s3`, the email through `sns`, a fresh
-    Http (own cookies) for each chain run (ruling R6), the ping identified, and Lambda's countdown."""
+    Http (own cookies) for each chain run (ruling R6), the ping identified without the contact email
+    (R27), and Lambda's countdown."""
     return Deps(
         store=S3Store(s3, cfg.bucket, cfg.retention_days),
         http_for=lambda slug: Http(cfg.user_agent),
         publish=lambda subject, body: sns.publish(TopicArn=cfg.alert_topic_arn, Subject=subject, Message=body),
-        ping=partial(ping, user_agent=cfg.user_agent),
+        ping=partial(ping, user_agent=ping_user_agent(cfg.user_agent)),
         time_left=lambda: context.get_remaining_time_in_millis() / 1000,
         code_sha=CODE_SHA,
     )

@@ -8,7 +8,7 @@ import json
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from collector.check import Alert, check_day
+from collector.check import Alert, check_day, mark_alerted
 from collector.names import KINDS
 from collector.run import RunResult, manifest_bytes
 from collector.store import MemoryStore, manifest_key, raw_key
@@ -184,22 +184,31 @@ def test_files_of_another_day_do_not_count():
 
 # ---- stopped chains ----
 
-def test_a_stopped_chain_alerts_once_and_its_state_is_marked():
+def test_a_stopped_chain_alerts_and_check_day_leaves_its_state():
+    """check_day only reads: the state is marked once the email has gone (ruling R26)."""
     store = MemoryStore()
     clean_day(store)
     store.write_state("osherad", latch())
     alerts, record = check_day(store, SLUGS, DAY)
     assert kinds_of(alerts) == [("osherad", "stopped")]
     assert "osherad" in alerts[0].text and "HTTP 403" in alerts[0].text and SINCE in alerts[0].text
-    assert store.read_state("osherad") == latch(alerted=True)  # still stopped, its reason kept
+    assert store.read_state("osherad") == latch()
     assert record["chains"]["osherad"]["stopped"] == {"since": SINCE, "reason": latch()["reason"]}
 
 
-def test_a_second_check_sends_no_second_stopped_alert():
+def test_mark_alerted_keeps_the_chain_stopped_with_its_reason():
     store = MemoryStore()
     clean_day(store)
     store.write_state("osherad", latch())
-    check_day(store, SLUGS, DAY)
+    mark_alerted(store, check_day(store, SLUGS, DAY)[0])
+    assert store.read_state("osherad") == latch(alerted=True)
+
+
+def test_a_second_check_after_the_email_sends_no_second_stopped_alert():
+    store = MemoryStore()
+    clean_day(store)
+    store.write_state("osherad", latch())
+    mark_alerted(store, check_day(store, SLUGS, DAY)[0])
     alerts, record = check_day(store, SLUGS, DAY)
     assert alerts == []
     assert record["chains"]["osherad"]["stopped"] == {"since": SINCE, "reason": latch()["reason"]}
@@ -207,6 +216,33 @@ def test_a_second_check_sends_no_second_stopped_alert():
     for slug in SLUGS:
         manifest(store, slug, "retry", day=later)
     assert check_day(store, SLUGS, later)[0] == []
+
+
+def test_a_check_whose_email_never_went_alerts_again():
+    store = MemoryStore()
+    clean_day(store)
+    store.write_state("osherad", latch())
+    check_day(store, SLUGS, DAY)
+    assert kinds_of(check_day(store, SLUGS, DAY)[0]) == [("osherad", "stopped")]
+
+
+def test_mark_alerted_marks_only_the_chains_a_stopped_alert_names():
+    store = MemoryStore()
+    store.write_state("osherad", latch())
+    store.write_state("carrefour", latch())
+    mark_alerted(store, [Alert("carrefour", "missing", "x"), Alert("osherad", "stopped", "y")])
+    assert store.read_state("osherad") == latch(alerted=True)
+    assert store.read_state("carrefour") == latch()
+
+
+def test_mark_alerted_leaves_a_chain_cleared_since_the_check():
+    store = MemoryStore()
+    clean_day(store)
+    store.write_state("osherad", latch())
+    alerts, _ = check_day(store, SLUGS, DAY)
+    store.write_state("osherad", {})  # the owner's unblock run, between the check and the email
+    mark_alerted(store, alerts)
+    assert store.read_state("osherad") == {}
 
 
 def test_a_chain_already_alerted_stays_quiet():
@@ -234,6 +270,7 @@ def test_a_latch_without_an_alerted_flag_alerts():
     store.write_state("osherad", {"stopped": True, "since": SINCE, "reason": "HTTP 429"})
     alerts, _ = check_day(store, SLUGS, DAY)
     assert kinds_of(alerts) == [("osherad", "stopped")]
+    mark_alerted(store, alerts)
     assert store.read_state("osherad")["alerted"] is True
 
 

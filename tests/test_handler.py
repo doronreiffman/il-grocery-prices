@@ -27,7 +27,7 @@ import collector
 from collector import handler as handler_module
 from collector.chains import CHAINS
 from collector.check import Alert
-from collector.handler import CODE_SHA, Config, Deps, code_sha, deps_for, message, ping, run
+from collector.handler import CODE_SHA, Config, Deps, code_sha, deps_for, message, ping, ping_user_agent, run
 from collector.http import Blocked, Http, HttpError, build_opener
 from collector.names import KINDS, parse_file_name
 from collector.run import RunResult, manifest_bytes
@@ -69,7 +69,7 @@ class Recorder:
 
 
 class EventStore(MemoryStore):
-    """A MemoryStore that logs its record writes in the shared `events`."""
+    """A MemoryStore that logs its record and state writes in the shared `events`."""
 
     def __init__(self, events):
         super().__init__()
@@ -78,6 +78,10 @@ class EventStore(MemoryStore):
     def put_record(self, key, body, now):
         self.events.append(("record", key))
         super().put_record(key, body, now)
+
+    def write_state(self, slug, state):
+        self.events.append(("state", slug))
+        super().write_state(slug, state)
 
 
 class Countdown:
@@ -211,6 +215,7 @@ def test_a_naive_now_is_refused_before_anything_is_read_or_written(collect, even
     deps = make_deps()
     latch = {"stopped": True, "since": "x", "reason": "HTTP 403", "alerted": False}
     deps.store.write_state("carrefour", latch)
+    deps.events.clear()
     with pytest.raises(ValueError, match="time zone"):
         run(CFG, event, deps, datetime(2026, 10, 31, 6, 30))
     assert collect.calls == [] and deps.events == []
@@ -317,14 +322,35 @@ def test_check_without_alerts_writes_the_record_and_pings_without_email():
     assert summary["alerts"] == 0 and deps.ping.calls[0][0] == HEALTHCHECK
 
 
-def test_check_marks_a_stopped_chain_alerted():
+LATCH = {"stopped": True, "since": "x", "reason": "HTTP 429", "alerted": False}
+
+
+def test_check_marks_a_stopped_chain_alerted_after_the_email_and_before_the_ping():
+    """Ruling R26: the record, the email, the stopped chains marked alerted, then the ping."""
     deps = make_deps()
     clean_day(deps.store)
-    deps.store.write_state("carrefour", {"stopped": True, "since": "x", "reason": "HTTP 429", "alerted": False})
-    run(CFG, {"mode": "check"}, deps, NOW)
+    deps.store.write_state("carrefour", LATCH)
+    deps.events.clear()
+    summary = run(CFG, {"mode": "check"}, deps, NOW)
+    assert deps.events == [("record", summary["record"]), "publish", ("state", "carrefour"), "ping"]
+    assert deps.store.read_state("carrefour") == LATCH | {"alerted": True}
     run(CFG, {"mode": "check"}, deps, NOW)
     assert len(deps.publish.calls) == 1 and "HTTP 429" in deps.publish.calls[0][1]
     assert len(deps.ping.calls) == 2
+
+
+def test_a_failed_email_leaves_the_stopped_chain_to_alert_again():
+    """Ruling R26: nothing is marked, the check fails (no ping), and the next check alerts again."""
+    deps = make_deps(publish_raises=RuntimeError("SNS is down"))
+    clean_day(deps.store)
+    deps.store.write_state("carrefour", LATCH)
+    with pytest.raises(RuntimeError, match="SNS is down"):
+        run(CFG, {"mode": "check"}, deps, NOW)
+    assert deps.store.read_state("carrefour") == LATCH and deps.ping.calls == []
+    deps.publish.raises = None
+    run(CFG, {"mode": "check"}, deps, NOW)
+    assert len(deps.publish.calls) == 2 and "HTTP 429" in deps.publish.calls[1][1]
+    assert deps.store.read_state("carrefour") == LATCH | {"alerted": True}
 
 
 def test_check_ignores_a_chain_in_its_event():
@@ -475,6 +501,18 @@ def test_ping_posts_the_message_identified():
     assert req.timeout == 10
 
 
+@pytest.mark.parametrize("user_agent, expected", [
+    (UA, "il-grocery-prices/0.1 (+https://github.com/example/il-grocery-prices)"),
+    ("il-grocery-prices/0.2 (owner@example.org; +https://github.com/example/x)", "il-grocery-prices/0.2 (+https://github.com/example/x)"),
+    ("owner@example.org (+https://github.com/example/x)", "il-grocery-prices (+https://github.com/example/x)"),
+    ("il-grocery-prices/0.1 (+https://owner@example.org/x; owner@example.org)", "il-grocery-prices/0.1 (+https://owner)"),
+    ("il-grocery-prices/0.1 (+https://; owner@example.org)", "il-grocery-prices/0.1"),
+])
+def test_ping_user_agent_leaves_out_the_contact_email(user_agent, expected):
+    assert ping_user_agent(user_agent) == expected
+    assert "@" not in ping_user_agent(user_agent)
+
+
 def test_ping_raises_when_refused():
     with pytest.raises(urllib.error.HTTPError):
         ping(HEALTHCHECK, "x", UA, opener=build_opener(FakePingNet(status=404)))
@@ -550,8 +588,19 @@ def test_deps_for_production():
     assert deps.time_left() == 123.456
     context.millis = 1_000
     assert deps.time_left() == 1.0
-    assert deps.ping.func is ping and deps.ping.args == () and deps.ping.keywords == {"user_agent": UA}
+    assert deps.ping.func is ping and deps.ping.args == ()
+    assert deps.ping.keywords == {"user_agent": "il-grocery-prices/0.1 (+https://github.com/example/il-grocery-prices)"}
     assert deps.code_sha == CODE_SHA
+
+
+def test_deps_for_pings_without_the_contact_email():
+    """Ruling R27: healthchecks.io never gets the owner's email."""
+    deps = deps_for(CFG, FakeContext(1), aws_client("s3"), aws_client("sns"))
+    net = FakePingNet()
+    deps.ping.func(HEALTHCHECK, "{}", opener=build_opener(net), **deps.ping.keywords)
+    [req] = net.requests
+    assert "@" not in req.get_header("User-agent")
+    assert req.get_header("User-agent").startswith("il-grocery-prices/0.1 (+https://github.com/example/il-grocery-prices")
 
 
 def test_deps_for_gives_each_chain_run_its_own_http():
@@ -572,3 +621,31 @@ def test_deps_for_publishes_to_the_alert_topic():
                              {"TopicArn": TOPIC, "Subject": "il-grocery-prices 2026-10-31: 1 alert", "Message": "body"})
         deps.publish("il-grocery-prices 2026-10-31: 1 alert", "body")
         stubber.assert_no_pending_responses()
+
+
+# ---- logging (ruling R28) ----
+
+def test_the_collector_logs_at_info():
+    assert logging.getLogger("collector").level == logging.INFO
+    assert handler_module.log.getEffectiveLevel() == logging.INFO
+
+
+def test_info_reaches_the_root_handler_whatever_the_root_level():
+    """Lambda's runtime puts its handler on the root logger; the root's own level does not stop
+    the package's INFO records on their way there."""
+    seen = []
+
+    class Keep(logging.Handler):
+        def emit(self, record):
+            seen.append(record.getMessage())
+
+    root, keep = logging.getLogger(), Keep()
+    level = root.level
+    root.addHandler(keep)
+    root.setLevel(logging.WARNING)
+    try:
+        handler_module.log.info("a run's summary")
+    finally:
+        root.removeHandler(keep)
+        root.setLevel(level)
+    assert seen == ["a run's summary"]
