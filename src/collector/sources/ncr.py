@@ -96,7 +96,8 @@ class NcrSource(Source):
 def _fnames(http: Http, file_page: "_Page", username: str) -> list[str]:
     """Every entry's file name. A name sent twice reads the listing again from the start, once (ruling
     R34); a second repeat is ListingUnreadable (ruling R21). The second read adds about one listing's
-    time to a run that starts with the listing, so it is not checked against the run's time left."""
+    time to a run that starts with the listing, so it is not checked against the run's time left (QUEUE
+    q9 would bound it)."""
     token = file_page.csrftoken
     if not token:
         raise ListingUnreadable("the NCR file page carries no csrftoken")
@@ -105,24 +106,29 @@ def _fnames(http: Http, file_page: "_Page", username: str) -> list[str]:
     if file_page.cd != ROOT:
         raise ListingUnreadable(f"the NCR file page's directory is {file_page.cd!r}, not {ROOT}")
     length = _page_size(file_page)
-    fnames, repeat = _read_through(http, length, token)
+    fnames, repeat = _read_through(http, length, token, username)
     if repeat is None:
         return fnames
     log.warning("the NCR listing as %r sent %s; reading it again from the start, once", username, repeat)
-    fnames, repeat = _read_through(http, length, token)
+    try:
+        fnames, repeat = _read_through(http, length, token, username)
+    except ListingUnreadable as exc:  # the alert email carries the error alone; the warning stays in the log
+        raise ListingUnreadable(f"on the second read from the start, after a repeated name: {exc}") from None
     if repeat is None:
         return fnames
     raise ListingUnreadable(f"the NCR listing repeated a name on two reads from the start: {repeat}")
 
 
-def _read_through(http: Http, length: int, token: str) -> tuple[list[str], str | None]:
+def _read_through(http: Http, length: int, token: str, username: str) -> tuple[list[str], str | None]:
     """One read of the listing from iDisplayStart 0, page after page until its first answer's total:
     every name and None; or, when a page sends a name an earlier page sent, the names before that page
-    and the repeat, in words."""
+    and the repeat, in words. Each answer is logged: why the portal pages at all is unknown."""
     fnames: list[str] = []
     total = None
     while total is None or len(fnames) < total:
         received, count = _answer(http.post(LISTING, _form(len(fnames), length, token), headers=AJAX).body)
+        log.info("the NCR listing as %r answered from iDisplayStart %d: %d entries of the %d asked for; total %d",
+                 username, len(fnames), len(received), length, count)
         if total is None:
             total = count
             if total < 1:
@@ -132,7 +138,8 @@ def _read_through(http: Http, length: int, token: str) -> tuple[list[str], str |
         sent = set(fnames)
         repeated = next((fname for fname in received if fname in sent), None)
         if repeated is not None:  # counted toward the total, each repeat would hide a file
-            return fnames, f"{repeated!r} again from iDisplayStart {len(fnames)} (page size {length}, total {total})"
+            return fnames, (f"{repeated!r} again from iDisplayStart {len(fnames)} "
+                            f"(that answer held {len(received)} entries of the {length} asked for; total {total})")
         fnames += received
     return fnames, None
 

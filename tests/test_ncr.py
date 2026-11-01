@@ -375,6 +375,19 @@ def test_listing_pages_from_where_the_last_answer_ended_until_the_total():
     assert portal.requested == THROUGH_THE_LISTING + [("POST", LISTING)] * 2
 
 
+def test_each_listing_answer_is_logged(caplog):
+    """Why the portal pages is unknown (docs/portals.md, Rami Levy, "Listing response"): every answer
+    is logged with where it started, how many entries it held of how many asked for, and its total."""
+    answers = [as_json({"aaData": ENTRIES[:3], "iTotalDisplayRecords": 14}),
+               as_json({"aaData": ENTRIES[3:], "iTotalDisplayRecords": "14"})]
+    http, _ = connect(file_page=served(file_html(5)), listing=answers)
+    with caplog.at_level(logging.INFO, logger="collector.sources.ncr"):
+        list(NcrSource("RamiLevi").listing(http, ("PriceFull",)))
+    assert [(r.levelname, r.getMessage()) for r in caplog.records if r.name == "collector.sources.ncr"] == [
+        ("INFO", "the NCR listing as 'RamiLevi' answered from iDisplayStart 0: 3 entries of the 5 asked for; total 14"),
+        ("INFO", "the NCR listing as 'RamiLevi' answered from iDisplayStart 3: 11 entries of the 5 asked for; total 14")]
+
+
 @pytest.mark.parametrize("total", ["14", "014", "000000014", 14])
 def test_listing_reads_a_total_sent_as_text_or_as_a_number(total):
     """The portal sends the totals as text ("iTotalDisplayRecords": "<n>": the probe's raw answer of
@@ -420,7 +433,7 @@ def test_name_sent_again_on_both_reads_is_unreadable(answers, repeated):
     with pytest.raises(ListingUnreadable) as caught:
         list(NcrSource("RamiLevi").listing(http, ("Stores", "PriceFull", "PromoFull", "Price", "Promo")))
     assert str(caught.value) == ("the NCR listing repeated a name on two reads from the start: "
-                                 f"{repeated!r} again from iDisplayStart 5 (page size 5, total 14)")
+                                 f"{repeated!r} again from iDisplayStart 5 (that answer held 5 entries of the 5 asked for; total 14)")
     assert [dict(form)["iDisplayStart"] for form in portal.sent("POST", LISTING)] == ["0", "5", "0", "5"]
     assert portal.requested == THROUGH_THE_LISTING + [("POST", LISTING)] * 3  # one login, no download
 
@@ -443,7 +456,24 @@ def test_a_name_sent_again_reads_the_listing_again_from_the_start_once(caplog):
     assert portal.requested == THROUGH_THE_LISTING + [("POST", LISTING)] * 4  # no second login
     assert [(r.levelname, r.getMessage()) for r in caplog.records if r.name == "collector.sources.ncr"] == [
         ("WARNING", f"the NCR listing as 'RamiLevi' sent {NAMES[4]!r} again from iDisplayStart 5 "
-                    "(page size 5, total 14); reading it again from the start, once")]
+                    "(that answer held 5 entries of the 5 asked for; total 14); reading it again from the start, once")]
+
+
+@pytest.mark.parametrize("second_read, error", [
+    pytest.param([as_json({"aaData": ENTRIES[:5], "iTotalDisplayRecords": 14}), as_json({"aaData": [], "iTotalDisplayRecords": 14})],
+                 "the NCR listing stopped at 5 of 14 entries", id="stopped short"),
+    pytest.param([as_json({"aaData": [], "iTotalDisplayRecords": 0})],
+                 "the NCR listing has no entries (iTotalDisplayRecords 0)", id="no entries"),
+])
+def test_an_error_on_the_second_read_says_it_came_there(second_read, error):
+    """The alert email carries the run's error alone, and the warning stays in the log: an error on the
+    second read says it came after a repeated name."""
+    first_read = [as_json({"aaData": ENTRIES[:5], "iTotalDisplayRecords": 14}),
+                  as_json({"aaData": ENTRIES[4:9], "iTotalDisplayRecords": 14})]
+    http, portal = connect(file_page=served(file_html(5)), listing=first_read + second_read)
+    with pytest.raises(ListingUnreadable) as caught:
+        list(NcrSource("RamiLevi").listing(http, ("PriceFull",)))
+    assert str(caught.value) == f"on the second read from the start, after a repeated name: {error}"
 
 
 def test_the_second_read_pages_to_its_own_total():
