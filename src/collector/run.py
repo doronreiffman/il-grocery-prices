@@ -12,7 +12,8 @@ what happened, written whatever happened (docs/collector.md, "How a morning runs
 - A file is tried once, and once more after an HTTP error or a body that is not a price file; then
   it is failed and the run goes on. A put that S3 refuses fails that file only (ruling R23).
 - A block (Blocked, or HTML where a file belongs) writes the chain's latch and stops the run; the
-  owner clears it. An unreadable listing, or a listing that cannot be fetched, stops the run with an
+  owner clears it. A latch that cannot be written leaves the block in the manifest, with the error
+  "latch not written: …", and the invocation fails. An unreadable listing, or a listing that cannot be fetched, stops the run with an
   error. So does time: under 60 s left, checked before the listing is read, between its items (a page
   is fetched inside the listing) and before each download.
 
@@ -83,7 +84,8 @@ def collect_chain(chain: Chain, source: Source, http: Http, store, day: date, ru
         else:
             _Run(chain.slug, source, http, store, day, tuple(kinds), time_left, now, result).collect()
     except Exception as exc:
-        result.error = f"unexpected error: {type(exc).__name__}: {exc}"
+        if result.error is None:  # a latch that could not be written has said so already
+            result.error = f"unexpected error: {type(exc).__name__}: {exc}"
         raise
     finally:
         store.put_record(manifest_key(day, chain.slug, run_id), manifest_bytes(result, code_sha), now())
@@ -221,8 +223,13 @@ class _Run:
         self._latch(reason)
 
     def _latch(self, reason: str) -> NoReturn:
-        """Stop the chain until the owner clears it; the check sends one alert for it."""
-        self.store.write_state(self.slug, {"stopped": True, "since": _utc(self.now()).isoformat(),
-                                           "reason": reason, "alerted": False})
-        self.result.blocked = reason
+        """Stop the chain until the owner clears it; the check sends one alert for it. If the latch
+        cannot be written, the manifest still records the block and says so, and the invocation fails."""
+        self.result.blocked = reason  # first: the manifest may be the only record of what the portal did
+        try:
+            self.store.write_state(self.slug, {"stopped": True, "since": _utc(self.now()).isoformat(),
+                                               "reason": reason, "alerted": False})
+        except Exception as exc:
+            self.result.error = f"latch not written: {type(exc).__name__}: {exc}"
+            raise
         raise _Stop

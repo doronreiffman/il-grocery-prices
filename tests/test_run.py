@@ -484,6 +484,43 @@ def test_html_on_the_retry_latches():
     assert source.downloaded == [PRICE, PRICE]
 
 
+
+class LatchFails(MemoryStore):
+    """A store whose state put fails, as S3 can."""
+
+    def write_state(self, slug, state):
+        raise ClientError({"Error": {"Code": "InternalError", "Message": "We encountered an internal error"}}, "PutObject")
+
+
+def test_a_block_in_the_listing_is_recorded_when_its_latch_cannot_be_written():
+    """The chain is not stopped, so the manifest is the only record of what the portal did: it keeps
+    the block and says the latch was not written; the invocation fails."""
+    refusal = Blocked(403, "https://prices.shufersal.co.il/FileObject/UpdateCategory?catID=2&page=2", "HTTP 403")
+    source = FakeSource([item(PRICE), refusal, item(PROMO)])
+    store = LatchFails()
+    with pytest.raises(ClientError, match="PutObject"):
+        collect(source, store=store)
+    record = manifest(store)
+    assert record["blocked"] == "HTTP 403: https://prices.shufersal.co.il/FileObject/UpdateCategory"
+    assert record["error"].startswith("latch not written: ClientError: ") and "PutObject" in record["error"]
+    assert record["listed"] == [PRICE] and list(record["files"]) == [PRICE]
+    assert source.given == 1 and source.downloaded == [PRICE]
+    assert store.read_state(SLUG) == {}
+
+
+def test_a_block_on_a_download_is_recorded_when_its_latch_cannot_be_written():
+    source = FakeSource([item(PRICE), item(PRICE_2), item(PROMO)], {PRICE_2: block()})
+    store = LatchFails()
+    with pytest.raises(ClientError, match="PutObject"):
+        collect(source, store=store)
+    record = manifest(store)
+    reason = f"HTTP 403: {PORTAL}/{PRICE_2}"
+    assert record["blocked"] == reason and record["failed"] == {PRICE_2: reason}
+    assert record["error"].startswith("latch not written: ClientError: ") and "PutObject" in record["error"]
+    assert source.given == 2 and source.downloaded == [PRICE, PRICE_2]
+    assert store.read_state(SLUG) == {}
+
+
 # ---- one retry ----
 
 @pytest.mark.parametrize("bad", [b"", TRUNCATED, b"not a price file", gzip.compress(b"data")])

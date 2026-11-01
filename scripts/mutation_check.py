@@ -296,7 +296,7 @@ MUTATIONS = {
     # run: the brief's five
     "clock date instead of file date": (RUN, "        if item.name.day != self.day or", "        if _utc(self.now()).date() != self.day or"),
     "stored files fetched again": (RUN, "        if name in self.stored:\n            return\n", ""),
-    "no latch on block": (RUN, '        self.store.write_state(self.slug, {"stopped": True,', '        (self.slug, {"stopped": True,'),
+    "no latch on block": (RUN, '            self.store.write_state(self.slug, {"stopped": True,', '            (self.slug, {"stopped": True,'),
     "timeout guard removed": (RUN, "            if self._short_of_time():\n                if problem is None:", "            if False:\n                if problem is None:"),
     "manifest skipped on error": (RUN, "        store.put_record(manifest_key(", "        result.error is None and store.put_record(manifest_key("),
     # run: choosing that day's files
@@ -327,11 +327,16 @@ MUTATIONS = {
     # run: blocks and the latch
     "stopped chain collected": (RUN, '        if store.read_state(chain.slug).get("stopped"):', "        if False:"),
     "any state read as stopped": (RUN, 'if store.read_state(chain.slug).get("stopped"):', "if store.read_state(chain.slug):"),
-    "a block does not stop the run": (RUN, "        self.result.blocked = reason\n        raise _Stop", "        self.result.blocked = reason"),
+    "a block does not stop the run": (RUN, "            raise\n        raise _Stop\n", "            raise\n"),
     "latch since in local time": (RUN, '"since": _utc(self.now()).isoformat(),', '"since": self.now().isoformat(),'),
     "latch already alerted": (RUN, '"reason": reason, "alerted": False}', '"reason": reason, "alerted": True}'),
     "latch without its reason": (RUN, '"reason": reason, "alerted"', '"reason": "", "alerted"'),
     "HTML retried instead of latched": (RUN, "            if looks_like_html(data):\n", "            if False:\n"),
+    "block recorded only once the latch is written": (RUN, "        self.result.blocked = reason  # first: the manifest may be the only record of what the portal did\n        try:\n            self.store.write_state(self.slug, {\"stopped\": True, \"since\": _utc(self.now()).isoformat(),\n                                               \"reason\": reason, \"alerted\": False})\n",
+                                                       "        try:\n            self.store.write_state(self.slug, {\"stopped\": True, \"since\": _utc(self.now()).isoformat(),\n                                               \"reason\": reason, \"alerted\": False})\n            self.result.blocked = reason\n"),
+    "latch failure not recorded": (RUN, '            self.result.error = f"latch not written: {type(exc).__name__}: {exc}"\n', "            pass\n"),
+    "latch failure swallowed": (RUN, '{exc}"\n            raise\n        raise _Stop', '{exc}"\n        raise _Stop'),
+    "latch failure overwritten by the unexpected-error text": (RUN, "        if result.error is None:  # a latch", "        if True:  # a latch"),
     "blocked file not recorded as failed": (RUN, "        self.result.failed[name] = reason\n        self._latch(reason)", "        self._latch(reason)"),
     # run: one retry
     "a file not tried again": (RUN, "ATTEMPTS = 2", "ATTEMPTS = 1"),
@@ -357,7 +362,7 @@ MUTATIONS = {
     "manifest without the code's commit": (RUN, ', "code_sha": code_sha}', "}"),
     "manifest keys unsorted": (RUN, "json.dumps(record, sort_keys=True, indent=1)", "json.dumps(record, indent=1)"),
     "manifest day not ISO": (RUN, '{"day": result.day.isoformat(), ', '{"day": f"{result.day:%Y%m%d}", '),
-    "unexpected error not recorded": (RUN, '        result.error = f"unexpected error: {type(exc).__name__}: {exc}"\n', ""),
+    "unexpected error not recorded": (RUN, '            result.error = f"unexpected error: {type(exc).__name__}: {exc}"\n', "            pass\n"),
     "unexpected error swallowed": (RUN, '{exc}"\n        raise\n    finally:', '{exc}"\n    finally:'),
     "naive time accepted by the run loop": (RUN, "    if moment.tzinfo is None or moment.utcoffset() is None:", "    if False:"),
     "run id in local time": (RUN, 'f"{_utc(now):%H%M%S}Z-', 'f"{now:%H%M%S}Z-'),
