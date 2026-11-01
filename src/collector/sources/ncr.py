@@ -15,12 +15,16 @@ What the portal does (docs/portals.md, "Rami Levy, through NCR", seen 2026-10-31
 - `POST /file/json/dir` with DataTables 1.9's server-side parameters answers JSON: `aaData`, the
   entries, each naming its file in `fname`, and `iTotalDisplayRecords`, the total. Fewer entries than
   the total means asking again from `iDisplayStart` = the entries received (ruling R18). A name an
-  earlier answer already sent means the server is not paging (ruling R21): ListingUnreadable.
+  earlier answer already sent means reading the listing again from the start, once, in the same
+  session (ruling R34): files published while the pages are read can move the order (likely, seen
+  once, 2026-11-01). A server that ignores `iDisplayStart` repeats on both reads (ruling R21):
+  ListingUnreadable.
 - At the root a file downloads from `GET /file/d/<fname>`, in the session.
 
 The listing reads the whole directory and checks every name before giving the first.
 """
 import json
+import logging
 import re
 import urllib.parse
 from collections.abc import Iterator
@@ -47,6 +51,8 @@ TOTAL_TEXT = re.compile(r"[0-9]{1,9}")
 SHOWN_KEYS = 10  # an unreadable answer's keys named in its error, at most
 KEY_CHARS = 40  # each cut to this length
 
+log = logging.getLogger(__name__)
+
 
 class NcrSource(Source):
     """`username` is the chain's, as the gov.il list prints it; the password is always empty."""
@@ -61,7 +67,7 @@ class NcrSource(Source):
         self.unparsed = 0
         file_page = self._log_in(http)
         listed = []
-        for number, fname in enumerate(_fnames(http, file_page), 1):
+        for number, fname in enumerate(_fnames(http, file_page, self.username), 1):
             name = checked_name(fname, f"the NCR listing, entry {number}")
             if name is None:
                 self.unparsed += 1
@@ -87,8 +93,10 @@ class NcrSource(Source):
         return page
 
 
-def _fnames(http: Http, file_page: "_Page") -> list[str]:
-    """Every entry's file name, page after page until the first answer's total is reached."""
+def _fnames(http: Http, file_page: "_Page", username: str) -> list[str]:
+    """Every entry's file name. A name sent twice reads the listing again from the start, once (ruling
+    R34); a second repeat is ListingUnreadable (ruling R21). The second read adds about one listing's
+    time to a run that starts with the listing, so it is not checked against the run's time left."""
     token = file_page.csrftoken
     if not token:
         raise ListingUnreadable("the NCR file page carries no csrftoken")
@@ -97,6 +105,20 @@ def _fnames(http: Http, file_page: "_Page") -> list[str]:
     if file_page.cd != ROOT:
         raise ListingUnreadable(f"the NCR file page's directory is {file_page.cd!r}, not {ROOT}")
     length = _page_size(file_page)
+    fnames, repeat = _read_through(http, length, token)
+    if repeat is None:
+        return fnames
+    log.warning("the NCR listing as %r sent %s; reading it again from the start, once", username, repeat)
+    fnames, repeat = _read_through(http, length, token)
+    if repeat is None:
+        return fnames
+    raise ListingUnreadable(f"the NCR listing repeated a name on two reads from the start: {repeat}")
+
+
+def _read_through(http: Http, length: int, token: str) -> tuple[list[str], str | None]:
+    """One read of the listing from iDisplayStart 0, page after page until its first answer's total:
+    every name and None; or, when a page sends a name an earlier page sent, the names before that page
+    and the repeat, in words."""
     fnames: list[str] = []
     total = None
     while total is None or len(fnames) < total:
@@ -109,10 +131,10 @@ def _fnames(http: Http, file_page: "_Page") -> list[str]:
             raise ListingUnreadable(f"the NCR listing stopped at {len(fnames)} of {total} entries")
         sent = set(fnames)
         repeated = next((fname for fname in received if fname in sent), None)
-        if repeated is not None:  # a server ignoring iDisplayStart, which would hide the files after its first page
-            raise ListingUnreadable(f"the NCR listing sent {repeated!r} again from iDisplayStart {len(fnames)}")
+        if repeated is not None:  # counted toward the total, each repeat would hide a file
+            return fnames, f"{repeated!r} again from iDisplayStart {len(fnames)} (page size {length}, total {total})"
         fnames += received
-    return fnames
+    return fnames, None
 
 
 def _page_size(file_page: "_Page") -> int:

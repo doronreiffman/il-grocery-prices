@@ -9,6 +9,7 @@ scrubbed tokens replaced by two different values, so the tests can tell which pa
 import http.client
 import io
 import json
+import logging
 import urllib.parse
 import urllib.request
 import urllib.response
@@ -411,15 +412,52 @@ def test_listing_pages_by_the_entries_received_not_the_page_size():
     pytest.param([as_json({"aaData": ENTRIES[:5], "iTotalDisplayRecords": 14}),
                   as_json({"aaData": ENTRIES[4:9], "iTotalDisplayRecords": 14})], NAMES[4], id="one name again"),
 ])
-def test_name_sent_again_on_a_later_page_is_unreadable(answers, repeated):
+def test_name_sent_again_on_both_reads_is_unreadable(answers, repeated):
     """Ruling R21: a server that ignores iDisplayStart sends its first page again and again, until the
-    count reaches the total; the files after that page would be missed with no error."""
+    count reaches the total; the files after that page would be missed with no error. Such a server
+    repeats on the second read from the start too (ruling R34), so the listing stops there."""
     http, portal = connect(file_page=served(file_html(5)), listing=answers)
     with pytest.raises(ListingUnreadable) as caught:
         list(NcrSource("RamiLevi").listing(http, ("Stores", "PriceFull", "PromoFull", "Price", "Promo")))
-    assert str(caught.value) == f"the NCR listing sent {repeated!r} again from iDisplayStart 5"
-    assert len(portal.sent("POST", LISTING)) == 2
-    assert not any(url.startswith(f"{BASE}/file/d/") for _, url in portal.requested)
+    assert str(caught.value) == ("the NCR listing repeated a name on two reads from the start: "
+                                 f"{repeated!r} again from iDisplayStart 5 (page size 5, total 14)")
+    assert [dict(form)["iDisplayStart"] for form in portal.sent("POST", LISTING)] == ["0", "5", "0", "5"]
+    assert portal.requested == THROUGH_THE_LISTING + [("POST", LISTING)] * 3  # one login, no download
+
+
+def test_a_name_sent_again_reads_the_listing_again_from_the_start_once(caplog):
+    """Ruling R34 (amends R21; QUEUE q8): retry run 101523Z-retry-8c22 (2026-11-01 10:15Z) stopped on a
+    name sent again from iDisplayStart 890, and the next run, two minutes later, read the listing
+    through. Likely, unproven: files published while the pages were read moved the order. A repeated
+    name reads the listing again from iDisplayStart 0, in the same session, once, and logs that it did."""
+    answers = [as_json({"aaData": ENTRIES[:5], "iTotalDisplayRecords": 14}),
+               as_json({"aaData": ENTRIES[4:9], "iTotalDisplayRecords": 14}),
+               as_json({"aaData": ENTRIES[:5], "iTotalDisplayRecords": 14}),
+               as_json({"aaData": ENTRIES[5:10], "iTotalDisplayRecords": 14}),
+               as_json({"aaData": ENTRIES[10:], "iTotalDisplayRecords": 14})]
+    http, portal = connect(file_page=served(file_html(5)), listing=answers)
+    with caplog.at_level(logging.WARNING, logger="collector.sources.ncr"):
+        listed = list(NcrSource("RamiLevi").listing(http, ("Stores", "PriceFull", "PromoFull", "Price", "Promo")))
+    assert [item.name.raw for item in listed] == NAMES
+    assert [dict(form)["iDisplayStart"] for form in portal.sent("POST", LISTING)] == ["0", "5", "0", "5", "10"]
+    assert portal.requested == THROUGH_THE_LISTING + [("POST", LISTING)] * 4  # no second login
+    assert [(r.levelname, r.getMessage()) for r in caplog.records if r.name == "collector.sources.ncr"] == [
+        ("WARNING", f"the NCR listing as 'RamiLevi' sent {NAMES[4]!r} again from iDisplayStart 5 "
+                    "(page size 5, total 14); reading it again from the start, once")]
+
+
+def test_the_second_read_pages_to_its_own_total():
+    """The directory can change between the reads: the second read goes by its own first answer's
+    total. Kept at the first read's 20, it would ask again after the 14th name and stop on a repeat."""
+    answers = [as_json({"aaData": ENTRIES[:5], "iTotalDisplayRecords": 20}),
+               as_json({"aaData": ENTRIES[:5], "iTotalDisplayRecords": 20}),
+               as_json({"aaData": ENTRIES[:5], "iTotalDisplayRecords": 14}),
+               as_json({"aaData": ENTRIES[5:10], "iTotalDisplayRecords": 14}),
+               as_json({"aaData": ENTRIES[10:], "iTotalDisplayRecords": 14})]
+    http, portal = connect(file_page=served(file_html(5)), listing=answers)
+    listed = list(NcrSource("RamiLevi").listing(http, ("Stores", "PriceFull", "PromoFull", "Price", "Promo")))
+    assert [item.name.raw for item in listed] == NAMES
+    assert [dict(form)["iDisplayStart"] for form in portal.sent("POST", LISTING)] == ["0", "5", "0", "5", "10"]
 
 
 @pytest.mark.parametrize("page_size, served_entries, total, received", [
