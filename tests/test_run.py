@@ -61,7 +61,7 @@ def body(name):
     Carrefour's and Rami Levy's are served."""
     if name.startswith("Stores"):
         return UTF16_STORES
-    return gzip.compress(XML + f"<!-- {name} -->".encode())
+    return gzip.compress(XML + f"<!-- {name} -->".encode(), mtime=0)  # one body per name: a clock stamp could differ between two calls
 
 
 def item(name, url=None):

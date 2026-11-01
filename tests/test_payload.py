@@ -242,7 +242,8 @@ def test_a_zip_of_folders_alone_holds_no_file():
                  "the zip is cut short or corrupt (BadZipFile: Bad CRC-32 for file 'a.xml')", id="the first of two members of one name corrupt"),
     pytest.param(a_zip(("page.html", HTML_PAGE)), "the zip holds a file that is not XML: 'page.html' starts b'<!DOCTYPE html><'", id="HTML inside"),
     pytest.param(a_zip(("a.xml", PRICE_XML), ("b.txt", b"hello")), "not XML: 'b.txt' starts b'hello'", id="one member of two not XML"),
-    pytest.param(a_zip(("inner.gz", gzip.compress(PRICE_XML))), "not XML: 'inner.gz' starts b'\\x1f\\x8b", id="a gzip inside"),
+    # mtime=0: a gzip stamped with the clock prints in double quotes whenever a stamp byte is ' (CI, 2026-11-01)
+    pytest.param(a_zip(("inner.gz", gzip.compress(PRICE_XML, mtime=0))), "not XML: 'inner.gz' starts b'\\x1f\\x8b", id="a gzip inside"),
     pytest.param(a_zip(("a\nERROR forged.txt", b"x")), "not XML: 'a\\nERROR forged.txt' starts b'x'", id="a line break in a member name"),
 ])
 def test_a_zip_that_is_not_a_zip_of_xml_is_refused(data, reason):
