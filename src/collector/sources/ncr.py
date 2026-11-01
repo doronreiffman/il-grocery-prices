@@ -21,6 +21,7 @@ What the portal does (docs/portals.md, "Rami Levy, through NCR", seen 2026-10-31
 The listing reads the whole directory and checks every name before giving the first.
 """
 import json
+import re
 import urllib.parse
 from collections.abc import Iterator
 from html.parser import HTMLParser
@@ -36,9 +37,13 @@ LISTING = f"{BASE_URL}/file/json/dir"
 DOWNLOAD = f"{BASE_URL}/file/d/"
 ROOT = "/"
 COLUMNS = (("fname", "true"), ("typeLabel", "false"), ("size", "true"), ("ftime", "true"), ("", "false"))  # (mDataProp, bSortable)
-# As jQuery sends them with the listing, and the probe did. The first deployed run sent no Accept and got
-# an answer with no aaData (2026-11-01).
+# As jQuery sends them with the listing, and the probe did (the first deployed run, 2026-11-01, sent no
+# Accept; what that changes in the answer, if anything, is unknown).
 AJAX = {"X-Requested-With": "XMLHttpRequest", "Accept": "application/json, text/javascript, */*; q=0.01"}
+# The portal sends the total as text, "iTotalDisplayRecords": "<n>" (the probe's raw answer of 2026-10-31,
+# the deployed runs of 2026-11-01). The digits 0 to 9 alone, nine at most (int() refuses text past 4,300
+# digits); a number is read too.
+TOTAL_TEXT = re.compile(r"[0-9]{1,9}")
 SHOWN_KEYS = 10  # an unreadable answer's keys named in its error, at most
 KEY_CHARS = 40  # each cut to this length
 
@@ -140,8 +145,8 @@ def _answer(body: bytes) -> tuple[list[str], int]:
     except ValueError:  # bad JSON, or bytes that are no text
         raise ListingUnreadable("the NCR listing is not JSON") from None
     entries = data.get("aaData") if isinstance(data, dict) else None
-    total = data.get("iTotalDisplayRecords") if isinstance(data, dict) else None
-    if not isinstance(entries, list) or type(total) is not int:
+    total = _total(data.get("iTotalDisplayRecords")) if isinstance(data, dict) else None
+    if not isinstance(entries, list) or total is None:
         raise ListingUnreadable(f"the NCR listing has no aaData list and iTotalDisplayRecords count (it held {_held(data)})")
     fnames = []
     for number, entry in enumerate(entries, 1):
@@ -150,6 +155,15 @@ def _answer(body: bytes) -> tuple[list[str], int]:
             raise ListingUnreadable(f"the NCR listing, entry {number} names no file (fname)")
         fnames.append(fname)
     return fnames, total
+
+
+def _total(value) -> int | None:
+    """iTotalDisplayRecords as a number: an int (not true or false), or TOTAL_TEXT; None for anything else."""
+    if type(value) is int:  # not isinstance: JSON's true would pass as 1
+        return value
+    if isinstance(value, str) and TOTAL_TEXT.fullmatch(value):
+        return int(value)
+    return None
 
 
 def _held(data) -> str:

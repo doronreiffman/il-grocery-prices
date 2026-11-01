@@ -99,7 +99,7 @@ def directory(entries=ENTRIES, total=None):
     def respond(req):
         form = dict(urllib.parse.parse_qsl(req.data.decode(), keep_blank_values=True))
         start, length = int(form["iDisplayStart"]), int(form["iDisplayLength"])
-        count = len(entries) if total is None else total
+        count = str(len(entries) if total is None else total)  # as text, as the portal sends it
         return as_json({"aaData": entries[start:start + length], "iTotalDisplayRecords": count,
                         "iTotalRecords": count, "sEcho": 1})(req)
     return respond
@@ -285,8 +285,7 @@ def test_login_page_without_a_token_is_unreadable(text):
 
 def test_listing_sends_the_datatables_parameters_and_the_file_pages_fresh_token():
     """docs/portals.md: the file page's own token, not the login page's; its page size; cd=/; and
-    X-Requested-With and Accept, as jQuery and the probe sent them. The first deployed run sent no
-    Accept and got an answer with no aaData (2026-11-01)."""
+    X-Requested-With and Accept, as jQuery and the probe sent them."""
     http, portal = connect()
     list(NcrSource("RamiLevi").listing(http, ("PriceFull",)))
     assert portal.sent("POST", LISTING) == [listing_form()]
@@ -375,6 +374,27 @@ def test_listing_pages_from_where_the_last_answer_ended_until_the_total():
     assert portal.requested == THROUGH_THE_LISTING + [("POST", LISTING)] * 2
 
 
+@pytest.mark.parametrize("total", ["14", "014", "000000014", 14])
+def test_listing_reads_a_total_sent_as_text_or_as_a_number(total):
+    """The portal sends the totals as text ("iTotalDisplayRecords": "<n>": the probe's raw answer of
+    2026-10-31, the deployed runs of 2026-11-01). Text of the digits 0 to 9 alone, nine at most, reads
+    as that number; a number reads as itself. The build read only numbers: the trimmed fixture had
+    turned the text into a number."""
+    http, portal = connect(listing=as_json({"aaData": ENTRIES, "iTotalDisplayRecords": total, "iTotalRecords": total, "sEcho": 1}))
+    listed = list(NcrSource("RamiLevi").listing(http, ("Stores", "PriceFull", "PromoFull", "Price", "Promo")))
+    assert [item.name.raw for item in listed] == NAMES
+    assert portal.requested == THROUGH_THE_LISTING
+
+
+def test_listing_pages_until_a_total_sent_as_text():
+    answers = [as_json({"aaData": ENTRIES[:5], "iTotalDisplayRecords": "14"}),
+               as_json({"aaData": ENTRIES[5:], "iTotalDisplayRecords": "14"})]
+    http, portal = connect(listing=answers)
+    listed = list(NcrSource("RamiLevi").listing(http, ("Stores", "PriceFull", "PromoFull", "Price", "Promo")))
+    assert [item.name.raw for item in listed] == NAMES
+    assert [dict(form)["iDisplayStart"] for form in portal.sent("POST", LISTING)] == ["0", "5"]
+
+
 def test_listing_pages_by_the_entries_received_not_the_page_size():
     """A server that sends fewer than it was asked for: the next request starts after what came."""
     answers = [as_json({"aaData": ENTRIES[:3], "iTotalDisplayRecords": 14}),
@@ -417,6 +437,7 @@ def test_empty_answer_before_the_total_is_unreadable(page_size, served_entries, 
 @pytest.mark.parametrize("answer", [
     pytest.param({"aaData": [], "iTotalDisplayRecords": 0, "iTotalRecords": 0, "sEcho": 1}, id="nothing"),
     pytest.param({"aaData": ENTRIES, "iTotalDisplayRecords": 0, "iTotalRecords": 0, "sEcho": 1}, id="entries and a total of 0"),
+    pytest.param({"aaData": ENTRIES, "iTotalDisplayRecords": "0", "iTotalRecords": "0", "sEcho": 1}, id="a total of 0 as text"),
 ])
 def test_zero_total_is_unreadable(answer):
     """A directory with nothing in it means the portal changed, never "nothing published"."""
@@ -435,7 +456,9 @@ def test_zero_total_is_unreadable(answer):
     pytest.param(as_json({"iTotalDisplayRecords": 14}), "no aaData list and iTotalDisplayRecords count", id="no aaData"),
     pytest.param(as_json({"aaData": "x", "iTotalDisplayRecords": 14}), "no aaData list and iTotalDisplayRecords count", id="aaData not a list"),
     pytest.param(as_json({"aaData": ENTRIES}), "no aaData list and iTotalDisplayRecords count", id="no total"),
-    pytest.param(as_json({"aaData": ENTRIES, "iTotalDisplayRecords": "14"}), "no aaData list and iTotalDisplayRecords count", id="total in quotes"),
+    pytest.param(as_json({"aaData": ENTRIES, "iTotalDisplayRecords": 14.0}), "no aaData list and iTotalDisplayRecords count", id="total a float"),
+    *[pytest.param(as_json({"aaData": ENTRIES, "iTotalDisplayRecords": text}), "no aaData list and iTotalDisplayRecords count", id=f"total text {text!r}")
+      for text in ("14.5", "-14", "+14", " 14", "14 ", "14\n", "", "1e3", "0x0e", "\u0661\u0664", "1234567890")],
     pytest.param(as_json({"aaData": ENTRIES, "iTotalDisplayRecords": True}), "no aaData list and iTotalDisplayRecords count", id="total true"),
     pytest.param(as_json({"aaData": ENTRIES[:2] + ["x"], "iTotalDisplayRecords": 3}), "entry 3 names no file (fname)", id="an entry not an object"),
     pytest.param(as_json({"aaData": [{"name": PRICEFULL}], "iTotalDisplayRecords": 1}), "entry 1 names no file (fname)", id="no fname"),
@@ -455,7 +478,7 @@ def test_listing_answer_of_another_shape_is_unreadable(answer, problem):
     pytest.param(as_json({"error": "SECRET-1", "code": 7}), "(it held an object with keys 'code': int, 'error': str)", id="an error object"),
     pytest.param(as_json({}), "(it held an object with no keys)", id="an empty object"),
     pytest.param(as_json("SECRET-1"), "(it held a str)", id="a string"),
-    pytest.param(as_json({"aaData": [], "iTotalDisplayRecords": "14", "n": None, "o": {}, "f": 1.5, "b": True}),
+    pytest.param(as_json({"aaData": [], "iTotalDisplayRecords": "x14", "n": None, "o": {}, "f": 1.5, "b": True}),
                  "(it held an object with keys 'aaData': list, 'b': bool, 'f': float, 'iTotalDisplayRecords': str, 'n': null, 'o': object)",
                  id="each type named"),
     pytest.param(as_json({f"k{i:02}": "SECRET-1" for i in range(12)}),
