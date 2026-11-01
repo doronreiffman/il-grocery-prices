@@ -59,7 +59,7 @@ Resources:
       Architectures: [arm64]
       MemorySize: 512
       # Lambda's longest run: Shufersal's price files take most of it. A run stops downloading
-      # with under 60 s left and records the rest as not attempted.
+      # with under 90 s left and records the rest as not attempted.
       Timeout: 900
       # Scheduler invokes asynchronously; Lambda would otherwise run a failed invocation twice more.
       # The retry run three hours later is the real retry.

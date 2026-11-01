@@ -14,8 +14,8 @@ what happened, written whatever happened (docs/collector.md, "How a morning runs
 - A block (Blocked, or HTML where a file belongs) writes the chain's latch and stops the run; the
   owner clears it. A latch that cannot be written leaves the block in the manifest, with the error
   "latch not written: …", and the invocation fails. An unreadable listing, or a listing that cannot be fetched, stops the run with an
-  error. So does time: under 60 s left, checked before the listing is read, between its items (a page
-  is fetched inside the listing) and before each download.
+  error. So does time: under 90 s left (ruling R32), checked before the listing is read, between its
+  items (a page is fetched inside the listing) and before each download.
 
 In the result, `listed` holds that day's names as the listing gave them; `files` those stored or
 found stored by this run; `failed` those tried and not stored, with why; `not_attempted` those
@@ -39,9 +39,9 @@ from collector.payload import BadPayload, check_payload, looks_like_html
 from collector.sources import Listed, ListingUnreadable, Source
 from collector.store import manifest_key, raw_key
 
-MIN_TIME_LEFT = 60.0  # seconds; with less, the run stops and writes its manifest
+MIN_TIME_LEFT = 90.0  # seconds (ruling R32); with less, the run stops and writes its manifest
 ATTEMPTS = 2  # a file is tried once, and once again after an HTTP error or a bad body
-OUT_OF_TIME = "stopped: under 60 s left"
+OUT_OF_TIME = "stopped: under 90 s left"
 STOPPED_EARLIER = "stopped earlier"
 
 
@@ -175,7 +175,7 @@ class _Run:
                 if problem is None:
                     self.result.not_attempted.append(name)
                 else:
-                    self.result.failed[name] = f"{problem}; not tried again: under 60 s left"
+                    self.result.failed[name] = f"{problem}; not tried again: under 90 s left"
                 self._stop(OUT_OF_TIME)
             try:
                 data = self.source.download(self.http, item)

@@ -260,9 +260,9 @@ def test_a_run_that_stops_with_an_error_is_logged_not_emailed(monkeypatch, caplo
     deps = make_deps(time_left=Countdown(30.0))
     with caplog.at_level(logging.INFO, logger="collector.handler"):
         summary = run(CFG, {"mode": "retry", "chain": "yochananof"}, deps, NOW)
-    assert summary["error"] == "stopped: under 60 s left"
+    assert summary["error"] == "stopped: under 90 s left"
     assert deps.publish.calls == [] and deps.ping.calls == []
-    assert any("yochananof" in r.getMessage() and "under 60 s" in r.getMessage() and r.levelno == logging.ERROR
+    assert any("yochananof" in r.getMessage() and "under 90 s" in r.getMessage() and r.levelno == logging.ERROR
                for r in caplog.records)
 
 

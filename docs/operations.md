@@ -18,7 +18,7 @@ One Lambda function (stack `il-grocery-prices`, region il-central-1, Tel Aviv) r
 | 09:30 to 10:03 | The same seven, three hours later | the same events with `"mode": "retry"` |
 | 10:30 | The check | `{"mode": "check"}` |
 
-A run can take up to 15 minutes (Lambda's longest), so Shufersal's three runs start 15 minutes apart and one chain never gets two requests at once. Rami Levy, Osher Ad and Yochananof share one portal host (`url.publishedprices.co.il`), so their runs start 15 minutes apart too, and their sessions never overlap. A retry run fetches only what is still not stored. The check starts after the last retry run can have finished; it writes a check record, emails when a chain's morning is incomplete, a chain is stopped or a retry run failed, and pings healthchecks.io. The design gave 10:00 for the check; it moved to 10:30 because the last retry run (Yochananof's) starts at 10:03 and may run until 10:18.
+A run can take up to 15 minutes (Lambda's longest), so Shufersal's three runs start 15 minutes apart and one chain never gets two requests at once. Rami Levy, Osher Ad and Yochananof share one portal host (`url.publishedprices.co.il`), so their runs start 15 minutes apart too, and their sessions never overlap. A retry run fetches only what is still not stored. The check starts after the last retry run can have finished; it writes a check record, emails when a chain's morning is incomplete, a chain is stopped or a retry run failed, and pings healthchecks.io. A chain's retry runs fail when none covered one of the five kinds, when one ended with an error, or when together they listed nothing for the day and none was blocked (`the retry runs listed nothing for the day (unparsed names: N)`): a portal that renames its files so that none can be read, or dates them all another day, ends its runs without an error, and this alert is how it shows. A day a chain publishes nothing at all alerts the same way. The design gave 10:00 for the check; it moved to 10:30 because the last retry run (Yochananof's) starts at 10:03 and may run until 10:18.
 
 Neither the schedules nor Lambda retry a failed invocation: the retry run is the retry. A block (a 401, 403 or 429, a captcha or verification page, or an HTML page where a file belongs) stops that chain until you clear it (below).
 
@@ -89,7 +89,9 @@ You need the personal AWS account (nothing from an employer) with il-central-1 e
    aws logs tail /il-grocery-prices/collector --follow --since 10m --profile flights-sam --region il-central-1
    ```
 
-   A good run has `"blocked": null`, `"error": null` and `"failed": 0`. A run that ran short of time ends with `"error": "stopped: under 60 s left"`; start the same event again (or the retry event, `"mode": "retry"`): stored files are skipped, so it carries on where the first stopped. Carrefour's first run decides whether it stays (below).
+   A good run has `"blocked": null`, `"error": null` and `"failed": 0`. A run that ran short of time ends with `"error": "stopped: under 90 s left"`; start the same event again (or the retry event, `"mode": "retry"`): stored files are skipped, so it carries on where the first stopped. Carrefour's first run decides whether it stays (below).
+
+   **Shufersal's price run must fit.** Once the `PriceFull` + `Price` run has finished, read the `Duration` in its `REPORT` line and compare it, in seconds, with 600. Above about 600 s, that group runs too close to Lambda's 900 s to run every day: before the schedules go on (step 9), split `Price` into its own Shufersal run. Main: `PriceFull` alone at 06:45, `Price` at 07:15; retry: 09:45 and 10:15; the check moves to 10:45, after that last retry run can have finished. Change together the schedules in `template.yaml`, the `SCHEDULES` table in `tests/test_template.py`, the timetable in "What runs when", the manual runs above and every place this file counts the schedules or Shufersal's runs; run the tests, cfn-lint and the mutation check (Develop, below) and update any mutation it reports as stale; commit, deploy as in step 3, and start the new `Price` run by hand once.
 
 7. **A manual check.** The check is short, so a plain invoke is fine; `--cli-read-timeout 900` keeps the CLI waiting rather than sending it again, which would check twice and could email twice:
 
@@ -97,7 +99,7 @@ You need the personal AWS account (nothing from an employer) with il-central-1 e
    aws lambda invoke --function-name "$FN" --payload '{"mode": "check"}' --cli-read-timeout 900 --cli-binary-format raw-in-base64-out /tmp/il-grocery-check.json --profile flights-sam --region il-central-1
    ```
 
-   `/tmp/il-grocery-check.json` names the check record (`record`) and counts the alerts. The check pings healthchecks.io, which should show the ping within a minute. It also expects the day's retry runs: with none run that day, it reports each chain as failed ("a retry run is missing or failed: no retry run covered …") and emails you, which proves the email works. For a clean check, first run each of the seven events of step 6 again with `"mode": "retry"`, one at a time as there; each downloads only what is still missing.
+   `/tmp/il-grocery-check.json` names the check record (`record`) and counts the alerts. The check pings healthchecks.io, which should show the ping within a minute. That ping also starts healthchecks.io's clock: a day and two hours on with no ping since, it emails, and no scheduled check pings before step 9. So once the ping shows, pause the check in healthchecks.io until the schedules go on. It also expects the day's retry runs: with none run that day, it reports each chain as failed ("a retry run is missing or failed: no retry run covered …") and emails you, which proves the email works. For a clean check, first run each of the seven events of step 6 again with `"mode": "retry"`, one at a time as there; each downloads only what is still missing.
 
 8. **Read what it wrote.** List a day's manifests, print one, and print the check record:
 
@@ -121,7 +123,7 @@ You need the personal AWS account (nothing from an employer) with il-central-1 e
 
    It should show `GOVERNANCE` and a date ten years on. To find the commit behind a `code_sha`, check out a candidate commit and run `PYTHONPATH=src .venv/bin/python -c 'from pathlib import Path; from collector.handler import code_sha; print(code_sha(Path("src/collector")))'`.
 
-9. **Turn the schedules on**, on the owner's go: the same `sam deploy` command with all four parameters again and `'ScheduleState=ENABLED'`. Always pass all four, so no value is left to what the stack held before. The next morning, read the manifests and the check record, and see the 10:30 ping on healthchecks.io. To turn them off, deploy again with `'ScheduleState=DISABLED'`.
+9. **Turn the schedules on**, on the owner's go: the same `sam deploy` command with all four parameters again and `'ScheduleState=ENABLED'`. Always pass all four, so no value is left to what the stack held before. Take the healthchecks.io check out of pause (step 7) at the same time. The next morning, read the manifests and the check record, and see the 10:30 ping on healthchecks.io. To turn them off, deploy again with `'ScheduleState=DISABLED'`.
 
 ## A stopped chain
 
@@ -132,6 +134,8 @@ aws s3 cp "s3://$BUCKET/state/ramilevy.json" - --profile flights-sam --region il
 ```
 
 Find out why the portal refused before anything else. Never switch to a browser User-Agent, another IP, a proxy or any other way around a block. One refusal is not a block: a 403 from Shufersal's file host (`pricesprodpublic.blob.core.windows.net`) once a link has expired makes the collector read the listing again for a fresh link, once.
+
+Not every stop is a refusal. The NCR portal (Rami Levy, Osher Ad, Yochananof) sends a visitor without a session to its login page, so a session that ends in the middle of a run should answer the next download with that page. The collector reads it as "HTML where a file belongs" and stops the chain: the reason reads `<file name>: HTML where a file belongs`, and the same run's manifest shows files stored before it. Read the reason and the manifest; when they point to an ended session and not to a refusal, unblock the chain (below).
 
 When the cause is sorted out, clear the latch (here Rami Levy; use the stopped chain's name from the table above):
 

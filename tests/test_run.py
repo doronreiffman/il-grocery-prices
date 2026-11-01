@@ -575,19 +575,20 @@ def test_a_failed_store_costs_that_file_only():
 # ---- time running out ----
 
 def test_stops_before_timeout_and_records_not_attempted():
-    """Plan, risk 2: after two files the next listing read leaves under 60 s; the file it gave is not
-    attempted, the listing is read no further, nothing is half-stored, the manifest is written."""
+    """Plan, risk 2, with ruling R32's 90 s: after two files the next listing read leaves under 90 s;
+    the file it gave is not attempted, the listing is read no further, nothing is half-stored, the
+    manifest is written."""
     clock = Clock()
-    source = FakeSource([item(PRICE), item(PROMO), clock.set(59.9), item(PRICE_2), item(PRICE_3)])
+    source = FakeSource([item(PRICE), item(PROMO), clock.set(89.9), item(PRICE_2), item(PRICE_3)])
     result, store = collect(source, clock=clock)
     assert source.downloaded == [PRICE, PROMO]
     assert result.listed == [PRICE, PROMO, PRICE_2]
     assert result.not_attempted == [PRICE_2]
     assert source.given == 3
-    assert result.error == "stopped: under 60 s left"
+    assert result.error == "stopped: under 90 s left"
     assert set(stored_bodies(store)) == {PRICE, PROMO}
     assert manifest(store)["not_attempted"] == [PRICE_2]
-    assert manifest(store)["error"] == "stopped: under 60 s left"
+    assert manifest(store)["error"] == "stopped: under 90 s left"
 
 
 def test_time_checked_between_listing_items():
@@ -599,7 +600,7 @@ def test_time_checked_between_listing_items():
     result, _ = collect(source, store=store, clock=clock)
     assert source.given == 2 and source.downloads == []
     assert result.listed == [PRICE, PROMO]
-    assert result.not_attempted == [] and result.error == "stopped: under 60 s left"
+    assert result.not_attempted == [] and result.error == "stopped: under 90 s left"
 
 
 def test_time_checked_after_a_download():
@@ -608,7 +609,7 @@ def test_time_checked_after_a_download():
     result, _ = collect(source, clock=clock)
     assert source.downloaded == [PRICE, PROMO] and set(result.files) == {PRICE, PROMO}
     assert source.given == 2 and result.not_attempted == []
-    assert result.error == "stopped: under 60 s left"
+    assert result.error == "stopped: under 90 s left"
 
 
 def test_time_short_at_the_start_reads_nothing():
@@ -616,23 +617,23 @@ def test_time_short_at_the_start_reads_nothing():
     result, store = collect(source, clock=Clock(45))
     assert source.given == 0 and source.downloads == []
     assert result.listing_read_at is None and result.listed == []
-    assert result.error == "stopped: under 60 s left"
-    assert manifest(store)["error"] == "stopped: under 60 s left"
+    assert result.error == "stopped: under 90 s left"
+    assert manifest(store)["error"] == "stopped: under 90 s left"
 
 
-def test_sixty_seconds_left_is_enough():
-    result, _ = collect(FakeSource([item(PRICE)]), clock=Clock(60.0))
+def test_ninety_seconds_left_is_enough():
+    result, _ = collect(FakeSource([item(PRICE)]), clock=Clock(90.0))
     assert set(result.files) == {PRICE} and result.error is None
 
 
-def test_no_retry_under_sixty_seconds():
-    """The retry is a download too: with under 60 s left it is not tried, and the file is failed."""
+def test_no_retry_under_ninety_seconds():
+    """The retry is a download too: with under 90 s left it is not tried, and the file is failed."""
     clock = Clock()
     source = FakeSource([item(PRICE), item(PROMO)], {PRICE: lambda: (clock.set(20)(), HttpError("timed out"))[1]})
     result, _ = collect(source, clock=clock)
     assert source.downloaded == [PRICE]
-    assert result.failed == {PRICE: "timed out; not tried again: under 60 s left"}
-    assert result.not_attempted == [] and result.error == "stopped: under 60 s left"
+    assert result.failed == {PRICE: "timed out; not tried again: under 90 s left"}
+    assert result.not_attempted == [] and result.error == "stopped: under 90 s left"
 
 
 # ---- the manifest, in every outcome ----
@@ -647,7 +648,7 @@ OUTCOMES = {  # name: (the source, seconds left at the start, blocked, error)
     "html": (lambda: FakeSource([item(PRICE)], {PRICE: HTML}), 900, f"{PRICE}: HTML where a file belongs", None),
     "unreadable": (lambda: FakeSource([ListingUnreadable("no rows")]), 900, None, "listing unreadable: no rows"),
     "listing failed": (lambda: FakeSource([HttpError("reset")]), 900, None, "listing failed: reset"),
-    "timed out": (lambda: FakeSource([item(PRICE)]), 30, None, "stopped: under 60 s left"),
+    "timed out": (lambda: FakeSource([item(PRICE)]), 30, None, "stopped: under 90 s left"),
 }
 
 

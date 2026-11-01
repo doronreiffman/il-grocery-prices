@@ -320,7 +320,7 @@ def test_main_runs_do_not_stand_in_for_the_retry():
 def test_a_main_run_error_is_left_to_the_retry():
     store = MemoryStore()
     clean_day(store)
-    manifest(store, "shufersal", "main", error="stopped: under 60 s left")
+    manifest(store, "shufersal", "main", error="stopped: under 90 s left")
     assert check_day(store, SLUGS, DAY)[0] == []
 
 
@@ -348,13 +348,13 @@ def test_one_failed_alert_per_chain():
     store = MemoryStore()
     clean_day(store, SLUGS[1:])
     manifest(store, "shufersal", "retry", kinds=["Stores"], error="listing failed: HTTP 500", run_id="093000Z-retry-0001")
-    manifest(store, "shufersal", "retry", kinds=["PriceFull", "Price"], error="stopped: under 60 s left", run_id="094500Z-retry-0002")
+    manifest(store, "shufersal", "retry", kinds=["PriceFull", "Price"], error="stopped: under 90 s left", run_id="094500Z-retry-0002")
     alerts, _ = check_day(store, SLUGS, DAY)
     assert kinds_of(alerts) == [("shufersal", "failed")]
     text = alerts[0].text
     assert "no retry run covered PromoFull, Promo" in text
     assert "093000Z-retry-0001" in text and "listing failed: HTTP 500" in text
-    assert "094500Z-retry-0002" in text and "stopped: under 60 s left" in text
+    assert "094500Z-retry-0002" in text and "stopped: under 90 s left" in text
 
 
 def test_every_kind_of_alert_for_one_chain():

@@ -366,12 +366,13 @@ MUTATIONS = {
     "files entry's SHA-256 not the body's": (RUN, '"sha256": hashlib.sha256(data).hexdigest()', '"sha256": hashlib.sha256(name.encode()).hexdigest()'),
     "files entry's size not the body's": (RUN, '"size": len(data),', '"size": len(name),'),
     # run: time (R23)
-    "time guard at 0 s": (RUN, "MIN_TIME_LEFT = 60.0", "MIN_TIME_LEFT = 0.0"),
-    "sixty seconds left read as too few": (RUN, "        return self.time_left() < MIN_TIME_LEFT", "        return self.time_left() <= MIN_TIME_LEFT"),
+    "time guard at 0 s": (RUN, "MIN_TIME_LEFT = 90.0", "MIN_TIME_LEFT = 0.0"),
+    "time guard back at the old 60 s (R32)": (RUN, "MIN_TIME_LEFT = 90.0", "MIN_TIME_LEFT = 60.0"),
+    "ninety seconds left read as too few": (RUN, "        return self.time_left() < MIN_TIME_LEFT", "        return self.time_left() <= MIN_TIME_LEFT"),
     "time not checked before the listing": (RUN, "            self._check_time()\n            self.result.listing_read_at", "            self.result.listing_read_at"),
     "time not checked between listing items": (RUN, "                self._take(item)\n                self._check_time()\n", "                self._take(item)\n"),
     "not attempted not recorded": (RUN, "                    self.result.not_attempted.append(name)", "                    pass"),
-    "retry tried with under 60 s left": (RUN, "            if self._short_of_time():\n", "            if problem is None and self._short_of_time():\n"),
+    "retry tried with under 90 s left": (RUN, "            if self._short_of_time():\n", "            if problem is None and self._short_of_time():\n"),
     "failed first try recorded as not attempted": (RUN, "                if problem is None:\n", "                if True:\n"),
     # run: the manifest and run ids
     "manifest under another run's key": (RUN, "manifest_key(day, chain.slug, run_id)", 'manifest_key(day, chain.slug, "run")'),
