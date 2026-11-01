@@ -1,7 +1,9 @@
 """The saved portal fixtures carry no secrets and no more than three records a file."""
 import collections
 import gzip
+import io
 import re
+import zipfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -29,7 +31,13 @@ def _files():
 
 
 def _payload(path: Path) -> bytes:
+    """The file's XML: a gzip unzipped, a ZIP's one member (Rami Levy store 039), or the file itself."""
     data = path.read_bytes()
+    if data[:4] == b"PK\x03\x04":
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            members = archive.infolist()
+            assert len(members) == 1, f"{path.name}: a ZIP fixture holds one file, as store 039's do"
+            return archive.read(members[0])
     return gzip.decompress(data) if data[:2] == b"\x1f\x8b" else data
 
 

@@ -20,7 +20,7 @@ HTML_PAGE = b"<!DOCTYPE html><html><body>Please verify you are a human</body></h
 
 def _fixture_files():
     files = sorted(p for p in FIXTURES.glob("*/*") if p.suffix in (".gz", ".xml"))
-    assert len(files) == 9
+    assert len(files) == 10  # one of them a ZIP under a .gz name (Rami Levy store 039)
     return files
 
 
@@ -89,7 +89,7 @@ def test_anything_else_refused(data, reason):
 
 
 def _gzip_fixtures():
-    files = [p for p in _fixture_files() if p.suffix == ".gz"]
+    files = [p for p in _fixture_files() if p.read_bytes()[:2] == b"\x1f\x8b"]  # not store 039's ZIP
     assert len(files) == 7
     return files
 

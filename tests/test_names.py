@@ -59,12 +59,12 @@ def test_day_comes_from_the_name_not_the_clock():
 
 def test_every_fixture_file_name_parses():
     files = sorted(p for p in FIXTURES.glob("*/*") if p.suffix in (".gz", ".xml"))
-    assert len(files) == 9
+    assert len(files) == 10
     for path in files:
         parsed = parse_file_name(path.name)
         assert parsed is not None, path.name
         assert parsed.chain_id == CHAIN_IDS[path.parent.name]
-        assert path.name.startswith(parsed.kind)
+        assert path.name.lower().startswith(parsed.kind.lower())  # store 039's names are lower case
 
 
 @pytest.mark.parametrize("name", [
