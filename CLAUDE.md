@@ -21,7 +21,7 @@ Personal portfolio project. Collects, every morning, the price files Israeli sup
 
 ## Active threads
 
-- Collector: merged and deployed 2026-11-01 with the schedules off; first manual runs found three fixes (deployed) and a Shufersal redesign (full files only, branch `shufersal-full-files`) · `.claude/QUEUE.md` q1, `.claude/OPEN_ISSUES.md` Collector.
+- Collector: live since 2026-11-01 (17 schedules, Shufersal full files only, check 10:45); next: the first scheduled morning's check record · `.claude/QUEUE.md` q1, `.claude/OPEN_ISSUES.md` Collector.
 
 ## Working notes
 
