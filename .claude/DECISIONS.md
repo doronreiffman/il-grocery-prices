@@ -19,3 +19,10 @@ Decisions whose rationale outlives a single change. Never edit a past entry; a s
 **Decision:** Rami Levy, Osher Ad and Yochananof are read through the web login the gov.il chain list links (https://url.publishedprices.co.il), with the username the list prints and an empty password; FTP only on the owner's word.
 **Why:** the government's list links that web form and prints the usernames for it; the FTP route an open-source scraper uses is not the route the list gives.
 **Context:** `docs/collector.md`, "Chains in version one" and "Calls made in this draft"; https://www.gov.il/he/pages/cpfta_prices_regulations (updated 12.08.2026, read 2026-10-31).
+
+## 2026-11-01 — Fail loud on portal changes; alert on missing data, not on errors
+
+**Decision:** an unexpected portal shape (a download link on an unknown host, an unsafe or unreadable listing, a listing with nothing for the day) stops that chain's run and alerts; a refusal latches the chain until the owner clears it; emails go out only for a file listed but not stored, a failed or missing retry run, retry runs that listed nothing, or a newly stopped chain, never for an error that recovers; runs against one portal host start at least 15 minutes (Lambda's maximum run) apart.
+**Why:** the chains keep only their latest files online, so a silently lost morning is the failure to prevent; fetching from an unknown host or pressing on after a refusal risks the owner's standing with the portals; flights-archive's error-based alarm flooded the inbox on 2026-10-31 with nothing lost; two sessions at once on one host risk a "too many requests" answer, which would latch a chain. Rejected: skipping odd rows silently (a portal change would read as a quiet morning), alerting on store coverage before thresholds are measured (the spec waits two weeks).
+**Context:** controller rulings R15, R19, R23, R30, R31 (`docs/collector-plan.md`, "Deviations" and "Rulings made during the build"); `docs/collector.md`, "Anti-goals" and "Alerts".
+
