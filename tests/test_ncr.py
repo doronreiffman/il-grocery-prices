@@ -227,6 +227,14 @@ def test_session_cookie_kept_from_the_login_page_to_the_download():
     assert [r.get_header("Cookie") for r in (file_page, listing, download)] == ["cftpSID=two"] * 3
 
 
+@pytest.mark.parametrize("path", ["/file", "/file/"])
+def test_login_that_lands_on_the_file_browser_succeeds(path):
+    """Ruling R22: the probe landed on /file; /file/ is the same browser."""
+    http, portal = connect(login=redirect(path, SESSION_TWO), extra={("GET", f"{BASE}{path}"): served(file_html())})
+    assert [item.name.raw for item in NcrSource("RamiLevi").listing(http, ("Stores",))] == NAMES[-3:]
+    assert portal.requested == [("GET", LOGIN_PAGE), ("POST", LOGIN), ("GET", f"{BASE}{path}"), ("POST", LISTING)]
+
+
 @pytest.mark.parametrize("changes, landed, where", [
     pytest.param({"login": redirect("/login")}, LOGIN_PAGE, "/login", id="sent back to the login page"),
     pytest.param({"login": served(login_html())}, LOGIN, "/login/user", id="the login form served again"),
@@ -237,10 +245,14 @@ def test_session_cookie_kept_from_the_login_page_to_the_download():
                  FILE_PAGE, "the login form", id="the login form by its id at /file"),
     pytest.param({"login": redirect("/"), "extra": {("GET", f"{BASE}/"): served(file_html())}}, f"{BASE}/", "/",
                  id="landed on another page"),
+    pytest.param({"login": redirect("/files"), "extra": {("GET", f"{BASE}/files"): served(file_html())}}, f"{BASE}/files",
+                 "/files", id="landed on /files"),
+    pytest.param({"login": redirect("/file/d/"), "extra": {("GET", f"{BASE}/file/d/"): served(file_html())}},
+                 f"{BASE}/file/d/", "/file/d/", id="landed under /file/"),
 ])
 def test_login_that_does_not_land_on_the_file_browser_is_a_block(changes, landed, where):
-    """A failed login was not tried (docs/portals.md); landing anywhere but /file, or on a page with
-    the login form, is the portal refusing it. Never retried with anything else."""
+    """A failed login was not tried (docs/portals.md); landing anywhere but /file or /file/ (ruling
+    R22), or on a page with the login form, is the portal refusing it. Never retried with anything else."""
     http, portal = connect(**changes)
     with pytest.raises(Blocked) as caught:
         list(NcrSource("RamiLevi").listing(http, ("PriceFull",)))
@@ -372,6 +384,22 @@ def test_listing_pages_by_the_entries_received_not_the_page_size():
     assert [dict(form)["iDisplayStart"] for form in portal.sent("POST", LISTING)] == ["0", "3", "10"]
 
 
+@pytest.mark.parametrize("answers, repeated", [
+    pytest.param([as_json({"aaData": ENTRIES[:5], "iTotalDisplayRecords": 14})], NAMES[0], id="the first page again"),
+    pytest.param([as_json({"aaData": ENTRIES[:5], "iTotalDisplayRecords": 14}),
+                  as_json({"aaData": ENTRIES[4:9], "iTotalDisplayRecords": 14})], NAMES[4], id="one name again"),
+])
+def test_name_sent_again_on_a_later_page_is_unreadable(answers, repeated):
+    """Ruling R21: a server that ignores iDisplayStart sends its first page again and again, until the
+    count reaches the total; the files after that page would be missed with no error."""
+    http, portal = connect(file_page=served(file_html(5)), listing=answers)
+    with pytest.raises(ListingUnreadable) as caught:
+        list(NcrSource("RamiLevi").listing(http, ("Stores", "PriceFull", "PromoFull", "Price", "Promo")))
+    assert str(caught.value) == f"the NCR listing sent {repeated!r} again from iDisplayStart 5"
+    assert len(portal.sent("POST", LISTING)) == 2
+    assert not any(url.startswith(f"{BASE}/file/d/") for _, url in portal.requested)
+
+
 @pytest.mark.parametrize("page_size, served_entries, total, received", [
     pytest.param(5, ENTRIES[:5], 14, 5, id="a later page empty"),
     pytest.param(10000, ENTRIES, 20, 14, id="the total more than the directory holds"),
@@ -429,6 +457,21 @@ def test_names_that_do_not_parse_are_skipped_and_counted():
     assert source.unparsed == 3
 
 
+@pytest.mark.parametrize("name", [
+    pytest.param(PRICEFULL.replace("-722-", "-\u0667\u0662\u0662-"), id="Arabic-Indic digits"),
+    pytest.param("\u05de\u05d7\u05d9\u05e8\u05d9\u05dd.gz", id="Hebrew"),
+    pytest.param(PRICEFULL + "\x00", id="a NUL"),
+    pytest.param("\u017ftores7290058140886-000-20261031-050500.xml", id="a long s for the S of Stores"),
+])
+def test_names_that_are_not_printable_ascii_are_skipped_and_counted(name):
+    """Ruling R20: never fetched, counted in `unparsed`, not a reason to stop."""
+    http, portal = connect(listing=directory([entry(name), entry(PRICEFULL)]))
+    source = NcrSource("RamiLevi")
+    assert [item.name.raw for item in source.listing(http, ("Stores", "PriceFull", "PromoFull", "Price", "Promo"))] == [PRICEFULL]
+    assert source.unparsed == 1
+    assert portal.requested == THROUGH_THE_LISTING
+
+
 def test_names_of_other_kinds_are_not_counted_as_unparsed():
     http, _ = connect()
     source = NcrSource("RamiLevi")
@@ -451,7 +494,7 @@ def test_unparsed_count_starts_again_with_each_listing():
     pytest.param(PRICEFULL + "?x=1", id="a query"),
     pytest.param(PRICEFULL + "#x", id="a fragment"),
     pytest.param("Price Full.gz", id="a space"),
-    pytest.param(PRICEFULL.replace("-722-", "-٧٢٢-"), id="digits that parse but are not ASCII"),
+    pytest.param(PRICEFULL + "\t", id="a tab"),
 ])
 def test_unsafe_name_anywhere_stops_the_listing_before_its_first_item(name):
     """Ruling R19: a link is built from fname; a name that is not safe in one raises, naming it, even

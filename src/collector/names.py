@@ -7,6 +7,10 @@ A file belongs to the day in its name, never to the time it was fetched. The sha
     Stores7290058140886-000-20261031-050500.xml       a Stores file names no store
     pricefull7290058140886-039-202610310517.gz        Rami Levy's store 039: lower case, no
                                                       sub-chain, date and time run together
+
+A name is ASCII (ruling R20): a name that parses goes into a download link, and urllib fails on a
+non-ASCII path outside Http's handling. Without re.ASCII, `\\d` takes other scripts' digits and
+case-folding reads `ſ` (long s) as an s and `ı` (dotless i) as an i.
 """
 import datetime
 import re
@@ -16,7 +20,7 @@ KINDS = ("Stores", "PriceFull", "PromoFull", "Price", "Promo")
 
 # Longest first: the kind is matched on its own, so "PriceFull..." must not stop at "Price".
 _BY_LENGTH = sorted(KINDS, key=len, reverse=True)
-_KIND = re.compile("|".join(_BY_LENGTH), re.IGNORECASE)
+_KIND = re.compile("|".join(_BY_LENGTH), re.IGNORECASE | re.ASCII)
 _CANONICAL = {kind.lower(): kind for kind in KINDS}
 _REST = re.compile(
     r"(?P<chain>\d{13})"
@@ -24,7 +28,7 @@ _REST = re.compile(
     r"-(?P<day>\d{8})(?:\d{4})?"   # the first YYYYMMDD; store 039's names run on into HHMM
     r"(?:-\d+)?"                   # the time, as a group of its own
     r"(?:\.gz|\.xml)?",
-    re.IGNORECASE,
+    re.IGNORECASE | re.ASCII,
 )
 
 

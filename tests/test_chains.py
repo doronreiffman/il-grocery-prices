@@ -136,7 +136,7 @@ def test_no_adapter_for_a_portal_not_in_version_one():
         source_for(Chain("x", "X", "ftp", "https://example.org"))
 
 
-# ---- names a download link is built from (ruling R19) ----
+# ---- names a download link is built from (rulings R19, R20) ----
 
 GOOD = "PriceFull7290058140886-001-722-20261101-001016.gz"
 
@@ -149,10 +149,19 @@ def test_safe_names_that_parse_are_parsed(name):
     assert checked_name(name, "here") == parse_file_name(name)
 
 
-@pytest.mark.parametrize("name", ["index.html", "readme", "", "PriceFull7290058140886-001-722-20261399-001016.gz",
-                                  "Price-list.gz", "~backup", "a%2Fb"])
+@pytest.mark.parametrize("name", [
+    "index.html", "readme", "", "PriceFull7290058140886-001-722-20261399-001016.gz", "Price-list.gz", "~backup", "a%2Fb",
+    pytest.param(GOOD + "\x00", id="a NUL"),
+    pytest.param(GOOD + "\x7f", id="DEL"),
+    pytest.param(GOOD.replace("-722-", "-\u0667\u0662\u0662-"), id="Arabic-Indic digits"),
+    pytest.param(GOOD.replace("7290058140886", "\uff17290058140886"), id="a full-width digit"),
+    pytest.param("\u017ftores7290058140886-000-20261031-050500.xml", id="a long s for the S of Stores"),
+    pytest.param(GOOD + "\u200b", id="a zero-width space, which is not whitespace"),
+    pytest.param("\u05de\u05d7\u05d9\u05e8\u05d9\u05dd.gz", id="Hebrew"),
+])
 def test_safe_names_that_do_not_parse_are_none(name):
-    """Skipped and counted by the adapter (`unparsed`), not a reason to stop."""
+    """Skipped and counted by the adapter (`unparsed`), never fetched, not a reason to stop. Ruling
+    R20: a name that is not printable ASCII is one of these; none parses (names.py reads ASCII only)."""
     assert checked_name(name, "here") is None
 
 
@@ -167,21 +176,14 @@ def test_safe_names_that_do_not_parse_are_none(name):
     pytest.param("Price Full.gz", id="a space"),
     pytest.param(GOOD + "\t", id="a tab"),
     pytest.param(GOOD + "\n", id="a line break"),
-    pytest.param(GOOD + "\x00", id="a NUL"),
-    pytest.param(GOOD + "\x7f", id="DEL"),
-    pytest.param(GOOD.replace("-722-", "-٧٢٢-"), id="Arabic-Indic digits, which parse"),
-    pytest.param(GOOD + " ", id="a no-break space"),
-    pytest.param("מחירים.gz", id="Hebrew"),
+    pytest.param(GOOD + "\x1f", id="a unit separator, which is whitespace"),
+    pytest.param(GOOD + "\u00a0", id="a no-break space"),
+    pytest.param(GOOD + "\u3000", id="an ideographic space"),
+    pytest.param("\u05de\u05d7\u05d9\u05e8\u05d9\u05dd/" + GOOD, id="a slash after Hebrew"),
 ])
 def test_unsafe_names_are_unreadable_and_named(name):
-    """A link is built from the name: one that could leave the folder, end the path, or not go into a
-    URL as it is raises, whether or not it parses. Arabic-Indic digits parse as digits, and would
-    then fail inside urllib, outside Http's handling."""
+    """Ruling R19: a link is built from the name; one that could leave the folder, end the path or
+    split the request raises, whether or not it parses, and whatever else it holds."""
     with pytest.raises(ListingUnreadable) as caught:
         checked_name(name, "the listing, entry 3")
     assert str(caught.value) == f"the listing, entry 3: the file name {name!r} is not safe to put in a link"
-
-
-def test_arabic_indic_digits_do_parse():
-    """Why the name check refuses non-ASCII before parsing: the parser's \\d takes these digits."""
-    assert parse_file_name(GOOD.replace("-722-", "-٧٢٢-")) is not None

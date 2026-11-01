@@ -6,14 +6,16 @@ What the portal does (docs/portals.md, "Rami Levy, through NCR", seen 2026-10-31
 - `GET /login` serves the login form and a `<meta name="csrftoken">`. The session lives in the
   `cftpSID` cookie, which the chain's Http keeps.
 - `POST /login/user` with `r=`, the username, an empty password, `Submit=Sign in` and the login page's
-  token answers 302 to `/file`, the file browser. Landing anywhere else, or on a page showing the login
-  form, is the portal refusing the login: Blocked (a failed login was not tried; the probe read it so).
+  token answers 302 to `/file`, the file browser (`/file/` counts too, ruling R22). Landing anywhere
+  else, or on a page showing the login form, is the portal refusing the login: Blocked (a failed login
+  was not tried; the probe read it so).
 - The file browser carries a second, fresh token (the listing's), the directory (`cd`, `/`) and the
   listing's page size (`dtDisplayLength`, in the HTML-escaped JSON of `data-cftp`; 100000, 5000 and
   10000 in three sessions).
 - `POST /file/json/dir` with DataTables 1.9's server-side parameters answers JSON: `aaData`, the
   entries, each naming its file in `fname`, and `iTotalDisplayRecords`, the total. Fewer entries than
-  the total means asking again from `iDisplayStart` = the entries received (ruling R18).
+  the total means asking again from `iDisplayStart` = the entries received (ruling R18). A name an
+  earlier answer already sent means the server is not paging (ruling R21): ListingUnreadable.
 - At the root a file downloads from `GET /file/d/<fname>`, in the session.
 
 The listing reads the whole directory and checks every name before giving the first.
@@ -29,7 +31,7 @@ from collector.sources import Listed, ListingUnreadable, Source, checked_name
 BASE_URL = "https://url.publishedprices.co.il"
 LOGIN_PAGE = f"{BASE_URL}/login"
 LOGIN = f"{BASE_URL}/login/user"
-FILE_BROWSER = "/file"  # the path a successful login lands on
+FILE_BROWSER = ("/file", "/file/")  # the paths a successful login lands on
 LISTING = f"{BASE_URL}/file/json/dir"
 DOWNLOAD = f"{BASE_URL}/file/d/"
 ROOT = "/"
@@ -70,8 +72,8 @@ class NcrSource(Source):
         landed = http.post(LOGIN, form)
         page = _read(landed.body)
         path = urllib.parse.urlsplit(landed.url).path
-        if path != FILE_BROWSER or page.login_form:
-            where = path if path != FILE_BROWSER else "the login form"
+        if path not in FILE_BROWSER or page.login_form:
+            where = path if path not in FILE_BROWSER else "the login form"
             raise Blocked(landed.status, landed.url, f"the NCR login as {self.username!r} was not accepted (it landed on {where})")
         return page
 
@@ -96,6 +98,10 @@ def _fnames(http: Http, file_page: "_Page") -> list[str]:
                 raise ListingUnreadable(f"the NCR listing has no entries (iTotalDisplayRecords {total})")
         if not received:
             raise ListingUnreadable(f"the NCR listing stopped at {len(fnames)} of {total} entries")
+        sent = set(fnames)
+        repeated = next((fname for fname in received if fname in sent), None)
+        if repeated is not None:  # a server ignoring iDisplayStart, which would hide the files after its first page
+            raise ListingUnreadable(f"the NCR listing sent {repeated!r} again from iDisplayStart {len(fnames)}")
         fnames += received
     return fnames
 

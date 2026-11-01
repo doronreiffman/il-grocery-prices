@@ -82,3 +82,29 @@ def test_every_fixture_file_name_parses():
 ])
 def test_anything_else_is_none(name):
     assert parse_file_name(name) is None
+
+
+NCR_NAME = "PriceFull7290058140886-001-722-20261101-001016.gz"
+
+
+@pytest.mark.parametrize("name", [
+    pytest.param(NCR_NAME.replace("-722-", "-٧٢٢-"), id="Arabic-Indic digits in the store"),
+    pytest.param(NCR_NAME.replace("7290058140886", "٧290058140886"), id="an Arabic-Indic digit in the chain id"),
+    pytest.param(NCR_NAME.replace("20261101", "2026110١"), id="an Arabic-Indic digit in the date"),
+    pytest.param(NCR_NAME.replace("7290058140886", "７290058140886"), id="a full-width digit"),
+    pytest.param(NCR_NAME.replace("-001016", "-00101०"), id="a Devanagari digit in the time"),
+])
+def test_non_ascii_digits_do_not_parse(name):
+    """Ruling R20: a name is ASCII. A name that parses goes into a download link, and urllib raises
+    UnicodeEncodeError, outside Http's handling, on a non-ASCII path."""
+    assert parse_file_name(name) is None
+
+
+@pytest.mark.parametrize("name", [
+    pytest.param("ſtores7290058140886-000-20261031-050500.xml", id="a long s for the S of Stores"),
+    pytest.param("PrıceFull7290058140886-001-722-20261101-001016.gz", id="a dotless i in PriceFull"),
+    pytest.param("PRİCE7290058140886-001-722-20261101-001016.gz", id="a dotted capital I in PRICE"),
+])
+def test_non_ascii_letters_that_fold_to_a_kind_do_not_parse(name):
+    """Unicode case-folding matches these to a kind's letters; they must read as no name, not raise."""
+    assert parse_file_name(name) is None

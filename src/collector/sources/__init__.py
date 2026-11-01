@@ -40,15 +40,17 @@ class Source(Protocol):
         """The body of `item`, as received."""
 
 
-UNSAFE = ("/", "\\", "..", "?", "#", " ")  # could leave the folder, end the path or split the request; other whitespace is not printable
+UNSAFE = ("/", "\\", "..", "?", "#")  # could leave the folder or end the path
 
 
 def checked_name(name: str, where: str) -> FileName | None:
     """`name`, a listed file name that a download link is built from, parsed; None if it does not parse
-    (the adapter skips it and counts it in `unparsed`). A name that is not printable ASCII, or holds any
-    of UNSAFE, raises ListingUnreadable naming it, whether or not it parses (ruling R19, as R15 for
-    Shufersal's links): the parser's \\d takes Arabic-Indic digits too, and urllib would fail on them
-    outside Http's handling."""
-    if not (name.isascii() and name.isprintable()) or any(part in name for part in UNSAFE):
+    (the adapter skips it and counts it in `unparsed`, and never fetches it).
+
+    A name holding any of UNSAFE, or any whitespace (which would split the request), raises
+    ListingUnreadable naming it, whether or not it parses (ruling R19, as R15 for Shufersal's links).
+    A name that is not printable ASCII never parses (names.py reads ASCII only), so it is skipped and
+    counted, not a stop (ruling R20)."""
+    if any(part in name for part in UNSAFE) or any(char.isspace() for char in name):
         raise ListingUnreadable(f"{where}: the file name {name!r} is not safe to put in a link")
     return parse_file_name(name)

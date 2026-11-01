@@ -199,6 +199,21 @@ def test_names_that_do_not_parse_are_skipped_and_counted():
     assert source.unparsed == 3
 
 
+@pytest.mark.parametrize("name", [
+    pytest.param(PRICEFULL.replace("-472-", "-\u0664\u0667\u0662-"), id="Arabic-Indic digits"),
+    pytest.param("\u05de\u05d7\u05d9\u05e8\u05d9\u05dd.gz", id="Hebrew"),
+    pytest.param(PRICEFULL + "\x7f", id="DEL"),
+    pytest.param("Pr\u0131ceFull7290055700007-001-472-20261031-051016.gz", id="a dotless i in PriceFull"),
+])
+def test_names_that_are_not_printable_ascii_are_skipped_and_counted(name):
+    """Ruling R20: never fetched, counted in `unparsed`, not a reason to stop."""
+    http, portal = connect(served(page(files=[file(name), file(PRICEFULL)])))
+    source = CarrefourSource()
+    assert [item.name.raw for item in source.listing(http, ALL_KINDS)] == [PRICEFULL]
+    assert source.unparsed == 1
+    assert portal.requested == [("GET", PAGE)]
+
+
 def test_names_of_other_kinds_are_not_counted_as_unparsed():
     http, _ = connect()
     source = CarrefourSource()
@@ -221,7 +236,7 @@ def test_unparsed_count_starts_again_with_each_listing():
     pytest.param(PRICEFULL + "?x=1", id="a query"),
     pytest.param("\\" + PRICEFULL, id="a backslash"),
     pytest.param("Price Full.gz", id="a space"),
-    pytest.param(PRICEFULL.replace("-472-", "-٤٧٢-"), id="digits that parse but are not ASCII"),
+    pytest.param(PRICEFULL + "\u00a0", id="a no-break space"),
 ])
 def test_unsafe_name_anywhere_stops_the_listing_before_its_first_item(name):
     """Ruling R19: a link is built from each name; a name that is not safe in one raises, naming it,
