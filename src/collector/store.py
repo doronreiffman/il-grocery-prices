@@ -6,9 +6,10 @@
     checks/date=YYYY-MM-DD/check-<run id>.json
     state/<slug>.json                                                         the chain's stopped latch
 
-Raw files, manifests and checks are written once: every put carries IfNoneMatch="*", so S3 refuses
-to replace a stored key, and its own Object Lock settings (governance mode, ten years), so the state
-files stay plain, overwritable puts. Nothing here ever deletes.
+Raw files, manifests and checks are written once: each of their puts carries IfNoneMatch="*", so S3
+refuses to replace a stored key, and its own Object Lock settings (governance mode, ten years). The
+lock is set per object, not as a bucket default, so the state files stay plain, overwritable puts.
+Nothing here ever deletes.
 
 S3Store works through a boto3 client; MemoryStore keeps the same rules in a dict, for other
 modules' tests. Every rule above the bare read, write and list lives in _Store, which both share, so
