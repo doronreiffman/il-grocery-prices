@@ -16,7 +16,10 @@ For each chain, from that day's manifests (every run's, main and retry alike) an
   that is blocked with no error is not a failed run: the `stopped` alert covers it. A main run's
   error is left to the retry run. Ruling R31: retry runs that together list nothing for the day,
   none of them blocked, are a failed run too, with the sum of their unparsed names: a portal change
-  that leaves every name unreadable, or dated another day, ends without an error.
+  that leaves every name unreadable, or dated another day, ends without an error. Ruling R35 (QUEUE
+  q7): a full kind the chain collects (PriceFull, PromoFull) that no run that day listed, main or
+  retry, is a failed run too, unless one of the runs was blocked: R31's union over the retry runs
+  stayed silent on a day Shufersal listed no PriceFull while its Stores run listed something.
 - coverage, recorded and never alerted: the stores with a stored PriceFull that day, read from the
   file names, against the store ids in that day's latest stored Stores file, or when that day has
   none the latest stored in the seven days before. Store numbers are compared as numbers
@@ -36,6 +39,7 @@ from collector.storelist import store_ids
 MAX_NAMES = 10  # names a missing alert quotes; the check record holds all of them
 LOOKBACK_DAYS = 7  # days before the check's day searched for a store list when that day has none
 UNKNOWN = "unknown"
+FULL_KINDS = ("PriceFull", "PromoFull")  # each must be listed by some run of the day (ruling R35)
 
 
 @dataclass
@@ -117,7 +121,8 @@ def _missing_text(slug: str, day: date, missing: list[str]) -> str:
 
 
 def _failure(manifests: list[dict], kinds: tuple[str, ...]) -> str | None:
-    """Why the chain's retry runs fall short of `kinds` (ruling R4), or None when they do not."""
+    """Why the chain's retry runs fall short of `kinds` (ruling R4), or its day of a full kind (ruling
+    R35), or None when neither does."""
     retries = [manifest for manifest in manifests if manifest["mode"] == "retry"]
     covered = {kind for manifest in retries for kind in manifest["kinds"]}
     problems = []
@@ -130,7 +135,16 @@ def _failure(manifests: list[dict], kinds: tuple[str, ...]) -> str | None:
     if retries and not listed and not any(manifest["blocked"] for manifest in retries):
         unparsed = sum(manifest["unparsed"] for manifest in retries)
         problems.append(f"the retry runs listed nothing for the day (unparsed names: {unparsed})")
-    return "; ".join(problems) or None
+    return "; ".join(problems + _unlisted(manifests, kinds)) or None
+
+
+def _unlisted(manifests: list[dict], kinds: tuple[str, ...]) -> list[str]:
+    """The full kinds the chain collects that no run of the day listed (ruling R35); none when a run
+    was blocked, which the stopped alert covers."""
+    if any(manifest["blocked"] for manifest in manifests):
+        return []
+    listed = {parsed.kind for manifest in manifests for name in manifest["listed"] if (parsed := parse_file_name(name))}
+    return [f"no run listed a {kind} for the day" for kind in FULL_KINDS if kind in kinds and kind not in listed]
 
 
 def _coverage(store, slug: str, day: date, stored: set[str]) -> dict:

@@ -50,6 +50,7 @@ SHA = "0123456789ab"
 
 PRICE_XML = (FIXTURES / "shufersal" / "PriceFull7290027600007-001-030-20261031-030000.gz").read_bytes()
 PRICE = "PriceFull7290027600007-001-030-20261031-030000.gz"
+PROMO_FULL = "PromoFull7290027600007-001-030-20261031-030000.gz"  # its body is PRICE_XML: the check reads names only
 PRICE_2 = "PriceFull7290027600007-001-031-20261031-030000.gz"
 
 
@@ -149,11 +150,13 @@ class FakeSource:
 
 def clean_day(store, day=DAY):
     """Every chain's retry ran over the kinds that chain collects (Shufersal three, the others five) and
-    listed one file of the day, stored (a retry run that lists nothing is a failed run: ruling R31)."""
+    listed the day's PriceFull and PromoFull, stored (a retry run that lists nothing is a failed run:
+    ruling R31; each full kind is listed by some run: ruling R35)."""
     for slug in CHAINS:
-        result = RunResult(slug, f"073000Z-retry-{slug[:4]}", "retry", day, list(CHAINS[slug].kinds), listed=[PRICE])
+        result = RunResult(slug, f"073000Z-retry-{slug[:4]}", "retry", day, list(CHAINS[slug].kinds), listed=[PRICE, PROMO_FULL])
         store.put_record(manifest_key(day, slug, result.run_id), manifest_bytes(result, SHA), NOW)
-        store.put_raw(raw_key(slug, day, PRICE), PRICE_XML, NOW)
+        for name in (PRICE, PROMO_FULL):
+            store.put_raw(raw_key(slug, day, name), PRICE_XML, NOW)
 
 
 # ---- main and retry ----
