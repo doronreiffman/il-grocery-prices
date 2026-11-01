@@ -29,6 +29,7 @@ SHUFERSAL = ("src/collector/sources/shufersal.py", ["tests/test_shufersal.py"])
 NAME_CHECK = ("src/collector/sources/__init__.py", ["tests/test_chains.py"])
 NCR = ("src/collector/sources/ncr.py", ["tests/test_ncr.py"])
 CARREFOUR = ("src/collector/sources/carrefour.py", ["tests/test_carrefour.py"])
+STORE = ("src/collector/store.py", ["tests/test_store.py"])
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
 MUTATIONS = {
@@ -240,6 +241,57 @@ MUTATIONS = {
     "Carrefour unparsed names not counted": (CARREFOUR, "                self.unparsed += 1", "                pass"),
     "Carrefour unparsed count carried over from the last listing": (CARREFOUR, "        self.unparsed = 0\n        text", "        text"),
     "Carrefour download returns nothing": (CARREFOUR, "        return http.get(item.url).body", '        return b""'),
+    # store: the brief's four
+    "IfNoneMatch dropped": (STORE, '                IfNoneMatch="*",\n', ""),
+    "conflict overwrites": (STORE, "        if self._put_locked(copy, body, until):\n            return PutOutcome.CONFLICT_STORED",
+                            "        self._put_plain(key, body, None)\n        if True:\n            return PutOutcome.CONFLICT_STORED"),
+    "identical re-run makes a conflict copy": (STORE, "        if self._sha256(key) == digest:\n            return PutOutcome.EXISTS\n", "        if False:\n            return PutOutcome.EXISTS\n"),
+    "retention shortened": (STORE, "RETENTION_DAYS = 3650", "RETENTION_DAYS = 365"),
+    # store: the lock
+    "lock mode not governance": (STORE, 'LOCK_MODE = "GOVERNANCE"', 'LOCK_MODE = "COMPLIANCE"'),
+    "lock mode argument ignored": (STORE, "ObjectLockMode=self.lock_mode,", "ObjectLockMode=LOCK_MODE,"),
+    "retention argument ignored": (STORE, "self.retention = timedelta(days=retention_days)", "self.retention = timedelta(days=RETENTION_DAYS)"),
+    "zero retention accepted": (STORE, "        if retention_days < 1:", "        if retention_days < 0:"),
+    "ChecksumAlgorithm dropped": (STORE, '                ChecksumAlgorithm="SHA256",\n', ""),
+    "naive time accepted": (STORE, "        if now.tzinfo is None or now.utcoffset() is None:", "        if False:"),
+    "record not locked": (STORE, '        if self._put_locked(key, body, self._retain_until(now), "application/json"):\n            return',
+                          '        self._put_plain(key, body, "application/json")\n        if True:\n            return'),
+    "MemoryStore overwrites": (STORE, "        if key in self.objects:\n            return False\n", ""),
+    "MemoryStore lock not recorded": (STORE, "Stored(bytes(body), self.lock_mode, until)", "Stored(bytes(body), None, None)"),
+    # store: refusals (412 and 409) and what the key holds
+    "412 not read as already there": (STORE, 'REFUSED = ("PreconditionFailed", "ConditionalRequestConflict")', 'REFUSED = ("ConditionalRequestConflict",)'),
+    "409 not read as already there": (STORE, 'REFUSED = ("PreconditionFailed", "ConditionalRequestConflict")', 'REFUSED = ("PreconditionFailed",)'),
+    "any put error read as already there": (STORE, "            if _code(err) in REFUSED:\n                return False\n            raise", "            return False"),
+    "stored checksum not asked for": (STORE, ', ChecksumMode="ENABLED")', ")"),
+    "no checksum read as a different body": (STORE, "        return hashlib.sha256(self.read_raw(key)).hexdigest()", '        return ""'),
+    "conflict copy named without its hash": (STORE, 'copy = f"{key}.{digest[:12]}"', "copy = key"),
+    "conflict copy's hash cut short": (STORE, 'copy = f"{key}.{digest[:12]}"', 'copy = f"{key}.{digest[:8]}"'),
+    "conflict copy named by the stored body": (STORE, 'copy = f"{key}.{digest[:12]}"', 'copy = f"{key}.{self._sha256(key)[:12]}"'),
+    "same changed body on a re-run raises": (STORE, "        if self._sha256(copy) == digest:", "        if False:"),
+    "collision on the conflict copy read as exists": (STORE, '        raise AlreadyStored(f"{copy}:', '        return PutOutcome.EXISTS\n        raise AlreadyStored(f"{copy}:'),
+    "different record under a taken key passes": (STORE, "        if self._sha256(key) != hashlib.sha256(body).hexdigest():", "        if False:"),
+    "retried identical record raises": (STORE, "        if self._sha256(key) != hashlib.sha256(body).hexdigest():", "        if True:"),
+    # store: listing
+    "only the first page listed": (STORE, '        for page in self.client.get_paginator("list_objects_v2").paginate(Bucket=self.bucket, Prefix=prefix):',
+                                   "        for page in [self.client.list_objects_v2(Bucket=self.bucket, Prefix=prefix)]:"),
+    "conflict copy not mapped back": (STORE, '    return copy["name"] if copy else name', "    return name"),
+    "suffix of any length read as a conflict copy": (STORE, r'\.[0-9a-f]{12}")', r'\.[0-9a-f]+")'),
+    "upper-case suffix read as a conflict copy": (STORE, r'\.[0-9a-f]{12}")', r'\.[0-9a-fA-F]{12}")'),
+    "conflict copy suffix matched from the start only": (STORE, "_CONFLICT_COPY.fullmatch(name)", "_CONFLICT_COPY.match(name)"),
+    "records out of key order": (STORE, "for key in sorted(self._keys(prefix))]", "for key in self._keys(prefix)]"),
+    # store: state
+    "state write made write-once": (STORE, "Body=body, ContentType=content_type)", 'Body=body, ContentType=content_type, IfNoneMatch="*")'),
+    "a delete before the state write": (STORE, "        self.client.put_object(Bucket=self.bucket, Key=key, Body=body, ContentType=content_type)",
+                                        "        self.client.delete_object(Bucket=self.bucket, Key=key)\n        self.client.put_object(Bucket=self.bucket, Key=key, Body=body, ContentType=content_type)"),
+    "missing state as NoSuchKey read as an error": (STORE, 'MISSING = ("NoSuchKey", "404")', 'MISSING = ("404",)'),
+    "missing state as a bare 404 read as an error": (STORE, 'MISSING = ("NoSuchKey", "404")', 'MISSING = ("NoSuchKey",)'),
+    "any read error read as missing": (STORE, "            if _code(err) in MISSING:\n                return None\n            raise", "            return None"),
+    # store: keys
+    "raw key without chain=": (STORE, 'f"raw/chain={slug}/', 'f"raw/{slug}/'),
+    "raw key's day not ISO": (STORE, 'f"raw/chain={slug}/date={day.isoformat()}/{name}"', 'f"raw/chain={slug}/date={day:%Y%m%d}/{name}"'),
+    "manifest key without the slug": (STORE, '/{slug}-{run_id}.json"', '/{run_id}.json"'),
+    "check key without check-": (STORE, '/check-{run_id}.json"', '/{run_id}.json"'),
+    "state key outside state/": (STORE, 'f"state/{slug}.json"', 'f"{slug}.json"'),
 }
 
 
