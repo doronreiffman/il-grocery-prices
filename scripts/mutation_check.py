@@ -413,6 +413,14 @@ MUTATIONS = {
     "one retry run enough for every kind (R4)": (CHECK, "    uncovered = [kind for kind in KINDS if kind not in covered]", "    uncovered = [] if retries else list(KINDS)"),
     "retry error not alerted (R4)": (CHECK, 'for manifest in retries if manifest["error"]]', "for manifest in retries if False]"),
     "blocked retry read as failed (R4)": (CHECK, 'for manifest in retries if manifest["error"]]', 'for manifest in retries if manifest["error"] or manifest["blocked"]]'),
+    # check: retry runs that list nothing (R31)
+    "nothing listed read as a quiet day": (CHECK, '    if retries and not listed and not any(manifest["blocked"] for manifest in retries):', "    if False:"),
+    "one retry run listing nothing read as failed (R31)": (CHECK, "    if retries and not listed and not any(", '    if retries and not all(manifest["listed"] for manifest in retries) and not any('),
+    "a blocked chain's empty morning read as failed (R31)": (CHECK, ' and not listed and not any(manifest["blocked"] for manifest in retries):', " and not listed:"),
+    "every retry run must be blocked to excuse an empty morning (R31)": (CHECK, 'not any(manifest["blocked"] for manifest in retries):', 'not all(manifest["blocked"] for manifest in retries):'),
+    "no retry run read as one that listed nothing (R31)": (CHECK, "    if retries and not listed and", "    if not listed and"),
+    "unparsed of one retry run only (R31)": (CHECK, 'sum(manifest["unparsed"] for manifest in retries)', 'retries[-1]["unparsed"]'),
+    "main runs' unparsed counted (R31)": (CHECK, 'sum(manifest["unparsed"] for manifest in retries)', 'sum(manifest["unparsed"] for manifest in manifests)'),
     # check: coverage, never alerted
     "coverage alerts": (CHECK, '        "coverage": _coverage(store, slug, day, stored),\n    }\n',
                         '        "coverage": _coverage(store, slug, day, stored),\n    }\n    if record["coverage"]["ratio"] != 1.0:\n        alerts.append(Alert(slug, "missing", "low coverage"))\n'),

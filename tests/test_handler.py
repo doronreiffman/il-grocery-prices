@@ -148,9 +148,12 @@ class FakeSource:
 
 
 def clean_day(store, day=DAY):
+    """Every chain's retry ran over all five kinds and listed one file of the day, stored (a retry run
+    that lists nothing is a failed run: ruling R31)."""
     for slug in CHAINS:
-        result = RunResult(slug, f"073000Z-retry-{slug[:4]}", "retry", day, list(KINDS))
+        result = RunResult(slug, f"073000Z-retry-{slug[:4]}", "retry", day, list(KINDS), listed=[PRICE])
         store.put_record(manifest_key(day, slug, result.run_id), manifest_bytes(result, SHA), NOW)
+        store.put_raw(raw_key(slug, day, PRICE), PRICE_XML, NOW)
 
 
 # ---- main and retry ----

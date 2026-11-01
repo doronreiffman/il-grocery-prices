@@ -13,7 +13,9 @@ For each chain, from that day's manifests (every run's, main and retry alike) an
 - failed (ruling R4): that day's retry manifests do not together cover all five kinds (Shufersal
   runs as three invocations), or one of them has an error → one `failed` alert. A retry manifest
   that is blocked with no error is not a failed run: the `stopped` alert covers it. A main run's
-  error is left to the retry run.
+  error is left to the retry run. Ruling R31: retry runs that together list nothing for the day,
+  none of them blocked, are a failed run too, with the sum of their unparsed names: a portal change
+  that leaves every name unreadable, or dated another day, ends without an error.
 - coverage, recorded and never alerted: the stores with a stored PriceFull that day, read from the
   file names, against the store ids in that day's latest stored Stores file, or when that day has
   none the latest stored in the seven days before. Store numbers are compared as numbers
@@ -118,6 +120,10 @@ def _failure(manifests: list[dict]) -> str | None:
         problems.append(f"no retry run covered {', '.join(uncovered)}")
     problems += [f"retry run {manifest['run_id']} ({', '.join(manifest['kinds'])}) ended with: {manifest['error']}"
                  for manifest in retries if manifest["error"]]
+    listed = {name for manifest in retries for name in manifest["listed"]}
+    if retries and not listed and not any(manifest["blocked"] for manifest in retries):
+        unparsed = sum(manifest["unparsed"] for manifest in retries)
+        problems.append(f"the retry runs listed nothing for the day (unparsed names: {unparsed})")
     return "; ".join(problems) or None
 
 

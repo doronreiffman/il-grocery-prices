@@ -38,10 +38,11 @@ def stores_file(*ids):
     return gzip.compress(xml)
 
 
-def manifest(store, slug, mode, kinds=KINDS, listed=(), error=None, blocked=None, run_id=None, day=DAY):
+def manifest(store, slug, mode, kinds=KINDS, listed=(), error=None, blocked=None, run_id=None, day=DAY, unparsed=0):
     """Write a manifest as collect_chain does; returns its run id."""
     run_id = run_id or f"0{len(store.objects):05d}Z-{mode}-abcd"
-    result = RunResult(slug, run_id, mode, day, list(kinds), listed=list(listed), blocked=blocked, error=error)
+    result = RunResult(slug, run_id, mode, day, list(kinds), listed=list(listed), blocked=blocked, error=error,
+                       unparsed=unparsed)
     store.put_record(manifest_key(day, slug, run_id), manifest_bytes(result, "0123456789ab"), NOW)
     return run_id
 
@@ -51,10 +52,14 @@ def stored(store, slug, *names, day=DAY, body=None):
         store.put_raw(raw_key(slug, day, name), body if body is not None else gzip.compress(name.encode()), NOW)
 
 
-def clean_day(store, slugs=SLUGS):
-    """Every chain's retry ran over all five kinds without an error."""
+def clean_day(store, slugs=SLUGS, day=DAY):
+    """Every chain's retry ran over all five kinds without an error and listed one file of the day,
+    stored (a retry run lists the day's names, stored or not: ruling R31). The file is a Promo, so
+    coverage never counts it."""
     for slug in slugs:
-        manifest(store, slug, "retry")
+        name = price("001", kind="Promo", day=day)
+        manifest(store, slug, "retry", listed=[name], day=day)
+        stored(store, slug, name, day=day)
 
 
 def latch(alerted=False):
@@ -78,8 +83,8 @@ def test_clean_day_has_no_alerts():
     assert record["day"] == "2026-10-31"
     assert record["alerts"] == []
     assert list(record["chains"]) == SLUGS
-    assert record["chains"]["shufersal"]["listed"] == 2
-    assert record["chains"]["shufersal"]["stored"] == 2
+    assert record["chains"]["shufersal"]["listed"] == 3  # the two and the retry run's
+    assert record["chains"]["shufersal"]["stored"] == 3
     assert record["chains"]["shufersal"]["missing"] == []
     assert record["chains"]["shufersal"]["stopped"] is None
     assert record["chains"]["shufersal"]["failed"] is None
@@ -99,7 +104,7 @@ def test_each_chain_reads_its_own_manifests():
     manifest(store, "ramilevy", "main", listed=[price("001")])
     alerts, record = check_day(store, SLUGS, DAY)
     assert kinds_of(alerts) == [("ramilevy", "missing")]
-    assert record["chains"]["shufersal"]["listed"] == 0 and record["chains"]["shufersal"]["manifests"] == 1
+    assert record["chains"]["shufersal"]["listed"] == 1 and record["chains"]["shufersal"]["manifests"] == 1
     assert record["chains"]["ramilevy"]["manifests"] == 2
 
 
@@ -117,8 +122,8 @@ def test_missing_files_alert_once_naming_the_chain_and_the_count():
     assert "shufersal" in text and "2 files" in text
     assert names[0] in text and names[2] in text and names[1] not in text
     assert record["chains"]["shufersal"]["missing"] == [names[0], names[2]]
-    assert record["chains"]["shufersal"]["listed"] == 3
-    assert record["chains"]["shufersal"]["stored"] == 1
+    assert record["chains"]["shufersal"]["listed"] == 4  # the three and clean_day's
+    assert record["chains"]["shufersal"]["stored"] == 2
 
 
 def test_one_missing_file_is_one_file():
@@ -213,8 +218,7 @@ def test_a_second_check_after_the_email_sends_no_second_stopped_alert():
     assert alerts == []
     assert record["chains"]["osherad"]["stopped"] == {"since": SINCE, "reason": latch()["reason"]}
     later = DAY + timedelta(days=1)
-    for slug in SLUGS:
-        manifest(store, slug, "retry", day=later)
+    clean_day(store, day=later)
     assert check_day(store, SLUGS, later)[0] == []
 
 
@@ -295,10 +299,11 @@ def test_shufersals_three_retry_runs_together_cover_the_five_kinds():
     store = MemoryStore()
     clean_day(store, SLUGS[1:])
     manifest(store, "shufersal", "retry", kinds=["Stores"])
-    manifest(store, "shufersal", "retry", kinds=["PriceFull", "Price"])
+    manifest(store, "shufersal", "retry", kinds=["PriceFull", "Price"], listed=[price("030")])
+    stored(store, "shufersal", price("030"))
     alerts, _ = check_day(store, SLUGS, DAY)
     assert kinds_of(alerts) == [("shufersal", "failed")]
-    assert "no retry run covered PromoFull, Promo" in alerts[0].text
+    assert alerts[0].text == "shufersal: a retry run is missing or failed: no retry run covered PromoFull, Promo."
     manifest(store, "shufersal", "retry", kinds=["PromoFull", "Promo"])
     assert check_day(store, SLUGS, DAY)[0] == []
 
@@ -361,6 +366,60 @@ def test_every_kind_of_alert_for_one_chain():
     alerts, record = check_day(store, SLUGS, DAY)
     assert kinds_of(alerts) == [("shufersal", "missing"), ("shufersal", "stopped"), ("shufersal", "failed")]
     assert record["alerts"] == [{"chain": a.chain, "kind": a.kind, "text": a.text} for a in alerts]
+
+
+# ---- retry runs that list nothing (ruling R31) ----
+
+def test_retry_runs_that_list_nothing_are_a_failed_run():
+    """Ruling R31: a listing whose names all fail to parse, or all carry another day, ends without an
+    error; retry runs that list nothing for the day are a failed run, naming the unparsed count."""
+    store = MemoryStore()
+    clean_day(store, [slug for slug in SLUGS if slug != "ramilevy"])
+    manifest(store, "ramilevy", "retry", unparsed=2362)
+    alerts, record = check_day(store, SLUGS, DAY)
+    assert kinds_of(alerts) == [("ramilevy", "failed")]
+    assert alerts[0].text == ("ramilevy: a retry run is missing or failed: "
+                              "the retry runs listed nothing for the day (unparsed names: 2362).")
+    assert record["chains"]["ramilevy"]["failed"] == "the retry runs listed nothing for the day (unparsed names: 2362)"
+
+
+def test_the_unparsed_count_sums_the_chains_retry_runs():
+    store = MemoryStore()
+    clean_day(store, SLUGS[1:])
+    manifest(store, "shufersal", "retry", kinds=["Stores"], unparsed=2)
+    manifest(store, "shufersal", "retry", kinds=["PriceFull", "Price"], unparsed=2000)
+    manifest(store, "shufersal", "retry", kinds=["PromoFull", "Promo"], unparsed=360)
+    manifest(store, "shufersal", "main", unparsed=5000)  # a main run's count is not the retry runs'
+    alerts, _ = check_day(store, SLUGS, DAY)
+    assert kinds_of(alerts) == [("shufersal", "failed")]
+    assert alerts[0].text.endswith(": the retry runs listed nothing for the day (unparsed names: 2362).")
+
+
+def test_a_retry_run_that_lists_nothing_is_not_alone_a_failed_run():
+    """Shufersal's Stores run can list nothing while its other two list the day's files: the names
+    are taken across all of a chain's retry runs."""
+    store = MemoryStore()
+    clean_day(store, SLUGS[1:])
+    names = [price("030"), price("030", kind="PromoFull")]
+    manifest(store, "shufersal", "retry", kinds=["Stores"], unparsed=1)
+    manifest(store, "shufersal", "retry", kinds=["PriceFull", "Price"], listed=names[:1])
+    manifest(store, "shufersal", "retry", kinds=["PromoFull", "Promo"], listed=names[1:])
+    stored(store, "shufersal", *names)
+    alerts, record = check_day(store, SLUGS, DAY)
+    assert alerts == [] and record["chains"]["shufersal"]["failed"] is None
+
+
+def test_a_blocked_chain_that_listed_nothing_alerts_only_as_stopped():
+    """One blocked retry run is enough: the stopped alert covers the chain's empty morning."""
+    store = MemoryStore()
+    clean_day(store, SLUGS[1:])
+    manifest(store, "shufersal", "retry", kinds=["Stores"])
+    manifest(store, "shufersal", "retry", kinds=["PriceFull", "Price"], blocked="HTTP 403: https://x")
+    manifest(store, "shufersal", "retry", kinds=["PromoFull", "Promo"], blocked="stopped earlier")
+    store.write_state("shufersal", latch())
+    alerts, record = check_day(store, SLUGS, DAY)
+    assert kinds_of(alerts) == [("shufersal", "stopped")]
+    assert record["chains"]["shufersal"]["failed"] is None
 
 
 def test_alert_is_a_dataclass_with_chain_kind_and_text():
