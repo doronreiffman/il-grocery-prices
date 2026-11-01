@@ -34,6 +34,18 @@ RUN = ("src/collector/run.py", ["tests/test_run.py"])
 CHECK = ("src/collector/check.py", ["tests/test_check.py"])
 STORE_FOR_CHECK = ("src/collector/store.py", ["tests/test_check.py"])
 HANDLER = ("src/collector/handler.py", ["tests/test_handler.py"])
+TEMPLATE = ("template.yaml", ["tests/test_template.py"])
+OPERATIONS = ("docs/operations.md", ["tests/test_template.py"])
+# Rules the R7 table in test_template.py also pins: each of these names the one test that must
+# catch it by itself, so the rule's own test is proved, not only the table.
+_T = "tests/test_template.py::"
+R7_TABLE = ("template.yaml", [_T + "test_schedules_are_ruling_r7"])
+ONE_MINUTE_EACH = ("template.yaml", [_T + "test_no_two_schedules_share_a_start_minute"])
+ONE_RUN_AT_A_TIME = ("template.yaml", [_T + "test_one_chain_never_runs_twice_at_once"])
+RETRY_THREE_HOURS_ON = ("template.yaml", [_T + "test_retry_runs_start_three_hours_after_their_main_run"])
+CHECK_LAST = ("template.yaml", [_T + "test_one_check_after_the_last_retry_run_can_have_finished"])
+ALL_KINDS = ("template.yaml", [_T + "test_each_chain_has_a_run_of_each_mode_over_all_five_kinds"])
+HANDLER_EVENTS = ("template.yaml", [_T + "test_every_event_is_one_the_handler_takes"])
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
 MUTATIONS = {
@@ -496,6 +508,94 @@ MUTATIONS = {
     "store retention not the config's": (HANDLER, "S3Store(s3, cfg.bucket, cfg.retention_days)", "S3Store(s3, cfg.bucket)"),
     "production ping unidentified": (HANDLER, "ping=partial(ping, user_agent=ping_user_agent(cfg.user_agent)),", 'ping=partial(ping, user_agent=""),'),
     "production code_sha not the package's": (HANDLER, "        code_sha=CODE_SHA,\n    )", '        code_sha="",\n    )'),
+    # template: the three the plan names
+    "schedule enabled by default": (TEMPLATE, "    Default: DISABLED\n", "    Default: ENABLED\n"),
+    "delete allowed": (TEMPLATE, "                - s3:PutObjectRetention\n", "                - s3:PutObjectRetention\n                - s3:DeleteObject\n"),
+    "UTC schedule": (TEMPLATE, 'ScheduleExpression: "cron(30 6 * * ? *)"\n            ScheduleExpressionTimezone: Asia/Jerusalem', 'ScheduleExpression: "cron(30 6 * * ? *)"\n            ScheduleExpressionTimezone: UTC'),
+    # template: the bucket
+    "bucket without Object Lock": (TEMPLATE, "      ObjectLockEnabled: true\n", "      ObjectLockEnabled: false\n"),
+    "bucket default retention locks the state files": (TEMPLATE, "      ObjectLockEnabled: true\n", "      ObjectLockEnabled: true\n      ObjectLockConfiguration:\n        ObjectLockEnabled: Enabled\n        Rule:\n          DefaultRetention:\n            Mode: GOVERNANCE\n            Days: 3650\n"),
+    "bucket versioning suspended": (TEMPLATE, "        Status: Enabled\n", "        Status: Suspended\n"),
+    "bucket deleted with the stack": (TEMPLATE, "    DeletionPolicy: Retain\n", "    DeletionPolicy: Delete\n"),
+    "bucket deleted when replaced": (TEMPLATE, "    UpdateReplacePolicy: Retain\n", "    UpdateReplacePolicy: Delete\n"),
+    "public ACLs accepted": (TEMPLATE, "        BlockPublicAcls: true", "        BlockPublicAcls: false"),
+    "public bucket policy accepted": (TEMPLATE, "        BlockPublicPolicy: true", "        BlockPublicPolicy: false"),
+    "public ACLs honoured": (TEMPLATE, "        IgnorePublicAcls: true", "        IgnorePublicAcls: false"),
+    "public bucket not restricted": (TEMPLATE, "        RestrictPublicBuckets: true", "        RestrictPublicBuckets: false"),
+    "ACLs enabled on the bucket": (TEMPLATE, "ObjectOwnership: BucketOwnerEnforced", "ObjectOwnership: ObjectWriter"),
+    "bucket unencrypted": (TEMPLATE, "      BucketEncryption:\n        ServerSideEncryptionConfiguration:\n          - ServerSideEncryptionByDefault:\n              SSEAlgorithm: AES256\n", ""),
+    "a public bucket policy added": (TEMPLATE, "  AlertTopic:\n    Type: AWS::SNS::Topic\n",
+                                     '  OpenPolicy:\n    Type: AWS::S3::BucketPolicy\n    Properties:\n      Bucket: !Ref ArchiveBucket\n      PolicyDocument:\n        Statement:\n          - Effect: Allow\n            Principal: "*"\n            Action: s3:GetObject\n            Resource: !Sub "${ArchiveBucket.Arn}/*"\n\n  AlertTopic:\n    Type: AWS::SNS::Topic\n'),
+    # template: the function
+    "function on x86": (TEMPLATE, "Architectures: [arm64]", "Architectures: [x86_64]"),
+    "function on an older Python": (TEMPLATE, "Runtime: python3.13", "Runtime: python3.12"),
+    "function memory halved": (TEMPLATE, "MemorySize: 512", "MemorySize: 256"),
+    "function timeout cut to five minutes": (TEMPLATE, "      Timeout: 900\n", "      Timeout: 300\n"),
+    "Lambda retries a failed run": (TEMPLATE, "      EventInvokeConfig:\n        MaximumRetryAttempts: 0", "      EventInvokeConfig:\n        MaximumRetryAttempts: 2"),
+    "handler pointed elsewhere": (TEMPLATE, "Handler: collector.handler.handler", "Handler: collector.handler.run"),
+    "code from the repo root": (TEMPLATE, "CodeUri: src/", "CodeUri: ./"),
+    "alert topic not given to the function (R5)": (TEMPLATE, "          ALERT_TOPIC_ARN: !Ref AlertTopic\n", ""),
+    "retention not ten years (R5)": (TEMPLATE, 'RETENTION_DAYS: "3650"', 'RETENTION_DAYS: "365"'),
+    "logs to Lambda's default group": (TEMPLATE, "      LoggingConfig:\n        LogGroup: !Ref CollectorLogs\n", ""),
+    "logs kept forever": (TEMPLATE, "      RetentionInDays: 30\n", ""),
+    "function name not in the outputs": (TEMPLATE, "  CollectorFunctionName:\n    Value: !Ref CollectorFunction\n", ""),
+    # template: the role
+    "governance bypass allowed": (TEMPLATE, "                - s3:PutObjectRetention\n", "                - s3:PutObjectRetention\n                - s3:BypassGovernanceRetention\n"),
+    "bucket settings writable": (TEMPLATE, "                - s3:PutObjectRetention\n", "                - s3:PutObjectRetention\n                - s3:PutBucketObjectLockConfiguration\n"),
+    "S3 full access added": (TEMPLATE, "      Policies:\n        - Statement:\n", "      Policies:\n        - AmazonS3FullAccess\n        - Statement:\n"),
+    "every S3 action on state": (TEMPLATE, "              Action:\n                - s3:GetObject\n                - s3:PutObject\n", '              Action: "s3:*"\n'),
+    "locked writes anywhere in the bucket": (TEMPLATE, '                - !Sub "${ArchiveBucket.Arn}/raw/*"\n                - !Sub "${ArchiveBucket.Arn}/manifests/*"\n                - !Sub "${ArchiveBucket.Arn}/checks/*"\n            # The check reads',
+                                             '                - !Sub "${ArchiveBucket.Arn}/*"\n            # The check reads'),
+    "check records not writable": (TEMPLATE, '                - !Sub "${ArchiveBucket.Arn}/checks/*"\n            # The check reads', "            # The check reads"),
+    "manifests not readable by the check": (TEMPLATE, '              Action: s3:GetObject\n              Resource:\n                - !Sub "${ArchiveBucket.Arn}/raw/*"\n                - !Sub "${ArchiveBucket.Arn}/manifests/*"\n',
+                                            '              Action: s3:GetObject\n              Resource:\n                - !Sub "${ArchiveBucket.Arn}/raw/*"\n'),
+    "state not readable": (TEMPLATE, "                - s3:GetObject\n                - s3:PutObject\n              Resource: !Sub", "                - s3:PutObject\n              Resource: !Sub"),
+    "no ListBucket": (TEMPLATE, "              Action: s3:ListBucket\n", "              Action: s3:ListAllMyBuckets\n"),
+    "a condition on the bucket list": (TEMPLATE, "              Resource: !GetAtt ArchiveBucket.Arn\n", '              Resource: !GetAtt ArchiveBucket.Arn\n              Condition:\n                StringLike:\n                  s3:prefix: ["raw/*"]\n'),
+    "alerts publishable to any topic": (TEMPLATE, "              Resource: !Ref AlertTopic\n", '              Resource: "*"\n'),
+    # template: the parameters and the alert email
+    "User-Agent pattern takes http": (TEMPLATE, r"AllowedPattern: '.*\+https://.*@.*'", r"AllowedPattern: '.*\+https?://.*@.*'"),
+    "User-Agent pattern without the email": (TEMPLATE, r"AllowedPattern: '.*\+https://.*@.*'", r"AllowedPattern: '.*\+https://.*'"),
+    "User-Agent pattern dropped": (TEMPLATE, r"AllowedPattern: '.*\+https://.*@.*'", "AllowedPattern: '.*'"),
+    "health-check URL of any shape": (TEMPLATE, r"AllowedPattern: 'https://hc-ping\.com/[-A-Za-z0-9_/]+'", "AllowedPattern: '.*'"),
+    "health-check URL shown in the stack": (TEMPLATE, "    NoEcho: true\n", "    NoEcho: false\n"),
+    "alert email given a default": (TEMPLATE, "  AlertEmail:\n    Type: String\n", "  AlertEmail:\n    Type: String\n    Default: you@example.org\n"),
+    "schedule switch takes any value": (TEMPLATE, "    AllowedValues: [ENABLED, DISABLED]\n", ""),
+    "alerts not by email": (TEMPLATE, "        - Protocol: email\n", "        - Protocol: email-json\n"),
+    "a ping URL in the template": (TEMPLATE, "e.g. https://hc-ping.com/<uuid>;", "e.g. https://hc-ping.com/0f3e2d1c-5b4a;"),
+    # template: the schedules (ruling R7)
+    "a schedule without a time zone": (TEMPLATE, 'ScheduleExpression: "cron(33 6 * * ? *)"\n            ScheduleExpressionTimezone: Asia/Jerusalem\n', 'ScheduleExpression: "cron(33 6 * * ? *)"\n'),
+    "a misspelled schedule property": (TEMPLATE, 'ScheduleExpression: "cron(39 6 * * ? *)"\n            ScheduleExpressionTimezone: Asia/Jerusalem', 'ScheduleExpression: "cron(39 6 * * ? *)"\n            ScheduleExpressionTimeZone: Asia/Jerusalem'),
+    "a schedule always on": (TEMPLATE, "Input: '{\"mode\": \"check\"}'\n            State: !Ref ScheduleState", "Input: '{\"mode\": \"check\"}'\n            State: ENABLED"),
+    "a flexible start window": (TEMPLATE, "Input: '{\"mode\": \"main\", \"chain\": \"shufersal\", \"kinds\": [\"PriceFull\", \"Price\"]}'\n            State: !Ref ScheduleState\n            FlexibleTimeWindow: {Mode: \"OFF\"}",
+                                "Input: '{\"mode\": \"main\", \"chain\": \"shufersal\", \"kinds\": [\"PriceFull\", \"Price\"]}'\n            State: !Ref ScheduleState\n            FlexibleTimeWindow: {Mode: \"FLEXIBLE\", MaximumWindowInMinutes: 15}"),
+    "OFF unquoted, which YAML reads as false": (TEMPLATE, "Input: '{\"mode\": \"main\", \"chain\": \"osherad\"}'\n            State: !Ref ScheduleState\n            FlexibleTimeWindow: {Mode: \"OFF\"}",
+                                                "Input: '{\"mode\": \"main\", \"chain\": \"osherad\"}'\n            State: !Ref ScheduleState\n            FlexibleTimeWindow: {Mode: OFF}"),
+    "Scheduler retries a failed invoke": (TEMPLATE, "Input: '{\"mode\": \"retry\", \"chain\": \"carrefour\"}'\n            State: !Ref ScheduleState\n            FlexibleTimeWindow: {Mode: \"OFF\"}\n            RetryPolicy: {MaximumRetryAttempts: 0}",
+                                          "Input: '{\"mode\": \"retry\", \"chain\": \"carrefour\"}'\n            State: !Ref ScheduleState\n            FlexibleTimeWindow: {Mode: \"OFF\"}\n            RetryPolicy: {MaximumRetryAttempts: 185}"),
+    "a schedule weekly, not daily": (TEMPLATE, '"cron(39 9 * * ? *)"', '"cron(39 9 ? * SUN *)"'),
+    "a run moved off ruling R7": (R7_TABLE, '"cron(33 6 * * ? *)"', '"cron(34 6 * * ? *)"'),
+    "two schedules share a start minute": (ONE_MINUTE_EACH, '"cron(36 6 * * ? *)"', '"cron(33 6 * * ? *)"'),
+    "Shufersal's runs overlap": (ONE_RUN_AT_A_TIME, '"cron(0 7 * * ? *)"', '"cron(50 6 * * ? *)"'),
+    "a retry run not three hours after its main run": (RETRY_THREE_HOURS_ON, '"cron(42 9 * * ? *)"', '"cron(44 9 * * ? *)"'),
+    "check at the design's 10:00": (CHECK_LAST, '"cron(30 10 * * ? *)"', '"cron(0 10 * * ? *)"'),
+    "check before the last retry run can finish": (CHECK_LAST, '"cron(30 10 * * ? *)"', '"cron(10 10 * * ? *)"'),
+    "a Shufersal group short of a kind (R4)": (ALL_KINDS, "Input: '{\"mode\": \"retry\", \"chain\": \"shufersal\", \"kinds\": [\"PromoFull\", \"Promo\"]}'", "Input: '{\"mode\": \"retry\", \"chain\": \"shufersal\", \"kinds\": [\"PromoFull\"]}'"),
+    "a kind fetched twice by Shufersal": (ALL_KINDS, "Input: '{\"mode\": \"main\", \"chain\": \"shufersal\", \"kinds\": [\"Stores\"]}'", "Input: '{\"mode\": \"main\", \"chain\": \"shufersal\", \"kinds\": [\"Stores\", \"Price\"]}'"),
+    "another chain narrowed to some kinds": (ALL_KINDS, "Input: '{\"mode\": \"main\", \"chain\": \"ramilevy\"}'", "Input: '{\"mode\": \"main\", \"chain\": \"ramilevy\", \"kinds\": [\"PriceFull\"]}'"),
+    "a chain without a retry run": (ALL_KINDS, "Input: '{\"mode\": \"retry\", \"chain\": \"yochananof\"}'", "Input: '{\"mode\": \"main\", \"chain\": \"yochananof\"}'"),
+    "a chain with no main run": (ALL_KINDS, "Input: '{\"mode\": \"main\", \"chain\": \"yochananof\"}'", "Input: '{\"mode\": \"main\", \"chain\": \"osherad\"}'"),
+    "a chain the code does not know": (HANDLER_EVENTS, "Input: '{\"mode\": \"main\", \"chain\": \"carrefour\"}'", "Input: '{\"mode\": \"main\", \"chain\": \"victory\"}'"),
+    "the check given a chain": (HANDLER_EVENTS, "Input: '{\"mode\": \"check\"}'", "Input: '{\"mode\": \"check\", \"chain\": \"shufersal\"}'"),
+    # the operations doc
+    "a manual collecting run started synchronously": (OPERATIONS, "--invocation-type Event --payload '{\"mode\": \"main\", \"chain\": \"ramilevy\"}'", "--payload '{\"mode\": \"main\", \"chain\": \"ramilevy\"}'"),
+    "an aws command in the doc without the project profile": (OPERATIONS, "aws logs tail /il-grocery-prices/collector --follow --since 10m --profile flights-sam --region il-central-1", "aws logs tail /il-grocery-prices/collector --follow --since 10m --region il-central-1"),
+    "sam deploy in the doc without the project profile": (OPERATIONS, "sam deploy --profile flights-sam --region il-central-1 --stack-name", "sam deploy --region il-central-1 --stack-name"),
+    "a chain's manual run missing from the doc": (OPERATIONS, "--payload '{\"mode\": \"main\", \"chain\": \"yochananof\"}'", "--payload '{\"mode\": \"main\", \"chain\": \"osherad\"}'"),
+    "a Shufersal group's manual run cut short in the doc": (OPERATIONS, "--payload '{\"mode\": \"main\", \"chain\": \"shufersal\", \"kinds\": [\"PromoFull\", \"Promo\"]}'", "--payload '{\"mode\": \"main\", \"chain\": \"shufersal\", \"kinds\": [\"PromoFull\"]}'"),
+    "an unknown chain unblocked in the doc": (OPERATIONS, "--payload '{\"mode\": \"unblock\", \"chain\": \"ramilevy\"}'", "--payload '{\"mode\": \"unblock\", \"chain\": \"victory\"}'"),
+    "a real address in the doc": (OPERATIONS, "'AlertEmail=<email>'", "'AlertEmail=owner@mail.example.net'"),
+    "the doc's timetable off the schedules": (OPERATIONS, "| 06:39 | Carrefour", "| 06:40 | Carrefour"),
 }
 
 

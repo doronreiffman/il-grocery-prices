@@ -18,3 +18,4 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: pytest --cov=collector --cov-fail-under=95
       - run: python scripts/mutation_check.py
+      - run: cfn-lint --regions il-central-1 -- template.yaml

@@ -4,6 +4,8 @@ __pycache__/
 .pytest_cache/
 .coverage
 .aws-sam/
+# sam deploy --guided saves the deploy parameters (contact email, ping URL) here
+samconfig.toml
 
 probe-out/
 .superpowers/

@@ -1,0 +1,277 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Collects, every morning, the price files five Israeli supermarket chains publish under the food-competition law, into a write-once S3 bucket.
+
+Parameters:
+  UserAgent:
+    Type: String
+    Description: Names the project and a contact, e.g. "il-grocery-prices/0.1.0 (+https://github.com/you/il-grocery-prices; you@example.org)"
+    # Must carry a +https:// project URL and an email, or the deploy is refused (the code refuses it
+    # too). A value with spaces must be inner-quoted on the sam deploy command line or it is
+    # silently cut at the first space.
+    AllowedPattern: '.*\+https://.*@.*'
+    ConstraintDescription: must contain "+https://<project url>" and a contact email address
+  AlertEmail:
+    Type: String
+    Description: Gets an email when a morning is incomplete after the retry run, a chain is stopped, or a run failed.
+  HealthcheckUrl:
+    Type: String
+    NoEcho: true
+    Description: healthchecks.io ping URL, e.g. https://hc-ping.com/<uuid>; the morning check pings it.
+    AllowedPattern: 'https://hc-ping\.com/[-A-Za-z0-9_/]+'
+    ConstraintDescription: must be a healthchecks.io ping URL, https://hc-ping.com/...
+  ScheduleState:
+    Type: String
+    Default: DISABLED
+    AllowedValues: [ENABLED, DISABLED]
+    Description: Start DISABLED to test the stack with manual runs; redeploy with ENABLED to go live.
+
+Resources:
+  ArchiveBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      # No default retention: the code locks each raw file, manifest and check record for ten
+      # years (governance mode) as it writes it, so the state files stay plain, rewritable puts.
+      ObjectLockEnabled: true
+      VersioningConfiguration:
+        Status: Enabled
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  CollectorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: collector.handler.handler
+      Runtime: python3.13
+      Architectures: [arm64]
+      MemorySize: 512
+      # Lambda's longest run: Shufersal's price files take most of it. A run stops downloading
+      # with under 60 s left and records the rest as not attempted.
+      Timeout: 900
+      # Scheduler invokes asynchronously; Lambda would otherwise run a failed invocation twice more.
+      # The retry run three hours later is the real retry.
+      EventInvokeConfig:
+        MaximumRetryAttempts: 0
+      LoggingConfig:
+        LogGroup: !Ref CollectorLogs
+      Environment:
+        Variables:
+          BUCKET: !Ref ArchiveBucket
+          USER_AGENT: !Ref UserAgent
+          ALERT_TOPIC_ARN: !Ref AlertTopic
+          HEALTHCHECK_URL: !Ref HealthcheckUrl
+          RETENTION_DAYS: "3650"
+      Policies:
+        - Statement:
+            # Raw files, manifests and check records: written once and locked. Each put sets its
+            # own retain-until date, and S3 requires s3:PutObjectRetention to place a retention
+            # configuration on an object (flights-archive's role grants the same pair).
+            - Sid: WriteOnceLocked
+              Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:PutObjectRetention
+              Resource:
+                - !Sub "${ArchiveBucket.Arn}/raw/*"
+                - !Sub "${ArchiveBucket.Arn}/manifests/*"
+                - !Sub "${ArchiveBucket.Arn}/checks/*"
+            # The check reads manifests and store lists; a taken key is compared through
+            # head_object, which needs s3:GetObject.
+            - Sid: ReadStored
+              Effect: Allow
+              Action: s3:GetObject
+              Resource:
+                - !Sub "${ArchiveBucket.Arn}/raw/*"
+                - !Sub "${ArchiveBucket.Arn}/manifests/*"
+                - !Sub "${ArchiveBucket.Arn}/checks/*"
+            # Each chain's stopped latch: plain JSON, read and rewritten.
+            - Sid: ReadWriteState
+              Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+              Resource: !Sub "${ArchiveBucket.Arn}/state/*"
+            # Lists a day's stored files; without it, S3 answers a missing state file with 403
+            # instead of 404.
+            - Sid: ListBucketSoMissingKeyIs404
+              Effect: Allow
+              Action: s3:ListBucket
+              Resource: !GetAtt ArchiveBucket.Arn
+            - Sid: EmailAlerts
+              Effect: Allow
+              Action: sns:Publish
+              Resource: !Ref AlertTopic
+      # Israel time, so daylight saving needs no handling. Shufersal's three invocations start 15
+      # minutes apart (Lambda's longest run), so one chain never gets two requests at once; the
+      # retry runs start three hours after the main ones; the check starts at 10:30, after the
+      # last retry run (10:00) can have finished. No flexible window and no Scheduler retries.
+      Events:
+        MainShufersalStores:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(30 6 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "main", "chain": "shufersal", "kinds": ["Stores"]}'
+            State: !Ref ScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        MainRamiLevy:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(33 6 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "main", "chain": "ramilevy"}'
+            State: !Ref ScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        MainOsherAd:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(36 6 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "main", "chain": "osherad"}'
+            State: !Ref ScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        MainCarrefour:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(39 6 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "main", "chain": "carrefour"}'
+            State: !Ref ScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        MainYochananof:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(42 6 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "main", "chain": "yochananof"}'
+            State: !Ref ScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        MainShufersalPrices:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(45 6 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "main", "chain": "shufersal", "kinds": ["PriceFull", "Price"]}'
+            State: !Ref ScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        MainShufersalPromos:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(0 7 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "main", "chain": "shufersal", "kinds": ["PromoFull", "Promo"]}'
+            State: !Ref ScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        RetryShufersalStores:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(30 9 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "retry", "chain": "shufersal", "kinds": ["Stores"]}'
+            State: !Ref ScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        RetryRamiLevy:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(33 9 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "retry", "chain": "ramilevy"}'
+            State: !Ref ScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        RetryOsherAd:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(36 9 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "retry", "chain": "osherad"}'
+            State: !Ref ScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        RetryCarrefour:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(39 9 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "retry", "chain": "carrefour"}'
+            State: !Ref ScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        RetryYochananof:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(42 9 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "retry", "chain": "yochananof"}'
+            State: !Ref ScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        RetryShufersalPrices:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(45 9 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "retry", "chain": "shufersal", "kinds": ["PriceFull", "Price"]}'
+            State: !Ref ScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        RetryShufersalPromos:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(0 10 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "retry", "chain": "shufersal", "kinds": ["PromoFull", "Promo"]}'
+            State: !Ref ScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        Check:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(30 10 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "check"}'
+            State: !Ref ScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+
+  # Created before the function, under its own name, so the first run can't race CloudFormation
+  # by creating /aws/lambda/<name> with no retention.
+  CollectorLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/${AWS::StackName}/collector"
+      RetentionInDays: 30
+
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription:
+        - Protocol: email
+          Endpoint: !Ref AlertEmail
+
+Outputs:
+  ArchiveBucketName:
+    Value: !Ref ArchiveBucket
+  CollectorFunctionName:
+    Value: !Ref CollectorFunction
