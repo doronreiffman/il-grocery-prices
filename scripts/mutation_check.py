@@ -76,6 +76,7 @@ MUTATIONS = {
     "corrupt gzip escapes as zlib.error": (PAYLOAD, "    except zlib.error:", "    except ValueError:"),
     "UTF-16 Stores file refused": (PAYLOAD, ', UTF16LE_BOM + b"<\\x00")', ")"),
     "UTF-8 BOM before <Root> refused": (PAYLOAD, 'UTF8_BOM + b"<Root>", ', ""),
+    "a bare <Root> refused": (PAYLOAD, 'UTF8_BOM + b"<Root>", b"<Root>", ', 'UTF8_BOM + b"<Root>", '),
     "a zip read as neither gzip nor XML": (PAYLOAD, "    if data.startswith(ZIP_MAGICS):\n        _check_zip(name, data)\n    elif data.startswith(GZIP_MAGIC):", "    if data.startswith(GZIP_MAGIC):"),
     "an empty archive not read as a zip": (PAYLOAD, 'ZIP_MAGICS = (b"PK\\x03\\x04", b"PK\\x05\\x06")', 'ZIP_MAGICS = (b"PK\\x03\\x04",)'),
     "zip members not read through": (PAYLOAD, "                with archive.open(member) as body:\n                    while body.read(READ_CHUNK):\n                        pass\n", "                pass\n"),

@@ -1,11 +1,12 @@
 """Payload checks: a downloaded body must start like a price file, not an error or block page.
 
-The starts seen (docs/portals.md): gzip; `<?xml`; a UTF-8 BOM before `<?xml` or `<Root>`; a UTF-16
-LE BOM before `<` (Rami Levy's and Carrefour's Stores files, which carry no XML declaration). A gzip
-is unzipped whole, so a cut-short or corrupt one is refused (its length and CRC are checked), and
-what it holds must start like XML. A ZIP (Rami Levy store 039's files, under .gz names, 2026-11-01)
-is read whole too, every entry read through, and every file in it must start like XML. Anything else
-is refused: empty, HTML, or unknown.
+The starts seen (docs/portals.md): gzip; `<?xml`; a UTF-8 BOM before `<?xml` or `<Root>`; a bare
+`<Root>` (inside Rami Levy store 039's ZIPs, 2026-11-01); a UTF-16 LE BOM before `<` (Rami Levy's
+and Carrefour's Stores files, which carry no XML declaration). A gzip is unzipped whole, so a cut-
+short or corrupt one is refused (its length and CRC are checked), and what it holds must start like
+XML. A ZIP (Rami Levy store 039's files, under .gz names, 2026-11-01) is read whole too, every entry
+read through, and every file in it must start like XML. Anything else is refused: empty, HTML, or
+unknown.
 """
 import gzip
 import io
@@ -21,7 +22,7 @@ ERROR_CHARS = 200  # of zipfile's error text a refusal shows
 READ_CHUNK = 1 << 20  # bytes read at a time when a member is read through
 UTF8_BOM = b"\xef\xbb\xbf"
 UTF16LE_BOM = b"\xff\xfe"
-XML_STARTS = (b"<?xml", UTF8_BOM + b"<?xml", UTF8_BOM + b"<Root>", UTF16LE_BOM + b"<\x00")
+XML_STARTS = (b"<?xml", UTF8_BOM + b"<?xml", UTF8_BOM + b"<Root>", b"<Root>", UTF16LE_BOM + b"<\x00")
 HTML_STARTS = (b"<!doctype html", b"<html")
 HEAD_BYTES = 1024  # enough to see past leading whitespace to the first tag
 

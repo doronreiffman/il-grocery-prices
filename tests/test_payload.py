@@ -39,6 +39,8 @@ def test_every_fixture_file_passes():
     pytest.param(b'<?xml version="1.0" encoding="UTF-8"?><Root/>', id="<?xml"),
     pytest.param(UTF8_BOM + b'<?xml version="1.0" encoding="UTF-8"?><Root/>', id="BOM, <?xml"),
     pytest.param(UTF8_BOM + b"<Root>\r\n</Root>", id="BOM, <Root>"),
+    pytest.param(b"<Root>\r\n  <ChainId>7290058140886</ChainId>\r\n</Root>", id="a bare <Root> (Rami Levy store 039)"),
+    pytest.param(gzip.compress(b"<Root>\r\n</Root>"), id="gzip, a bare <Root>"),
     pytest.param(UTF16LE_BOM + "<Root><ChainID>7290058140886</ChainID></Root>".encode("utf-16-le"),
                  id="UTF-16 LE (NCR and Carrefour Stores)"),
 ])
@@ -72,6 +74,7 @@ def test_html_refused_as_html(data):
     pytest.param(b'{"error": "not found"}', "neither gzip nor XML", id="JSON"),
     pytest.param(b"PK\x03\x04\x14\x00", "the zip is cut short or corrupt", id="a zip header alone"),
     pytest.param(gzip.compress(b"hello"), "the gzip holds no XML", id="gzip of text"),
+    pytest.param(b"<root>\r\n</root>", "neither gzip nor XML", id="a bare <root> in lower case"),
     pytest.param(gzip.compress(b""), "the gzip holds no XML", id="gzip of nothing"),
     pytest.param(gzip.compress(gzip.compress(HTML_PAGE)), "the gzip holds no XML", id="gzip of a gzip"),
     pytest.param(b"\x1f\x8b\x08junkjunkjunk", "cut short or corrupt", id="corrupt gzip header"),
@@ -129,6 +132,8 @@ def a_zip(*members, compression=zipfile.ZIP_DEFLATED):
     pytest.param(a_zip(("price.xml", PRICE_XML), compression=zipfile.ZIP_STORED), id="stored, not deflated"),
     pytest.param(a_zip(("a.xml", PRICE_XML), ("b.xml", b'<?xml version="1.0"?><Root/>')), id="two XML members"),
     pytest.param(a_zip(("stores.xml", UTF16LE_BOM + "<Root/>".encode("utf-16-le"))), id="a UTF-16 member"),
+    pytest.param(a_zip(("Price7290058140886-039-202611011002.xml", b"<Root>\r\n  <ChainId>7290058140886</ChainId>\r\n</Root>")),
+                 id="a bare <Root> member, as store 039's"),
 ])
 def test_a_zip_of_xml_is_accepted(data):
     check_payload(NAME, data)
