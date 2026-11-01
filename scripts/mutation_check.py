@@ -6,13 +6,15 @@
 Each mutation names the file it breaks and the test files that must catch it. It edits source files
 in place while it runs: run nothing else from this checkout until it finishes. Files are restored
 afterwards. Exit code 1 if any mutation goes unnoticed, or if its text to break is not found exactly
-once (the script is out of date).
+once (the script is out of date). Exit code 2, before anything runs, if two entries share a name: the
+dict literal would keep only the last, and the first would never run.
 
 Copied from flights-archive's harness, with one change: the test runs write no bytecode. Python
 trusts a cached .pyc whose source has the same size and the same whole-second mtime, so a
 same-length mutation written and restored within one second could otherwise leave the broken code
 cached for the next run.
 """
+import ast
 import os
 import subprocess
 import sys
@@ -468,6 +470,7 @@ MUTATIONS = {
     # handler: the check, its email and its ping
     "check of one chain only": (HANDLER, "check_day(deps.store, list(CHAINS), day)", 'check_day(deps.store, ["shufersal"], day)'),
     "email without alerts": (HANDLER, "    if alerts:\n        deps.publish(subject, body)", "    if True:\n        deps.publish(subject, body)"),
+    "alerts logged on a quiet morning": (HANDLER, "    if alerts:\n        subject, body = message(day, alerts, key)", "    if True:\n        subject, body = message(day, alerts, key)"),
     "check record written only with alerts": (HANDLER, "    deps.store.put_record(key, json.dumps(record, sort_keys=True, indent=1).encode(), now)\n    if alerts:\n",
                                               "    if alerts:\n        deps.store.put_record(key, json.dumps(record, sort_keys=True, indent=1).encode(), now)\n"),
     "check record without the code's fingerprint": (HANDLER, ', "code_sha": deps.code_sha}', "}"),
@@ -610,8 +613,23 @@ MUTATIONS = {
 }
 
 
+def duplicate_names(source: str) -> list[str]:
+    """The names more than one entry of the MUTATIONS literal in `source` gives: a dict literal keeps
+    only the last entry under a name, so the dict itself cannot show them; the source can."""
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "MUTATIONS" for t in node.targets):
+            names = [key.value if isinstance(key, ast.Constant) else ast.unparse(key)
+                     for key in node.value.keys if key is not None]  # None: a ** unpacking
+            return sorted({name for name in names if names.count(name) > 1}, key=str)
+    raise RuntimeError("no MUTATIONS = {...} in the source")
+
+
 def main(wanted: list[str]) -> int:
     """Run every mutation, or with `wanted` only those whose name contains one of its strings."""
+    duplicates = duplicate_names(Path(__file__).read_text())
+    if duplicates:
+        print(f"DUPLICATE mutation names, each given to more than one entry (only the last would run): {duplicates}")
+        return 2
     chosen = {name: m for name, m in MUTATIONS.items() if not wanted or any(w in name for w in wanted)}
     if not chosen:
         print(f"No mutation name contains any of {wanted}.")

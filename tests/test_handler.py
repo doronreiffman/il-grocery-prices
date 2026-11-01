@@ -314,15 +314,19 @@ def test_check_with_alerts_writes_the_record_emails_once_then_pings():
     assert summary == {"mode": "check", "day": "2026-10-31", "run_id": run_id, "record": key, "alerts": 5}
 
 
-def test_check_without_alerts_writes_the_record_and_pings_without_email():
+def test_check_without_alerts_writes_the_record_and_pings_without_email(caplog):
     deps = make_deps()
     clean_day(deps.store)
-    summary = run(CFG, {"mode": "check"}, deps, NOW)
+    with caplog.at_level(logging.INFO, logger="collector.handler"):
+        summary = run(CFG, {"mode": "check"}, deps, NOW)
     key = check_key(DAY, summary["run_id"])
     assert deps.events[-2:] == [("record", key), "ping"]
     assert deps.publish.calls == []
     assert json.loads(deps.store.read_raw(key))["alerts"] == []
     assert summary["alerts"] == 0 and deps.ping.calls[0][0] == HEALTHCHECK
+    handler_records = [r for r in caplog.records if r.name == "collector.handler"]
+    assert any(r.levelno == logging.INFO for r in handler_records)  # the summary: the log was captured
+    assert not [r for r in handler_records if r.levelno >= logging.WARNING]  # no alert text logged
 
 
 LATCH = {"stopped": True, "since": "x", "reason": "HTTP 429", "alerted": False}
