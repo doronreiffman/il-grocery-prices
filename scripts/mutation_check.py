@@ -45,9 +45,9 @@ R7_TABLE = ("template.yaml", [_T + "test_schedules_are_rulings_r7_and_r30"])
 ONE_MINUTE_EACH = ("template.yaml", [_T + "test_no_two_schedules_share_a_start_minute"])
 ONE_RUN_AT_A_TIME = ("template.yaml", [_T + "test_one_chain_never_runs_twice_at_once"])
 ONE_HOST_AT_A_TIME = ("template.yaml", [_T + "test_one_portal_host_never_serves_two_runs_at_once"])
-RETRY_THREE_HOURS_ON = ("template.yaml", [_T + "test_retry_runs_start_three_hours_after_their_main_run"])
+RETRY_THREE_HOURS_ON = ("template.yaml", [_T + "test_retry_runs_start_three_hours_after_the_first_main_run_of_their_kinds"])
 CHECK_LAST = ("template.yaml", [_T + "test_one_check_after_the_last_retry_run_can_have_finished"])
-ALL_KINDS = ("template.yaml", [_T + "test_each_chain_has_a_run_of_each_mode_over_all_five_kinds"])
+ALL_KINDS = ("template.yaml", [_T + "test_each_chain_has_runs_of_each_mode_over_the_kinds_it_collects"])
 HANDLER_EVENTS = ("template.yaml", [_T + "test_every_event_is_one_the_handler_takes"])
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
@@ -119,7 +119,9 @@ MUTATIONS = {
     "a password field": (CHAINS, "    username: str | None = None\n", '    username: str | None = None\n    password: str = ""\n'),
     "a password attribute that is not a field": (CHAINS, "    username: str | None = None\n", '    username: str | None = None\n    password = ""\n'),
     "username defaults to empty, not None": (CHAINS, "    username: str | None = None", '    username: str | None = ""'),
-    "Shufersal waits only 30 s": (CHAINS, '"https://prices.shufersal.co.il", timeout=60.0),', '"https://prices.shufersal.co.il"),'),
+    "Shufersal waits only 30 s": (CHAINS, '"https://prices.shufersal.co.il", timeout=60.0,', '"https://prices.shufersal.co.il",'),
+    "Shufersal collects every kind": (CHAINS, '\n          kinds=("Stores", "PriceFull", "PromoFull")),', "),"),
+    "chains collect only the full files by default": (CHAINS, "    kinds: tuple[str, ...] = KINDS\n", '    kinds: tuple[str, ...] = ("Stores", "PriceFull", "PromoFull")\n'),
     "chains wait 60 s by default": (CHAINS, "    timeout: float = 30.0\n", "    timeout: float = 60.0\n"),
     "an http base URL": (CHAINS, '"https://prices.carrefour.co.il"', '"http://prices.carrefour.co.il"'),
     "the NCR portal over http": (CHAINS, 'NCR_URL = "https://url.publishedprices.co.il"', 'NCR_URL = "http://url.publishedprices.co.il"'),
@@ -337,8 +339,9 @@ MUTATIONS = {
     # run: choosing that day's files
     "older files selected": (RUN, "        if item.name.day != self.day or", "        if item.name.day > self.day or"),
     "kinds not filtered again": (RUN, " or item.name.kind not in self.kinds:", ":"),
-    "unknown kinds accepted": (RUN, "    if not kinds or not set(kinds) <= set(KINDS):", "    if not kinds:"),
-    "no kinds accepted": (RUN, "    if not kinds or not set(kinds) <= set(KINDS):", "    if not set(kinds) <= set(KINDS):"),
+    "unknown kinds accepted": (RUN, "    if not kinds or not set(kinds) <= set(chain.kinds):", "    if not kinds:"),
+    "no kinds accepted": (RUN, "    if not kinds or not set(kinds) <= set(chain.kinds):", "    if not set(kinds) <= set(chain.kinds):"),
+    "kinds the chain does not collect accepted": (RUN, "set(kinds) <= set(chain.kinds)", "set(kinds) <= {'Stores', 'PriceFull', 'PromoFull', 'Price', 'Promo'}"),
     "kinds not recorded (R4)": (RUN, "RunResult(chain.slug, run_id, mode, day, list(kinds))", "RunResult(chain.slug, run_id, mode, day, [])"),
     "stored name taken from the listing, not the link (R16)": (RUN, "        name = stored_name(item)\n", "        name = item.name.raw\n"),
     "stored name keeps the link's query (R16)": (RUN, '    return urllib.parse.urlsplit(item.url).path.rsplit("/", 1)[-1]', '    return item.url.rsplit("/", 1)[-1]'),
@@ -414,8 +417,11 @@ MUTATIONS = {
                                        'listed = {name for manifest in manifests if manifest["mode"] == "retry" for name in manifest["listed"]}'),
     "missing judged against another day's files": (CHECK, "    stored = store.stored_names(slug, day)\n", "    stored = store.stored_names(slug, day - timedelta(days=1))\n"),
     "manifests of every day read": (CHECK, '    prefix = manifest_key(day, "", "").rsplit("/", 1)[0] + "/"', '    prefix = "manifests/"'),
-    "a chain reads every chain's manifests": (CHECK, "_check_chain(store, slug, day, manifests.get(slug, []))",
-                                              "_check_chain(store, slug, day, [m for ms in manifests.values() for m in ms])"),
+    "a chain reads every chain's manifests": (CHECK, "_check_chain(store, slug, day, manifests.get(slug, []), expected)",
+                                              "_check_chain(store, slug, day, [m for ms in manifests.values() for m in ms], expected)"),
+    "the check ignores the kinds it is given": (CHECK, "(kinds or {}).get(slug, KINDS)", "KINDS"),
+    "a chain left out of kinds held to none": (CHECK, "(kinds or {}).get(slug, KINDS)", "(kinds or {}).get(slug, ())"),
+    "uncovered kinds read from all five, not the chain's": (CHECK, "    uncovered = [kind for kind in kinds if kind not in covered]", "    uncovered = [kind for kind in KINDS if kind not in covered]"),
     "conflict copy not counted as stored by the check": (STORE_FOR_CHECK, '    return copy["name"] if copy else name', "    return name"),
     # check: stopped chains
     "stopped alerted every check": (CHECK, 'if state.get("stopped") and not state.get("alerted"):', 'if state.get("stopped"):'),
@@ -430,7 +436,7 @@ MUTATIONS = {
     # check: failed runs (R4)
     "retry manifest not required": (CHECK, "    if uncovered:\n        problems.append", "    if False:\n        problems.append"),
     "main runs stand in for the retry (R4)": (CHECK, '    retries = [manifest for manifest in manifests if manifest["mode"] == "retry"]', "    retries = list(manifests)"),
-    "one retry run enough for every kind (R4)": (CHECK, "    uncovered = [kind for kind in KINDS if kind not in covered]", "    uncovered = [] if retries else list(KINDS)"),
+    "one retry run enough for every kind (R4)": (CHECK, "    uncovered = [kind for kind in kinds if kind not in covered]", "    uncovered = [] if retries else list(kinds)"),
     "retry error not alerted (R4)": (CHECK, 'for manifest in retries if manifest["error"]]', "for manifest in retries if False]"),
     "blocked retry read as failed (R4)": (CHECK, 'for manifest in retries if manifest["error"]]', 'for manifest in retries if manifest["error"] or manifest["blocked"]]'),
     # check: retry runs that list nothing (R31)
@@ -464,8 +470,9 @@ MUTATIONS = {
     "day in UTC": (HANDLER, "    day = now.astimezone(ISRAEL).date()", "    day = now.astimezone(timezone.utc).date()"),
     "naive now accepted by the handler": (HANDLER, '    if now.tzinfo is None or now.utcoffset() is None:\n        raise ValueError("now must carry a time zone")',
                                           '    if False:\n        raise ValueError("now must carry a time zone")'),
-    "kinds from the event ignored": (HANDLER, '    kinds = tuple(event["kinds"]) if "kinds" in event else KINDS', "    kinds = KINDS"),
-    "default kinds not all five": (HANDLER, 'if "kinds" in event else KINDS', 'if "kinds" in event else KINDS[1:]'),
+    "kinds from the event ignored": (HANDLER, '    kinds = tuple(event["kinds"]) if "kinds" in event else chain.kinds', "    kinds = chain.kinds"),
+    "default kinds all five, not the chain's": (HANDLER, 'if "kinds" in event else chain.kinds', 'if "kinds" in event else ("Stores", "PriceFull", "PromoFull", "Price", "Promo")'),
+    "default kinds short of the chain's": (HANDLER, 'if "kinds" in event else chain.kinds', 'if "kinds" in event else chain.kinds[1:]'),
     "run id under another mode": (HANDLER, "    run_id = new_run_id(now, mode)", '    run_id = new_run_id(now, "main")'),
     "mode not given to the run loop": (HANDLER, "deps.store, day, run_id, mode,", 'deps.store, day, run_id, "main",'),
     "one Http for every chain": (HANDLER, "deps.http_for(chain.slug)", 'deps.http_for("shufersal")'),
@@ -485,7 +492,8 @@ MUTATIONS = {
     "unblock leaves the state": (HANDLER, "    deps.store.write_state(chain.slug, {})", "    pass"),
     "unblock clears every chain": (HANDLER, "    deps.store.write_state(chain.slug, {})", "    [deps.store.write_state(slug, {}) for slug in CHAINS]"),
     # handler: the check, its email and its ping
-    "check of one chain only": (HANDLER, "check_day(deps.store, list(CHAINS), day)", 'check_day(deps.store, ["shufersal"], day)'),
+    "check of one chain only": (HANDLER, "check_day(deps.store, list(CHAINS), day,", 'check_day(deps.store, ["shufersal"], day,'),
+    "the check given no chain's kinds": (HANDLER, ", kinds={slug: c.kinds for slug, c in CHAINS.items()})", ")"),
     "email without alerts": (HANDLER, "    if alerts:\n        deps.publish(subject, body)", "    if True:\n        deps.publish(subject, body)"),
     "alerts logged on a quiet morning": (HANDLER, "    if alerts:\n        subject, body = message(day, alerts, key)", "    if True:\n        subject, body = message(day, alerts, key)"),
     "check record written only with alerts": (HANDLER, "    deps.store.put_record(key, json.dumps(record, sort_keys=True, indent=1).encode(), now)\n    if alerts:\n",
@@ -499,8 +507,8 @@ MUTATIONS = {
     "ping failure raises": (HANDLER, "    except Exception as exc:  # the morning is checked", "    except ZeroDivisionError as exc:  # the morning is checked"),
     "ping skipped": (HANDLER, "        deps.ping(cfg.healthcheck_url, json.dumps(summary, sort_keys=True))", "        pass"),
     "ping to another address": (HANDLER, "deps.ping(cfg.healthcheck_url,", "deps.ping(cfg.alert_topic_arn,"),
-    "ping sent before the check": (HANDLER, "    alerts, record = check_day(deps.store, list(CHAINS), day)",
-                                   '    deps.ping(cfg.healthcheck_url, "started")\n    alerts, record = check_day(deps.store, list(CHAINS), day)'),
+    "ping sent before the check": (HANDLER, "    alerts, record = check_day(deps.store, list(CHAINS), day,",
+                                   '    deps.ping(cfg.healthcheck_url, "started")\n    alerts, record = check_day(deps.store, list(CHAINS), day,'),
     "ping sent before the email": (HANDLER, "        deps.publish(subject, body)\n", '        deps.ping(cfg.healthcheck_url, "")\n        deps.publish(subject, body)\n'),
     "subject of 100 characters accepted": (HANDLER, "    if len(named) < SUBJECT_LIMIT:", "    if len(named) <= SUBJECT_LIMIT:"),
     "subject names no chains": (HANDLER, "        subject = named\n", "        pass\n"),
@@ -598,8 +606,9 @@ MUTATIONS = {
     "a schedule without a time zone": (TEMPLATE, 'ScheduleExpression: "cron(33 6 * * ? *)"\n            ScheduleExpressionTimezone: Asia/Jerusalem\n', 'ScheduleExpression: "cron(33 6 * * ? *)"\n'),
     "a misspelled schedule property": (TEMPLATE, 'ScheduleExpression: "cron(39 6 * * ? *)"\n            ScheduleExpressionTimezone: Asia/Jerusalem', 'ScheduleExpression: "cron(39 6 * * ? *)"\n            ScheduleExpressionTimeZone: Asia/Jerusalem'),
     "a schedule always on": (TEMPLATE, "Input: '{\"mode\": \"check\"}'\n            State: !Ref ScheduleState", "Input: '{\"mode\": \"check\"}'\n            State: ENABLED"),
-    "a flexible start window": (TEMPLATE, "Input: '{\"mode\": \"main\", \"chain\": \"shufersal\", \"kinds\": [\"PriceFull\", \"Price\"]}'\n            State: !Ref ScheduleState\n            FlexibleTimeWindow: {Mode: \"OFF\"}",
-                                "Input: '{\"mode\": \"main\", \"chain\": \"shufersal\", \"kinds\": [\"PriceFull\", \"Price\"]}'\n            State: !Ref ScheduleState\n            FlexibleTimeWindow: {Mode: \"FLEXIBLE\", MaximumWindowInMinutes: 15}"),
+    "a flexible start window": (TEMPLATE, "Input: '{\"mode\": \"main\", \"chain\": \"shufersal\", \"kinds\": [\"Stores\"]}'\n            State: !Ref ScheduleState\n            FlexibleTimeWindow: {Mode: \"OFF\"}",
+                                "Input: '{\"mode\": \"main\", \"chain\": \"shufersal\", \"kinds\": [\"Stores\"]}'\n            State: !Ref ScheduleState\n            FlexibleTimeWindow: {Mode: \"FLEXIBLE\", MaximumWindowInMinutes: 15}"),
+    "Shufersal's promotion retry three hours after the wrong run": (TEMPLATE, '"cron(15 10 * * ? *)"', '"cron(0 10 * * ? *)"'),
     "OFF unquoted, which YAML reads as false": (TEMPLATE, "Input: '{\"mode\": \"main\", \"chain\": \"osherad\"}'\n            State: !Ref ScheduleState\n            FlexibleTimeWindow: {Mode: \"OFF\"}",
                                                 "Input: '{\"mode\": \"main\", \"chain\": \"osherad\"}'\n            State: !Ref ScheduleState\n            FlexibleTimeWindow: {Mode: OFF}"),
     "Scheduler retries a failed invoke": (TEMPLATE, "Input: '{\"mode\": \"retry\", \"chain\": \"carrefour\"}'\n            State: !Ref ScheduleState\n            FlexibleTimeWindow: {Mode: \"OFF\"}\n            RetryPolicy: {MaximumRetryAttempts: 0}",
@@ -610,10 +619,11 @@ MUTATIONS = {
     "Shufersal's runs overlap": (ONE_RUN_AT_A_TIME, '"cron(0 7 * * ? *)"', '"cron(50 6 * * ? *)"'),
     "two NCR chains 3 minutes apart (R30)": (ONE_HOST_AT_A_TIME, '"cron(48 6 * * ? *)"', '"cron(36 6 * * ? *)"'),
     "a retry run not three hours after its main run": (RETRY_THREE_HOURS_ON, '"cron(3 10 * * ? *)"', '"cron(5 10 * * ? *)"'),
-    "check at the design's 10:00": (CHECK_LAST, '"cron(30 10 * * ? *)"', '"cron(0 10 * * ? *)"'),
-    "check before the last retry run can finish": (CHECK_LAST, '"cron(30 10 * * ? *)"', '"cron(10 10 * * ? *)"'),
-    "a Shufersal group short of a kind (R4)": (ALL_KINDS, "Input: '{\"mode\": \"retry\", \"chain\": \"shufersal\", \"kinds\": [\"PromoFull\", \"Promo\"]}'", "Input: '{\"mode\": \"retry\", \"chain\": \"shufersal\", \"kinds\": [\"PromoFull\"]}'"),
-    "a kind fetched twice by Shufersal": (ALL_KINDS, "Input: '{\"mode\": \"main\", \"chain\": \"shufersal\", \"kinds\": [\"Stores\"]}'", "Input: '{\"mode\": \"main\", \"chain\": \"shufersal\", \"kinds\": [\"Stores\", \"Price\"]}'"),
+    "check at the design's 10:00": (CHECK_LAST, '"cron(45 10 * * ? *)"', '"cron(0 10 * * ? *)"'),
+    "check before the last retry run can finish": (CHECK_LAST, '"cron(45 10 * * ? *)"', '"cron(10 10 * * ? *)"'),
+    "check with no margin after the last retry run": (CHECK_LAST, '"cron(45 10 * * ? *)"', '"cron(30 10 * * ? *)"'),
+    "Shufersal's retries short of a kind (R4)": (ALL_KINDS, "Input: '{\"mode\": \"retry\", \"chain\": \"shufersal\", \"kinds\": [\"PromoFull\"]}'", "Input: '{\"mode\": \"retry\", \"chain\": \"shufersal\", \"kinds\": [\"PriceFull\"]}'"),
+    "Shufersal's store-list run also fetching full prices": (ALL_KINDS, "Input: '{\"mode\": \"main\", \"chain\": \"shufersal\", \"kinds\": [\"Stores\"]}'", "Input: '{\"mode\": \"main\", \"chain\": \"shufersal\", \"kinds\": [\"Stores\", \"PriceFull\"]}'"),
     "another chain narrowed to some kinds": (ALL_KINDS, "Input: '{\"mode\": \"main\", \"chain\": \"ramilevy\"}'", "Input: '{\"mode\": \"main\", \"chain\": \"ramilevy\", \"kinds\": [\"PriceFull\"]}'"),
     "a chain without a retry run": (ALL_KINDS, "Input: '{\"mode\": \"retry\", \"chain\": \"yochananof\"}'", "Input: '{\"mode\": \"main\", \"chain\": \"yochananof\"}'"),
     "a chain with no main run": (ALL_KINDS, "Input: '{\"mode\": \"main\", \"chain\": \"yochananof\"}'", "Input: '{\"mode\": \"main\", \"chain\": \"osherad\"}'"),
@@ -624,7 +634,7 @@ MUTATIONS = {
     "an aws command in the doc without the project profile": (OPERATIONS, "aws logs tail /il-grocery-prices/collector --follow --since 10m --profile flights-sam --region il-central-1", "aws logs tail /il-grocery-prices/collector --follow --since 10m --region il-central-1"),
     "sam deploy in the doc without the project profile": (OPERATIONS, "sam deploy --profile flights-sam --region il-central-1 --stack-name", "sam deploy --region il-central-1 --stack-name"),
     "a chain's manual run missing from the doc": (OPERATIONS, "--payload '{\"mode\": \"main\", \"chain\": \"yochananof\"}'", "--payload '{\"mode\": \"main\", \"chain\": \"osherad\"}'"),
-    "a Shufersal group's manual run cut short in the doc": (OPERATIONS, "--payload '{\"mode\": \"main\", \"chain\": \"shufersal\", \"kinds\": [\"PromoFull\", \"Promo\"]}'", "--payload '{\"mode\": \"main\", \"chain\": \"shufersal\", \"kinds\": [\"PromoFull\"]}'"),
+    "a Shufersal manual run missing from the doc": (OPERATIONS, "--payload '{\"mode\": \"main\", \"chain\": \"shufersal\", \"kinds\": [\"Stores\"]}'", "--payload '{\"mode\": \"main\", \"chain\": \"shufersal\", \"kinds\": [\"PriceFull\"]}'"),
     "an unknown chain unblocked in the doc": (OPERATIONS, "--payload '{\"mode\": \"unblock\", \"chain\": \"ramilevy\"}'", "--payload '{\"mode\": \"unblock\", \"chain\": \"victory\"}'"),
     "a real address in the doc": (OPERATIONS, "'AlertEmail=<email>'", "'AlertEmail=owner@mail.example.net'"),
     "the doc's timetable off the schedules": (OPERATIONS, "| 06:39 | Carrefour", "| 06:40 | Carrefour"),

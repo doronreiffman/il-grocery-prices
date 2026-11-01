@@ -13,7 +13,7 @@ The chains keep only their latest files online. Shufersal's listing shows only t
 
 ## What it does
 
-Every morning, in AWS's Tel Aviv region, for each chain in scope: read the chain's file listing; download that day's store list, every store's full price file and full promotions file, and any update files already listed for that day; store each file exactly as received, write-once, in a private S3 bucket; write a manifest of what was expected, fetched and missing; and email the owner only when a chain's morning is still incomplete after the retry run.
+Every morning, in AWS's Tel Aviv region, for each chain in scope: read the chain's file listing; download that day's store list, every store's full price file and full promotions file, and any update files already listed for that day; store each file exactly as received, write-once, in a private S3 bucket; write a manifest of what was expected, fetched and missing; and email the owner only when a chain's morning is still incomplete after the retry run. (Shufersal: its store list and full files only since 2026-11-01, `.claude/DECISIONS.md`.)
 
 ## Legal basis
 
@@ -24,7 +24,7 @@ Every morning, in AWS's Tel Aviv region, for each chain in scope: read the chain
 
 ## Goals
 
-- Every day from the first deploy: the store list, every store's full price and full promotions files, and the update files already listed at the morning run, for each chain in scope, stored byte for byte as received.
+- Every day from the first deploy: the store list, every store's full price and full promotions files, and the update files already listed at the morning run, for each chain in scope, stored byte for byte as received. (Shufersal: its store list and full files only since 2026-11-01, `.claude/DECISIONS.md`.)
 - Every morning, a record of what is missing, and an email when a file the chain listed for that day is still not stored.
 - Polite and identified: one request at a time, a contact address in the User-Agent.
 - About $1 to $3 a month in the first year.
@@ -32,7 +32,7 @@ Every morning, in AWS's Tel Aviv region, for each chain in scope: read the chain
 ## Non-goals (version one)
 
 - Parsing prices or promotions. The collector reads listings, file names and the store list only; reading prices and promotions is the processing pipeline's job, designed later.
-- Polling through the day for update files. The morning run stores the update files listed at that moment (owner, 2026-10-31); every run carries a run id so a polling run can be added later without reworking storage.
+- Polling through the day for update files. The morning run stores the update files listed at that moment (owner, 2026-10-31); every run carries a run id so a polling run can be added later without reworking storage. (Shufersal: its store list and full files only since 2026-11-01, `.claude/DECISIONS.md`.)
 - Republishing raw files.
 - Airflow. The collector is a small scheduled Lambda; Airflow arrives with the processing pipeline, where it earns its place.
 - Chains outside the list below.
@@ -113,7 +113,7 @@ The usernames are public (the government prints them) and there are no passwords
 
 ## Owner's decisions (2026-10-31)
 
-1. **Update files:** the morning run also stores the update files listed at that moment; no polling through the day in version one.
+1. **Update files:** the morning run also stores the update files listed at that moment; no polling through the day in version one. (Shufersal: its store list and full files only since 2026-11-01, `.claude/DECISIONS.md`.)
 2. **Object Lock:** on, governance mode, ten-year default retention.
 
 ## Calls made in this draft (the owner can overturn any)
@@ -128,6 +128,6 @@ The usernames are public (the government prints them) and there are no passwords
 
 - The NCR portal's mechanics, through a first probe: one login with a published username, today's file list, one download.
 - Whether Carrefour answers from il-central-1, through the same kind of probe; dropped if it doesn't.
-- The pause length, timeouts, and the split of long chains into several invocations. (Set: a 0.5 s pause, a 30 s timeout per socket operation, 60 s for Shufersal (`Chain.timeout`); the split is open, `.claude/OPEN_ISSUES.md`.)
+- The pause length, timeouts, and the split of long chains into several invocations. (Set: a 0.5 s pause, a 30 s timeout per socket operation, 60 s for Shufersal (`Chain.timeout`); the split: Shufersal one kind an invocation, each full kind twice in the morning, `.claude/DECISIONS.md`, 2026-11-01.)
 - Each chain's coverage threshold, set from the first two weeks.
 - Code layout, the test fixtures, the deploy template.

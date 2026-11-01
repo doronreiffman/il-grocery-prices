@@ -10,8 +10,9 @@ For each chain, from that day's manifests (every run's, main and retry alike) an
   changes no state: once the email has gone, mark_alerted marks the chain `alerted: true` (its
   reason kept), so later checks stay quiet until the owner clears it; an email that fails leaves
   the state alone, and the next check alerts again (ruling R26).
-- failed (ruling R4): that day's retry manifests do not together cover all five kinds (Shufersal
-  runs as three invocations), or one of them has an error → one `failed` alert. A retry manifest
+- failed (ruling R4): that day's retry manifests do not together cover the kinds the chain collects
+  (all five, or the chain's `kinds` when given: Shufersal's store list and full files, each in its own
+  run), or one of them has an error → one `failed` alert. A retry manifest
   that is blocked with no error is not a failed run: the `stopped` alert covers it. A main run's
   error is left to the retry run. Ruling R31: retry runs that together list nothing for the day,
   none of them blocked, are a failed run too, with the sum of their unparsed names: a portal change
@@ -23,6 +24,7 @@ For each chain, from that day's manifests (every run's, main and retry alike) an
   list, one that names no stores, or one that cannot be read makes the ratio "unknown".
 """
 import json
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import date, timedelta
 from typing import Literal
@@ -43,14 +45,17 @@ class Alert:
     text: str
 
 
-def check_day(store, slugs: list[str], day: date) -> tuple[list[Alert], dict]:
+def check_day(store, slugs: list[str], day: date,
+              kinds: Mapping[str, tuple[str, ...]] | None = None) -> tuple[list[Alert], dict]:
     """The alerts for `day` and the check record: per chain, the listed and stored counts, the
-    missing names, whether it is stopped, why its runs failed, and its coverage. Reads only."""
+    missing names, whether it is stopped, why its runs failed, and its coverage. `kinds` gives the
+    kinds a chain collects; a chain it leaves out is held to all five. Reads only."""
     manifests = _manifests(store, day)
     alerts: list[Alert] = []
     chains = {}
     for slug in slugs:
-        chain_alerts, chains[slug] = _check_chain(store, slug, day, manifests.get(slug, []))
+        expected = (kinds or {}).get(slug, KINDS)
+        chain_alerts, chains[slug] = _check_chain(store, slug, day, manifests.get(slug, []), expected)
         alerts += chain_alerts
     return alerts, {"day": day.isoformat(), "chains": chains, "alerts": [asdict(alert) for alert in alerts]}
 
@@ -76,7 +81,8 @@ def _manifests(store, day: date) -> dict[str, list[dict]]:
     return by_chain
 
 
-def _check_chain(store, slug: str, day: date, manifests: list[dict]) -> tuple[list[Alert], dict]:
+def _check_chain(store, slug: str, day: date, manifests: list[dict],
+                 kinds: tuple[str, ...]) -> tuple[list[Alert], dict]:
     """The chain's alerts and its part of the record."""
     alerts = []
     listed = {name for manifest in manifests for name in manifest["listed"]}
@@ -88,7 +94,7 @@ def _check_chain(store, slug: str, day: date, manifests: list[dict]) -> tuple[li
     if state.get("stopped") and not state.get("alerted"):
         alerts.append(Alert(slug, "stopped", f"{slug} is stopped since {state.get('since')}: {state.get('reason')}. "
                                              "Nothing is fetched from it until an unblock run clears it."))
-    failure = _failure(manifests)
+    failure = _failure(manifests, kinds)
     if failure:
         alerts.append(Alert(slug, "failed", f"{slug}: a retry run is missing or failed: {failure}."))
     record = {
@@ -110,12 +116,12 @@ def _missing_text(slug: str, day: date, missing: list[str]) -> str:
     return f"{slug}: {count} listed for {day.isoformat()} and not stored: {', '.join(missing[:MAX_NAMES])}{tail}."
 
 
-def _failure(manifests: list[dict]) -> str | None:
-    """Why the chain's retry runs fall short (ruling R4), or None when they do not."""
+def _failure(manifests: list[dict], kinds: tuple[str, ...]) -> str | None:
+    """Why the chain's retry runs fall short of `kinds` (ruling R4), or None when they do not."""
     retries = [manifest for manifest in manifests if manifest["mode"] == "retry"]
     covered = {kind for manifest in retries for kind in manifest["kinds"]}
     problems = []
-    uncovered = [kind for kind in KINDS if kind not in covered]
+    uncovered = [kind for kind in kinds if kind not in covered]
     if uncovered:
         problems.append(f"no retry run covered {', '.join(uncovered)}")
     problems += [f"retry run {manifest['run_id']} ({', '.join(manifest['kinds'])}) ended with: {manifest['error']}"

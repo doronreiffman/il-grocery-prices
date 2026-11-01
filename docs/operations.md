@@ -4,21 +4,23 @@ How to deploy the collector, run it by hand, read what it wrote, clear a stopped
 
 ## What runs when
 
-One Lambda function (stack `il-grocery-prices`, region il-central-1, Tel Aviv) runs on 15 daily schedules in Israel time, so daylight saving needs no handling:
+One Lambda function (stack `il-grocery-prices`, region il-central-1, Tel Aviv) runs on 17 daily schedules in Israel time, so daylight saving needs no handling:
 
 | Israel time | Run | Event |
 |---|---|---|
 | 06:30 | Shufersal store list | `{"mode": "main", "chain": "shufersal", "kinds": ["Stores"]}` |
 | 06:33 | Rami Levy, every kind | `{"mode": "main", "chain": "ramilevy"}` |
 | 06:39 | Carrefour, every kind | `{"mode": "main", "chain": "carrefour"}` |
-| 06:45 | Shufersal price files | `{"mode": "main", "chain": "shufersal", "kinds": ["PriceFull", "Price"]}` |
+| 06:45 | Shufersal full price files | `{"mode": "main", "chain": "shufersal", "kinds": ["PriceFull"]}` |
 | 06:48 | Osher Ad, every kind | `{"mode": "main", "chain": "osherad"}` |
-| 07:00 | Shufersal promotion files | `{"mode": "main", "chain": "shufersal", "kinds": ["PromoFull", "Promo"]}` |
+| 07:00 | Shufersal full price files, carrying on | `{"mode": "main", "chain": "shufersal", "kinds": ["PriceFull"]}` |
 | 07:03 | Yochananof, every kind | `{"mode": "main", "chain": "yochananof"}` |
-| 09:30 to 10:03 | The same seven, three hours later | the same events with `"mode": "retry"` |
-| 10:30 | The check | `{"mode": "check"}` |
+| 07:15 | Shufersal full promotion files | `{"mode": "main", "chain": "shufersal", "kinds": ["PromoFull"]}` |
+| 07:30 | Shufersal full promotion files, carrying on | `{"mode": "main", "chain": "shufersal", "kinds": ["PromoFull"]}` |
+| 09:30 to 10:15 | One retry per chain, Shufersal's one per kind, three hours after that kind's first morning run | the main events with `"mode": "retry"`: Shufersal at 09:30 (Stores), 09:45 (PriceFull) and 10:15 (PromoFull) |
+| 10:45 | The check | `{"mode": "check"}` |
 
-A run can take up to 15 minutes (Lambda's longest), so Shufersal's three runs start 15 minutes apart and one chain never gets two requests at once. Rami Levy, Osher Ad and Yochananof share one portal host (`url.publishedprices.co.il`), so their runs start 15 minutes apart too, and their sessions never overlap. A retry run fetches only what is still not stored. The check starts after the last retry run can have finished; it writes a check record, emails when a chain's morning is incomplete, a chain is stopped or a retry run failed, and pings healthchecks.io. A chain's retry runs fail when none covered one of the five kinds, when one ended with an error, or when together they listed nothing for the day and none was blocked (`the retry runs listed nothing for the day (unparsed names: N)`): a portal that renames its files so that none can be read, or dates them all another day, ends its runs without an error, and this alert is how it shows. A day a chain publishes nothing at all alerts the same way. The design gave 10:00 for the check; it moved to 10:30 because the last retry run (Yochananof's) starts at 10:03 and may run until 10:18.
+A run can take up to 15 minutes (Lambda's longest), so Shufersal's runs start 15 minutes apart and one chain never gets two requests at once. Shufersal collects its store list and full files only (owner, 2026-11-01): its listing pages took 15 to 39 s each from AWS that day (medians 25 to 35 s), a full kind took two runs, and its update files come out every hour, so they wait for a polling run. Its second run of a full kind reads the listing from page 1 again, skips what the first stored and carries on. Rami Levy, Osher Ad and Yochananof share one portal host (`url.publishedprices.co.il`), so their runs start 15 minutes apart too, and their sessions never overlap. A retry run fetches only what is still not stored. The check starts after the last retry run can have finished; it writes a check record, emails when a chain's morning is incomplete, a chain is stopped or a retry run failed, and pings healthchecks.io. A chain's retry runs fail when none covered one of the kinds the chain collects, when one ended with an error, or when together they listed nothing for the day and none was blocked (`the retry runs listed nothing for the day (unparsed names: N)`): a portal that renames its files so that none can be read, or dates them all another day, ends its runs without an error, and this alert is how it shows. A day a chain publishes nothing at all alerts the same way. The design gave 10:00 for the check; it is at 10:45 because the last retry run (Shufersal's full promotion files) starts at 10:15 and may run until 10:30, and 15 minutes more leave room for its manifest write and the schedulers' start-up lag. A retry run that runs out of time is a failed run even with nothing missing, since it could not read the whole listing: on a day Shufersal's pages are much slower than 25 s, that alert is the sign.
 
 Neither the schedules nor Lambda retry a failed invocation: the retry run is the retry. A block (a 401, 403 or 429, a captcha or verification page, or an HTML page where a file belongs) stops that chain until you clear it (below).
 
@@ -43,7 +45,7 @@ You need the personal AWS account (nothing from an employer) with il-central-1 e
 
    It must show account `137953273942` and a user ARN ending in `user/doron-admin`. Anything else: stop.
 
-2. **healthchecks.io.** Create a check with period 1 day and grace 2 hours, and copy its ping URL (`https://hc-ping.com/<uuid>`). The 10:30 check pings it each morning; when no ping arrives, healthchecks.io emails. That catches a morning where nothing ran at all.
+2. **healthchecks.io.** Create a check with period 1 day and grace 2 hours, and copy its ping URL (`https://hc-ping.com/<uuid>`). The 10:45 check pings it each morning; when no ping arrives, healthchecks.io emails. That catches a morning where nothing ran at all.
 
 3. **Build and deploy with the schedules off.** Deploy from a clean, committed tree (`git status --porcelain src/` prints nothing): every manifest and check record carries `code_sha`, a fingerprint of `src/collector/`, and only a committed tree lets you find the commit behind it (step 8). The four values go on the command line, never into a file in the repo; don't use `sam deploy --guided`, which offers to save them to `samconfig.toml` (that file is gitignored as a second guard).
 
@@ -71,12 +73,14 @@ You need the personal AWS account (nothing from an employer) with il-central-1 e
 
    The User-Agent must read exactly as you gave it.
 
-6. **One manual run per chain.** Run the manual runs only once that day's files are on the portals: after the chains' morning publishing, not just after midnight Israel time. A run that finds nothing listed stores nothing, and a manifest with `"listed": 0` is not a clean run. Start each run asynchronously (`--invocation-type Event`), the way the schedules do. A run can take 15 minutes; a plain invoke waits for the answer, the CLI gives up after 60 seconds and sends the invoke again, and the chain then has two runs at once. Each command answers `"StatusCode": 202` at once. Start them one at a time and let each finish before the next: Shufersal's three runs must never overlap (one request at a time per chain), nor may the three chains on the NCR portal, and one at a time keeps the logs readable.
+6. **One manual run per chain.** Run the manual runs only once that day's files are on the portals: after the chains' morning publishing, not just after midnight Israel time. A run that finds nothing listed stores nothing, and a manifest with `"listed": 0` is not a clean run. Start each run asynchronously (`--invocation-type Event`), the way the schedules do. A run can take 15 minutes; a plain invoke waits for the answer, the CLI gives up after 60 seconds and sends the invoke again, and the chain then has two runs at once. Each command answers `"StatusCode": 202` at once. Start them one at a time and let each finish before the next: Shufersal's runs must never overlap (one request at a time per chain), nor may the three chains on the NCR portal, and one at a time keeps the logs readable.
 
    ```bash
    aws lambda invoke --function-name "$FN" --invocation-type Event --payload '{"mode": "main", "chain": "shufersal", "kinds": ["Stores"]}' --cli-binary-format raw-in-base64-out /dev/null --profile flights-sam --region il-central-1
-   aws lambda invoke --function-name "$FN" --invocation-type Event --payload '{"mode": "main", "chain": "shufersal", "kinds": ["PriceFull", "Price"]}' --cli-binary-format raw-in-base64-out /dev/null --profile flights-sam --region il-central-1
-   aws lambda invoke --function-name "$FN" --invocation-type Event --payload '{"mode": "main", "chain": "shufersal", "kinds": ["PromoFull", "Promo"]}' --cli-binary-format raw-in-base64-out /dev/null --profile flights-sam --region il-central-1
+   aws lambda invoke --function-name "$FN" --invocation-type Event --payload '{"mode": "main", "chain": "shufersal", "kinds": ["PriceFull"]}' --cli-binary-format raw-in-base64-out /dev/null --profile flights-sam --region il-central-1
+   aws lambda invoke --function-name "$FN" --invocation-type Event --payload '{"mode": "main", "chain": "shufersal", "kinds": ["PriceFull"]}' --cli-binary-format raw-in-base64-out /dev/null --profile flights-sam --region il-central-1
+   aws lambda invoke --function-name "$FN" --invocation-type Event --payload '{"mode": "main", "chain": "shufersal", "kinds": ["PromoFull"]}' --cli-binary-format raw-in-base64-out /dev/null --profile flights-sam --region il-central-1
+   aws lambda invoke --function-name "$FN" --invocation-type Event --payload '{"mode": "main", "chain": "shufersal", "kinds": ["PromoFull"]}' --cli-binary-format raw-in-base64-out /dev/null --profile flights-sam --region il-central-1
    aws lambda invoke --function-name "$FN" --invocation-type Event --payload '{"mode": "main", "chain": "ramilevy"}' --cli-binary-format raw-in-base64-out /dev/null --profile flights-sam --region il-central-1
    aws lambda invoke --function-name "$FN" --invocation-type Event --payload '{"mode": "main", "chain": "osherad"}' --cli-binary-format raw-in-base64-out /dev/null --profile flights-sam --region il-central-1
    aws lambda invoke --function-name "$FN" --invocation-type Event --payload '{"mode": "main", "chain": "carrefour"}' --cli-binary-format raw-in-base64-out /dev/null --profile flights-sam --region il-central-1
@@ -91,7 +95,7 @@ You need the personal AWS account (nothing from an employer) with il-central-1 e
 
    A good run has `"blocked": null`, `"error": null` and `"failed": 0`. A run that ran short of time ends with `"error": "stopped: under 90 s left"`; start the same event again (or the retry event, `"mode": "retry"`): stored files are skipped, so it carries on where the first stopped. Carrefour's first run decides whether it stays (below).
 
-   **Shufersal's price run must fit.** Once the `PriceFull` + `Price` run has finished, read the `Duration` in its `REPORT` line, which is in milliseconds (the line reads `Duration: <n> ms`), so the threshold is about 600,000 ms (600 s). Above about 600 s, that group runs too close to Lambda's 900 s to run every day: before the schedules go on (step 9), split `Price` into its own Shufersal run. Main: `PriceFull` alone at 06:45, `Price` at 07:15; retry: 09:45 and 10:15; the check moves to 10:45, after that last retry run can have finished. Change together the schedules in `template.yaml`, the `SCHEDULES` table in `tests/test_template.py`, the timetable in "What runs when", the manual runs above and every place this file counts the schedules or Shufersal's runs; run the tests, cfn-lint and the mutation check (Develop, below) and update any mutation it reports as stale; commit, deploy as in step 3, and start the new `Price` run by hand once.
+   **Shufersal's full files take two runs each.** The first run of a full kind usually ends with `"error": "stopped: under 90 s left"`; the second, the same event again, skips what the first stored and finishes. If the second stops short too, start it a third time: on 2026-11-01 its pages took 15 to 39 s each, and a day much slower than that needs more runs. (The duration gate this step once held is gone: at that page speed one kind alone does not fit a run.)
 
 7. **A manual check.** The check is short, so a plain invoke is fine; `--cli-read-timeout 900` keeps the CLI waiting rather than sending it again, which would check twice and could email twice:
 
@@ -99,7 +103,7 @@ You need the personal AWS account (nothing from an employer) with il-central-1 e
    aws lambda invoke --function-name "$FN" --payload '{"mode": "check"}' --cli-read-timeout 900 --cli-binary-format raw-in-base64-out /tmp/il-grocery-check.json --profile flights-sam --region il-central-1
    ```
 
-   `/tmp/il-grocery-check.json` names the check record (`record`) and counts the alerts. The check pings healthchecks.io, which should show the ping within a minute. That ping also starts healthchecks.io's clock: a day and two hours on with no ping since, it emails, and no scheduled check pings before step 9 (UNVERIFIED: that the first ping starts the clock was not checked against healthchecks.io's documentation). So once the ping shows, pause the check in healthchecks.io until the schedules go on (UNVERIFIED: that a paused check stays quiet was not checked against healthchecks.io's documentation either; the advice stands). It also expects the day's retry runs: with none run that day, it reports each chain as failed ("a retry run is missing or failed: no retry run covered …") and emails you, which proves the email works. For a clean check, first run each of the seven events of step 6 again with `"mode": "retry"`, one at a time as there; each downloads only what is still missing. Do this only once that day's files are on the portals (step 6): the check fails a chain whose retry runs list nothing for the day, so a retry started too early makes the manual check alert every chain.
+   `/tmp/il-grocery-check.json` names the check record (`record`) and counts the alerts. The check pings healthchecks.io, which should show the ping within a minute. That ping also starts healthchecks.io's clock: a day and two hours on with no ping since, it emails, and no scheduled check pings before step 9 (UNVERIFIED: that the first ping starts the clock was not checked against healthchecks.io's documentation). So once the ping shows, pause the check in healthchecks.io until the schedules go on (UNVERIFIED: that a paused check stays quiet was not checked against healthchecks.io's documentation either; the advice stands). It also expects the day's retry runs: with none run that day, it reports each chain as failed ("a retry run is missing or failed: no retry run covered …") and emails you, which proves the email works. For a clean check, first run each retry event of the timetable (one per chain, Shufersal's one per kind) by hand, one at a time as there; each downloads only what is still missing. Do this only once that day's files are on the portals (step 6): the check fails a chain whose retry runs list nothing for the day, so a retry started too early makes the manual check alert every chain.
 
 8. **Read what it wrote.** List a day's manifests, print one, and print the check record:
 
@@ -123,7 +127,7 @@ You need the personal AWS account (nothing from an employer) with il-central-1 e
 
    It should show `GOVERNANCE` and a date ten years on. To find the commit behind a `code_sha`, check out a candidate commit and run `PYTHONPATH=src .venv/bin/python -c 'from pathlib import Path; from collector.handler import code_sha; print(code_sha(Path("src/collector")))'`.
 
-9. **Turn the schedules on**, on the owner's go: the same `sam deploy` command with all four parameters again and `'ScheduleState=ENABLED'`. Always pass all four, so no value is left to what the stack held before. Take the healthchecks.io check out of pause (step 7; UNVERIFIED, see there) at the same time. The next morning, read the manifests and the check record, and see the 10:30 ping on healthchecks.io. To turn them off, deploy again with `'ScheduleState=DISABLED'`.
+9. **Turn the schedules on**, on the owner's go: the same `sam deploy` command with all four parameters again and `'ScheduleState=ENABLED'`. Always pass all four, so no value is left to what the stack held before. Take the healthchecks.io check out of pause (step 7; UNVERIFIED, see there) at the same time. The next morning, read the manifests and the check record, and see the 10:45 ping on healthchecks.io. To turn them off, deploy again with `'ScheduleState=DISABLED'`.
 
 ## A stopped chain
 
@@ -151,7 +155,7 @@ Carrefour is reported to refuse visitors from outside Israel; whether AWS's Tel 
 
 ## Dropping a chain
 
-1. Delete the chain's schedules from `template.yaml`: its main and retry events (Shufersal has three of each).
+1. Delete the chain's schedules from `template.yaml`: its main and retry events (Shufersal has five main and three retry).
 2. Delete its entry in `CHAINS` in `src/collector/chains.py`.
 3. Bring the tests in line: its rows in the `SCHEDULES` table in `tests/test_template.py`, its manual-run line in this file (step 6), its cases in `tests/test_chains.py`, and any mutation in `scripts/mutation_check.py` that quotes it. Run the tests, cfn-lint and the mutation check (below).
 4. Commit, then deploy as in step 3 of Deploy, with the same four parameters.
@@ -179,5 +183,5 @@ Estimates from [collector.md](collector.md), "Cost":
 - **Volume:** Shufersal's full files were about 162 MB on 2026-10-31 (measured from its listing); the other four chains have fewer stores. About 250 to 300 MB a day, so 8 to 9 GB a month.
 - **S3 storage** at $0.025 per GB-month (il-central-1): about $0.25 the first month, about $2.70 a month after a year. Nothing is deleted (every file is locked for ten years), so storage grows every month; moves to colder storage wait until the bucket passes about 50 GB.
 - **S3 writes:** about 2,000 a day at $0.0055 per 1,000: about $0.35 a month.
-- **Lambda:** a few invocations of up to 15 minutes a day, inside the monthly free tier. The worst case, all 15 invocations running the full 15 minutes at 512 MB, is 6,750 GB-seconds a day, about 205,000 a month.
+- **Lambda:** a few invocations of up to 15 minutes a day, inside the monthly free tier. The worst case, all 16 collecting runs and the check running the full 15 minutes at 512 MB, is 7,650 GB-seconds a day, about 230,000 a month.
 - **Total:** about $1 to $3 a month in the first year.

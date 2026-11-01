@@ -10,7 +10,7 @@ import pytest
 from collector import chains
 from collector.chains import CHAINS, Chain, source_for
 from collector.http import Blocked, Http, HttpError
-from collector.names import parse_file_name
+from collector.names import KINDS, parse_file_name
 from collector.sources import Listed, ListingUnreadable, Source, checked_name
 from collector.sources.carrefour import CarrefourSource
 from collector.sources.ncr import NcrSource
@@ -53,6 +53,25 @@ def test_shufersal_waits_60_s_for_an_answer_and_the_others_30():
         "shufersal": 60.0, "ramilevy": 30.0, "osherad": 30.0, "carrefour": 30.0, "yochananof": 30.0}
 
 
+def test_shufersal_collects_its_store_list_and_full_files_and_the_others_every_kind():
+    """Owner, 2026-11-01: Shufersal's update files come out every hour and its listing pages take about
+    25 s each, so its morning runs take the store list and the full files only; the update files wait
+    for a polling run (.claude/DECISIONS.md)."""
+    assert {slug: c.kinds for slug, c in CHAINS.items()} == {
+        "shufersal": ("Stores", "PriceFull", "PromoFull"), "ramilevy": KINDS, "osherad": KINDS,
+        "carrefour": KINDS, "yochananof": KINDS}
+
+
+def test_kinds_default_to_all_five():
+    assert Chain("x", "X", "carrefour", "https://example.org").kinds == KINDS
+
+
+def test_every_chains_kinds_are_known_kinds_in_their_usual_order():
+    for chain in CHAINS.values():
+        assert chain.kinds and set(chain.kinds) <= set(KINDS), chain.slug
+        assert list(chain.kinds) == [kind for kind in KINDS if kind in chain.kinds], chain.slug
+
+
 def test_timeout_defaults_to_30_s():
     assert Chain("x", "X", "carrefour", "https://example.org").timeout == 30.0
 
@@ -62,7 +81,7 @@ def test_username_defaults_to_none():
 
 
 def test_no_password_anywhere_on_chain():
-    assert [f.name for f in fields(Chain)] == ["slug", "name", "portal", "base_url", "username", "timeout"]
+    assert [f.name for f in fields(Chain)] == ["slug", "name", "portal", "base_url", "username", "timeout", "kinds"]
     for chain in CHAINS.values():
         assert [a for a in dir(chain) if "pass" in a.lower() or "pwd" in a.lower()] == []
 

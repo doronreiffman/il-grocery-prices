@@ -21,10 +21,10 @@ Personal portfolio project. Collects, every morning, the price files Israeli sup
 
 ## Active threads
 
-- Collector: merged and deployed 2026-11-01 with the schedules off; first manual runs found three fixes (two deployed, the NCR text total on branch `fix-ncr-total`) and a Shufersal timetable redesign · `.claude/QUEUE.md` q1, `.claude/OPEN_ISSUES.md` Collector.
+- Collector: merged and deployed 2026-11-01 with the schedules off; first manual runs found three fixes (deployed) and a Shufersal redesign (full files only, branch `shufersal-full-files`) · `.claude/QUEUE.md` q1, `.claude/OPEN_ISSUES.md` Collector.
 
 ## Working notes
 
-- Test baseline (2026-11-01): 690 tests, 100% coverage on `collector`, 501 mutations, all caught.
+- Test baseline (2026-11-01): 701 tests, 100% coverage on `collector`, 511 mutations, all caught.
 
 - Work queue `.claude/QUEUE.md`; open issues `.claude/OPEN_ISSUES.md`; decisions `.claude/DECISIONS.md`.

@@ -29,30 +29,35 @@ ISRAEL = "Asia/Jerusalem"
 # schedule runs once a day, every day.
 DAILY = re.compile(r"cron\((?P<minute>[0-9]{1,2}) (?P<hour>[0-9]{1,2}) \* \* \? \*\)")
 
-# Rulings R7 and R30 (the controller's ledger): Shufersal's long invocations start 15 minutes apart,
-# Lambda's longest run, so one chain never gets two requests at once; so do the three NCR chains,
-# which share one portal host, so their sessions never overlap (R30); the retry runs start three
-# hours after the main ones; the check starts after the last retry run can have finished (10:03 +
-# 15 min), at 10:30 rather than the design's 10:00. The four other chains fetch all five kinds in
-# one run.
+# Rulings R7 and R30 (the controller's ledger), as amended by the owner on 2026-11-01: Shufersal's
+# invocations start 15 minutes apart, Lambda's longest run, so one chain never gets two requests at
+# once; so do the three NCR chains, which share one portal host, so their sessions never overlap (R30).
+# Shufersal collects its store list and full files only, one kind an invocation, each full kind twice in
+# the morning (the second run carries on where the first stopped) and once at the retry. A retry run
+# starts three hours after the first main run of its kinds; the check starts 15 minutes after the last
+# retry run can have finished (10:15 + 15 + 15 min). The four other chains fetch all five kinds in one run.
 SCHEDULES = {
     "MainShufersalStores": ("06:30", {"mode": "main", "chain": "shufersal", "kinds": ["Stores"]}),
     "MainRamiLevy": ("06:33", {"mode": "main", "chain": "ramilevy"}),
     "MainCarrefour": ("06:39", {"mode": "main", "chain": "carrefour"}),
-    "MainShufersalPrices": ("06:45", {"mode": "main", "chain": "shufersal", "kinds": ["PriceFull", "Price"]}),
+    "MainShufersalPrices": ("06:45", {"mode": "main", "chain": "shufersal", "kinds": ["PriceFull"]}),
     "MainOsherAd": ("06:48", {"mode": "main", "chain": "osherad"}),
-    "MainShufersalPromos": ("07:00", {"mode": "main", "chain": "shufersal", "kinds": ["PromoFull", "Promo"]}),
+    "MainShufersalPricesAgain": ("07:00", {"mode": "main", "chain": "shufersal", "kinds": ["PriceFull"]}),
     "MainYochananof": ("07:03", {"mode": "main", "chain": "yochananof"}),
+    "MainShufersalPromos": ("07:15", {"mode": "main", "chain": "shufersal", "kinds": ["PromoFull"]}),
+    "MainShufersalPromosAgain": ("07:30", {"mode": "main", "chain": "shufersal", "kinds": ["PromoFull"]}),
     "RetryShufersalStores": ("09:30", {"mode": "retry", "chain": "shufersal", "kinds": ["Stores"]}),
     "RetryRamiLevy": ("09:33", {"mode": "retry", "chain": "ramilevy"}),
     "RetryCarrefour": ("09:39", {"mode": "retry", "chain": "carrefour"}),
-    "RetryShufersalPrices": ("09:45", {"mode": "retry", "chain": "shufersal", "kinds": ["PriceFull", "Price"]}),
+    "RetryShufersalPrices": ("09:45", {"mode": "retry", "chain": "shufersal", "kinds": ["PriceFull"]}),
     "RetryOsherAd": ("09:48", {"mode": "retry", "chain": "osherad"}),
-    "RetryShufersalPromos": ("10:00", {"mode": "retry", "chain": "shufersal", "kinds": ["PromoFull", "Promo"]}),
     "RetryYochananof": ("10:03", {"mode": "retry", "chain": "yochananof"}),
-    "Check": ("10:30", {"mode": "check"}),
+    "RetryShufersalPromos": ("10:15", {"mode": "retry", "chain": "shufersal", "kinds": ["PromoFull"]}),
+    "Check": ("10:45", {"mode": "check"}),
 }
-SHUFERSAL_GROUPS = [{"Stores"}, {"PriceFull", "Price"}, {"PromoFull", "Promo"}]
+CHECK_MARGIN = 15  # minutes after the last retry run can have finished
+SHUFERSAL_RUNS = {"main": [["Stores"], ["PriceFull"], ["PriceFull"], ["PromoFull"], ["PromoFull"]],
+                  "retry": [["Stores"], ["PriceFull"], ["PromoFull"]]}
 
 
 @pytest.fixture(scope="module")
@@ -326,28 +331,31 @@ def test_every_event_is_one_the_handler_takes(schedules):
             assert event == {"mode": "check"}, name
             continue
         assert event["chain"] in CHAINS, name
-        assert set(event.get("kinds", KINDS)) <= set(KINDS), name
+        assert set(event.get("kinds", KINDS)) <= set(CHAINS[event["chain"]].kinds), name
 
 
 @pytest.mark.parametrize("mode", ["main", "retry"])
-def test_each_chain_has_a_run_of_each_mode_over_all_five_kinds(schedules, mode):
-    """Ruling R4: the check fails a chain whose retry runs do not together cover the five kinds.
-    Shufersal runs as three invocations, one per kinds group; the others as one, with every kind."""
+def test_each_chain_has_runs_of_each_mode_over_the_kinds_it_collects(schedules, mode):
+    """Ruling R4: the check fails a chain whose retry runs do not together cover the kinds it collects.
+    Shufersal runs one kind an invocation, each full kind twice in the morning; the others run once,
+    with no kinds, so the handler takes the chain's."""
     groups = {slug: [] for slug in CHAINS}
     for _, event in schedules.values():
         if event["mode"] == mode:
             groups[event["chain"]].append(event.get("kinds"))
     for slug, kinds in groups.items():
         if slug == "shufersal":
-            assert sorted(map(sorted, map(set, kinds))) == sorted(map(sorted, SHUFERSAL_GROUPS))
-            assert sorted(kind for group in kinds for kind in group) == sorted(KINDS)
+            assert sorted(kinds) == sorted(SHUFERSAL_RUNS[mode])
+            assert {kind for group in kinds for kind in group} == set(CHAINS[slug].kinds)
         else:
-            assert kinds == [None], slug  # no kinds: the handler takes all five
+            assert kinds == [None], slug
 
 
-def test_retry_runs_start_three_hours_after_their_main_run(schedules):
-    mains = {(event["chain"], tuple(event.get("kinds", ()))): start
-             for start, event in schedules.values() if event["mode"] == "main"}
+def test_retry_runs_start_three_hours_after_the_first_main_run_of_their_kinds(schedules):
+    mains = {}
+    for start, event in sorted(schedules.values(), key=lambda schedule: schedule[0]):
+        if event["mode"] == "main":
+            mains.setdefault((event["chain"], tuple(event.get("kinds", ()))), start)
     retries = {(event["chain"], tuple(event.get("kinds", ()))): start
                for start, event in schedules.values() if event["mode"] == "retry"}
     assert set(retries) == set(mains)
@@ -386,7 +394,10 @@ def test_one_check_after_the_last_retry_run_can_have_finished(schedules, functio
     checks = [start for start, event in schedules.values() if event["mode"] == "check"]
     runs = [start for start, event in schedules.values() if event["mode"] != "check"]
     assert len(checks) == 1
-    assert checks[0] >= max(runs) + function["Timeout"] / 60
+    # 15 minutes more than the last retry run can take, for its manifest write and the schedulers'
+    # start-up lag: with none, a slow last retry can still be writing when the check reads (review,
+    # 2026-11-01).
+    assert checks[0] >= max(runs) + function["Timeout"] / 60 + CHECK_MARGIN
     assert checks[0] < 24 * 60  # the same Israel day as the runs it checks
 
 
@@ -429,7 +440,7 @@ def test_the_docs_events_are_ones_the_handler_takes(operations):
         assert event["mode"] in ("main", "retry", "check", "unblock"), event
         if "chain" in event:
             assert event["chain"] in CHAINS, event
-        assert set(event.get("kinds", KINDS)) <= set(KINDS), event
+            assert set(event.get("kinds", KINDS)) <= set(CHAINS[event["chain"]].kinds), event
     assert {"mode": "check"} in payloads
     assert any(event["mode"] == "unblock" for event in payloads)
 

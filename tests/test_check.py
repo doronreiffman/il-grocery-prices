@@ -90,6 +90,31 @@ def test_clean_day_has_no_alerts():
     assert record["chains"]["shufersal"]["failed"] is None
 
 
+def test_retry_runs_need_cover_only_the_kinds_the_chain_collects():
+    """Shufersal collects its store list and full files only (owner, 2026-11-01): retries over those
+    three are a clean morning; one of them uncovered is named, and Price and Promo never are."""
+    store = MemoryStore()
+    clean_day(store, SLUGS[1:])
+    kinds = {"shufersal": ("Stores", "PriceFull", "PromoFull")}
+    manifest(store, "shufersal", "retry", kinds=["Stores"])
+    manifest(store, "shufersal", "retry", kinds=["PriceFull"], listed=[price("030")])
+    stored(store, "shufersal", price("030"))
+    alerts, record = check_day(store, SLUGS, DAY, kinds=kinds)
+    assert kinds_of(alerts) == [("shufersal", "failed")]
+    assert alerts[0].text == "shufersal: a retry run is missing or failed: no retry run covered PromoFull."
+    manifest(store, "shufersal", "retry", kinds=["PromoFull"])
+    alerts, record = check_day(store, SLUGS, DAY, kinds=kinds)
+    assert alerts == [] and record["chains"]["shufersal"]["failed"] is None
+
+
+def test_a_chain_left_out_of_kinds_is_held_to_all_five():
+    store = MemoryStore()
+    manifest(store, "ramilevy", "retry", kinds=["Stores", "PriceFull", "PromoFull"], listed=[price("001")])
+    stored(store, "ramilevy", price("001"))
+    _, record = check_day(store, ["ramilevy"], DAY, kinds={"shufersal": ("Stores",)})
+    assert record["chains"]["ramilevy"]["failed"] == "no retry run covered Price, Promo"
+
+
 def test_only_the_chains_asked_for_are_checked():
     store = MemoryStore()
     manifest(store, "ramilevy", "retry", listed=[price("001")])

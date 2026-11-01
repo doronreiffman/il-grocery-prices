@@ -34,7 +34,6 @@ from typing import NoReturn
 
 from collector.chains import Chain
 from collector.http import Blocked, Http, HttpError
-from collector.names import KINDS
 from collector.payload import BadPayload, check_payload, looks_like_html
 from collector.sources import Listed, ListingUnreadable, Source
 from collector.store import manifest_key, raw_key
@@ -75,8 +74,8 @@ def collect_chain(chain: Chain, source: Source, http: Http, store, day: date, ru
     `now` must give aware datetimes. Anything unexpected is recorded in the manifest's `error`, then
     raised."""
     _utc(now())
-    if not kinds or not set(kinds) <= set(KINDS):
-        raise ValueError(f"kinds must be some of {KINDS}, not {kinds!r}")
+    if not kinds or not set(kinds) <= set(chain.kinds):
+        raise ValueError(f"kinds must be some of {chain.kinds}, the kinds {chain.slug} collects, not {kinds!r}")
     result = RunResult(chain.slug, run_id, mode, day, list(kinds))
     try:
         if store.read_state(chain.slug).get("stopped"):

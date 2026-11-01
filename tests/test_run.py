@@ -6,6 +6,7 @@ MemoryStore, which keeps S3Store's rules. Bodies are whole gzips holding the fix
 fixtures' UTF-16 XML), since check_payload unzips each one in full. One test runs the real Shufersal
 adapter over test_shufersal's fake network, where a listed name and its link's last segment differ.
 """
+import dataclasses
 import gzip
 import hashlib
 import json
@@ -28,7 +29,7 @@ from collector.run import RunResult, collect_chain, manifest_bytes, new_run_id, 
 
 FIXTURES = Path(__file__).parent / "fixtures"
 UA = "il-grocery-prices/0.1 (+https://github.com/example/il-grocery-prices; owner@example.org)"
-CHAIN = CHAINS["shufersal"]
+CHAIN = dataclasses.replace(CHAINS["shufersal"], kinds=KINDS)  # every kind: the loop's rules are tested on all five
 SLUG = CHAIN.slug
 DAY = date(2026, 10, 31)
 ISRAEL = ZoneInfo("Asia/Jerusalem")
@@ -716,6 +717,16 @@ def test_manifest_records_the_run():
     assert (result.chain, result.run_id, result.mode, result.day) == (SLUG, "093000Z-retry-0f0f", "retry", DAY)
     assert (record["chain"], record["run_id"], record["mode"], record["day"]) == (SLUG, "093000Z-retry-0f0f", "retry", "2026-10-31")
     assert record["code_sha"] == CODE_SHA
+
+
+@pytest.mark.parametrize("kinds", [("Price",), ("PriceFull", "Promo"), ("Stores", "PriceFull", "PromoFull", "Price", "Promo")])
+def test_kinds_the_chain_does_not_collect_are_refused(kinds):
+    """Shufersal collects its store list and full files only (owner, 2026-11-01)."""
+    source = FakeSource([item(PRICE)])
+    store = MemoryStore()
+    with pytest.raises(ValueError, match=r"kinds must be some of \('Stores', 'PriceFull', 'PromoFull'\)"):
+        collect_chain(CHAINS["shufersal"], source, HTTP, store, DAY, RUN_ID, "main", kinds, Clock(), lambda: NOW, CODE_SHA)
+    assert source.listing_calls == [] and store.objects == {}
 
 
 def test_naive_now_refused():

@@ -148,10 +148,10 @@ class FakeSource:
 
 
 def clean_day(store, day=DAY):
-    """Every chain's retry ran over all five kinds and listed one file of the day, stored (a retry run
-    that lists nothing is a failed run: ruling R31)."""
+    """Every chain's retry ran over the kinds that chain collects (Shufersal three, the others five) and
+    listed one file of the day, stored (a retry run that lists nothing is a failed run: ruling R31)."""
     for slug in CHAINS:
-        result = RunResult(slug, f"073000Z-retry-{slug[:4]}", "retry", day, list(KINDS), listed=[PRICE])
+        result = RunResult(slug, f"073000Z-retry-{slug[:4]}", "retry", day, list(CHAINS[slug].kinds), listed=[PRICE])
         store.put_record(manifest_key(day, slug, result.run_id), manifest_bytes(result, SHA), NOW)
         store.put_raw(raw_key(slug, day, PRICE), PRICE_XML, NOW)
 
@@ -178,11 +178,17 @@ def test_main_runs_the_chain_with_every_kind_by_default(collect):
 
 def test_retry_runs_the_events_kinds(collect):
     deps = make_deps()
-    run(CFG, {"mode": "retry", "chain": "shufersal", "kinds": ["PromoFull", "Promo"]}, deps, NOW)
+    run(CFG, {"mode": "retry", "chain": "shufersal", "kinds": ["PromoFull"]}, deps, NOW)
     [call] = collect.calls
     assert isinstance(call["source"], ShufersalSource)
     assert call["mode"] == "retry" and call["run_id"].startswith("043000Z-retry-")
-    assert call["kinds"] == ("PromoFull", "Promo")
+    assert call["kinds"] == ("PromoFull",)
+
+
+def test_a_run_without_kinds_takes_the_kinds_its_chain_collects(collect):
+    run(CFG, {"mode": "main", "chain": "shufersal"}, make_deps(), NOW)
+    [call] = collect.calls
+    assert call["kinds"] == ("Stores", "PriceFull", "PromoFull")
 
 
 def test_each_run_gets_a_fresh_source_and_http(collect):
@@ -232,7 +238,7 @@ def test_main_end_to_end_logs_its_errors_and_never_emails(monkeypatch, caplog):
     with caplog.at_level(logging.INFO, logger="collector.handler"):
         summary = run(CFG, {"mode": "main", "chain": "shufersal"}, deps, NOW)
     assert summary == {"mode": "main", "chain": "shufersal", "day": "2026-10-31", "run_id": summary["run_id"],
-                       "kinds": list(KINDS), "listed": 2, "stored": 1, "failed": 1, "not_attempted": 0,
+                       "kinds": ["Stores", "PriceFull", "PromoFull"], "listed": 2, "stored": 1, "failed": 1, "not_attempted": 0,
                        "blocked": None, "error": None}
     record = json.loads(deps.store.read_raw(manifest_key(DAY, "shufersal", summary["run_id"])))
     assert record["code_sha"] == SHA and record["failed"] == {PRICE_2: "HTTP 500 from https://portal.example/x"}
@@ -266,10 +272,11 @@ def test_a_run_that_stops_with_an_error_is_logged_not_emailed(monkeypatch, caplo
                for r in caplog.records)
 
 
-def test_unknown_kinds_are_refused(monkeypatch):
+@pytest.mark.parametrize("kinds", [["pricefull"], ["Price"], ["PromoFull", "Promo"]])
+def test_kinds_the_chain_does_not_collect_are_refused(monkeypatch, kinds):
     monkeypatch.setattr(handler_module, "source_for", lambda chain: FakeSource([PRICE]))
     with pytest.raises(ValueError, match="kinds"):
-        run(CFG, {"mode": "main", "chain": "shufersal", "kinds": ["pricefull"]}, make_deps(), NOW)
+        run(CFG, {"mode": "main", "chain": "shufersal", "kinds": kinds}, make_deps(), NOW)
 
 
 @pytest.mark.parametrize("event", [{"mode": "main"}, {"mode": "main", "chain": "victory"},

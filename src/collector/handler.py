@@ -6,13 +6,14 @@ runs", and "Alerts"). EventBridge Scheduler sends the first three events; the ow
     {"mode": "check"}                                      check every chain's day, email any alerts, ping
     {"mode": "unblock", "chain": "<slug>"}                 clear the chain's stopped latch
 
-`kinds` is optional: all five when absent. The day is the Israel calendar date when the invocation
-starts. main and retry never email: their errors are logged and the check judges what they left.
-The check writes its record whatever it finds, sends one email only when there are alerts, marks
-the stopped chains it named as alerted once that email has gone (ruling R26), then pings
-healthchecks.io; a failed ping is logged, not raised. If the check itself fails, the email
-included, nothing is marked and nothing pings, and healthchecks.io emails about the missing ping.
-The ping's User-Agent names the project and its URL, never the contact email (ruling R27).
+`kinds` is optional: the chain's kinds when absent (Shufersal's three, the others' five). The day is
+the Israel calendar date when the invocation starts. main and retry never email: their errors are
+logged and the check judges what they left. The check writes its record whatever it finds, sends one
+email only when there are alerts, marks the stopped chains it named as alerted once that email has
+gone (ruling R26), then pings healthchecks.io; a failed ping is logged, not raised. If the check
+itself fails, the email included, nothing is marked and nothing pings, and healthchecks.io emails
+about the missing ping. The ping's User-Agent names the project and its URL, never the contact email
+(ruling R27).
 
 Environment: BUCKET, USER_AGENT, ALERT_TOPIC_ARN, HEALTHCHECK_URL (each required), RETENTION_DAYS
 (default 3650).
@@ -34,7 +35,6 @@ from zoneinfo import ZoneInfo
 from collector.chains import CHAINS, Chain, source_for
 from collector.check import Alert, check_day, mark_alerted
 from collector.http import Http, build_opener, check_user_agent
-from collector.names import KINDS
 from collector.run import collect_chain, new_run_id
 from collector.store import RETENTION_DAYS, S3Store, check_key
 
@@ -124,7 +124,7 @@ def _chain(event: dict) -> Chain:
 
 
 def _collect(chain: Chain, event: dict, mode: str, deps: Deps, day: date, now: datetime) -> dict:
-    kinds = tuple(event["kinds"]) if "kinds" in event else KINDS
+    kinds = tuple(event["kinds"]) if "kinds" in event else chain.kinds
     run_id = new_run_id(now, mode)
     result = collect_chain(chain, source_for(chain), deps.http_for(chain.slug), deps.store, day, run_id, mode,
                            kinds, deps.time_left, _clock(now, deps.time_left), deps.code_sha)
@@ -146,7 +146,7 @@ def _clock(start: datetime, time_left: Callable[[], float]) -> Callable[[], date
 
 
 def _check(cfg: Config, deps: Deps, day: date, now: datetime) -> dict:
-    alerts, record = check_day(deps.store, list(CHAINS), day)
+    alerts, record = check_day(deps.store, list(CHAINS), day, kinds={slug: c.kinds for slug, c in CHAINS.items()})
     run_id = new_run_id(now, "check")
     key = check_key(day, run_id)
     if alerts:
