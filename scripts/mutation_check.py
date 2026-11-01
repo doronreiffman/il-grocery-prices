@@ -30,6 +30,7 @@ NAME_CHECK = ("src/collector/sources/__init__.py", ["tests/test_chains.py"])
 NCR = ("src/collector/sources/ncr.py", ["tests/test_ncr.py"])
 CARREFOUR = ("src/collector/sources/carrefour.py", ["tests/test_carrefour.py"])
 STORE = ("src/collector/store.py", ["tests/test_store.py"])
+RUN = ("src/collector/run.py", ["tests/test_run.py"])
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
 MUTATIONS = {
@@ -292,6 +293,76 @@ MUTATIONS = {
     "manifest key without the slug": (STORE, '/{slug}-{run_id}.json"', '/{run_id}.json"'),
     "check key without check-": (STORE, '/check-{run_id}.json"', '/{run_id}.json"'),
     "state key outside state/": (STORE, 'f"state/{slug}.json"', 'f"{slug}.json"'),
+    # run: the brief's five
+    "clock date instead of file date": (RUN, "        if item.name.day != self.day or", "        if _utc(self.now()).date() != self.day or"),
+    "stored files fetched again": (RUN, "        if name in self.stored:\n            return\n", ""),
+    "no latch on block": (RUN, '        self.store.write_state(self.slug, {"stopped": True,', '        (self.slug, {"stopped": True,'),
+    "timeout guard removed": (RUN, "            if self._short_of_time():\n                if problem is None:", "            if False:\n                if problem is None:"),
+    "manifest skipped on error": (RUN, "        store.put_record(manifest_key(", "        result.error is None and store.put_record(manifest_key("),
+    # run: choosing that day's files
+    "older files selected": (RUN, "        if item.name.day != self.day or", "        if item.name.day > self.day or"),
+    "kinds not filtered again": (RUN, " or item.name.kind not in self.kinds:", ":"),
+    "unknown kinds accepted": (RUN, "    if not kinds or not set(kinds) <= set(KINDS):", "    if not kinds:"),
+    "no kinds accepted": (RUN, "    if not kinds or not set(kinds) <= set(KINDS):", "    if not set(kinds) <= set(KINDS):"),
+    "kinds not recorded (R4)": (RUN, "RunResult(chain.slug, run_id, mode, day, list(kinds))", "RunResult(chain.slug, run_id, mode, day, [])"),
+    "stored name taken from the listing, not the link (R16)": (RUN, "        name = stored_name(item)\n", "        name = item.name.raw\n"),
+    "stored name keeps the link's query (R16)": (RUN, '    return urllib.parse.urlsplit(item.url).path.rsplit("/", 1)[-1]', '    return item.url.rsplit("/", 1)[-1]'),
+    "skipped names not listed": (RUN, "        self.result.listed.append(name)\n        if name in self.stored:\n            return\n",
+                                 "        if name in self.stored:\n            return\n        self.result.listed.append(name)\n"),
+    "a name listed twice fetched again": (RUN, "        if name in self.seen:\n            return  #", "        if False:\n            return  #"),
+    # run: the listing
+    "listing read before the files are fetched (R16)": (RUN, "            listing = iter(self.source.listing(self.http, self.kinds))", "            listing = iter(list(self.source.listing(self.http, self.kinds)))"),
+    "listing read twice": (RUN, "            listing = iter(self.source.listing(self.http, self.kinds))",
+                           "            listing = iter(self.source.listing(self.http, self.kinds)) if list(self.source.listing(self.http, self.kinds)) or True else None"),
+    "listing_read_at in local time": (RUN, "self.result.listing_read_at = _utc(self.now()).isoformat()", "self.result.listing_read_at = self.now().isoformat()"),
+    "unparsed not recorded (R13)": (RUN, "            self.result.unparsed = self.source.unparsed  #", "            pass  #"),
+    "unparsed read before the listing is used up (R13)": (RUN, "                self._take(item)\n                self._check_time()\n            self.result.unparsed = self.source.unparsed  # final only now: it resets on the first next()\n",
+                                                          "                self.result.unparsed = self.source.unparsed\n                self._take(item)\n                self._check_time()\n"),
+    "unparsed taken from an unfinished listing (R13)": (RUN, "        except _Stop:\n            pass", "        except _Stop:\n            self.result.unparsed = self.source.unparsed"),
+    "block in the listing escapes": (RUN, "        except Blocked as block:\n            self._latch(str(block))", "        except ZeroDivisionError as block:\n            self._latch(str(block))"),
+    "unreadable listing escapes (R23)": (RUN, "        except ListingUnreadable as exc:\n", "        except ZeroDivisionError as exc:\n"),
+    "unreadable listing not recorded as an error (R23)": (RUN, '            self._stop(f"listing unreadable: {exc}")\n        except HttpError', "            raise _Stop\n        except HttpError"),
+    "listing HTTP error escapes": (RUN, "        except HttpError as exc:  # not read again", "        except ZeroDivisionError as exc:  # not read again"),
+    "listing HTTP error not recorded as an error": (RUN, '            self._stop(f"listing failed: {exc}")', "            raise _Stop"),
+    # run: blocks and the latch
+    "stopped chain collected": (RUN, '        if store.read_state(chain.slug).get("stopped"):', "        if False:"),
+    "any state read as stopped": (RUN, 'if store.read_state(chain.slug).get("stopped"):', "if store.read_state(chain.slug):"),
+    "a block does not stop the run": (RUN, "        self.result.blocked = reason\n        raise _Stop", "        self.result.blocked = reason"),
+    "latch since in local time": (RUN, '"since": _utc(self.now()).isoformat(),', '"since": self.now().isoformat(),'),
+    "latch already alerted": (RUN, '"reason": reason, "alerted": False}', '"reason": reason, "alerted": True}'),
+    "latch without its reason": (RUN, '"reason": reason, "alerted"', '"reason": "", "alerted"'),
+    "HTML retried instead of latched": (RUN, "            if looks_like_html(data):\n", "            if False:\n"),
+    "blocked file not recorded as failed": (RUN, "        self.result.failed[name] = reason\n        self._latch(reason)", "        self._latch(reason)"),
+    # run: one retry
+    "a file not tried again": (RUN, "ATTEMPTS = 2", "ATTEMPTS = 1"),
+    "a file tried three times": (RUN, "ATTEMPTS = 2", "ATTEMPTS = 3"),
+    "HTTP error on a download escapes": (RUN, "            except HttpError as exc:\n                problem", "            except ZeroDivisionError as exc:\n                problem"),
+    "bad payload escapes": (RUN, "            except BadPayload as exc:", "            except ZeroDivisionError as exc:"),
+    "payload not checked": (RUN, "                check_payload(name, data)", "                pass"),
+    "failed file not recorded": (RUN, "        self.result.failed[name] = problem\n", ""),
+    "unreadable listing from a download escapes (R23)": (RUN, "            except ListingUnreadable as exc:  # Shufersal's", "            except ZeroDivisionError as exc:  # Shufersal's"),
+    "a failed put stops the run (R23)": (RUN, "        except Exception as exc:  # a storage hiccup", "        except ZeroDivisionError as exc:  # a storage hiccup"),
+    "files entry's SHA-256 not the body's": (RUN, '"sha256": hashlib.sha256(data).hexdigest()', '"sha256": hashlib.sha256(name.encode()).hexdigest()'),
+    "files entry's size not the body's": (RUN, '"size": len(data),', '"size": len(name),'),
+    # run: time (R23)
+    "time guard at 0 s": (RUN, "MIN_TIME_LEFT = 60.0", "MIN_TIME_LEFT = 0.0"),
+    "sixty seconds left read as too few": (RUN, "        return self.time_left() < MIN_TIME_LEFT", "        return self.time_left() <= MIN_TIME_LEFT"),
+    "time not checked before the listing": (RUN, "            self._check_time()\n            self.result.listing_read_at", "            self.result.listing_read_at"),
+    "time not checked between listing items": (RUN, "                self._take(item)\n                self._check_time()\n", "                self._take(item)\n"),
+    "not attempted not recorded": (RUN, "                    self.result.not_attempted.append(name)", "                    pass"),
+    "retry tried with under 60 s left": (RUN, "            if self._short_of_time():\n", "            if problem is None and self._short_of_time():\n"),
+    "failed first try recorded as not attempted": (RUN, "                if problem is None:\n", "                if True:\n"),
+    # run: the manifest and run ids
+    "manifest under another run's key": (RUN, "manifest_key(day, chain.slug, run_id)", 'manifest_key(day, chain.slug, "run")'),
+    "manifest without the code's commit": (RUN, ', "code_sha": code_sha}', "}"),
+    "manifest keys unsorted": (RUN, "json.dumps(record, sort_keys=True, indent=1)", "json.dumps(record, indent=1)"),
+    "manifest day not ISO": (RUN, '{"day": result.day.isoformat(), ', '{"day": f"{result.day:%Y%m%d}", '),
+    "unexpected error not recorded": (RUN, '        result.error = f"unexpected error: {type(exc).__name__}: {exc}"\n', ""),
+    "unexpected error swallowed": (RUN, '{exc}"\n        raise\n    finally:', '{exc}"\n    finally:'),
+    "naive time accepted by the run loop": (RUN, "    if moment.tzinfo is None or moment.utcoffset() is None:", "    if False:"),
+    "run id in local time": (RUN, 'f"{_utc(now):%H%M%S}Z-', 'f"{now:%H%M%S}Z-'),
+    "run id without its random part": (RUN, "-{secrets.token_hex(2)}", "-0000"),
+    "run id's random part not four hex": (RUN, "secrets.token_hex(2)", "secrets.token_hex(3)"),
 }
 
 
