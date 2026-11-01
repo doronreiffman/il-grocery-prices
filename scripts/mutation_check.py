@@ -260,7 +260,7 @@ MUTATIONS = {
     "empty answer before the total read as the end": (NCR, '            raise ListingUnreadable(f"the NCR listing stopped at', '            break\n            raise ListingUnreadable(f"the NCR listing stopped at'),
     "zero total read as an empty day": (NCR, "            if total < 1:", "            if False:"),
     "a name sent again read on": (NCR, "        if repeated is not None:", "        if False:"),
-    "a repeated name stops the listing at once": (NCR, "    try:\n        fnames, repeat = _read_through(http, length, token)\n", "    raise ListingUnreadable(repeat)\n    try:\n        fnames, repeat = _read_through(http, length, token)\n"),
+    "a repeated name stops the listing at once": (NCR, "    try:\n        fnames, repeat = _read_through(http, length, token, username)\n", "    raise ListingUnreadable(repeat)\n    try:\n        fnames, repeat = _read_through(http, length, token, username)\n"),
     "the read again goes unlogged": (NCR, '    log.warning("the NCR listing as %r sent %s; reading it again from the start, once", username, repeat)\n', ""),
     "a repeat on the second read accepted": (NCR, '    raise ListingUnreadable(f"the NCR listing repeated a name on two reads from the start: {repeat}")', "    return fnames"),
     "an error on the second read unmarked": (NCR, 'raise ListingUnreadable(f"on the second read from the start, after a repeated name: {exc}") from None', "raise"),
