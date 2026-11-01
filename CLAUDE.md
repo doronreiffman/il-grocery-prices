@@ -15,7 +15,7 @@ Personal portfolio project. Collects, every morning, the price files Israeli sup
 - Storage is write-once: every raw, manifest and check write uses `IfNoneMatch="*"` and a ten-year governance Object Lock. Never delete, overwrite or bypass retention.
 - Keep credentials, the owner's email, the health-check URL and any session token out of the repo.
 - Every datetime is time-zone aware; a file belongs to the Israel date in its name. Never a naive `astimezone()`: this Mac runs on Asia/Jerusalem and CI on UTC, so a naive conversion passes in CI and is wrong here.
-- Tests for every component and a mutation for every rule (`scripts/mutation_check.py`); coverage floor 95% on `collector`. Before anything ships, a fresh subagent that has not seen your reasoning reviews it.
+- Tests for every component and a mutation for every rule (`scripts/mutation_check.py`); coverage floor 95% on `collector`. Before anything ships, a fresh subagent that has not seen your reasoning reviews it. Test data never reads the clock: fixed times, and `gzip.compress(..., mtime=0)`.
 - No dependency younger than one month; pin versions. Cheap, boring infrastructure; every proposal carries a monthly cost estimate.
 - Docs in plain words; no "we".
 
