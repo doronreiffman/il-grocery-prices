@@ -1,0 +1,477 @@
+"""The morning check: files listed and not stored, stopped chains, failed runs, and coverage.
+
+Manifests are written as the run loop writes them (RunResult, manifest_bytes, manifest_key) into a
+MemoryStore, which keeps S3Store's rules; raw files go in through put_raw.
+"""
+import gzip
+import json
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+
+from collector.check import Alert, check_day
+from collector.names import KINDS
+from collector.run import RunResult, manifest_bytes
+from collector.store import MemoryStore, manifest_key, raw_key
+
+FIXTURES = Path(__file__).parent / "fixtures"
+DAY = date(2026, 10, 31)
+NOW = datetime(2026, 10, 31, 8, 30, tzinfo=timezone.utc)
+SLUGS = ["shufersal", "ramilevy", "osherad", "carrefour", "yochananof"]
+SINCE = "2026-10-31T04:31:00+00:00"
+
+CHAIN_ID = "7290027600007"
+
+
+def price(store, kind="PriceFull", day=DAY):
+    return f"{kind}{CHAIN_ID}-001-{store}-{day:%Y%m%d}-030000.gz"
+
+
+def stores_name(day=DAY, time="050500"):
+    return f"Stores{CHAIN_ID}-000-{day:%Y%m%d}-{time}.gz"
+
+
+def stores_file(*ids):
+    """A Shufersal-shaped store list: gzipped UTF-8, root <Chain>, the ids as given."""
+    stores = "".join(f"<Store><StoreID>{i}</StoreID></Store>" for i in ids)
+    xml = (f'<?xml version="1.0" encoding="UTF-8"?><Chain><SubChains><SubChain><Stores>{stores}'
+           f"</Stores></SubChain></SubChains></Chain>").encode()
+    return gzip.compress(xml)
+
+
+def manifest(store, slug, mode, kinds=KINDS, listed=(), error=None, blocked=None, run_id=None, day=DAY):
+    """Write a manifest as collect_chain does; returns its run id."""
+    run_id = run_id or f"0{len(store.objects):05d}Z-{mode}-abcd"
+    result = RunResult(slug, run_id, mode, day, list(kinds), listed=list(listed), blocked=blocked, error=error)
+    store.put_record(manifest_key(day, slug, run_id), manifest_bytes(result, "0123456789ab"), NOW)
+    return run_id
+
+
+def stored(store, slug, *names, day=DAY, body=None):
+    for name in names:
+        store.put_raw(raw_key(slug, day, name), body if body is not None else gzip.compress(name.encode()), NOW)
+
+
+def clean_day(store, slugs=SLUGS):
+    """Every chain's retry ran over all five kinds without an error."""
+    for slug in slugs:
+        manifest(store, slug, "retry")
+
+
+def latch(alerted=False):
+    return {"stopped": True, "since": SINCE, "reason": "HTTP 403: https://portal.example/file", "alerted": alerted}
+
+
+def kinds_of(alerts):
+    return [(a.chain, a.kind) for a in alerts]
+
+
+# ---- a quiet morning ----
+
+def test_clean_day_has_no_alerts():
+    store = MemoryStore()
+    clean_day(store)
+    names = [price("030"), price("031")]
+    manifest(store, "shufersal", "main", listed=names)
+    stored(store, "shufersal", *names)
+    alerts, record = check_day(store, SLUGS, DAY)
+    assert alerts == []
+    assert record["day"] == "2026-10-31"
+    assert record["alerts"] == []
+    assert list(record["chains"]) == SLUGS
+    assert record["chains"]["shufersal"]["listed"] == 2
+    assert record["chains"]["shufersal"]["stored"] == 2
+    assert record["chains"]["shufersal"]["missing"] == []
+    assert record["chains"]["shufersal"]["stopped"] is None
+    assert record["chains"]["shufersal"]["failed"] is None
+
+
+def test_only_the_chains_asked_for_are_checked():
+    store = MemoryStore()
+    manifest(store, "ramilevy", "retry", listed=[price("001")])
+    alerts, record = check_day(store, ["shufersal"], DAY)
+    assert list(record["chains"]) == ["shufersal"]
+    assert all(a.chain == "shufersal" for a in alerts)
+
+
+def test_each_chain_reads_its_own_manifests():
+    store = MemoryStore()
+    clean_day(store)
+    manifest(store, "ramilevy", "main", listed=[price("001")])
+    alerts, record = check_day(store, SLUGS, DAY)
+    assert kinds_of(alerts) == [("ramilevy", "missing")]
+    assert record["chains"]["shufersal"]["listed"] == 0 and record["chains"]["shufersal"]["manifests"] == 1
+    assert record["chains"]["ramilevy"]["manifests"] == 2
+
+
+# ---- listed and not stored ----
+
+def test_missing_files_alert_once_naming_the_chain_and_the_count():
+    store = MemoryStore()
+    clean_day(store)
+    names = [price("030"), price("031"), price("032")]
+    manifest(store, "shufersal", "retry", listed=names)
+    stored(store, "shufersal", names[1])
+    alerts, record = check_day(store, SLUGS, DAY)
+    assert kinds_of(alerts) == [("shufersal", "missing")]
+    text = alerts[0].text
+    assert "shufersal" in text and "2 files" in text
+    assert names[0] in text and names[2] in text and names[1] not in text
+    assert record["chains"]["shufersal"]["missing"] == [names[0], names[2]]
+    assert record["chains"]["shufersal"]["listed"] == 3
+    assert record["chains"]["shufersal"]["stored"] == 1
+
+
+def test_one_missing_file_is_one_file():
+    store = MemoryStore()
+    clean_day(store)
+    manifest(store, "ramilevy", "main", listed=[price("001")])
+    alerts, _ = check_day(store, SLUGS, DAY)
+    assert kinds_of(alerts) == [("ramilevy", "missing")]
+    assert "1 file " in alerts[0].text
+
+
+def test_names_listed_in_any_manifest_count():
+    """A name the main run listed and the retry run no longer lists is still missing (Shufersal
+    shows only the latest file per store)."""
+    store = MemoryStore()
+    clean_day(store)
+    manifest(store, "shufersal", "main", listed=[price("030"), price("031")])
+    manifest(store, "shufersal", "retry", listed=[price("031")])
+    stored(store, "shufersal", price("031"))
+    alerts, record = check_day(store, SLUGS, DAY)
+    assert kinds_of(alerts) == [("shufersal", "missing")]
+    assert record["chains"]["shufersal"]["missing"] == [price("030")]
+
+
+def test_missing_alert_names_ten_and_the_record_holds_all():
+    store = MemoryStore()
+    clean_day(store)
+    names = [price(f"{n:03d}") for n in range(12)]
+    manifest(store, "carrefour", "main", listed=names)
+    alerts, record = check_day(store, SLUGS, DAY)
+    assert kinds_of(alerts) == [("carrefour", "missing")]
+    text = alerts[0].text
+    assert "12 files" in text
+    assert all(name in text for name in names[:10])
+    assert names[10] not in text and names[11] not in text
+    assert "2 more" in text
+    assert record["chains"]["carrefour"]["missing"] == names
+
+
+def test_a_conflict_copy_counts_as_stored():
+    store = MemoryStore()
+    clean_day(store)
+    manifest(store, "shufersal", "main", listed=[price("030")])
+    store.put_raw(raw_key("shufersal", DAY, price("030")) + ".0123456789ab", b"changed body", NOW)
+    alerts, record = check_day(store, SLUGS, DAY)
+    assert alerts == []
+    assert record["chains"]["shufersal"]["missing"] == []
+
+
+def test_files_of_another_day_do_not_count():
+    """Yesterday's manifest's names are yesterday's business; a file stored under another day is
+    not stored for this one."""
+    store = MemoryStore()
+    clean_day(store)
+    yesterday = DAY - timedelta(days=1)
+    manifest(store, "shufersal", "main", listed=[price("030", day=yesterday)], day=yesterday)
+    manifest(store, "shufersal", "main", listed=[price("031")])
+    stored(store, "shufersal", price("031"), day=yesterday)
+    alerts, record = check_day(store, SLUGS, DAY)
+    assert kinds_of(alerts) == [("shufersal", "missing")]
+    assert record["chains"]["shufersal"]["missing"] == [price("031")]
+
+
+# ---- stopped chains ----
+
+def test_a_stopped_chain_alerts_once_and_its_state_is_marked():
+    store = MemoryStore()
+    clean_day(store)
+    store.write_state("osherad", latch())
+    alerts, record = check_day(store, SLUGS, DAY)
+    assert kinds_of(alerts) == [("osherad", "stopped")]
+    assert "osherad" in alerts[0].text and "HTTP 403" in alerts[0].text and SINCE in alerts[0].text
+    assert store.read_state("osherad") == latch(alerted=True)  # still stopped, its reason kept
+    assert record["chains"]["osherad"]["stopped"] == {"since": SINCE, "reason": latch()["reason"]}
+
+
+def test_a_second_check_sends_no_second_stopped_alert():
+    store = MemoryStore()
+    clean_day(store)
+    store.write_state("osherad", latch())
+    check_day(store, SLUGS, DAY)
+    alerts, record = check_day(store, SLUGS, DAY)
+    assert alerts == []
+    assert record["chains"]["osherad"]["stopped"] == {"since": SINCE, "reason": latch()["reason"]}
+    later = DAY + timedelta(days=1)
+    for slug in SLUGS:
+        manifest(store, slug, "retry", day=later)
+    assert check_day(store, SLUGS, later)[0] == []
+
+
+def test_a_chain_already_alerted_stays_quiet():
+    store = MemoryStore()
+    clean_day(store)
+    store.write_state("osherad", latch(alerted=True))
+    assert check_day(store, SLUGS, DAY)[0] == []
+    assert store.read_state("osherad") == latch(alerted=True)
+
+
+def test_a_chain_that_is_not_stopped_does_not_alert():
+    store = MemoryStore()
+    clean_day(store)
+    store.write_state("osherad", {})
+    store.write_state("carrefour", {"stopped": False, "alerted": False})
+    alerts, record = check_day(store, SLUGS, DAY)
+    assert alerts == []
+    assert record["chains"]["osherad"]["stopped"] is None
+    assert store.read_state("osherad") == {} and store.read_state("carrefour") == {"stopped": False, "alerted": False}
+
+
+def test_a_latch_without_an_alerted_flag_alerts():
+    store = MemoryStore()
+    clean_day(store)
+    store.write_state("osherad", {"stopped": True, "since": SINCE, "reason": "HTTP 429"})
+    alerts, _ = check_day(store, SLUGS, DAY)
+    assert kinds_of(alerts) == [("osherad", "stopped")]
+    assert store.read_state("osherad")["alerted"] is True
+
+
+# ---- failed runs (ruling R4) ----
+
+def test_failed_run_alerts():
+    """No retry manifest for a chain that day, or one with an error (a listing that reads as no
+    rows included, plan risk 1), is a failed run."""
+    store = MemoryStore()
+    clean_day(store, ["osherad", "carrefour", "yochananof"])
+    manifest(store, "shufersal", "main")  # the main run went; no retry run did
+    manifest(store, "ramilevy", "retry", error="listing unreadable: the listing has no rows", run_id="093000Z-retry-0a0a")
+    alerts, record = check_day(store, SLUGS, DAY)
+    assert kinds_of(alerts) == [("shufersal", "failed"), ("ramilevy", "failed")]
+    assert "no retry run covered Stores, PriceFull, PromoFull, Price, Promo" in alerts[0].text
+    assert "093000Z-retry-0a0a" in alerts[1].text and "listing unreadable: the listing has no rows" in alerts[1].text
+    assert record["chains"]["shufersal"]["failed"] == "no retry run covered Stores, PriceFull, PromoFull, Price, Promo"
+    assert "listing unreadable" in record["chains"]["ramilevy"]["failed"]
+
+
+def test_shufersals_three_retry_runs_together_cover_the_five_kinds():
+    store = MemoryStore()
+    clean_day(store, SLUGS[1:])
+    manifest(store, "shufersal", "retry", kinds=["Stores"])
+    manifest(store, "shufersal", "retry", kinds=["PriceFull", "Price"])
+    alerts, _ = check_day(store, SLUGS, DAY)
+    assert kinds_of(alerts) == [("shufersal", "failed")]
+    assert "no retry run covered PromoFull, Promo" in alerts[0].text
+    manifest(store, "shufersal", "retry", kinds=["PromoFull", "Promo"])
+    assert check_day(store, SLUGS, DAY)[0] == []
+
+
+def test_main_runs_do_not_stand_in_for_the_retry():
+    store = MemoryStore()
+    clean_day(store, SLUGS[1:])
+    manifest(store, "shufersal", "main")
+    manifest(store, "shufersal", "unblock-test")
+    alerts, _ = check_day(store, SLUGS, DAY)
+    assert kinds_of(alerts) == [("shufersal", "failed")]
+
+
+def test_a_main_run_error_is_left_to_the_retry():
+    store = MemoryStore()
+    clean_day(store)
+    manifest(store, "shufersal", "main", error="stopped: under 60 s left")
+    assert check_day(store, SLUGS, DAY)[0] == []
+
+
+def test_a_blocked_retry_is_not_a_failed_run():
+    """The stopped alert covers it."""
+    store = MemoryStore()
+    clean_day(store, SLUGS[1:])
+    manifest(store, "shufersal", "retry", blocked="stopped earlier")
+    store.write_state("shufersal", latch(alerted=True))
+    alerts, record = check_day(store, SLUGS, DAY)
+    assert alerts == []
+    assert record["chains"]["shufersal"]["failed"] is None
+
+
+def test_a_blocked_retry_with_an_error_is_a_failed_run():
+    store = MemoryStore()
+    clean_day(store, SLUGS[1:])
+    manifest(store, "shufersal", "retry", blocked="HTTP 403: https://x", error="latch not written: ClientError: boom")
+    alerts, _ = check_day(store, SLUGS, DAY)
+    assert kinds_of(alerts) == [("shufersal", "failed")]
+    assert "latch not written" in alerts[0].text
+
+
+def test_one_failed_alert_per_chain():
+    store = MemoryStore()
+    clean_day(store, SLUGS[1:])
+    manifest(store, "shufersal", "retry", kinds=["Stores"], error="listing failed: HTTP 500", run_id="093000Z-retry-0001")
+    manifest(store, "shufersal", "retry", kinds=["PriceFull", "Price"], error="stopped: under 60 s left", run_id="094500Z-retry-0002")
+    alerts, _ = check_day(store, SLUGS, DAY)
+    assert kinds_of(alerts) == [("shufersal", "failed")]
+    text = alerts[0].text
+    assert "no retry run covered PromoFull, Promo" in text
+    assert "093000Z-retry-0001" in text and "listing failed: HTTP 500" in text
+    assert "094500Z-retry-0002" in text and "stopped: under 60 s left" in text
+
+
+def test_every_kind_of_alert_for_one_chain():
+    store = MemoryStore()
+    clean_day(store, SLUGS[1:])
+    manifest(store, "shufersal", "retry", listed=[price("030")], blocked="HTTP 403: https://x",
+             error="latch not written: ClientError: boom")
+    store.write_state("shufersal", latch())
+    alerts, record = check_day(store, SLUGS, DAY)
+    assert kinds_of(alerts) == [("shufersal", "missing"), ("shufersal", "stopped"), ("shufersal", "failed")]
+    assert record["alerts"] == [{"chain": a.chain, "kind": a.kind, "text": a.text} for a in alerts]
+
+
+def test_alert_is_a_dataclass_with_chain_kind_and_text():
+    alert = Alert("shufersal", "missing", "text")
+    assert (alert.chain, alert.kind, alert.text) == ("shufersal", "missing", "text")
+
+
+# ---- coverage: recorded, never alerted ----
+
+def coverage(store, slug="shufersal", day=DAY):
+    return check_day(store, [slug], day)[1]["chains"][slug]["coverage"]
+
+
+def test_coverage_is_recorded_and_never_alerts():
+    store = MemoryStore()
+    clean_day(store)
+    stored(store, "shufersal", stores_name(), body=stores_file("030", "031", "032"))
+    stored(store, "shufersal", price("030"))
+    alerts, record = check_day(store, SLUGS, DAY)
+    assert alerts == []
+    assert record["chains"]["shufersal"]["coverage"] == {
+        "published": 1, "expected": 3, "ratio": 0.3333,
+        "store_list": raw_key("shufersal", DAY, stores_name()), "note": None}
+
+
+def test_no_coverage_at_all_never_alerts():
+    store = MemoryStore()
+    clean_day(store)
+    stored(store, "shufersal", stores_name(), body=stores_file("030", "031"))
+    alerts, _ = check_day(store, SLUGS, DAY)
+    assert alerts == []
+    assert coverage(store)["ratio"] == 0.0
+
+
+def test_coverage_counts_stored_full_price_files_only():
+    store = MemoryStore()
+    stored(store, "shufersal", stores_name(), body=stores_file("030", "031", "032", "033"))
+    stored(store, "shufersal", price("030"), price("031", "PromoFull"), price("032", "Price"), price("033", "Promo"))
+    cov = coverage(store)
+    assert (cov["published"], cov["expected"], cov["ratio"]) == (1, 4, 0.25)
+
+
+def test_coverage_compares_store_numbers_as_numbers():
+    """Shufersal's store list holds "93"; its file names pad it to "093"."""
+    store = MemoryStore()
+    stored(store, "shufersal", stores_name(), body=stores_file("93", "7"))
+    stored(store, "shufersal", price("093"), price("007"))
+    cov = coverage(store)
+    assert (cov["published"], cov["expected"], cov["ratio"]) == (2, 2, 1.0)
+
+
+def test_coverage_counts_only_listed_stores_that_published():
+    store = MemoryStore()
+    stored(store, "shufersal", stores_name(), body=stores_file("030", "031"))
+    stored(store, "shufersal", price("030"), price("099"))
+    cov = coverage(store)
+    assert (cov["published"], cov["expected"], cov["ratio"]) == (2, 2, 0.5)
+
+
+def test_coverage_from_the_real_store_lists():
+    """Each portal's own Stores file: Shufersal's gzipped UTF-8, NCR's and Carrefour's UTF-16."""
+    store = MemoryStore()
+    for slug, portal, name, ids in (("shufersal", "shufersal", "Stores7290027600007-000-20261031-020.gz", ("314",)),
+                                    ("ramilevy", "ncr", "Stores7290058140886-000-20261031-050500.xml", ("001", "002")),
+                                    ("carrefour", "carrefour", "Stores7290055700007-000-20261031-000100.xml", ("002", "004", "009"))):
+        stored(store, slug, name, body=(FIXTURES / portal / name).read_bytes())
+        stored(store, slug, *(f"PriceFull{name[6:19]}-001-{i}-20261031-030000.gz" for i in ids))
+    record = check_day(store, ["shufersal", "ramilevy", "carrefour"], DAY)[1]["chains"]
+    assert record["shufersal"]["coverage"]["ratio"] == 0.3333
+    assert record["ramilevy"]["coverage"]["ratio"] == 0.6667
+    assert record["carrefour"]["coverage"]["ratio"] == 1.0
+
+
+def test_coverage_uses_that_days_store_list_first():
+    store = MemoryStore()
+    stored(store, "shufersal", stores_name(DAY - timedelta(days=1)), day=DAY - timedelta(days=1),
+           body=stores_file("030", "031", "032", "033"))
+    stored(store, "shufersal", stores_name(), body=stores_file("030", "031"))
+    stored(store, "shufersal", price("030"))
+    cov = coverage(store)
+    assert (cov["expected"], cov["ratio"], cov["store_list"]) == (2, 0.5, raw_key("shufersal", DAY, stores_name()))
+
+
+def test_coverage_uses_the_days_latest_store_list():
+    store = MemoryStore()
+    stored(store, "shufersal", stores_name(time="050500"), body=stores_file("030", "031", "032", "033"))
+    stored(store, "shufersal", stores_name(time="120000"), body=stores_file("030", "031"))
+    stored(store, "shufersal", price("030"))
+    cov = coverage(store)
+    assert (cov["expected"], cov["store_list"]) == (2, raw_key("shufersal", DAY, stores_name(time="120000")))
+
+
+def test_coverage_falls_back_to_the_latest_store_list_of_the_last_seven_days():
+    store = MemoryStore()
+    for back, ids in ((2, ("030", "031")), (5, ("030", "031", "032", "033"))):
+        day = DAY - timedelta(days=back)
+        stored(store, "shufersal", stores_name(day), day=day, body=stores_file(*ids))
+    stored(store, "shufersal", price("030"))
+    cov = coverage(store)
+    two_back = DAY - timedelta(days=2)
+    assert (cov["expected"], cov["ratio"], cov["store_list"]) == (2, 0.5, raw_key("shufersal", two_back, stores_name(two_back)))
+
+
+def test_coverage_looks_back_seven_days_and_no_further():
+    store = MemoryStore()
+    seven_back, eight_back = DAY - timedelta(days=7), DAY - timedelta(days=8)
+    stored(store, "shufersal", stores_name(eight_back), day=eight_back, body=stores_file("030", "031", "032", "033"))
+    stored(store, "shufersal", price("030"))
+    cov = coverage(store)
+    assert (cov["published"], cov["expected"], cov["ratio"], cov["store_list"]) == (1, None, "unknown", None)
+    assert "no Stores file" in cov["note"]
+    stored(store, "shufersal", stores_name(seven_back), day=seven_back, body=stores_file("030", "031"))
+    assert coverage(store)["store_list"] == raw_key("shufersal", seven_back, stores_name(seven_back))
+
+
+def test_coverage_unknown_when_the_store_list_names_no_stores():
+    store = MemoryStore()
+    stored(store, "shufersal", stores_name(), body=stores_file())
+    stored(store, "shufersal", price("030"))
+    cov = coverage(store)
+    assert (cov["published"], cov["expected"], cov["ratio"]) == (1, None, "unknown")
+    assert "names no stores" in cov["note"]
+
+
+def test_coverage_leaves_out_store_ids_that_are_not_numbers():
+    store = MemoryStore()
+    stored(store, "shufersal", stores_name(), body=stores_file("030", "A1", "٣"))
+    stored(store, "shufersal", price("030"))
+    assert (coverage(store)["expected"], coverage(store)["ratio"]) == (1, 1.0)
+
+
+def test_an_unreadable_store_list_is_unknown_and_the_alerts_still_go():
+    store = MemoryStore()
+    clean_day(store)
+    stored(store, "shufersal", stores_name(), body=b"<Chain><Stores><Store>")
+    manifest(store, "shufersal", "main", listed=[price("030")])
+    alerts, record = check_day(store, SLUGS, DAY)
+    assert kinds_of(alerts) == [("shufersal", "missing")]
+    cov = record["chains"]["shufersal"]["coverage"]
+    assert (cov["expected"], cov["ratio"]) == (None, "unknown")
+    assert cov["note"].startswith("the store list could not be read: ParseError")
+
+
+def test_the_check_record_is_json():
+    store = MemoryStore()
+    clean_day(store)
+    stored(store, "shufersal", stores_name(), body=stores_file("030"))
+    manifest(store, "shufersal", "main", listed=[price("031")])
+    store.write_state("osherad", latch())
+    _, record = check_day(store, SLUGS, DAY)
+    assert json.loads(json.dumps(record)) == record
