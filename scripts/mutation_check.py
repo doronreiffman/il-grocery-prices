@@ -63,6 +63,7 @@ WORDS = ("src/basket/words.py", ["tests/test_page.py"])
 PAGE = ("src/basket/page.py", ["tests/test_page.py"])
 # tests/test_check.py is the collector's morning check; the basket check's tests have their own file
 CHECK_BASKET = ("src/basket/check.py", ["tests/test_basket_check.py"])
+BUILD = ("src/basket/build.py", ["tests/test_build.py"])
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
 MUTATIONS = {
@@ -834,6 +835,14 @@ MUTATIONS = {
     "basket check marker not required": (CHECK_BASKET, "    if not (site_dir / MARKER).is_file():\n", "    if False:\n"),
     "basket check no pages passes": (CHECK_BASKET, "    if not pages:\n        raise NoPages", "    if False:\n        raise NoPages"),
     "basket check exit 0 on a hit": (CHECK_BASKET, "return 1 if problems else 0", "return 0"),
+    # basket: build
+    "basket build unchanged day rewritten": (BUILD, "write_day=not unchanged)", "write_day=True)"),
+    "basket build revision without a reason accepted": (BUILD, "    if revise is None:\n        raise RevisionNeeded", "    if False:\n        raise RevisionNeeded"),
+    "basket build first totals dropped on revision": (BUILD, 'previous["revisions"] + [earlier]', "[earlier]"),
+    "basket build record overwritten": (BUILD, 'open(path, "x", encoding="utf-8")', 'open(path, "w", encoding="utf-8")'),
+    "basket build tables never rebuilt": (BUILD, "and report.is_file() and not rebuild:", "and report.is_file():"),
+    "basket build unchanged pages show the new run": (BUILD, "return previous, True, False", "return public, True, False"),
+    "basket build collected by in UTC": (BUILD, 'f"{now.astimezone(ISRAEL):%H:%M}"', 'f"{now:%H:%M}"'),
 }
 
 

@@ -71,13 +71,9 @@ footer { margin-top: 3rem; border-top: 1px solid #ddd; padding-top: 1rem; font-s
 
 def render_index(public: dict, basket: Basket, exclusions: Mapping[str, Sequence[Store]]) -> str:
     """The index page of the day `public` holds; `exclusions` the stores each chain leaves out, by slug."""
-    day = date.fromisoformat(public["day"])
     chains = _ordered(public["chains"])
-    headline = _headline(public["headline"])
-    compare = headline is not None
-    ranked = sum(chain["in_ranking"] for chain in public["chains"].values())
-    count = len(public["items_in"]) if compare else len(basket.items)
-    first, second = words.headline_lines(headline, count, day, nothing_counted=ranked >= 3 and not public["items_in"])
+    compare = public["headline"] is not None
+    first, second = index_headline(public, basket)
     parts = [f"<h1>{_text(words.TITLE)}</h1>", f'<p class="headline">{_prose(first)}</p>', f"<p>{_prose(second)}</p>"]
     if public["revised"]:
         parts.append(f'<p class="revised">{_prose(_revised(public))}</p>')
@@ -86,6 +82,17 @@ def render_index(public: dict, basket: Basket, exclusions: Mapping[str, Sequence
     parts.append(_table(public, basket, chains, compare))
     parts.append(_notes(public, basket, exclusions, chains))
     return _page(words.TITLE, parts, _credit(public))
+
+
+def index_headline(public: dict, basket: Basket) -> tuple[str, str]:
+    """The index page's two headline lines for the day `public` holds: the headline, or why there is none, and the
+    items line."""
+    headline = _headline(public["headline"])
+    compare = headline is not None
+    ranked = sum(chain["in_ranking"] for chain in public["chains"].values())
+    count = len(public["items_in"]) if compare else len(basket.items)
+    return words.headline_lines(headline, count, date.fromisoformat(public["day"]),
+                                nothing_counted=ranked >= 3 and not public["items_in"])
 
 
 def render_method(basket: Basket, exclusions: Mapping[str, Sequence[Store]], public: dict) -> str:
