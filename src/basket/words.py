@@ -82,8 +82,9 @@ RULES = (
                    "total; equal totals share a rank. The gap is (highest − lowest) ÷ lowest, as a whole percent."),
     ("B10 The record.", "Each build writes a record of the day with every number on the page and the counts behind "
                         "them. The day file on this site holds those numbers and counts, and names no store."),
-    ("B11 As of.", "The page's date is the date in the files' names; \"collected by\" is the Israel time the day's "
-                   "extraction started."),
+    ("B11 As of.", "The page's date is the date in the files' names; \"collected by\" is the Israel time by which the "
+                   "day's files had been collected: in a hand build the time of the day's collection check, in the "
+                   "scheduled build the time its extraction starts."),
     ("B12 Corrections.", "A published day changes only for a stated reason. The page then gives the date of the "
                          "change and its reason, and keeps the totals first published."),
 )

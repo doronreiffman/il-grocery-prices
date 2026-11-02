@@ -46,7 +46,7 @@ output() {
 }
 bucket=$(output SiteBucketName)
 distribution=$(output SiteDistributionId)
-# --delete below removes objects: only ever aim it at this stack's bucket. On the archive bucket a
+# --delete below (the pages) removes objects: only ever aim it at this stack's bucket. On the archive bucket a
 # delete would add markers that hide locked files.
 case "$bucket" in
   "$BUCKET_PREFIX"?*) ;;
@@ -61,11 +61,13 @@ fi
 # send nosniff). The marker and anything else in the folder stay local. Browsers keep a file five
 # minutes, so an upload shows within minutes of the invalidation.
 upload() {
-  aws s3 sync "$SITE/" "s3://$bucket/" --delete --exclude '*' --include "$1" --content-type "$2" \
-    --cache-control 'max-age=300' --profile "$PROFILE" --region "$REGION"
+  aws s3 sync "$SITE/" "s3://$bucket/" "$@" --cache-control 'max-age=300' --profile "$PROFILE" --region "$REGION"
 }
-upload '*.html' 'text/html; charset=utf-8'
-upload '*.json' 'application/json; charset=utf-8'
+# The pages, with --delete: a page the build no longer writes leaves the site.
+upload --delete --exclude '*' --include '*.html' --content-type 'text/html; charset=utf-8'
+# The day files, never with --delete: days/ is append-only, and each day's file holds its revision reason, which
+# exists nowhere else once published, so an upload from a site/ that lacks a day must not remove it.
+upload --exclude '*' --include '*.json' --content-type 'application/json; charset=utf-8'
 aws cloudfront create-invalidation --distribution-id "$distribution" --paths '/*' \
   --profile "$PROFILE" --query Invalidation.Id --output text
 echo "published: https://$(output SiteDomainName)/"

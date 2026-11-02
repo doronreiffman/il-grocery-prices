@@ -26,8 +26,10 @@ aws s3 sync "s3://$BUCKET/raw/" data/raw/ --exclude '*' \
   --include "chain=*/date=$day/Stores*" --profile "$PROFILE" --region "$REGION"
 aws s3 sync "s3://$BUCKET/manifests/date=$day/" "data/manifests/date=$day/" --profile "$PROFILE" --region "$REGION"
 
-# The published day files, so a build compares its numbers with what is on the site (B12) and the upload's
-# --delete keeps every earlier day. Only a stack that does not exist yet is skipped; any other failure stops.
+# The published day files, so a build compares its numbers with what is on the site (B12). Only a stack that does
+# not exist yet is skipped; any other failure stops. AWS's answer for a missing stack, as seen on 2026-11-02:
+# "An error occurred (ValidationError) when calling the DescribeStacks operation: Stack with id
+# il-grocery-prices-site does not exist".
 SITE_STACK=il-grocery-prices-site
 err=$(mktemp)
 trap 'rm -f "$err"' EXIT
