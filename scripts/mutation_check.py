@@ -54,6 +54,7 @@ PRICEFILE = ("src/basket/pricefile.py", ["tests/test_pricefile.py"])
 EXTRACT = ("src/basket/extract.py", ["tests/test_extract.py"])
 STORES = ("src/basket/stores.py", ["tests/test_stores.py"])
 CHAINS_BASKET = ("src/basket/chains.py", ["tests/test_stores.py"])
+UNITS_BASKET = ("src/basket/units.py", ["tests/test_units.py"])
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
 MUTATIONS = {
@@ -715,6 +716,14 @@ MUTATIONS = {
     "stores another kind read as the store list": (STORES, 'parsed.kind == "Stores"', 'parsed.kind in ("Stores", "PriceFull")'),
     "stores another day's list read": (STORES, " and parsed.day == day", ""),
     "stores conflict copy not read": (STORES, "parse_file_name(published_name(name))", "parse_file_name(name)"),
+    # basket: units
+    "units litre not scaled": (UNITS_BASKET, '"ליטר": ("gml", THOUSAND)', '"ליטר": ("gml", ONE)'),
+    "units unknown unit read as grams": (UNITS_BASKET, "known = UNITS.get(unit.strip())", 'known = UNITS.get(unit.strip(), ("gml", ONE))'),
+    "units zero quantity accepted": (UNITS_BASKET, "amount <= 0", "amount < 0"),
+    "units unit and gml compared alike": (UNITS_BASKET, "    kind: str\n", '    kind: str = __import__("dataclasses").field(compare=False)\n'),
+    "units unit string not trimmed": (UNITS_BASKET, "UNITS.get(unit.strip())", "UNITS.get(unit)"),
+    "units non-finite quantity accepted": (UNITS_BASKET, "if not amount.is_finite() or amount", "if amount"),
+    "units amount not made plain": (UNITS_BASKET, "Size(Decimal(plain(amount * factor)), kind)", "Size(amount * factor, kind)"),
 }
 
 
