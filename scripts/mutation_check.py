@@ -51,6 +51,7 @@ ALL_KINDS = ("template.yaml", [_T + "test_each_chain_has_runs_of_each_mode_over_
 HANDLER_EVENTS = ("template.yaml", [_T + "test_every_event_is_one_the_handler_takes"])
 BARCODE = ("src/basket/barcode.py", ["tests/test_barcode.py"])
 PRICEFILE = ("src/basket/pricefile.py", ["tests/test_pricefile.py"])
+EXTRACT = ("src/basket/extract.py", ["tests/test_extract.py"])
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
 MUTATIONS = {
@@ -680,6 +681,23 @@ MUTATIONS = {
     "pricefile text not stripped": (PRICEFILE, 'return (element.text or "").strip()', 'return element.text or ""'),
     "pricefile ZIP folder read as a file": (PRICEFILE, "members = [member for member in archive.infolist() if not member.is_dir()]", "members = archive.infolist()"),
     "pricefile well-formed HTML read as a file of no items": (PRICEFILE, "    if not body.startswith(XML_STARTS):", "    if False:"),
+    # basket: extract
+    "extract older file wins": (EXTRACT, "latest = max(named)", "latest = min(named)"),
+    "extract first duplicate wins": (EXTRACT, "        latest[row.code] = row", "        latest.setdefault(row.code, row)"),
+    "extract conflict not counted": (EXTRACT, "                conflicting += 1", "                pass"),
+    "extract unreadable price kept as zero": (EXTRACT, "    except InvalidOperation:\n        return None", "    except InvalidOperation:\n        return Decimal(0)"),
+    "extract three-decimal price accepted": (EXTRACT, "-value.as_tuple().exponent > 2", "-value.as_tuple().exponent > 3"),
+    "extract empty table not written": (EXTRACT, "        with duckdb.connect() as con:", "        if count == 0:\n            return 0\n        with duckdb.connect() as con:"),
+    "extract sub-chain padded": (EXTRACT, "sub_chain = None if parsed.sub_chain is None else store_key(parsed.sub_chain)", "sub_chain = parsed.sub_chain"),
+    "extract conflict copy not read": (EXTRACT, "parse_file_name(published_name(path.name))", "parse_file_name(path.name)"),
+    "extract another day's file read": (EXTRACT, ' or parsed.day != day:', ":"),
+    "extract another kind's file read": (EXTRACT, 'parsed.kind != "PriceFull"', 'parsed.kind not in ("PriceFull", "PromoFull")'),
+    "extract stores sorted as text": (EXTRACT, "key=lambda f: (int(f.store), f.store)", "key=lambda f: f.store"),
+    "extract price too large for the table accepted": (EXTRACT, " or abs(value) >= PRICE_LIMIT:", ":"),
+    "extract NaN price accepted": (EXTRACT, "if not value.is_finite() or -value", "if -value"),
+    "extract a store of no rows counted": (EXTRACT, "stores=sum(1 for c in counts if c.rows)", "stores=len(counts)"),
+    "extract None written as empty text": (EXTRACT, 'NULLABLE = ("sub_chain", "code_norm", "price")', 'NULLABLE = ("price",)'),
+    "extract empty text read as NULL": (EXTRACT, "allow_quoted_nulls = false", "allow_quoted_nulls = true"),
 }
 
 
