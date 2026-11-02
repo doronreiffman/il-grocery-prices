@@ -4,6 +4,7 @@ Most important first. One line per item: a `[qN]` id (never reused), what it is,
 
 ## Queue
 
+- [q13] First showcase: the headline basket of identical barcodes priced across the five chains, from one day's full price files (the picture approved 2026-10-31; owner, 2026-11-02: queue it next, after flights-archive's alarm work). A design session first; the first slice of q3's pipeline. State: `.claude/OPEN_ISSUES.md`, Showcase, "Headline basket". Added 2026-11-02.
 - [q10] Full kinds on Saturdays and holidays: read the first Saturday's check record (2026-11-07) for "no run listed a PriceFull / PromoFull"; a chain that skips Saturdays → the owner decides on an exemption. State: `.claude/OPEN_ISSUES.md`, Collector, "Full kinds on Saturdays and holidays: unknown".
 - [q12] Move Osher Ad's morning main run after its 08:00 files: on 2026-11-02 the 06:48 run listed nothing and the 09:48 retry collected everything (owner, 2026-11-02: queue it). State: `.claude/OPEN_ISSUES.md`, Collector, "Osher Ad's main run starts before Osher Ad publishes". Added 2026-11-02.
 - [q9] Shufersal's link refresh and NCR's second listing read have no time check. State: `.claude/OPEN_ISSUES.md`, Collector, "Shufersal's link refresh and NCR's second listing read have no time check".
