@@ -16,7 +16,7 @@
 - Every datetime is time-zone aware; never a naive `astimezone()`. Test data never reads the clock: fixed times, and `gzip.compress(..., mtime=0)`.
 - Fixtures under `tests/fixtures/` are synthetic: at most three records a file, synthetic prices, names and barcodes, no addresses or tokens (`tests/test_fixtures.py` enforces it and reads a file's kind from its name).
 - Raw files never enter the repo: `data/` and `site/` are gitignored; the real day is synced read-only from the archive bucket `il-grocery-prices-archivebucket-fmnv3dorojol` with profile `flights-sam`, after `aws sts get-caller-identity --profile flights-sam` shows account 137953273942 and user doron-admin.
-- A test and a named mutation for every rule; coverage floor 95% on `basket` as on `collector` (CI: `pytest --cov=collector --cov=basket --cov-fail-under=95`). The mutation check edits source files in place: run nothing else from the checkout while it runs.
+- A test and a named mutation for every rule; coverage floor 95% on `basket` as on `collector` (CI: `pytest --cov=collector --cov=src/basket --cov-fail-under=95`). The mutation check edits source files in place: run nothing else from the checkout while it runs.
 - Words: the "always" and "never" lists of the spec, verbatim; docs in plain words, no "we"; the credit line on every page; `noindex` on every page; no JavaScript.
 - Money is `Decimal`, never float; written as strings with two decimals; rounding half up.
 - Store and sub-chain keys are the published numbers with leading zeros stripped (`"093"` and `"93"` are one store).
@@ -39,7 +39,7 @@ Input classes the spec implies and no task would otherwise exercise; each has it
 
 **Files:**
 - Create: `src/basket/__init__.py` (a one-line docstring), `src/basket/barcode.py`
-- Modify: `.github/workflows/ci.yml` (the pytest line: `--cov=collector --cov=basket`), `scripts/mutation_check.py`
+- Modify: `.github/workflows/ci.yml` (the pytest line: `--cov=collector --cov=src/basket`), `scripts/mutation_check.py`
 - Test: `tests/test_barcode.py`
 
 **Interfaces:**
@@ -400,7 +400,7 @@ def test_missing_table_raises_naming_the_chain()
 - [ ] **Step 2: Run** — FAIL. **Step 3: Implement.** **Step 4: Run** — PASS.
 - [ ] **Step 5: Mutations** (`build.py`): "unchanged day rewritten", "revision without a reason accepted", "first totals dropped on revision", "record overwritten", "tables never rebuilt". Run — caught.
 - [ ] **Step 6: The real day, twice** (Mac): `python -m basket.build --day 2026-11-02` with `basket/v1.json`; then again → "unchanged". The hand check: three items' prices in three chains' raw files read by eye against the page (read-only; nothing copied). Record both in `## Deviations` with the headline the page shows.
-- [ ] **Step 7: Full suite, coverage, every mutation**: `.venv/bin/pytest --cov=collector --cov=basket --cov-fail-under=95 -q` and `.venv/bin/python scripts/mutation_check.py` — all pass, all caught.
+- [ ] **Step 7: Full suite, coverage, every mutation**: `.venv/bin/pytest --cov=collector --cov=src/basket --cov-fail-under=95 -q` and `.venv/bin/python scripts/mutation_check.py` — all pass, all caught.
 - [ ] **Step 8: Commit** `git commit -m "basket: the build command: three steps in one, corrections never quiet (B12), the golden day"`.
 
 ---
