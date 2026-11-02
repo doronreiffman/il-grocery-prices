@@ -58,6 +58,7 @@ UNITS_BASKET = ("src/basket/units.py", ["tests/test_units.py"])
 BASKET_FILE = ("src/basket/basket_file.py", ["tests/test_basket_file.py"])
 RULES = ("src/basket/rules.py", ["tests/test_rules.py"])
 RECORD = ("src/basket/record.py", ["tests/test_record.py"])
+CANDIDATES = ("src/basket/candidates.py", ["tests/test_candidates.py"])
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
 MUTATIONS = {
@@ -778,6 +779,16 @@ MUTATIONS = {
     "record keys not sorted": (RECORD, "sort_keys=True, indent=1", "sort_keys=False, indent=1"),
     "record comparable keeps collected_by": (RECORD, '"built_at", "collected_by", "revisions"', '"built_at", "revisions"'),
     "record placeholder count dropped": (RECORD, '"placeholders": placeholders}', '"placeholders": 0}'),
+    # basket: candidates
+    "candidates a four-chain code passes": (CANDIDATES, "listed.keys() == with_file.keys()", "len(listed) >= len(with_file) - 1"),
+    "candidates coverage share at half": (CANDIDATES, 'min_share: Decimal = Decimal("0.8")', 'min_share: Decimal = Decimal("0.5")'),
+    "candidates two stating chains enough": (CANDIDATES, "min_stating: int = 3", "min_stating: int = 2"),
+    "candidates non-GS1 code passes": (CANDIDATES, '" WHERE gs1 AND chain IN', '" WHERE true AND chain IN'),
+    "candidates exactly the share refused": (CANDIDATES, "listed[chain] >= min_share * with_file[chain]", "listed[chain] > min_share * with_file[chain]"),
+    "candidates disagreeing sizes pass": (CANDIDATES, "len(set(stated)) != 1", "len(set(stated)) < 1"),
+    "candidates name tie to the last in order": (CANDIDATES, "min(names, key=lambda name: (-names[name], name))", "max(names, key=lambda name: (names[name], name))"),
+    "candidates name first in order, not most common": (CANDIDATES, "min(names, key=lambda name: (-names[name], name))", "min(names)"),
+    "candidates coverage rounded half up in the table": (CANDIDATES, "rounding=ROUND_DOWN", 'rounding="ROUND_HALF_UP"'),
 }
 
 
