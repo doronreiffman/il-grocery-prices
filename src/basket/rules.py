@@ -11,9 +11,12 @@ before the placeholder rule, so a store whose only rows are placeholders still p
 stores with a file are listed by key as numbers, as the extraction sorts them ("9" before "10").
 
 Chain price (B5). A chain's price for an item is the median of the prices of its rows listing the
-item, matched by the code with leading zeros stripped: the middle price, or the mean of the two
-middle ones, worked out in Decimal from the exact prices, never through floating point. The lowest
-and highest prices and the number of stores listing the item are kept beside it.
+item, matched by the code with leading zeros stripped: the middle price over the stores listing it,
+or the mean of the two middle ones, worked out in Decimal from the exact prices, never through
+floating point. A store counts once: one that lists the item under more than one code with the same
+digits once leading zeros are stripped ("0" + code and the code) is double-coded, and its price is
+the lowest of its rows'. The lowest and highest store prices, the number of stores listing the item
+and the number of them double-coded are kept beside it.
 
 Chain size (B7). A chain's size for an item is the most common readable size over its rows
 (`basket.units.normal_size`), each size counted over every row that states it however it is spelled
@@ -31,11 +34,15 @@ An item that fails is left out of every chain's total and named with the chains 
 their share ("1 of 4") or size ("500 gml").
 
 Totals (B9). A chain's total is the sum of its prices for the items that count. Chains rank from the
-lowest total; equal totals share a rank and sort by slug, and the next rank counts every chain above
-it (1, 1, 3). With three or more chains in the ranking, the headline names the lowest and the highest
-total and the gap, (highest - lowest) x 100 / lowest, rounded half up to a whole percent; with fewer,
-there is no headline. When no item counts, no chain has a total or a rank and there is no headline;
-a chain B8 put in the ranking stays there all the same.
+lowest total; equal totals share a rank, and the next rank counts every chain above it (1, 1, 3).
+With three or more chains in the ranking, the headline names the lowest and the highest total (of
+equal totals, the first and the last by slug) and the gap, (highest - lowest) x 100 / lowest,
+rounded half up to a whole percent; with fewer, there is no headline. When no item counts, no chain
+has a total or a rank and there is no headline; a chain B8 put in the ranking stays there all the
+same.
+
+Order (B10). Every mapping by chain in the result, the chains' results and a left-out item's details,
+is keyed by slug in sorted order, whatever the order of the chain days given.
 """
 from collections import Counter
 from collections.abc import Mapping, Sequence, Set
@@ -58,11 +65,13 @@ class MissingTable(Exception):
 
 @dataclass(frozen=True)
 class ChainPrice:
-    """A chain's price for an item (B5), its stores' lowest and highest price, and the stores listing it."""
+    """A chain's price for an item (B5), its stores' lowest and highest price, the stores listing it, and
+    how many of those list it under more than one code (each counted once, at its lowest price)."""
     median: Decimal
     low: Decimal
     high: Decimal
     listing: int
+    double_coded: int = 0
 
 
 @dataclass(frozen=True)
@@ -76,7 +85,8 @@ class ChainDay:
 
 @dataclass(frozen=True)
 class LeftOut:
-    """A basket item out of the day's totals: "coverage" with {chain: "n of m"} or "size" with {chain: "500 gml"}."""
+    """A basket item out of the day's totals: "coverage" with {chain: "n of m"} or "size" with {chain: "500 gml"},
+    the chains sorted."""
     code: str
     reason: str
     details: dict[str, str]
@@ -102,8 +112,8 @@ class ChainResult:
 
 @dataclass(frozen=True)
 class DayResult:
-    """The basket codes that count and those left out, in the basket's order; the chains in rank order,
-    those without a rank last by slug; the headline, or None."""
+    """The basket codes that count and those left out, in the basket's order; the chains by slug, sorted;
+    the headline, or None."""
     items_in: tuple[str, ...]
     left_out: tuple[LeftOut, ...]
     chains: dict[str, ChainResult]
@@ -162,13 +172,15 @@ def stores_with_file(con: duckdb.DuckDBPyConnection, included: dict[str, set[str
 
 
 def chain_prices(con: duckdb.DuckDBPyConnection, codes: Sequence[str]) -> dict[tuple[str, str], ChainPrice]:
-    """Per (chain, normalized code) listed in `rows`: the chain's price for the item (B5)."""
-    found = con.execute(
-        "SELECT chain, code_norm, list(price ORDER BY price, store), count(DISTINCT store) FROM rows"
-        " WHERE code_norm IN (SELECT unnest(?::VARCHAR[])) GROUP BY chain, code_norm ORDER BY chain, code_norm",
-        [[normalize(code) for code in codes]]).fetchall()
-    return {(chain, code): ChainPrice(_median(prices), prices[0], prices[-1], listing)
-            for chain, code, prices, listing in found}
+    """Per (chain, normalized code) listed in `rows`: the chain's price for the item (B5), one price a store."""
+    found = con.execute("""
+        SELECT chain, code_norm, list(price ORDER BY price, store), count(*), count(*) FILTER (WHERE codes > 1)
+        FROM (SELECT chain, code_norm, store, min(price) AS price, count(*) AS codes FROM rows
+              WHERE code_norm IN (SELECT unnest(?::VARCHAR[])) GROUP BY chain, code_norm, store)
+        GROUP BY chain, code_norm ORDER BY chain, code_norm
+    """, [[normalize(code) for code in codes]]).fetchall()
+    return {(chain, code): ChainPrice(_median(prices), prices[0], prices[-1], listing, double_coded)
+            for chain, code, prices, listing, double_coded in found}
 
 
 def _median(ordered: list[Decimal]) -> Decimal:
@@ -212,7 +224,7 @@ def gap_percent(low: Decimal, high: Decimal) -> int:
 def price_basket(basket: Basket, days: Sequence[ChainDay], prices: dict[tuple[str, str], ChainPrice],
                  sizes: dict[tuple[str, str], Size | None]) -> DayResult:
     """The day's result: the guards (B6, B7) over the chains in the ranking, then totals, ranks and headline (B9)."""
-    ranking = [day for day in days if day.in_ranking]
+    ranking = sorted((day for day in days if day.in_ranking), key=lambda day: day.slug)
     items_in: list[str] = []
     left_out: list[LeftOut] = []
     for item in basket.items:
@@ -227,12 +239,11 @@ def price_basket(basket: Basket, days: Sequence[ChainDay], prices: dict[tuple[st
     totals: dict[str, Decimal] = {}
     if items_in:  # with no item counted there is nothing to total, rank or compare
         totals = {day.slug: sum((listed[day.slug][code].median for code in items_in), Decimal(0)) for day in ranking}
-    order = sorted(totals, key=lambda slug: (totals[slug], slug))
-    ranks = {slug: 1 + sum(other < totals[slug] for other in totals.values()) for slug in order}
-    chains = {slug: ChainResult(totals[slug], ranks[slug], listed[slug]) for slug in order}
-    chains |= {slug: ChainResult(None, None, listed[slug]) for slug in sorted(listed) if slug not in totals}
+    ranks = {slug: 1 + sum(other < totals[slug] for other in totals.values()) for slug in totals}
+    chains = {slug: ChainResult(totals.get(slug), ranks.get(slug), listed[slug]) for slug in sorted(listed)}
     headline = None
-    if len(order) >= 3:
+    if len(totals) >= 3:
+        order = sorted(totals, key=lambda slug: (totals[slug], slug))
         lowest, highest = order[0], order[-1]
         headline = Headline(lowest, totals[lowest], highest, totals[highest],
                             gap_percent(totals[lowest], totals[highest]))
@@ -241,7 +252,8 @@ def price_basket(basket: Basket, days: Sequence[ChainDay], prices: dict[tuple[st
 
 def _guard(item: BasketItem, ranking: Sequence[ChainDay], prices: dict[tuple[str, str], ChainPrice],
            sizes: dict[tuple[str, str], Size | None]) -> LeftOut | None:
-    """Why `item` is left out over the chain days in `ranking`, coverage (B6) before size (B7); None when it counts."""
+    """Why `item` is left out over the chain days in `ranking` (sorted by slug), coverage (B6) before size (B7);
+    None when it counts."""
     code = normalize(item.code)
     listing = {day.slug: prices[(day.slug, code)].listing if (day.slug, code) in prices else 0 for day in ranking}
     short = {day.slug: f"{listing[day.slug]} of {day.with_file}" for day in ranking

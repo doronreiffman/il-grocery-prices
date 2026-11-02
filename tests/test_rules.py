@@ -125,6 +125,15 @@ def test_median_ignores_an_outlier(tmp_path):
     assert prices == {("a", MILK): ChainPrice(Decimal("5.90"), Decimal("5.90"), Decimal("10000.00"), 4)}
 
 
+def test_a_store_listing_one_product_under_two_codes_counts_once(tmp_path):
+    chains = {"a": [row("1", "0" + MILK, "6.00"), row("1", MILK, "5.00"), row("2", MILK, "9.00")]}
+    with opened(tmp_path, chains, {"a": {"1", "2"}}) as con:
+        prices = chain_prices(con, [MILK])
+    # store 1 at 5.00, the lower of its two codes; the median over stores is (5.00 + 9.00) / 2
+    assert prices == {("a", MILK): ChainPrice(median=Decimal("7.00"), low=Decimal("5.00"), high=Decimal("9.00"),
+                                              listing=2, double_coded=1)}
+
+
 def test_code_matched_by_normalized_form(tmp_path):
     chains = {"a": [row("1", "0" + MILK, "5.90")]}
     with opened(tmp_path, chains, {"a": {"1"}}) as con:
@@ -232,9 +241,9 @@ def test_totals_rank_and_gap():
 
     result = day_with_milk_at({"a": "60.00", "b": "87.40", "c": "60.00", "d": "70.00", "e": "1.00"})
     assert [(slug, chain.total, chain.rank) for slug, chain in result.chains.items()] == [
-        ("a", Decimal("100.00"), 1), ("c", Decimal("100.00"), 1), ("d", Decimal("110.00"), 3),
-        ("b", Decimal("127.40"), 4), ("e", None, None)]
-    assert result.headline == Headline("a", Decimal("100.00"), "b", Decimal("127.40"), 27)
+        ("a", Decimal("100.00"), 1), ("b", Decimal("127.40"), 4), ("c", Decimal("100.00"), 1),
+        ("d", Decimal("110.00"), 3), ("e", None, None)]
+    assert result.headline == Headline("a", Decimal("100.00"), "b", Decimal("127.40"), 27)  # a and c tie: a by slug
     assert day_with_milk_at({"a": "60.00", "b": "87.50", "c": "60.00", "d": "70.00"}).headline.gap_percent == 28
     assert gap_percent(Decimal("100.00"), Decimal("126.50")) == 27  # half up, not to even
 
@@ -259,3 +268,15 @@ def test_no_items_counted_gives_no_totals_and_no_headline():
     assert result.chains["a"].items == {code: price("5.00") for code in CODES}  # prices still shown
     assert result.headline is None
     assert [day.slug for day in days if day.in_ranking] == ["d", "c", "b", "a"]  # B8 unchanged
+
+
+def test_per_chain_keys_follow_the_slugs_not_the_days_order():
+    days = [chain_day(slug, 4, 4) for slug in reversed(CHAINS)]
+    prices = every_item_at("abcde") | {(slug, MILK): price("5.00", listing=1) for slug in CHAINS}
+    prices |= {(slug, EGGS): price(median, 4) for slug, median in zip(CHAINS, ("9.00", "8.00", "7.00", "6.00", "5.00"))}
+    sizes = {(slug, PASTA): Size(Decimal(400), "gml") for slug in CHAINS}
+    result = price_basket(BASKET, days, prices, sizes)
+    assert [(item.code, list(item.details)) for item in result.left_out] == [
+        (MILK, list(CHAINS)), (PASTA, list(CHAINS))]
+    assert [(slug, chain.rank) for slug, chain in result.chains.items()] == [
+        ("a", 5), ("b", 4), ("c", 3), ("d", 2), ("e", 1)]
