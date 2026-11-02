@@ -18,6 +18,12 @@ from basket.units import Size, normal_size, plain
     ("0.00", "יחידות", None),  # the published form of a zero quantity
     (" 500 ", " גרם ", Size(Decimal(500), "gml")),  # spaces around either are noise
     ("NaN", "גרם", None), ("Infinity", "ליטר", None), ("-1", "גרם", None),
+    # a count of one carries no size; a count above one does
+    ("1", "יחידות", None), ("1.00", "יחידה", None), ("6", "יחידות", Size(Decimal(6), "unit")),
+    # spellings under 1,000 rows that day, read all the same
+    ("1.5", "ליטרים", Size(Decimal(1500), "gml")), ("2", "קילוגרמים", Size(Decimal(2000), "gml")),
+    ("10", "יח", Size(Decimal(10), "unit")), ("250", "מ'ל", Size(Decimal(250), "gml")),
+    ("100", "גרמים", Size(Decimal(100), "gml")),
 ])
 def test_normal_size(q, u, size):
     assert normal_size(q, u) == size

@@ -724,6 +724,7 @@ MUTATIONS = {
     "units unit string not trimmed": (UNITS_BASKET, "UNITS.get(unit.strip())", "UNITS.get(unit)"),
     "units non-finite quantity accepted": (UNITS_BASKET, "if not amount.is_finite() or amount", "if amount"),
     "units amount not made plain": (UNITS_BASKET, "Size(Decimal(plain(amount * factor)), kind)", "Size(amount * factor, kind)"),
+    "units one unit read as a size": (UNITS_BASKET, 'if kind == "unit" and amount == 1:', "if False:"),
 }
 
 

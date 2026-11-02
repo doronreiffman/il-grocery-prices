@@ -8,6 +8,10 @@ after trimming the spaces around them; any other string, "לא ידוע" ("unkno
 among them, is "not stated". So is a quantity that is not a number, is not finite ("NaN",
 "Infinity") or is not above zero (38,941 rows of 2026-11-02 state 0.00).
 
+A count of one is not a size either: it carries none. 791,019 rows of 2026-11-02 say "1 unit",
+among them products with real weights, so one unit must not count as a disagreement with a size in
+grams or millilitres. A count above one ("6 units") is a size.
+
 Amounts are Decimal, never float, and are kept plain: 1.50 is 1.5, and 1000 is never 1E+3.
 """
 from dataclasses import dataclass
@@ -31,10 +35,15 @@ UNITS: dict[str, tuple[str, Decimal]] = {
     "יח'": ("unit", ONE),  # 4,207
     'מ"ל': ("gml", ONE),  # 2,454
     'ק"ג': ("gml", THOUSAND),  # 761
+    # Below the 1,000-row threshold, and read because each spells a unit already read above
+    "ליטרים": ("gml", THOUSAND),  # 663
+    "קילוגרמים": ("gml", THOUSAND),  # 141
+    "יח": ("unit", ONE),  # 13
+    "מ'ל": ("gml", ONE),  # 5
+    "גרמים": ("gml", ONE),  # 1
     "קילו": ("gml", THOUSAND),  # none that day
     "יחידה": ("unit", ONE),  # none that day
-    # Under 1,000 rows and not read: "ליטרים" 663, "קילוגרמים" 141, "קרמול" 130, "מטר" 58, "1" 23,
-    # "יח" 13, "מ'ל" 5, "100 יח'" 4, "קרטון" 3, "גרמים" 1, 'ס"מ' 1
+    # Below the threshold and not read: "קרמול" 130, "מטר" 58, "1" 23, "100 יח'" 4, "קרטון" 3, 'ס"מ' 1
 }
 
 
@@ -56,6 +65,8 @@ def normal_size(quantity: str, unit: str) -> Size | None:
     except InvalidOperation:
         return None
     if not amount.is_finite() or amount <= 0:
+        return None
+    if kind == "unit" and amount == 1:
         return None
     return Size(Decimal(plain(amount * factor)), kind)
 
