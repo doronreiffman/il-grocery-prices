@@ -424,3 +424,6 @@ def test_missing_table_raises_naming_the_chain()
 ## Deviations
 
 (Appended during execution: what reality forced, and why.)
+
+- 2026-11-02, Task 3: adding `tests/fixtures/basket/` broke seven tests that pin the fixture count (`tests/test_payload.py`) and map each fixture folder to a chain id (`tests/test_names.py`); both were updated (11 files, 8 gzips, `basket` → `7290000000001`). Any later fixture folder forces the same two edits.
+- 2026-11-02, Task 3: Task 2's commit split a source block that an older mutation entry quotes ("price file without a store accepted"), so the full mutation check exited 1; fixed in a Task 2 fix round. From here every task runs the full mutation check, not only its own filter, before committing.
