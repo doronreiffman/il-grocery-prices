@@ -57,6 +57,7 @@ CHAINS_BASKET = ("src/basket/chains.py", ["tests/test_stores.py"])
 UNITS_BASKET = ("src/basket/units.py", ["tests/test_units.py"])
 BASKET_FILE = ("src/basket/basket_file.py", ["tests/test_basket_file.py"])
 RULES = ("src/basket/rules.py", ["tests/test_rules.py"])
+RECORD = ("src/basket/record.py", ["tests/test_record.py"])
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
 MUTATIONS = {
@@ -764,6 +765,17 @@ MUTATIONS = {
     "rules no items still totalled": (RULES, "    if items_in:", "    if True:"),
     "rules left-out chains in the days' order": (RULES, "ranking = sorted((day for day in days if day.in_ranking), key=lambda day: day.slug)", "ranking = [day for day in days if day.in_ranking]"),
     "rules chain results in the days' order": (RULES, "for slug in sorted(listed)}", "for slug in listed}"),
+    # basket: record
+    "record store lists leak to the public day": (RECORD, 'PRIVATE = ("stores_with_file", "files", "manifests")', 'PRIVATE = ("files", "manifests")'),
+    "record comparable ignores medians": (RECORD, '"revisions", "revised")', '"revisions", "revised", "chains")'),
+    "record half-up rounding dropped": (RECORD, "amount.quantize(CENT, rounding=ROUND_HALF_UP)", "amount.quantize(CENT)"),
+    "record an 'exists' outcome counts as stored": (RECORD, 'if file["outcome"] == "stored"}', 'if file["outcome"] in ("stored", "exists")}'),
+    "record another chain's manifests read": (RECORD, '.glob(f"{slug}-*.json")', '.glob("*.json")'),
+    "record double-coded count dropped": (RECORD, "price.double_coded)", "0)"),
+    "record build time left in its own zone": (RECORD, "return moment.astimezone(timezone.utc).isoformat()", "return moment.isoformat()"),
+    "record naive build time accepted": (RECORD, "if moment.tzinfo is None or moment.utcoffset() is None:", "if False:"),
+    "record Hebrew escaped": (RECORD, "ensure_ascii=False", "ensure_ascii=True"),
+    "record keys not sorted": (RECORD, "sort_keys=True, indent=1", "sort_keys=False, indent=1"),
 }
 
 
