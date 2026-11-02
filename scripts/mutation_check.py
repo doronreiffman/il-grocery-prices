@@ -52,6 +52,8 @@ HANDLER_EVENTS = ("template.yaml", [_T + "test_every_event_is_one_the_handler_ta
 BARCODE = ("src/basket/barcode.py", ["tests/test_barcode.py"])
 PRICEFILE = ("src/basket/pricefile.py", ["tests/test_pricefile.py"])
 EXTRACT = ("src/basket/extract.py", ["tests/test_extract.py"])
+STORES = ("src/basket/stores.py", ["tests/test_stores.py"])
+CHAINS_BASKET = ("src/basket/chains.py", ["tests/test_stores.py"])
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
 MUTATIONS = {
@@ -698,6 +700,20 @@ MUTATIONS = {
     "extract a store of no rows counted": (EXTRACT, "stores=sum(1 for c in counts if c.rows)", "stores=len(counts)"),
     "extract None written as empty text": (EXTRACT, 'NULLABLE = ("sub_chain", "code_norm", "price")', 'NULLABLE = ("price",)'),
     "extract empty text read as NULL": (EXTRACT, "allow_quoted_nulls = false", "allow_quoted_nulls = true"),
+    # basket: stores
+    "stores Be included": (CHAINS_BASKET, 'frozenset({"5"})', "frozenset()"),
+    "stores online store included": (CHAINS_BASKET, 'frozenset({"413"})', "frozenset()"),
+    "stores Carrefour online store included": (CHAINS_BASKET, 'frozenset({"471"})', "frozenset()"),
+    "stores sub-chain compared padded": (STORES, "_stores_in(child, store_key(published) if published else None)", "_stores_in(child, published or None)"),
+    "stores store id kept padded": (STORES, "yield Store(store_key(store_id), sub_chain", "yield Store(store_id, sub_chain"),
+    "stores StoreId spelling ignored": (STORES, 'STORE_ID_TAGS = ("StoreID", "StoreId")', 'STORE_ID_TAGS = ("StoreID",)'),
+    "stores SubChainId spelling ignored": (STORES, 'SUB_CHAIN_TAGS = ("SubChainID", "SubChainId")', 'SUB_CHAIN_TAGS = ("SubChainID",)'),
+    "stores store without an id kept": (STORES, "            if store_id:\n", "            if True:\n"),
+    "stores fallback takes a later day": (STORES, "for listed_day in (d for d in days if d <= day):", "for listed_day in days:"),
+    "stores older list of the day wins": (STORES, "(folder / max(names))", "(folder / min(names))"),
+    "stores another kind read as the store list": (STORES, 'parsed.kind == "Stores"', 'parsed.kind in ("Stores", "PriceFull")'),
+    "stores another day's list read": (STORES, " and parsed.day == day", ""),
+    "stores conflict copy not read": (STORES, "parse_file_name(published_name(name))", "parse_file_name(name)"),
 }
 
 
