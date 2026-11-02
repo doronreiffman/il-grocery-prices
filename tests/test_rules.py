@@ -11,7 +11,7 @@ from basket.basket_file import load_basket
 from basket.extract import COLUMNS, Row, table_path, write_table
 from basket.rules import (ChainDay, ChainPrice, ChainResult, Headline, LeftOut, MissingTable, apply_filters,
                           chain_day, chain_prices, chain_sizes, gap_percent, open_day, price_basket,
-                          stores_with_file)
+                          stores_with_file, stores_with_file_keys)
 from basket.units import Size
 
 BASKET = load_basket(Path(__file__).parent / "baskets" / "basket-test.json", min_items=1)
@@ -91,6 +91,18 @@ def test_stores_with_file_counts_before_the_placeholder_rule(tmp_path):
     assert listed == [("a", "1"), ("b", "1")]
 
 
+def test_stores_with_file_keys_lists_the_stores(tmp_path):
+    chains = {"a": [row("10", MILK, "5.90"), row("2", MILK, "6.10"), row("2", PASTA, "3.00"), row("9", MILK, "0.01"),
+                    row("3", MILK, "4.00")],
+              "b": []}
+    included = {"a": {"2", "9", "10", "11"}, "b": {"1"}}
+    with opened(tmp_path, chains, included) as con:
+        keys = stores_with_file_keys(con, included)
+        counts = stores_with_file(con, included)
+    assert keys == {"a": ("2", "9", "10"), "b": ()}  # by number; store 3 is not included, store 11 sent no file
+    assert counts == {"a": 3, "b": 0}
+
+
 def test_median_is_exact_for_even_and_odd_counts(tmp_path):
     chains = {"a": [row("1", MILK, "7.00"), row("2", MILK, "5.00"),
                     row("1", PASTA, "20.00"), row("2", PASTA, "5.00"), row("3", PASTA, "7.00"),
@@ -119,7 +131,7 @@ def test_code_matched_by_normalized_form(tmp_path):
         by_basket_code = chain_prices(con, [MILK])
         by_padded_code = chain_prices(con, ["0" + MILK])
     assert by_basket_code == by_padded_code == {("a", MILK): price("5.90", listing=1)}
-    result = price_basket(BASKET, [chain_day("a", 1, 1)], by_basket_code, {}, {"a": 1})
+    result = price_basket(BASKET, [chain_day("a", 1, 1)], by_basket_code, {})
     assert result.chains["a"].items == {MILK: price("5.90", listing=1)}
 
 
@@ -144,7 +156,7 @@ def test_coverage_guard_half_of_stores_with_file():
     listing |= {("b", MILK): 2, ("b", PASTA): 1, ("c", EGGS): 1}
     del listing[("d", EGGS)]
     prices = {key: price("5.00", count) for key, count in listing.items()}
-    result = price_basket(BASKET, days, prices, {}, with_file)
+    result = price_basket(BASKET, days, prices, {})
     assert result.items_in == (MILK,)
     assert result.left_out == (LeftOut(PASTA, "coverage", {"b": "1 of 4"}),
                                LeftOut(EGGS, "coverage", {"c": "1 of 3", "d": "0 of 4"}))
@@ -157,7 +169,7 @@ def test_size_guard_only_a_stated_size_can_block():
     sizes |= {("b", MILK): Size(Decimal(500), "gml"), ("c", MILK): None, ("c", PASTA): None,
               ("e", EGGS): Size(Decimal(6), "unit")}
     del sizes[("d", PASTA)]
-    result = price_basket(BASKET, days, every_item_at("abcde"), sizes, dict.fromkeys(CHAINS, 4))
+    result = price_basket(BASKET, days, every_item_at("abcde"), sizes)
     assert result.items_in == (PASTA,)
     assert result.left_out == (LeftOut(MILK, "size", {"b": "500 gml"}), LeftOut(EGGS, "size", {"e": "6 unit"}))
 
@@ -168,7 +180,7 @@ def test_chain_with_too_few_files_is_out_of_ranking_but_priced():
     days = [chain_day(slug, 4, 4) for slug in "abcd"] + [chain_day("e", 3, 1)]
     prices = every_item_at("abcd") | {("e", MILK): price("4.00", listing=1), ("e", EGGS): price("9.00", listing=1)}
     sizes = {("e", EGGS): Size(Decimal(6), "unit")}  # would block eggs, were e in the ranking
-    result = price_basket(BASKET, days, prices, sizes, {"a": 4, "b": 4, "c": 4, "d": 4, "e": 1})
+    result = price_basket(BASKET, days, prices, sizes)
     assert result.items_in == (MILK, PASTA, EGGS)
     assert result.left_out == ()
     assert result.chains["e"] == ChainResult(total=None, rank=None,
@@ -190,7 +202,7 @@ def test_empty_chain_table_gives_zero_with_file(tmp_path):
     days = [chain_day(slug, len(included[slug]), with_file[slug]) for slug in CHAINS]
     assert days[-1] == ChainDay("e", included=2, with_file=0, in_ranking=False)
     assert chain_day("e", 0, 0).in_ranking is False  # no included store at all
-    result = price_basket(BASKET, days, prices, sizes, with_file)
+    result = price_basket(BASKET, days, prices, sizes)
     assert result.items_in == (MILK, PASTA, EGGS)
     assert [(slug, chain.total, chain.rank) for slug, chain in result.chains.items()] == [
         ("a", Decimal("15.00"), 1), ("b", Decimal("18.00"), 2), ("c", Decimal("21.00"), 3),
@@ -200,14 +212,13 @@ def test_empty_chain_table_gives_zero_with_file(tmp_path):
 
 
 def test_fewer_than_three_chains_no_headline():
-    with_file = dict.fromkeys(CHAINS, 4)
     two = [chain_day("a", 4, 4), chain_day("b", 4, 4)] + [chain_day(slug, 9, 4) for slug in "cde"]
-    result = price_basket(BASKET, two, every_item_at("abcde"), {}, with_file)
+    result = price_basket(BASKET, two, every_item_at("abcde"), {})
     assert result.headline is None
     assert [(slug, chain.rank) for slug, chain in result.chains.items()] == [
         ("a", 1), ("b", 1), ("c", None), ("d", None), ("e", None)]
     three = [chain_day("a", 4, 4), chain_day("b", 4, 4), chain_day("c", 4, 4)] + [chain_day(s, 9, 4) for s in "de"]
-    assert price_basket(BASKET, three, every_item_at("abcde"), {}, with_file).headline == Headline(
+    assert price_basket(BASKET, three, every_item_at("abcde"), {}).headline == Headline(
         "a", Decimal("15.00"), "c", Decimal("15.00"), 0)
 
 
@@ -217,7 +228,7 @@ def test_totals_rank_and_gap():
         prices = {(slug, code): price(median, 1) for slug in CHAINS for code, median in ((PASTA, "25.00"), (EGGS, "15.00"))}
         prices |= {(slug, MILK): price(median, 1) for slug, median in milk.items()}
         days = [chain_day("e", 3, 1)] + [chain_day(slug, 1, 1) for slug in "dcba"]
-        return price_basket(BASKET, days, prices, {}, dict.fromkeys(CHAINS, 1))
+        return price_basket(BASKET, days, prices, {})
 
     result = day_with_milk_at({"a": "60.00", "b": "87.40", "c": "60.00", "d": "70.00", "e": "1.00"})
     assert [(slug, chain.total, chain.rank) for slug, chain in result.chains.items()] == [
@@ -232,3 +243,19 @@ def test_missing_table_raises_naming_the_chain(tmp_path):
     tables = day_tables(tmp_path, {"a": [], "b": []})
     with pytest.raises(MissingTable, match="chain 'c'"):
         open_day(tables, DAY, ["a", "b", "c"])
+
+
+def test_no_items_counted_gives_no_totals_and_no_headline():
+    days = [chain_day(slug, 4, 4) for slug in "dcba"] + [chain_day("e", 3, 1)]
+    prices = every_item_at("abcd") | {("b", PASTA): price("5.00", listing=1)}
+    del prices[("c", EGGS)]
+    sizes = {("a", MILK): Size(Decimal(500), "gml")}
+    result = price_basket(BASKET, days, prices, sizes)
+    assert result.items_in == ()
+    assert result.left_out == (LeftOut(MILK, "size", {"a": "500 gml"}), LeftOut(PASTA, "coverage", {"b": "1 of 4"}),
+                               LeftOut(EGGS, "coverage", {"c": "0 of 4"}))
+    assert [(slug, chain.total, chain.rank) for slug, chain in result.chains.items()] == [
+        (slug, None, None) for slug in CHAINS]
+    assert result.chains["a"].items == {code: price("5.00") for code in CODES}  # prices still shown
+    assert result.headline is None
+    assert [day.slug for day in days if day.in_ranking] == ["d", "c", "b", "a"]  # B8 unchanged

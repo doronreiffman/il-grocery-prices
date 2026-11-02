@@ -7,7 +7,8 @@ its store is one of the chain's included stores, its sub-chain is not one the ch
 its price is above ₪0.01. The sub-chain is the one in the row's file name, which wins over the store
 list's; a row with no sub-chain is never left out by it. A price of ₪0.01 or less is a placeholder,
 and a row with no price says nothing. A store has a file that day when it has a row in `prices`,
-before the placeholder rule, so a store whose only rows are placeholders still published one.
+before the placeholder rule, so a store whose only rows are placeholders still published one; the
+stores with a file are listed by key as numbers, as the extraction sorts them ("9" before "10").
 
 Chain price (B5). A chain's price for an item is the median of the prices of its rows listing the
 item, matched by the code with leading zeros stripped: the middle price, or the mean of the two
@@ -33,7 +34,8 @@ Totals (B9). A chain's total is the sum of its prices for the items that count. 
 lowest total; equal totals share a rank and sort by slug, and the next rank counts every chain above
 it (1, 1, 3). With three or more chains in the ranking, the headline names the lowest and the highest
 total and the gap, (highest - lowest) x 100 / lowest, rounded half up to a whole percent; with fewer,
-there is no headline.
+there is no headline. When no item counts, no chain has a total or a rank and there is no headline;
+a chain B8 put in the ranking stays there all the same.
 """
 from collections import Counter
 from collections.abc import Mapping, Sequence, Set
@@ -91,7 +93,8 @@ class Headline:
 
 @dataclass(frozen=True)
 class ChainResult:
-    """A chain's total and rank (None out of the ranking) and its price for each basket item it lists, by code."""
+    """A chain's total and rank (None out of the ranking, or when no item counts) and its price for each basket
+    item it lists, by code."""
     total: Decimal | None
     rank: int | None
     items: dict[str, ChainPrice]
@@ -99,8 +102,8 @@ class ChainResult:
 
 @dataclass(frozen=True)
 class DayResult:
-    """The basket codes that count and those left out, in the basket's order; the chains in ranking order,
-    those out of the ranking last by slug; the headline, or None."""
+    """The basket codes that count and those left out, in the basket's order; the chains in rank order,
+    those without a rank last by slug; the headline, or None."""
     items_in: tuple[str, ...]
     left_out: tuple[LeftOut, ...]
     chains: dict[str, ChainResult]
@@ -144,13 +147,18 @@ def _insert_keys(con: duckdb.DuckDBPyConnection, table: str, keys: Mapping[str, 
         con.executemany(f"INSERT INTO {table} VALUES (?, ?)", pairs)
 
 
-def stores_with_file(con: duckdb.DuckDBPyConnection, included: dict[str, set[str]]) -> dict[str, int]:
-    """Per chain of `included`, by slug: its included stores with a row in `prices`, placeholders and all."""
-    counts = dict.fromkeys(sorted(included), 0)
+def stores_with_file_keys(con: duckdb.DuckDBPyConnection, included: dict[str, set[str]]) -> dict[str, tuple[str, ...]]:
+    """Per chain of `included`, by slug: its included stores with a row in `prices`, placeholders and all, by number."""
+    present: dict[str, list[str]] = {chain: [] for chain in sorted(included)}
     for chain, store in con.execute("SELECT DISTINCT chain, store FROM prices").fetchall():
         if store in included.get(chain, ()):
-            counts[chain] += 1
-    return counts
+            present[chain].append(store)
+    return {chain: tuple(sorted(stores, key=lambda store: (int(store), store))) for chain, stores in present.items()}
+
+
+def stores_with_file(con: duckdb.DuckDBPyConnection, included: dict[str, set[str]]) -> dict[str, int]:
+    """Per chain of `included`, by slug: how many of its included stores have a file (`stores_with_file_keys`)."""
+    return {chain: len(stores) for chain, stores in stores_with_file_keys(con, included).items()}
 
 
 def chain_prices(con: duckdb.DuckDBPyConnection, codes: Sequence[str]) -> dict[tuple[str, str], ChainPrice]:
@@ -202,13 +210,13 @@ def gap_percent(low: Decimal, high: Decimal) -> int:
 
 
 def price_basket(basket: Basket, days: Sequence[ChainDay], prices: dict[tuple[str, str], ChainPrice],
-                 sizes: dict[tuple[str, str], Size | None], with_file: dict[str, int]) -> DayResult:
+                 sizes: dict[tuple[str, str], Size | None]) -> DayResult:
     """The day's result: the guards (B6, B7) over the chains in the ranking, then totals, ranks and headline (B9)."""
-    ranking = [day.slug for day in days if day.in_ranking]
+    ranking = [day for day in days if day.in_ranking]
     items_in: list[str] = []
     left_out: list[LeftOut] = []
     for item in basket.items:
-        kept_out = _guard(item, ranking, prices, sizes, with_file)
+        kept_out = _guard(item, ranking, prices, sizes)
         if kept_out is None:
             items_in.append(item.code)
         else:
@@ -216,7 +224,9 @@ def price_basket(basket: Basket, days: Sequence[ChainDay], prices: dict[tuple[st
     normalized = {item.code: normalize(item.code) for item in basket.items}
     listed = {day.slug: {code: prices[(day.slug, norm)] for code, norm in normalized.items()
                          if (day.slug, norm) in prices} for day in days}
-    totals = {slug: sum((listed[slug][code].median for code in items_in), Decimal(0)) for slug in ranking}
+    totals: dict[str, Decimal] = {}
+    if items_in:  # with no item counted there is nothing to total, rank or compare
+        totals = {day.slug: sum((listed[day.slug][code].median for code in items_in), Decimal(0)) for day in ranking}
     order = sorted(totals, key=lambda slug: (totals[slug], slug))
     ranks = {slug: 1 + sum(other < totals[slug] for other in totals.values()) for slug in order}
     chains = {slug: ChainResult(totals[slug], ranks[slug], listed[slug]) for slug in order}
@@ -229,16 +239,16 @@ def price_basket(basket: Basket, days: Sequence[ChainDay], prices: dict[tuple[st
     return DayResult(tuple(items_in), tuple(left_out), chains, headline)
 
 
-def _guard(item: BasketItem, ranking: Sequence[str], prices: dict[tuple[str, str], ChainPrice],
-           sizes: dict[tuple[str, str], Size | None], with_file: dict[str, int]) -> LeftOut | None:
-    """Why `item` is left out over the chains in `ranking`, coverage (B6) before size (B7); None when it counts."""
+def _guard(item: BasketItem, ranking: Sequence[ChainDay], prices: dict[tuple[str, str], ChainPrice],
+           sizes: dict[tuple[str, str], Size | None]) -> LeftOut | None:
+    """Why `item` is left out over the chain days in `ranking`, coverage (B6) before size (B7); None when it counts."""
     code = normalize(item.code)
-    listing = {slug: prices[(slug, code)].listing if (slug, code) in prices else 0 for slug in ranking}
-    short = {slug: f"{listing[slug]} of {with_file[slug]}" for slug in ranking
-             if not listing[slug] * 2 >= with_file[slug]}
+    listing = {day.slug: prices[(day.slug, code)].listing if (day.slug, code) in prices else 0 for day in ranking}
+    short = {day.slug: f"{listing[day.slug]} of {day.with_file}" for day in ranking
+             if not listing[day.slug] * 2 >= day.with_file}
     if short:
         return LeftOut(item.code, "coverage", short)
-    stated = {slug: sizes.get((slug, code)) for slug in ranking}
+    stated = {day.slug: sizes.get((day.slug, code)) for day in ranking}
     differing = {slug: f"{plain(size.amount)} {size.kind}" for slug, size in stated.items()
                  if size is not None and size != item.size}
     if differing:
