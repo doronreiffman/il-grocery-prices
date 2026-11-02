@@ -1,0 +1,14 @@
+{
+  "version": "v1",
+  "since": "2026-11-02",
+  "selection_day": "2026-11-02",
+  "items": [
+    {"code": "2000000000015", "name_en": "Test milk 1 L", "name_he": "חלב בדיקה 1 ל'",
+     "size": {"amount": "1000", "kind": "gml"}, "category": "dairy",
+     "coverage": {"shufersal": "0.93", "ramilevy": "0.88"}},
+    {"code": "2000000000022", "name_en": "Test pasta 500 g", "name_he": "פסטה בדיקה 500 גרם",
+     "size": {"amount": "500", "kind": "gml"}, "category": "pantry"},
+    {"code": "2000000000039", "name_en": "Test eggs ×12", "name_he": "ביצים בדיקה ×12",
+     "size": {"amount": "12", "kind": "unit"}, "category": "dairy"}
+  ]
+}

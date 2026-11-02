@@ -10,3 +10,7 @@ samconfig.toml
 probe-out/
 .superpowers/
 CLAUDE.local.md
+
+# a day synced from the archive and the tables and pages built from it (docs/headline-basket.md)
+data/
+site/

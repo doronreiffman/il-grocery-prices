@@ -38,6 +38,7 @@ STORE_FOR_CHECK = ("src/collector/store.py", ["tests/test_check.py"])
 HANDLER = ("src/collector/handler.py", ["tests/test_handler.py"])
 TEMPLATE = ("template.yaml", ["tests/test_template.py"])
 OPERATIONS = ("docs/operations.md", ["tests/test_template.py"])
+SITE_TEMPLATE = ("site-template.yaml", ["tests/test_site_template.py"])
 # Rules the R7/R30 table in test_template.py also pins: each of these names the one test that must
 # catch it by itself, so the rule's own test is proved, not only the table.
 _T = "tests/test_template.py::"
@@ -49,6 +50,23 @@ RETRY_THREE_HOURS_ON = ("template.yaml", [_T + "test_retry_runs_start_three_hour
 CHECK_LAST = ("template.yaml", [_T + "test_one_check_after_the_last_retry_run_can_have_finished"])
 ALL_KINDS = ("template.yaml", [_T + "test_each_chain_has_runs_of_each_mode_over_the_kinds_it_collects"])
 HANDLER_EVENTS = ("template.yaml", [_T + "test_every_event_is_one_the_handler_takes"])
+BARCODE = ("src/basket/barcode.py", ["tests/test_barcode.py"])
+PRICEFILE = ("src/basket/pricefile.py", ["tests/test_pricefile.py"])
+EXTRACT = ("src/basket/extract.py", ["tests/test_extract.py"])
+STORES = ("src/basket/stores.py", ["tests/test_stores.py"])
+CHAINS_BASKET = ("src/basket/chains.py", ["tests/test_stores.py"])
+UNITS_BASKET = ("src/basket/units.py", ["tests/test_units.py"])
+BASKET_FILE = ("src/basket/basket_file.py", ["tests/test_basket_file.py"])
+RULES = ("src/basket/rules.py", ["tests/test_rules.py"])
+RECORD = ("src/basket/record.py", ["tests/test_record.py"])
+CANDIDATES = ("src/basket/candidates.py", ["tests/test_candidates.py"])
+WORDS = ("src/basket/words.py", ["tests/test_page.py"])
+PAGE = ("src/basket/page.py", ["tests/test_page.py"])
+# tests/test_check.py is the collector's morning check; the basket check's tests have their own file
+CHECK_BASKET = ("src/basket/check.py", ["tests/test_basket_check.py"])
+BUILD = ("src/basket/build.py", ["tests/test_build.py"])
+GUARD = ("src/basket/guard.py", ["tests/test_guard.py"])
+CANDIDATES_MAIN = ("src/basket/candidates.py", ["tests/test_candidates.py::test_main_counts_only_the_included_stores_and_writes_the_day_s_table"])
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
 MUTATIONS = {
@@ -61,7 +79,8 @@ MUTATIONS = {
     "kind returned as published, not as in KINDS": (NAMES, "    kind = _CANONICAL[prefix.group().lower()]", "    kind = prefix.group()"),
     "store 039's date and time run together refused": (NAMES, r'r"-(?P<day>\d{8})(?:\d{4})?"', r'r"-(?P<day>\d{8})"'),
     "store taken from the sub-chain": (NAMES, "        store = groups[-1]", "        store = groups[0]"),
-    "price file without a store accepted": (NAMES, '    else:\n        return None\n    digits = rest["day"]', '    else:\n        store = None\n    digits = rest["day"]'),
+    "sub-chain read as the store": (NAMES, "    sub_chain = groups[0] if len(groups) == 2 else None", "    sub_chain = groups[-1]"),
+    "price file without a store accepted": (NAMES, "    else:\n        return None\n    sub_chain = groups[0]", "    else:\n        store = None\n    sub_chain = groups[0]"),
     "text after the name accepted": (NAMES, "_REST.fullmatch(name, prefix.end())", "_REST.match(name, prefix.end())"),
     # payload
     "HTML accepted as a file": (PAYLOAD, "    if looks_like_html(data):", "    if False:"),
@@ -664,6 +683,215 @@ MUTATIONS = {
     "an unknown chain unblocked in the doc": (OPERATIONS, "--payload '{\"mode\": \"unblock\", \"chain\": \"ramilevy\"}'", "--payload '{\"mode\": \"unblock\", \"chain\": \"victory\"}'"),
     "a real address in the doc": (OPERATIONS, "'AlertEmail=<email>'", "'AlertEmail=owner@mail.example.net'"),
     "the doc's timetable off the schedules": (OPERATIONS, "| 06:39 | Carrefour", "| 06:40 | Carrefour"),
+    # site template: the bucket
+    "public access unblocked": (SITE_TEMPLATE, "      PublicAccessBlockConfiguration:\n        BlockPublicAcls: true\n        BlockPublicPolicy: true\n        IgnorePublicAcls: true\n        RestrictPublicBuckets: true\n", ""),
+    "site bucket public policies allowed": (SITE_TEMPLATE, "        RestrictPublicBuckets: true", "        RestrictPublicBuckets: false"),
+    "site bucket with ACLs": (SITE_TEMPLATE, "ObjectOwnership: BucketOwnerEnforced", "ObjectOwnership: ObjectWriter"),
+    "site bucket unencrypted": (SITE_TEMPLATE, "      BucketEncryption:\n        ServerSideEncryptionConfiguration:\n          - ServerSideEncryptionByDefault:\n              SSEAlgorithm: AES256\n", ""),
+    # site template: the policy, the origin and the viewers
+    "site readable by anyone": (SITE_TEMPLATE, "            Principal:\n              Service: cloudfront.amazonaws.com", '            Principal: "*"'),
+    "site policy without the distribution condition": (SITE_TEMPLATE, '            Condition:\n              StringEquals:\n                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${SiteDistribution}"\n', ""),
+    "signing not always": (SITE_TEMPLATE, "SigningBehavior: always", "SigningBehavior: no-override"),
+    "site origin without the access control": (SITE_TEMPLATE, "            OriginAccessControlId: !GetAtt SiteOriginAccessControl.Id\n", ""),
+    "global bucket name as origin": (SITE_TEMPLATE, "DomainName: !GetAtt SiteBucket.RegionalDomainName", "DomainName: !GetAtt SiteBucket.DomainName"),
+    "site served over http": (SITE_TEMPLATE, "ViewerProtocolPolicy: redirect-to-https", "ViewerProtocolPolicy: allow-all"),
+    "no default root object": (SITE_TEMPLATE, "        DefaultRootObject: index.html\n", ""),
+    "site bucket name not in the outputs": (SITE_TEMPLATE, "  SiteBucketName:\n    Value: !Ref SiteBucket\n", ""),
+    # basket: barcodes
+    "barcode check digit ignored": (BARCODE, "(3 if place % 2 == 0 else 1)", "(1 if place % 2 == 0 else 1)"),
+    "barcode leading zeros kept": (BARCODE, 'significant = digits.lstrip("0")', "significant = digits"),
+    "barcode non-ASCII digits accepted": (BARCODE, "if not _DIGITS.fullmatch(digits):", "if not digits.isdigit():"),
+    "barcode seven significant digits accepted": (BARCODE, "8 <= len(digits) <= 14", "7 <= len(digits) <= 14"),
+    "barcode fifteen significant digits accepted": (BARCODE, "8 <= len(digits) <= 14", "8 <= len(digits) <= 15"),
+    # basket: price files
+    "pricefile ItemNm ignored": (PRICEFILE, 'NAME_TAGS = ("ItemName", "ItemNm")', 'NAME_TAGS = ("ItemName",)'),
+    "pricefile PriceUpdateDate ignored": (PRICEFILE, 'UPDATED_TAGS = ("PriceUpdateTime", "PriceUpdateDate")', 'UPDATED_TAGS = ("PriceUpdateTime",)'),
+    "pricefile second ZIP member skipped": (PRICEFILE, "return [archive.read(member) for member in members]", "return [archive.read(member) for member in members[:1]]"),
+    "pricefile text not stripped": (PRICEFILE, 'return (element.text or "").strip()', 'return element.text or ""'),
+    "pricefile ZIP folder read as a file": (PRICEFILE, "members = [member for member in archive.infolist() if not member.is_dir()]", "members = archive.infolist()"),
+    "pricefile well-formed HTML read as a file of no items": (PRICEFILE, "    if not body.startswith(XML_STARTS):", "    if False:"),
+    # basket: extract
+    "extract older file wins": (EXTRACT, "latest = max(named)", "latest = min(named)"),
+    "extract first duplicate wins": (EXTRACT, "        latest[row.code] = row", "        latest.setdefault(row.code, row)"),
+    "extract conflict not counted": (EXTRACT, "                conflicting += 1", "                pass"),
+    "extract unreadable price kept as zero": (EXTRACT, "    except InvalidOperation:\n        return None", "    except InvalidOperation:\n        return Decimal(0)"),
+    "extract three-decimal price accepted": (EXTRACT, "-value.as_tuple().exponent > 2", "-value.as_tuple().exponent > 3"),
+    "extract empty table not written": (EXTRACT, "        with duckdb.connect() as con:", "        if count == 0:\n            return 0\n        with duckdb.connect() as con:"),
+    "extract sub-chain padded": (EXTRACT, "sub_chain = None if parsed.sub_chain is None else store_key(parsed.sub_chain)", "sub_chain = parsed.sub_chain"),
+    "extract conflict copy not read": (EXTRACT, "parse_file_name(published_name(path.name))", "parse_file_name(path.name)"),
+    "extract another day's file read": (EXTRACT, ' or parsed.day != day:', ":"),
+    "extract another kind's file read": (EXTRACT, 'parsed.kind != "PriceFull"', 'parsed.kind not in ("PriceFull", "PromoFull")'),
+    "extract stores sorted as text": (EXTRACT, "key=lambda f: (int(f.store), f.store)", "key=lambda f: f.store"),
+    "extract price too large for the table accepted": (EXTRACT, " or abs(value) >= PRICE_LIMIT:", ":"),
+    "extract NaN price accepted": (EXTRACT, "if not value.is_finite() or -value", "if -value"),
+    "extract a store of no rows counted": (EXTRACT, "stores=sum(1 for c in counts if c.rows)", "stores=len(counts)"),
+    "extract None written as empty text": (EXTRACT, 'NULLABLE = ("sub_chain", "code_norm", "price")', 'NULLABLE = ("price",)'),
+    "extract empty text read as NULL": (EXTRACT, "allow_quoted_nulls = false", "allow_quoted_nulls = true"),
+    # basket: stores
+    "stores Be included": (CHAINS_BASKET, 'frozenset({"5"})', "frozenset()"),
+    "stores online store included": (CHAINS_BASKET, 'frozenset({"413"})', "frozenset()"),
+    "stores Carrefour online store included": (CHAINS_BASKET, 'frozenset({"471"})', "frozenset()"),
+    "stores Rami Levy 039 included": (CHAINS_BASKET, 'frozenset({"39"})', "frozenset()"),
+    "stores sub-chain compared padded": (STORES, "_stores_in(child, store_key(published) if published else None)", "_stores_in(child, published or None)"),
+    "stores store id kept padded": (STORES, "yield Store(store_key(store_id), sub_chain", "yield Store(store_id, sub_chain"),
+    "stores StoreId spelling ignored": (STORES, 'STORE_ID_TAGS = ("StoreID", "StoreId")', 'STORE_ID_TAGS = ("StoreID",)'),
+    "stores SubChainId spelling ignored": (STORES, 'SUB_CHAIN_TAGS = ("SubChainID", "SubChainId")', 'SUB_CHAIN_TAGS = ("SubChainID",)'),
+    "stores store without an id kept": (STORES, "            if store_id:\n", "            if True:\n"),
+    "stores fallback takes a later day": (STORES, "for listed_day in (d for d in days if d <= day):", "for listed_day in days:"),
+    "stores older list of the day wins": (STORES, "(folder / max(names))", "(folder / min(names))"),
+    "stores another kind read as the store list": (STORES, 'parsed.kind == "Stores"', 'parsed.kind in ("Stores", "PriceFull")'),
+    "stores another day's list read": (STORES, " and parsed.day == day", ""),
+    "stores conflict copy not read": (STORES, "parse_file_name(published_name(name))", "parse_file_name(name)"),
+    # basket: units
+    "units litre not scaled": (UNITS_BASKET, '"ליטר": ("gml", THOUSAND)', '"ליטר": ("gml", ONE)'),
+    "units unknown unit read as grams": (UNITS_BASKET, "known = UNITS.get(unit.strip())", 'known = UNITS.get(unit.strip(), ("gml", ONE))'),
+    "units zero quantity accepted": (UNITS_BASKET, "amount <= 0", "amount < 0"),
+    "units unit and gml compared alike": (UNITS_BASKET, "    kind: str\n", '    kind: str = __import__("dataclasses").field(compare=False)\n'),
+    "units unit string not trimmed": (UNITS_BASKET, "UNITS.get(unit.strip())", "UNITS.get(unit)"),
+    "units non-finite quantity accepted": (UNITS_BASKET, "if not amount.is_finite() or amount", "if amount"),
+    "units amount not made plain": (UNITS_BASKET, "Size(Decimal(plain(amount * factor)), kind)", "Size(amount * factor, kind)"),
+    "units one unit read as a size": (UNITS_BASKET, 'if kind == "unit" and amount == 1:', "if False:"),
+    # basket: basket file
+    "basket file check digit not checked": (BASKET_FILE, "    if not is_gs1(code):", "    if False:"),
+    "basket file duplicates allowed": (BASKET_FILE, "        if digits in first_with:", "        if False:"),
+    "basket file leading zeros told apart": (BASKET_FILE, "digits = normalize(item.code)", "digits = item.code"),
+    "basket file floor at 24": (BASKET_FILE, "min_items: int = 25", "min_items: int = 24"),
+    "basket file ceiling at 41": (BASKET_FILE, "max_items: int = 40", "max_items: int = 41"),
+    "basket file floor excluded": (BASKET_FILE, "if not min_items <= len(items) <= max_items:", "if not min_items < len(items) <= max_items:"),
+    "basket file ceiling excluded": (BASKET_FILE, "if not min_items <= len(items) <= max_items:", "if not min_items <= len(items) < max_items:"),
+    "basket file empty English name allowed": (BASKET_FILE, "if not name_en.strip() or not name_he.strip():", "if not name_he.strip():"),
+    "basket file empty Hebrew name allowed": (BASKET_FILE, "if not name_en.strip() or not name_he.strip():", "if not name_en.strip():"),
+    "basket file blank name allowed": (BASKET_FILE, "if not name_en.strip() or not name_he.strip():", "if not name_en or not name_he:"),
+    "basket file unknown kind allowed": (BASKET_FILE, "    if kind not in KINDS:", "    if False:"),
+    "basket file zero amount allowed": (BASKET_FILE, "or amount <= 0:", "or amount < 0:"),
+    "basket file non-finite amount allowed": (BASKET_FILE, "if not amount.is_finite() or amount <= 0:", "if amount <= 0:"),
+    "basket file amount not made plain": (BASKET_FILE, "Size(Decimal(plain(amount)), kind)", "Size(amount, kind)"),
+    "basket file coverage not a dict accepted": (BASKET_FILE, "        if not isinstance(coverage, dict):", "        if False:"),
+    "basket file items not a list accepted": (BASKET_FILE, "        if not isinstance(listed, list):", "        if False:"),
+    "basket file text accepted as a field": (BASKET_FILE, "    if not isinstance(value, str):", "    if False:"),
+    # basket: rules
+    "rules placeholders kept": (RULES, "p.price > 0.01", "p.price >= 0.01"),
+    "rules null prices kept": (RULES, "p.price IS NOT NULL AND p.price > 0.01", "(p.price IS NULL OR p.price > 0.01)"),
+    "rules excluded store counted": (RULES, "if store in included.get(chain, ()) and", "if chain in present and"),
+    "rules store keys sorted as text": (RULES, "sorted(stores, key=lambda store: (int(store), store))", "sorted(stores)"),
+    "rules Be rows kept when the list includes the store": (RULES, "AND NOT EXISTS (SELECT 1 FROM excluded_sub_chains x WHERE x.chain = p.chain AND x.sub_chain = p.sub_chain)", "AND true"),
+    "rules median takes the lower middle": (RULES, "return (ordered[middle - 1] + ordered[middle]) / 2", "return ordered[middle - 1]"),
+    "rules a double-coded store weighs twice": (RULES, "GROUP BY chain, code_norm, store)", "GROUP BY chain, code_norm, store, code)"),
+    "rules a double-coded store at its higher price": (RULES, "min(price) AS price", "max(price) AS price"),
+    "rules coverage guard at a third": (RULES, "listing[day.slug] * 2 >= day.with_file", "listing[day.slug] * 3 >= day.with_file"),
+    "rules size guard ignores a chain": (RULES, "sizes.get((day.slug, code)) for day in ranking}", "sizes.get((day.slug, code)) for day in ranking[:-1]}"),
+    "rules unstated size blocks": (RULES, "if size is not None and size != item.size", "if size != item.size"),
+    "rules half a chain's stores read as a third": (RULES, "with_file * 2 >= included", "with_file * 3 >= included"),
+    "rules chain out of ranking still guards": (RULES, "_guard(item, ranking, prices", "_guard(item, days, prices"),
+    "rules headline with two chains": (RULES, "if len(totals) >= 3:", "if len(totals) >= 2:"),
+    "rules gap rounded down": (RULES, "rounding=ROUND_HALF_UP", 'rounding="ROUND_DOWN"'),
+    "rules no items still totalled": (RULES, "    if items_in:", "    if True:"),
+    "rules left-out chains in the days' order": (RULES, "ranking = sorted((day for day in days if day.in_ranking), key=lambda day: day.slug)", "ranking = [day for day in days if day.in_ranking]"),
+    "rules chain results in the days' order": (RULES, "for slug in sorted(listed)}", "for slug in listed}"),
+    # basket: record
+    "record store lists leak to the public day": (RECORD, 'PRIVATE = ("stores_with_file", "files", "manifests")', 'PRIVATE = ("files", "manifests")'),
+    "record comparable ignores medians": (RECORD, '"revisions", "revised")', '"revisions", "revised", "chains")'),
+    "record half-up rounding dropped": (RECORD, "amount.quantize(CENT, rounding=ROUND_HALF_UP)", "amount.quantize(CENT)"),
+    "record an 'exists' outcome counts as stored": (RECORD, 'if file["outcome"] == "stored"}', 'if file["outcome"] in ("stored", "exists")}'),
+    "record another chain's manifests read": (RECORD, '.glob(f"{slug}-*.json")', '.glob("*.json")'),
+    "record double-coded count dropped": (RECORD, "price.double_coded)", "0)"),
+    "record build time left in its own zone": (RECORD, "return moment.astimezone(timezone.utc).isoformat()", "return moment.isoformat()"),
+    "record naive build time accepted": (RECORD, "if moment.tzinfo is None or moment.utcoffset() is None:", "if False:"),
+    "record Hebrew escaped": (RECORD, "ensure_ascii=False", "ensure_ascii=True"),
+    "record keys not sorted": (RECORD, "sort_keys=True, indent=1", "sort_keys=False, indent=1"),
+    "record comparable keeps collected_by": (RECORD, '"built_at", "collected_by", "revisions"', '"built_at", "revisions"'),
+    "record placeholder count dropped": (RECORD, '"placeholders": placeholders}', '"placeholders": 0}'),
+    # basket: candidates
+    "candidates a four-chain code passes": (CANDIDATES, "listed.keys() == with_file.keys()", "len(listed) >= len(with_file) - 1"),
+    "candidates coverage share at half": (CANDIDATES, 'min_share: Decimal = Decimal("0.8")', 'min_share: Decimal = Decimal("0.5")'),
+    "candidates two stating chains enough": (CANDIDATES, "min_stating: int = 3", "min_stating: int = 2"),
+    "candidates non-GS1 code passes": (CANDIDATES, '" WHERE gs1 AND chain IN', '" WHERE true AND chain IN'),
+    "candidates exactly the share refused": (CANDIDATES, "listed[chain] >= min_share * with_file[chain]", "listed[chain] > min_share * with_file[chain]"),
+    "candidates disagreeing sizes pass": (CANDIDATES, "len(set(stated)) != 1", "len(set(stated)) < 1"),
+    "candidates name tie to the last in order": (CANDIDATES, "min(names, key=lambda name: (-names[name], name))", "max(names, key=lambda name: (names[name], name))"),
+    "candidates name first in order, not most common": (CANDIDATES, "min(names, key=lambda name: (-names[name], name))", "min(names)"),
+    "candidates coverage rounded half up in the table": (CANDIDATES, "rounding=ROUND_DOWN", 'rounding="ROUND_HALF_UP"'),
+    # basket: words and pages
+    "page credit line dropped from the method page": (PAGE, 'f"{words.METHOD_TITLE} · {words.TITLE}", parts, _credit(public))', 'f"{words.METHOD_TITLE} · {words.TITLE}", parts, "")'),
+    "page noindex dropped": (PAGE, '<meta name="robots" content="noindex">\n', ""),
+    "page lowest marked as highest": (PAGE, "lowest = min(prices.values())", "lowest = max(prices.values())"),
+    "page a never phrase in the template": (PAGE, 'heading = "Listed totals, lowest first"', 'heading = "Listed totals, cheapest chain first"'),
+    "page revised line always shown": (PAGE, '    if public["revised"]:\n', "    if True:\n"),
+    "page day file written when not asked": (PAGE, "    if write_day:\n", "    if True:\n"),
+    "page bars for a chain out of ranking": (PAGE, '        if not chain["in_ranking"]:\n            few =', "        if False:\n            few ="),
+    "page lowest taken over a chain out of ranking": (PAGE, 'if chain["in_ranking"] and code in chain["items"]}', 'if code in chain["items"]}'),
+    "page lowest marked in a row left out": (PAGE, 'if not compare or code not in public["items_in"]:', "if not compare:"),
+    "page bars scaled to the lowest total": (PAGE, "highest = max(Decimal(chain", "highest = min(Decimal(chain"),
+    "page item count from the basket on a day that compares": (PAGE, 'count = len(public["items_in"]) if compare else len(basket.items)', "count = len(basket.items)"),
+    "page Hebrew name not right to left": (PAGE, "<br>{_he(item.name_he)}<small>", "<br>{_text(item.name_he)}<small>"),
+    "page Hebrew in a sentence not right to left": (PAGE, "_he(run.group())]", "_text(run.group())]"),
+    "page headline totals not rounded": (WORDS, "₪{money(headline.lowest_total)}.", "₪{headline.lowest_total}."),
+    "page no-items reason never given": (WORDS, "return NO_ITEMS if nothing_counted else NO_CHAINS, items", "return NO_CHAINS, items"),
+    "page first totals sorted as text": (WORDS, "sorted((Decimal(total), slug, total)", "sorted((total, slug, total)"),
+    "page Be sub-chain not named": (WORDS, 'SUB_CHAIN_NAMES = {"shufersal": {"5": "Be"}}', "SUB_CHAIN_NAMES = {}"),
+    "page store id unescaped": (PAGE, "<li>store {_text(store.id)} {_he(store.name)}</li>", "<li>store {store.id} {_he(store.name)}</li>"),
+    "page one everyday item read as plural": (WORDS, "{'item' if item_count == 1 else 'items'}", "items"),
+    "page one product read as plural": (WORDS, "{'product' if count == 1 else 'products'}", "products"),
+    # basket: check
+    "basket check entities not unescaped": (CHECK_BASKET, "html.unescape(text)", "text"),
+    "basket check tags not stripped": (CHECK_BASKET, "flatten(strip_tags(raw))", "flatten(raw)"),
+    "basket check never phrases not sought": (CHECK_BASKET, "for phrase in NEVER if", "for phrase in () if"),
+    "basket check never phrase sought only with tags stripped": (CHECK_BASKET, "if _says(phrase, written, read)]", "if _says(phrase, read)]"),
+    "basket check never phrase sought only as written": (CHECK_BASKET, "if _says(phrase, written, read)]", "if _says(phrase, written)]"),
+    "basket check credit line not required": (CHECK_BASKET, 'NOTICES = {"the credit line": CREDIT_START, ', "NOTICES = {"),
+    "basket check shopping advice not required": (CHECK_BASKET, """CREDIT_START, f'"{NOT_ADVICE}"': NOT_ADVICE}""", "CREDIT_START}"),
+    "basket check noindex not required": (CHECK_BASKET, "        if not _says(NOINDEX, written):\n", "        if False:\n"),
+    "basket check script allowed": (CHECK_BASKET, "        if SCRIPT in written:\n", "        if False:\n"),
+    "basket check 'we' allowed": (CHECK_BASKET, "(?:we|our|us)", "(?:our|us)"),
+    "basket check words matched inside words": (CHECK_BASKET, r'r"\b(?:we|our|us)\b"', r'r"(?:we|our|us)"'),
+    "basket check always phrases not required": (CHECK_BASKET, "for phrase in ALWAYS if", "for phrase in () if"),
+    "basket check always phrase counted in an attribute": (CHECK_BASKET, "for phrase in ALWAYS if not _says(phrase, read)]", "for phrase in ALWAYS if not _says(phrase, written, read)]"),
+    "basket check revised on allowed on an unrevised day": (CHECK_BASKET, "    elif _says(REVISED, written, read):", "    elif False:"),
+    "basket check oldest day file read": (CHECK_BASKET, "newest = days[-1]", "newest = days[0]"),
+    "basket check missing index allowed": (CHECK_BASKET, "    if not (site_dir / INDEX).is_file():\n", "    if False:\n"),
+    "basket check marker not required": (CHECK_BASKET, "    if not (site_dir / MARKER).is_file():\n", "    if False:\n"),
+    "basket check no pages passes": (CHECK_BASKET, "    if not pages:\n        raise NoPages", "    if False:\n        raise NoPages"),
+    "basket check exit 0 on a hit": (CHECK_BASKET, "return 1 if problems else 0", "return 0"),
+    # basket: build
+    "basket build unchanged day rewritten": (BUILD, "write_day=not unchanged)", "write_day=True)"),
+    "basket build revision without a reason accepted": (BUILD, "    if reason is None:\n        raise RevisionNeeded", "    if False:\n        raise RevisionNeeded"),
+    "basket build blank reason accepted": (BUILD, r'if not reason or "\n" in reason or "\r" in reason:', r'if "\n" in reason or "\r" in reason:'),
+    "basket build multi-line reason accepted": (BUILD, r'if not reason or "\n" in reason or "\r" in reason:', "if not reason:"),
+    "basket build reason stored unstripped": (BUILD, '"reason": reason}', '"reason": revise}'),
+    "basket build first totals dropped on revision": (BUILD, 'previous["revisions"] + [earlier]', "[earlier]"),
+    "basket build record overwritten": (BUILD, 'open(path, "x", encoding="utf-8")', 'open(path, "w", encoding="utf-8")'),
+    "basket build tables never rebuilt": (BUILD, "and report.is_file() and not rebuild:", "and report.is_file():"),
+    "basket build unchanged pages show the new run": (BUILD, "return previous, True, False", "return public, True, False"),
+    "basket build collected by in UTC": (BUILD, 'f"{now.astimezone(ISRAEL):%H:%M}"', 'f"{now:%H:%M}"'),
+    # basket: final fix wave
+    "final revision keeps no earlier reason": (BUILD, '"revised": previous["revised"],', '"revised": None,'),
+    "final earlier revisions not on the page": (WORDS, 'earlier_part = f" Earlier: {before}." if before else ""', 'earlier_part = ""'),
+    "final earlier revisions oldest first": (PAGE, 'for run in reversed(public["revisions"]) if run.get("revised")]', 'for run in public["revisions"] if run.get("revised")]'),
+    "final site bucket unversioned": (SITE_TEMPLATE, "      VersioningConfiguration:\n        Status: Enabled\n", ""),
+    "final site bucket versioning suspended": (SITE_TEMPLATE, "        Status: Enabled", "        Status: Suspended"),
+    "final guard passes a differing day as unchanged": (GUARD, "if not published.is_file() or local.read_bytes() == published.read_bytes():", "if True:"),
+    "final guard compares a day new to the bucket": (GUARD, "if not published.is_file() or local.read_bytes()", "if local.read_bytes()"),
+    "final guard takes a revision without a reason": (GUARD, 'isinstance(new.get("revised"), dict) and ', ""),
+    "final guard takes a reason as text": (GUARD, 'isinstance(new.get("revised"), dict)', 'new.get("revised") is not None'),
+    "final guard takes as many revisions": (GUARD, "len(revisions) > len(earlier)", "len(revisions) >= len(earlier)"),
+    "final guard takes revisions that are not a list": (GUARD, 'isinstance(new.get("revised"), dict) and isinstance(revisions, list)', 'isinstance(new.get("revised"), dict) and revisions'),
+    "final guard reads a published day without revisions": (GUARD, " and isinstance(earlier, list)", ""),
+    "final guard reads an unreadable day as empty": (GUARD, "    except (UnicodeDecodeError, json.JSONDecodeError):\n        return None", "    except (UnicodeDecodeError, json.JSONDecodeError):\n        return {}"),
+    "final guard crashes on a file not UTF-8": (GUARD, "except (UnicodeDecodeError, json.JSONDecodeError):", "except json.JSONDecodeError:"),
+    "final guard reads a JSON list as a day": (GUARD, "return day if isinstance(day, dict) else None", "return day"),
+    "final guard reads only the local day": (GUARD, "for path, day in ((local, new), (published, old)) if day is None]", "for path, day in ((local, new),) if day is None]"),
+    "final guard exits 0 on a problem": (GUARD, "return 1 if problems else 0", "return 0"),
+    "final guard passes with no local folder": (GUARD, "    if not local.is_dir():\n", "    if False:\n"),
+    "final check needs no revised on on a revised day": (CHECK_BASKET, "        if not _says(REVISED, read):\n", "        if False:\n"),
+    "final check counts revised on in an attribute": (CHECK_BASKET, "if not _says(REVISED, read):", "if not _says(REVISED, written, read):"),
+    "final check right curly apostrophe not folded": (CHECK_BASKET, 'str.maketrans("\\u2018\\u2019", "\'\'")', 'str.maketrans("\\u2018", "\'")'),
+    "final check left curly apostrophe not folded": (CHECK_BASKET, 'str.maketrans("\\u2018\\u2019", "\'\'")', 'str.maketrans("\\u2019", "\'")'),
+    "final check apostrophes never folded": (CHECK_BASKET, ".translate(APOSTROPHES)", ""),
+    "final always says only median": (WORDS, '"the chain\'s median across its stores")', '"median")'),
+    "final fingerprint over the basket package only": (RECORD, "Path(basket_package.__file__).parent.parent)", "Path(basket_package.__file__).parent)"),
+    "final store of a sub-chain left out counted with a file": (RULES, " and sub_chain not in excluded_sub_chains.get(chain, ())", ""),
+    "final build counts a store of a sub-chain left out": (BUILD, "stores_with_file_keys(con, included_stores, sub_chains)", "stores_with_file_keys(con, included_stores, {})"),
+    "final candidates count a store of a sub-chain left out": (CANDIDATES_MAIN, "stores_with_file(con, included_stores, sub_chains)", "stores_with_file(con, included_stores, {})"),
 }
 
 

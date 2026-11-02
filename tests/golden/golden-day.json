@@ -1,0 +1,209 @@
+{
+ "basket_version": "v1",
+ "chains": {
+  "carrefour": {
+   "extraction": {
+    "conflicting": 0,
+    "placeholders": 0,
+    "repeated": 0,
+    "rows": 6,
+    "stores": 2,
+    "unreadable_prices": 0
+   },
+   "in_ranking": true,
+   "included": 2,
+   "items": {
+    "2000000000015": {
+     "double_coded": 0,
+     "high": "7.50",
+     "listing": 2,
+     "low": "7.20",
+     "median": "7.35"
+    },
+    "2000000000022": {
+     "double_coded": 0,
+     "high": "6.26",
+     "listing": 2,
+     "low": "5.95",
+     "median": "6.11"
+    },
+    "2000000000039": {
+     "double_coded": 0,
+     "high": "13.90",
+     "listing": 2,
+     "low": "13.50",
+     "median": "13.70"
+    }
+   },
+   "rank": 5,
+   "total": "27.16",
+   "with_file": 2
+  },
+  "osherad": {
+   "extraction": {
+    "conflicting": 0,
+    "placeholders": 0,
+    "repeated": 0,
+    "rows": 6,
+    "stores": 2,
+    "unreadable_prices": 0
+   },
+   "in_ranking": true,
+   "included": 2,
+   "items": {
+    "2000000000015": {
+     "double_coded": 0,
+     "high": "6.30",
+     "listing": 2,
+     "low": "6.00",
+     "median": "6.15"
+    },
+    "2000000000022": {
+     "double_coded": 0,
+     "high": "5.00",
+     "listing": 2,
+     "low": "4.80",
+     "median": "4.90"
+    },
+    "2000000000039": {
+     "double_coded": 0,
+     "high": "11.80",
+     "listing": 2,
+     "low": "11.40",
+     "median": "11.60"
+    }
+   },
+   "rank": 1,
+   "total": "22.65",
+   "with_file": 2
+  },
+  "ramilevy": {
+   "extraction": {
+    "conflicting": 0,
+    "placeholders": 0,
+    "repeated": 0,
+    "rows": 6,
+    "stores": 2,
+    "unreadable_prices": 0
+   },
+   "in_ranking": true,
+   "included": 2,
+   "items": {
+    "2000000000015": {
+     "double_coded": 0,
+     "high": "6.40",
+     "listing": 2,
+     "low": "6.20",
+     "median": "6.30"
+    },
+    "2000000000022": {
+     "double_coded": 0,
+     "high": "5.10",
+     "listing": 2,
+     "low": "4.90",
+     "median": "5.00"
+    },
+    "2000000000039": {
+     "double_coded": 0,
+     "high": "12.10",
+     "listing": 2,
+     "low": "11.90",
+     "median": "12.00"
+    }
+   },
+   "rank": 2,
+   "total": "23.30",
+   "with_file": 2
+  },
+  "shufersal": {
+   "extraction": {
+    "conflicting": 0,
+    "placeholders": 1,
+    "repeated": 0,
+    "rows": 7,
+    "stores": 2,
+    "unreadable_prices": 0
+   },
+   "in_ranking": true,
+   "included": 2,
+   "items": {
+    "2000000000015": {
+     "double_coded": 0,
+     "high": "7.10",
+     "listing": 2,
+     "low": "6.90",
+     "median": "7.00"
+    },
+    "2000000000022": {
+     "double_coded": 0,
+     "high": "5.90",
+     "listing": 2,
+     "low": "5.50",
+     "median": "5.70"
+    },
+    "2000000000039": {
+     "double_coded": 0,
+     "high": "13.30",
+     "listing": 2,
+     "low": "12.90",
+     "median": "13.10"
+    }
+   },
+   "rank": 4,
+   "total": "25.80",
+   "with_file": 2
+  },
+  "yochananof": {
+   "extraction": {
+    "conflicting": 0,
+    "placeholders": 0,
+    "repeated": 0,
+    "rows": 5,
+    "stores": 2,
+    "unreadable_prices": 0
+   },
+   "in_ranking": true,
+   "included": 2,
+   "items": {
+    "2000000000015": {
+     "double_coded": 0,
+     "high": "6.70",
+     "listing": 2,
+     "low": "6.50",
+     "median": "6.60"
+    },
+    "2000000000022": {
+     "double_coded": 0,
+     "high": "5.40",
+     "listing": 2,
+     "low": "5.20",
+     "median": "5.30"
+    },
+    "2000000000039": {
+     "double_coded": 0,
+     "high": "12.50",
+     "listing": 1,
+     "low": "12.50",
+     "median": "12.50"
+    }
+   },
+   "rank": 3,
+   "total": "24.40",
+   "with_file": 2
+  }
+ },
+ "day": "2026-01-01",
+ "headline": {
+  "gap_percent": 20,
+  "highest": "carrefour",
+  "highest_total": "27.16",
+  "lowest": "osherad",
+  "lowest_total": "22.65"
+ },
+ "items_in": [
+  "2000000000015",
+  "2000000000022",
+  "2000000000039"
+ ],
+ "left_out": []
+}

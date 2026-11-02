@@ -5,7 +5,7 @@ Personal portfolio project. Collects, every morning, the price files Israeli sup
 ## Hard rules
 
 - Personal accounts only. Nothing touches the owner's employer: no work systems, accounts, cloud or credentials.
-- AWS: profile `flights-sam`, region `il-central-1`, stack `il-grocery-prices`, and nothing else. Before any AWS command, run `aws sts get-caller-identity --profile flights-sam` and confirm account 137953273942 and user doron-admin. Every other profile on this machine belongs to the employer.
+- AWS: profile `flights-sam`, region `il-central-1`, the stacks `il-grocery-prices` (collector) and `il-grocery-prices-site` (the public site), and nothing else. `scripts/publish.sh` is the only thing that deletes, and only in the site bucket, after `basket.check` and `basket.guard` pass. Before any AWS command, run `aws sts get-caller-identity --profile flights-sam` and confirm account 137953273942 and user doron-admin. Every other profile on this machine belongs to the employer.
 - GitHub: before any `gh` call or `git push`, `gh auth status` must show doronreiffman as the active account; any other account is the employer's: stop and tell the owner. Subagents never run `gh` or push; the main session does.
 - On the owner's go only: every `git push`, `sam deploy`, any AWS write, enabling or disabling the schedules. Read-only AWS calls need no ask.
 - Chains in version one, and nothing else: `shufersal`, `ramilevy`, `osherad`, `carrefour`, `yochananof`. The NCR chains log in with the usernames the gov.il list prints (https://www.gov.il/he/pages/cpfta_prices_regulations, updated 12.08.2026) and an empty password, through the web form the list links (https://url.publishedprices.co.il); never FTP unless the owner says so.
@@ -22,10 +22,10 @@ Personal portfolio project. Collects, every morning, the price files Israeli sup
 ## Active threads
 
 - Collector: live since 2026-11-01 (17 schedules, Shufersal full files only, check 10:45); first scheduled morning clean 2026-11-02; next: the Saturday check (q10), Osher Ad's later run (q12) · `.claude/OPEN_ISSUES.md` Collector.
-- Showcase (headline basket): design approved 2026-11-02 (`docs/headline-basket.md`, read it before touching the basket), plan next · q13, `.claude/OPEN_ISSUES.md` Showcase.
+- Showcase (headline basket): design `docs/headline-basket.md` (read it before touching the basket); step one built and reviewed 2026-11-02 on branch `q13-basket`, merge, deploy and first upload on the owner's go; the basket is `basket/v1.json` (approved 2026-11-02; a change is a new version); how to run it by hand: `docs/operations.md`, "The headline basket, by hand" · q13, q14, `.claude/OPEN_ISSUES.md` Showcase.
 
 ## Working notes
 
-- Test baseline (2026-11-01): 741 tests, 100% coverage on `collector`, 537 mutations, all caught.
+- Test baseline (2026-11-02, branch `q13-basket` at 21ab7bc): 1,021 tests, coverage 99.78% over `collector` and `src/basket` (CI measures `--cov=src/basket`: the root `basket/` folder shadows the package name), 732 mutations, all caught.
 
 - Work queue `.claude/QUEUE.md`; open issues `.claude/OPEN_ISSUES.md`; decisions `.claude/DECISIONS.md`.
