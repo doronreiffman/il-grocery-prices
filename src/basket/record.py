@@ -12,8 +12,8 @@ extraction read (B1); the run ids of the manifests that stored them (B11); and t
 counts (B3). Then the basket codes that count, in the basket's order, those left out and why, and
 the headline, or None. Money is a string with two decimals, rounded half up, for display only: a
 total is the sum of the exact medians, rounded once. The day is YYYY-MM-DD. The JSON has its keys
-sorted and its Hebrew as written. Nothing here reads the clock and every mapping is sorted, so two
-runs of one day over the same inputs and code differ only in run id and build time.
+sorted at every level and its Hebrew as written. Nothing here reads the clock, so two runs of one
+day over the same inputs and code differ only in run id and build time.
 
 The public day (B10, B12). The record less each chain's store keys, files and manifests (the counts
 stay), with `revisions` (empty) and `revised` (None) for the publish step to fill, as JSON-ready
