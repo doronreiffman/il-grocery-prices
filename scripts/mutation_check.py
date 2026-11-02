@@ -59,6 +59,8 @@ BASKET_FILE = ("src/basket/basket_file.py", ["tests/test_basket_file.py"])
 RULES = ("src/basket/rules.py", ["tests/test_rules.py"])
 RECORD = ("src/basket/record.py", ["tests/test_record.py"])
 CANDIDATES = ("src/basket/candidates.py", ["tests/test_candidates.py"])
+WORDS = ("src/basket/words.py", ["tests/test_page.py"])
+PAGE = ("src/basket/page.py", ["tests/test_page.py"])
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
 MUTATIONS = {
@@ -789,6 +791,24 @@ MUTATIONS = {
     "candidates name tie to the last in order": (CANDIDATES, "min(names, key=lambda name: (-names[name], name))", "max(names, key=lambda name: (names[name], name))"),
     "candidates name first in order, not most common": (CANDIDATES, "min(names, key=lambda name: (-names[name], name))", "min(names)"),
     "candidates coverage rounded half up in the table": (CANDIDATES, "rounding=ROUND_DOWN", 'rounding="ROUND_HALF_UP"'),
+    # basket: words and pages
+    "page credit line dropped from the method page": (PAGE, 'f"{words.METHOD_TITLE} · {words.TITLE}", parts, _credit(public))', 'f"{words.METHOD_TITLE} · {words.TITLE}", parts, "")'),
+    "page noindex dropped": (PAGE, '<meta name="robots" content="noindex">\n', ""),
+    "page lowest marked as highest": (PAGE, "lowest = min(prices.values())", "lowest = max(prices.values())"),
+    "page a never phrase in the template": (PAGE, 'heading = "Listed totals, lowest first"', 'heading = "Listed totals, cheapest chain first"'),
+    "page revised line always shown": (PAGE, '    if public["revised"]:\n', "    if True:\n"),
+    "page day file written when not asked": (PAGE, "    if write_day:\n", "    if True:\n"),
+    "page bars for a chain out of ranking": (PAGE, '        if not chain["in_ranking"]:\n            few =', "        if False:\n            few ="),
+    "page lowest taken over a chain out of ranking": (PAGE, 'if chain["in_ranking"] and code in chain["items"]}', 'if code in chain["items"]}'),
+    "page lowest marked in a row left out": (PAGE, 'if not compare or code not in public["items_in"]:', "if not compare:"),
+    "page bars scaled to the lowest total": (PAGE, "highest = max(Decimal(chain", "highest = min(Decimal(chain"),
+    "page item count from the basket on a day that compares": (PAGE, 'count = len(public["items_in"]) if compare else len(basket.items)', "count = len(basket.items)"),
+    "page Hebrew name not right to left": (PAGE, "<br>{_he(item.name_he)}<small>", "<br>{_text(item.name_he)}<small>"),
+    "page Hebrew in a sentence not right to left": (PAGE, "_he(run.group())]", "_text(run.group())]"),
+    "page headline totals not rounded": (WORDS, "₪{money(headline.lowest_total)}.", "₪{headline.lowest_total}."),
+    "page no-items reason never given": (WORDS, "return NO_ITEMS if nothing_counted else NO_CHAINS, items", "return NO_CHAINS, items"),
+    "page first totals sorted as text": (WORDS, "sorted((Decimal(total), slug, total)", "sorted((total, slug, total)"),
+    "page Be sub-chain not named": (WORDS, 'SUB_CHAIN_NAMES = {"shufersal": {"5": "Be"}}', "SUB_CHAIN_NAMES = {}"),
 }
 
 
