@@ -214,7 +214,7 @@ Step one of the headline basket (`docs/headline-basket.md`, "The pipeline"): one
    PYTHONPATH=src .venv/bin/python -m basket.check site
    ```
 
-   The same check `scripts/publish.sh` runs before it uploads: no never-phrase and no "we", "our" or "us" on any page; the credit line, "Not shopping advice." and `noindex` on every page, and no script; every always-phrase on the index page, and "Revised on" there only on a revised day; the marker. Exit 0 when clean; 1 with problems, one a line naming the file and the rule; 2 when there is no page.
+   The same check `scripts/publish.sh` runs before it uploads: no never-phrase and no "we", "our" or "us" on any page; the credit line, "Not shopping advice." and `noindex` on every page, and no script; every always-phrase on the index page, and "Revised on" there on a revised day and only then; the marker. Exit 0 when clean; 1 with problems, one a line naming the file and the rule; 2 when there is no page.
 
 4. **Review** `site/index.html` and `site/method.html` in a browser (`open site/index.html site/method.html`): the headline, the bars, the item table and the notes against the printout, and the method page.
 
