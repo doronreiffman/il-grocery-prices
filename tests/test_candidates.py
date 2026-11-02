@@ -1,5 +1,6 @@
 """Candidates: the codes all five chains stock widely in one agreeing size, and the table they go to."""
 import csv
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -145,9 +146,11 @@ def test_main_counts_only_the_included_stores_and_writes_the_day_s_table(tmp_pat
     for slug in SLUGS:
         folder = data / "raw" / f"chain={slug}" / "date=2026-11-02"
         folder.mkdir(parents=True)
-        (folder / "Stores7290027600007-000-20261102-020.xml").write_bytes(store_list("1", "413"))
+        (folder / "Stores7290027600007-000-20261102-020.xml").write_bytes(store_list("1", "2", "413"))
         if slug == "shufersal":  # store 413, Shufersal's online store, is left out: A is at its one store with a file
-            rows = listed(A, G_500, ["1"]) + listed(B, G_500, ["413"])
+            # Store 2 is in sub-chain 1 in the list, but its file names sub-chain 5, Be (B2): no store with a file.
+            be = [replace(each, sub_chain="5") for each in listed(B, G_500, ["2"])]
+            rows = listed(A, G_500, ["1"]) + listed(B, G_500, ["413"]) + be
         else:
             rows = listed(A, G_500, ["1", "413"]) + listed(B, G_500, ["1", "413"])
         write_table(rows, table_path(data / "tables", slug, DAY))

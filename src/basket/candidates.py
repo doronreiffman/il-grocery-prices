@@ -112,9 +112,10 @@ def main(argv: list[str] | None = None) -> None:
         if store_list is None:
             raise SystemExit(f"no store list for chain {slug!r} on or before {args.day.isoformat()}")
         included_stores[slug] = included(read_stores(store_list[0]), slug)
+    sub_chains = {slug: EXCLUDED[slug].sub_chains for slug in SLUGS}
     with open_day(args.tables, args.day, SLUGS) as con:
-        apply_filters(con, included_stores, {slug: EXCLUDED[slug].sub_chains for slug in SLUGS})
-        found = candidates(con, stores_with_file(con, included_stores))
+        apply_filters(con, included_stores, sub_chains)
+        found = candidates(con, stores_with_file(con, included_stores, sub_chains))
     out = args.out or Path("data") / f"candidates-{args.day.isoformat()}.csv"
     write_candidates_csv(found, out)
     print(f"{len(found)} candidates written to {out}")

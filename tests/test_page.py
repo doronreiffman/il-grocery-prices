@@ -16,8 +16,8 @@ from basket.page import build_site, render_day, render_index, render_method
 from basket.record import build_record, public_day
 from basket.rules import ChainPrice, Headline, LeftOut, chain_day, price_basket
 from basket.stores import Store
-from basket.words import (ALWAYS, MEDIAN_SENTENCE, NEVER, REVISED, TITLE, bar_label, credit, headline_lines,
-                          left_out_line, range_note, revised_line, too_few)
+from basket.words import (ALWAYS, MEDIAN_SENTENCE, NEVER, PRICES_SENTENCE, REVISED, TITLE, bar_label, credit,
+                          headline_lines, left_out_line, range_note, revised_line, too_few)
 
 BASKET = load_basket(Path(__file__).parent / "baskets" / "basket-test.json", min_items=1)
 MILK, PASTA, EGGS = (item.code for item in BASKET.items)  # 1000 gml, 500 gml, 12 unit
@@ -188,6 +188,13 @@ def test_left_out_lines_name_the_item_the_chains_and_the_counts_or_sizes():
 
 # ---- the index page ----
 
+def test_always_is_the_design_s_list_verbatim():
+    design = (Path(__file__).parent.parent / "docs" / "headline-basket.md").read_text(encoding="utf-8")
+    [line] = [line for line in design.splitlines() if line.startswith("Always: ")]
+    assert ALWAYS == tuple(re.findall(r'"([^"]+)"', line))  # the quoted phrases, in the design's order
+    assert all(phrase in PRICES_SENTENCE for phrase in ALWAYS)  # the index carries each in one sentence
+
+
 def test_index_has_always_words_and_no_never_words():
     for public in (a_public(), a_public(stores=STORES | {"carrefour": (100, 10), "yochananof": (40, 5)})):
         page = index(public)
@@ -306,6 +313,25 @@ def test_revised_line_shown_only_when_revised():
         "First published: Rami Levy ₪99.50, Carrefour ₪101.20.")  # by amount, not as text
     assert revised_line(date(2026, 11, 3), "a rule fix", {"osherad": None}) == (
         "Revised on 3 November 2026: a rule fix. First published: no totals.")
+
+
+def test_a_day_revised_more_than_once_names_every_earlier_reason_newest_first():
+    first = {"carrefour": "14.85", "ramilevy": "12.00"}
+    public = a_public()
+    public["revisions"] = [
+        {"run_id": "093000Z-basket-0a1b", "code_sha": "0123456789ab", "built_at": "2026-11-02T09:30:00+00:00",
+         "revised": None, "totals": first},  # the day as first published
+        {"run_id": "080000Z-basket-1c2d", "code_sha": "0123456789ab", "built_at": "2026-11-03T08:00:00+00:00",
+         "revised": {"on": "2026-11-03", "reason": "a parser fix"}, "totals": first | {"ramilevy": "12.10"}},
+        {"run_id": "080000Z-basket-3e4f", "code_sha": "0123456789ab", "built_at": "2026-11-04T08:00:00+00:00",
+         "revised": {"on": "2026-11-04", "reason": "a rule fix"}, "totals": first | {"ramilevy": "12.20"}}]
+    public["revised"] = {"on": "2026-11-05", "reason": "a third fix"}
+    page = index(public)
+    assert ("Revised on 5 November 2026: a third fix. Earlier: on 4 November 2026: a rule fix; on 3 November 2026: "
+            "a parser fix. First published: Rami Levy ₪12.00, Carrefour ₪14.85.") in page
+    assert page.count(REVISED) == 1
+    assert revised_line(date(2026, 11, 5), "a fix", {}, [(date(2026, 11, 4), "an earlier fix")]) == (
+        "Revised on 5 November 2026: a fix. Earlier: on 4 November 2026: an earlier fix. First published: no totals.")
 
 
 # ---- the method page and the day's JSON ----

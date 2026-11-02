@@ -73,11 +73,16 @@ def test_rows_of_an_excluded_sub_chain_drop_by_the_file_name(tmp_path):
                     row("9", MILK, "6.30", sub_chain=None)],
               "b": [row("7", MILK, "5.90", sub_chain="5")]}
     included = {"a": {"7", "8", "9"}, "b": {"7"}}
-    with opened(tmp_path, chains, included, {"a": frozenset({"5"}), "b": frozenset()}) as con:
+    excluded = {"a": frozenset({"5"}), "b": frozenset()}
+    with opened(tmp_path, chains, included, excluded) as con:
         kept = con.execute("SELECT chain, store FROM rows ORDER BY chain, store").fetchall()
-        with_file = stores_with_file(con, included)
+        with_file = stores_with_file(con, included, excluded)
+        keys = stores_with_file_keys(con, included, excluded)
     assert kept == [("a", "8"), ("a", "9"), ("b", "7")]
-    assert with_file == {"a": 3, "b": 1}
+    # Store 7 is in the list but its file names sub-chain 5, left out at chain a: no included store with a file
+    # there (as Shufersal's store 779, Be by its file name, on 2026-11-02); store 9's file names no sub-chain.
+    assert with_file == {"a": 2, "b": 1}
+    assert keys == {"a": ("8", "9"), "b": ("7",)}
 
 
 def test_stores_with_file_counts_before_the_placeholder_rule(tmp_path):
@@ -85,7 +90,7 @@ def test_stores_with_file_counts_before_the_placeholder_rule(tmp_path):
               "b": [row("1", MILK, "5.90")]}
     included = {"a": {"1", "2"}, "b": {"1", "9"}}
     with opened(tmp_path, chains, included) as con:
-        with_file = stores_with_file(con, included)
+        with_file = stores_with_file(con, included, {})
         listed = con.execute("SELECT chain, store FROM rows ORDER BY chain, store").fetchall()
     assert with_file == {"a": 2, "b": 1}
     assert listed == [("a", "1"), ("b", "1")]
@@ -97,8 +102,8 @@ def test_stores_with_file_keys_lists_the_stores(tmp_path):
               "b": []}
     included = {"a": {"2", "9", "10", "11"}, "b": {"1"}}
     with opened(tmp_path, chains, included) as con:
-        keys = stores_with_file_keys(con, included)
-        counts = stores_with_file(con, included)
+        keys = stores_with_file_keys(con, included, {})
+        counts = stores_with_file(con, included, {})
     assert keys == {"a": ("2", "9", "10"), "b": ()}  # by number; store 3 is not included, store 11 sent no file
     assert counts == {"a": 3, "b": 0}
 
@@ -204,7 +209,7 @@ def test_empty_chain_table_gives_zero_with_file(tmp_path):
     chains["e"] = []
     included = {slug: {"1", "2"} for slug in CHAINS}
     with opened(tmp_path, chains, included) as con:
-        with_file = stores_with_file(con, included)
+        with_file = stores_with_file(con, included, {})
         prices = chain_prices(con, CODES)
         sizes = chain_sizes(con, CODES)
     assert with_file == {"a": 2, "b": 2, "c": 2, "d": 2, "e": 0}

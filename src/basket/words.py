@@ -31,7 +31,7 @@ CHAIN_NAMES = {"shufersal": "Shufersal", "ramilevy": "Rami Levy", "osherad": "Os
                "yochananof": "Yochananof"}
 SUB_CHAIN_NAMES = {"shufersal": {"5": "Be"}}  # by key: a sub-chain left out whole is named by its name here
 ALWAYS = ("listed price", "in the chain's price file", "before promotions", "lowest listed total for this basket",
-          "median")
+          "the chain's median across its stores")  # the design's "Words", verbatim; all five in PRICES_SENTENCE
 NEVER = ("cheapest chain", "cheaper than", "you'll pay", "you will pay", "saves you", "at the till", "real prices",
          "the chain charges")
 REVISED = "Revised on"
@@ -86,7 +86,7 @@ RULES = (
                    "day's files had been collected: in a hand build the time of the day's collection check, in the "
                    "scheduled build the time its extraction starts."),
     ("B12 Corrections.", "A published day changes only for a stated reason. The page then gives the date of the "
-                         "change and its reason, and keeps the totals first published."),
+                         "change and its reason, those of every earlier change, and the totals first published."),
 )
 NOT_CLAIMED = (
     "What a till charges: these are listed prices, not a promise of a price at checkout.",
@@ -221,8 +221,13 @@ def reproduce(day: date, basket_version: str, code_sha: str) -> str:
             f"fingerprint, {code_sha}. The same files, basket and code give the same numbers.")
 
 
-def revised_line(on: date, reason: str, first_totals: Mapping[str, str | None]) -> str:
-    """The line on a revised day (B12): the date, the reason and the totals first published, lowest first."""
+def revised_line(on: date, reason: str, first_totals: Mapping[str, str | None],
+                 earlier: Sequence[tuple[date, str]] = ()) -> str:
+    """The line on a revised day (B12): the date and the reason; each earlier revision's date and reason, in the
+    order given (the page gives the newest first), on a day revised more than once; and the totals first
+    published, lowest first."""
     ranked = sorted((Decimal(total), slug, total) for slug, total in first_totals.items() if total is not None)
     first = ", ".join(f"{CHAIN_NAMES[slug]} ₪{total}" for _, slug, total in ranked) or "no totals"
-    return f"{REVISED} {on:%-d %B %Y}: {reason}. First published: {first}."
+    before = "; ".join(f"on {when:%-d %B %Y}: {why}" for when, why in earlier)
+    earlier_part = f" Earlier: {before}." if before else ""
+    return f"{REVISED} {on:%-d %B %Y}: {reason}.{earlier_part} First published: {first}."

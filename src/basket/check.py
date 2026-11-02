@@ -1,22 +1,23 @@
 """Check a built basket site before upload (docs/headline-basket.md, "Words" and "Before anything is published"):
 no page says a NEVER phrase or "we", "our" or "us"; every page carries the credit line, `noindex` and no
-script; the index page carries every ALWAYS phrase and says REVISED only on a revised day.
+script; the index page carries every ALWAYS phrase, and says REVISED on a revised day and only there.
 
     PYTHONPATH=src .venv/bin/python -m basket.check site
 
 Runs before every upload (`scripts/publish.sh`). Each `.html` under the folder is read two ways: as written
 (attributes and markup included) and with tags stripped (the text a reader sees). In both, entities are
-unescaped, whitespace is collapsed and case is ignored, so an entity, a tag or a line break cannot hide a
-phrase. A NEVER phrase found in either is a problem, and so is REVISED on the index page. A phrase that must
-be there (the credit line's fixed start, "Not shopping advice.", and on the index page every ALWAYS phrase)
-counts only in the text a reader sees. `noindex` and `<script` are tags, looked for as written. The words
-"we", "our" and "us" are matched whole in the text a reader sees; attributes hold chain slugs and codes, not
-words.
+unescaped, whitespace is collapsed, curly single quotes (U+2018, U+2019) read as the straight apostrophe and
+case is ignored, so an entity, a tag, a line break or a typographic apostrophe cannot hide a phrase. A NEVER
+phrase found in either is a problem, and so is REVISED on the index page of a day not revised. A phrase that
+must be there (the credit line's fixed start, "Not shopping advice.", and on the index page every ALWAYS
+phrase, and REVISED on a revised day) counts only in the text a reader sees. `noindex` and `<script` are
+tags, looked for as written. The words "we", "our" and "us" are matched whole in the text a reader sees;
+attributes hold chain slugs and codes, not words.
 
-The day is revised when the newest `days/<day>.json` (ISO dates sort as dates) has `"revised"` set; null, or
-no day file, is a day never revised. The marker `.basket-site`, which `basket.page.build_site` writes, marks
-the folder as a basket site. Exit 0 clean; 1 with problems, one a line on stderr naming the file and the
-rule; 2 when there is no page to check.
+The day is revised when the newest `days/<day>.json` (ISO dates sort as dates) has `"revised"` set to an
+object, as `basket.build` writes it; null, or no day file, is a day never revised. The marker
+`.basket-site`, which `basket.page.build_site` writes, marks the folder as a basket site. Exit 0 clean; 1
+with problems, one a line on stderr naming the file and the rule; 2 when there is no page to check.
 """
 import html
 import json
@@ -32,6 +33,7 @@ CREDIT_START = ("Prices from the price files Shufersal, Rami Levy, Osher Ad, Car
 NOT_ADVICE = "Not shopping advice."
 NOTICES = {"the credit line": CREDIT_START, f'"{NOT_ADVICE}"': NOT_ADVICE}  # every page, in the text read
 NOINDEX = '<meta name="robots" content="noindex">'
+APOSTROPHES = str.maketrans("\u2018\u2019", "''")  # curly single quotes read as the straight apostrophe
 SCRIPT = "<script"
 PRONOUNS = re.compile(r"\b(?:we|our|us)\b", re.I)
 INDEX = "index.html"
@@ -43,8 +45,8 @@ class NoPages(Exception):
 
 
 def flatten(text: str) -> str:
-    """`text` with entities unescaped, whitespace collapsed and in lower case."""
-    return re.sub(r"\s+", " ", html.unescape(text)).lower()
+    """`text` with entities unescaped, whitespace collapsed, curly single quotes straightened and in lower case."""
+    return re.sub(r"\s+", " ", html.unescape(text)).translate(APOSTROPHES).lower()
 
 
 def strip_tags(text: str) -> str:
@@ -68,7 +70,10 @@ def _day(site_dir: Path) -> tuple[str, dict | None]:
 def _index_problems(site_dir: Path, written: str, read: str) -> list[str]:
     problems = [f"{INDEX}: missing an always phrase: {phrase!r}" for phrase in ALWAYS if not _says(phrase, read)]
     day, revised = _day(site_dir)
-    if revised is None and _says(REVISED, written, read):
+    if isinstance(revised, dict):
+        if not _says(REVISED, read):
+            problems.append(f"{INDEX}: no {REVISED!r} on a revised day ({day})")
+    elif _says(REVISED, written, read):
         problems.append(f"{INDEX}: {REVISED!r} on a day not revised ({day})")
     return problems
 

@@ -24,8 +24,10 @@ Hebrew. A Hebrew name is wrapped whole in <span dir="rtl" lang="he">, and so is 
 sentence (a store's name).
 
 Revisions. A revised day's public dict has `revised` ({"on": YYYY-MM-DD, "reason": text}) and `revisions`,
-the earlier runs oldest first, each with `totals` by slug (None for a chain without one); the first is
-the day as first published.
+the earlier runs oldest first, each with `totals` by slug (None for a chain without one) and its own
+`revised` (None for the first, the day as first published). The revised line names the latest revision,
+then every earlier one, newest first, then the totals first published. A run kept in `revisions` without
+a `revised` key (a day file written before the key was kept) adds no earlier revision.
 """
 import json
 import re
@@ -189,7 +191,9 @@ def _headline(found: dict | None) -> Headline | None:
 def _revised(public: dict) -> str:
     revised = public["revised"]
     first = public["revisions"][0]["totals"] if public["revisions"] else {}
-    return words.revised_line(date.fromisoformat(revised["on"]), revised["reason"], first)
+    earlier = [(date.fromisoformat(run["revised"]["on"]), run["revised"]["reason"])
+               for run in reversed(public["revisions"]) if run.get("revised")]
+    return words.revised_line(date.fromisoformat(revised["on"]), revised["reason"], first, earlier)
 
 
 def _bars(chains: list[tuple[str, dict]], compare: bool) -> str:

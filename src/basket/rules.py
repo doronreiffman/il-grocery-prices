@@ -6,9 +6,12 @@ found no files writes an empty table, which is not absent). A row counts, in the
 its store is one of the chain's included stores, its sub-chain is not one the chain leaves out, and
 its price is above ₪0.01. The sub-chain is the one in the row's file name, which wins over the store
 list's; a row with no sub-chain is never left out by it. A price of ₪0.01 or less is a placeholder,
-and a row with no price says nothing. A store has a file that day when it has a row in `prices`,
-before the placeholder rule, so a store whose only rows are placeholders still published one; the
-stores with a file are listed by key as numbers, as the extraction sorts them ("9" before "10").
+and a row with no price says nothing. An included store has a file that day when it has a row in
+`prices` whose sub-chain the chain does not leave out, before the placeholder rule, so a store whose
+only rows are placeholders still published one, and a store the list puts in a kept sub-chain but whose
+file name puts it in a sub-chain left out (Shufersal's store 779 on 2026-11-02: sub-chain 7 in the
+list, 005 in its file name) did not; the stores with a file are listed by key as numbers, as the
+extraction sorts them ("9" before "10").
 
 Chain price (B5). A chain's price for an item is the median of the prices of its rows listing the
 item, matched by the code with leading zeros stripped: the middle price over the stores listing it,
@@ -157,18 +160,22 @@ def _insert_keys(con: duckdb.DuckDBPyConnection, table: str, keys: Mapping[str, 
         con.executemany(f"INSERT INTO {table} VALUES (?, ?)", pairs)
 
 
-def stores_with_file_keys(con: duckdb.DuckDBPyConnection, included: dict[str, set[str]]) -> dict[str, tuple[str, ...]]:
-    """Per chain of `included`, by slug: its included stores with a row in `prices`, placeholders and all, by number."""
-    present: dict[str, list[str]] = {chain: [] for chain in sorted(included)}
-    for chain, store in con.execute("SELECT DISTINCT chain, store FROM prices").fetchall():
-        if store in included.get(chain, ()):
-            present[chain].append(store)
+def stores_with_file_keys(con: duckdb.DuckDBPyConnection, included: dict[str, set[str]],
+                          excluded_sub_chains: Mapping[str, Set[str]]) -> dict[str, tuple[str, ...]]:
+    """Per chain of `included`, by slug: its included stores with a row in `prices` whose file-name sub-chain is not
+    one of the chain's `excluded_sub_chains` (B2, as `apply_filters` leaves rows out), placeholders and all, by
+    number."""
+    present: dict[str, set[str]] = {chain: set() for chain in sorted(included)}
+    for chain, store, sub_chain in con.execute("SELECT DISTINCT chain, store, sub_chain FROM prices").fetchall():
+        if store in included.get(chain, ()) and sub_chain not in excluded_sub_chains.get(chain, ()):
+            present[chain].add(store)
     return {chain: tuple(sorted(stores, key=lambda store: (int(store), store))) for chain, stores in present.items()}
 
 
-def stores_with_file(con: duckdb.DuckDBPyConnection, included: dict[str, set[str]]) -> dict[str, int]:
+def stores_with_file(con: duckdb.DuckDBPyConnection, included: dict[str, set[str]],
+                     excluded_sub_chains: Mapping[str, Set[str]]) -> dict[str, int]:
     """Per chain of `included`, by slug: how many of its included stores have a file (`stores_with_file_keys`)."""
-    return {chain: len(stores) for chain, stores in stores_with_file_keys(con, included).items()}
+    return {chain: len(stores) for chain, stores in stores_with_file_keys(con, included, excluded_sub_chains).items()}
 
 
 def chain_prices(con: duckdb.DuckDBPyConnection, codes: Sequence[str]) -> dict[tuple[str, str], ChainPrice]:

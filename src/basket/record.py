@@ -2,8 +2,10 @@
 and what a rebuild compares with a published day (B12).
 
 The record (B10). One record per run: the day, the basket's version, the run id, the code's
-fingerprint (`code_fingerprint`: `collector.handler.code_sha` over every .py file of this package),
-the build time in UTC, and "collected by" as given (B11: the time the day's extraction started).
+fingerprint (`code_fingerprint`: `collector.handler.code_sha` over every .py file under `src/`, this
+package and `collector`, whose names, payload and store modules the numbers also rest on), the build
+time in UTC, and "collected by" as given (B11: the time by which the day's files had been collected,
+the check's time in a hand build and the extraction's start in the scheduled build).
 Then, per chain by slug: its included stores, its stores with a file and whether it is in the
 ranking (B8); its rank and total, or None (B9); its price for each basket item it lists, by code,
 with its stores' lowest and highest price, the number of stores listing the item and how many of
@@ -164,5 +166,6 @@ def manifests_for(manifest_dir: Path, day: date, slug: str, files: Sequence[str]
 
 
 def code_fingerprint() -> str:
-    """The fingerprint of this package's code: `code_sha` over its directory."""
-    return collector.handler.code_sha(Path(basket_package.__file__).parent)
+    """The fingerprint of the code behind the numbers: `code_sha` over `src/`, the folder holding this package and
+    `collector`."""
+    return collector.handler.code_sha(Path(basket_package.__file__).parent.parent)

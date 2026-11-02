@@ -55,6 +55,12 @@ def test_the_bucket_is_private_and_owner_enforced(resources):
     assert rule["ServerSideEncryptionByDefault"] == {"SSEAlgorithm": "AES256"}
 
 
+def test_the_bucket_keeps_every_version_of_a_published_file(resources):
+    # A day file holds its revision reason and its earlier figures (B12): an upload that replaces it must leave
+    # the published one recoverable.
+    assert resources["SiteBucket"]["Properties"]["VersioningConfiguration"] == {"Status": "Enabled"}
+
+
 def test_no_principal_is_anyone(template):
     principals = [n["Principal"] for n in walk(template) if isinstance(n, dict) and "Principal" in n]
     assert principals, "the bucket policy should name a principal"

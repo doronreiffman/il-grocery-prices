@@ -72,6 +72,9 @@ def test_an_entity_cannot_hide_a_never_phrase(tmp_path):
     ("<p>Not real <b>prices</b>.</p>", "real prices"),  # split by a tag: found with tags stripped
     ('<p title="the chain charges">x</p>', "the chain charges"),  # in an attribute: found as written
     ("<p>you&#39;ll pay</p>", "you'll pay"),  # a numeric entity
+    ("<p>you\u2019ll pay</p>", "you'll pay"),  # a right single quote, as typography writes the apostrophe
+    ("<p>you&rsquo;ll pay</p>", "you'll pay"),  # the same as a named entity
+    ('<p title="you\u2018ll pay">x</p>', "you'll pay"),  # a left single quote, in an attribute
 ])
 def test_never_phrases_are_found_as_written_and_with_tags_stripped(tmp_path, markup, phrase):
     site = built(tmp_path / "site")
@@ -116,6 +119,22 @@ def test_index_without_an_always_phrase_fails(tmp_path):
     replace(site, "index.html", "lowest listed total for this basket",
             '<span title="lowest listed total for this basket">lowest total</span>')  # an attribute does not count
     assert check_site(site) == ["index.html: missing an always phrase: 'lowest listed total for this basket'"]
+
+
+def test_index_without_the_median_phrase_fails(tmp_path):
+    site = built(tmp_path / "site")
+    phrase = "the chain's median across its stores"
+    replace(site, "index.html", phrase, "the median")
+    assert check_site(site) == [f"index.html: missing an always phrase: {phrase!r}"]
+
+
+def test_a_revised_day_without_revised_on_fails(tmp_path):
+    site = built(tmp_path / "gone", revised_public())
+    replace(site, "index.html", "Revised on 3 November", "Changed on 3 November")
+    assert check_site(site) == ["index.html: no 'Revised on' on a revised day (days/2026-11-02.json)"]
+    site = built(tmp_path / "attribute", revised_public())
+    replace(site, "index.html", "Revised on 3 November", '<span title="Revised on">Changed on</span> 3 November')
+    assert check_site(site) == ["index.html: no 'Revised on' on a revised day (days/2026-11-02.json)"]
 
 
 def test_revised_on_an_unrevised_day_fails(tmp_path):

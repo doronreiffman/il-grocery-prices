@@ -19,6 +19,10 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
+      # An upload that replaces a published day file (its revision reason included) keeps the earlier version
+      # (B12); scripts/publish.sh refuses such an upload first, and this is the second guard.
+      VersioningConfiguration:
+        Status: Enabled
 
   SiteOriginAccessControl:
     Type: AWS::CloudFront::OriginAccessControl

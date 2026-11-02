@@ -65,6 +65,8 @@ PAGE = ("src/basket/page.py", ["tests/test_page.py"])
 # tests/test_check.py is the collector's morning check; the basket check's tests have their own file
 CHECK_BASKET = ("src/basket/check.py", ["tests/test_basket_check.py"])
 BUILD = ("src/basket/build.py", ["tests/test_build.py"])
+GUARD = ("src/basket/guard.py", ["tests/test_guard.py"])
+CANDIDATES_MAIN = ("src/basket/candidates.py", ["tests/test_candidates.py::test_main_counts_only_the_included_stores_and_writes_the_day_s_table"])
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
 MUTATIONS = {
@@ -770,7 +772,7 @@ MUTATIONS = {
     # basket: rules
     "rules placeholders kept": (RULES, "p.price > 0.01", "p.price >= 0.01"),
     "rules null prices kept": (RULES, "p.price IS NOT NULL AND p.price > 0.01", "(p.price IS NULL OR p.price > 0.01)"),
-    "rules excluded store counted": (RULES, "if store in included.get(chain, ()):", "if chain in present:"),
+    "rules excluded store counted": (RULES, "if store in included.get(chain, ()) and", "if chain in present and"),
     "rules store keys sorted as text": (RULES, "sorted(stores, key=lambda store: (int(store), store))", "sorted(stores)"),
     "rules Be rows kept when the list includes the store": (RULES, "AND NOT EXISTS (SELECT 1 FROM excluded_sub_chains x WHERE x.chain = p.chain AND x.sub_chain = p.sub_chain)", "AND true"),
     "rules median takes the lower middle": (RULES, "return (ordered[middle - 1] + ordered[middle]) / 2", "return ordered[middle - 1]"),
@@ -844,7 +846,7 @@ MUTATIONS = {
     "basket check words matched inside words": (CHECK_BASKET, r'r"\b(?:we|our|us)\b"', r'r"(?:we|our|us)"'),
     "basket check always phrases not required": (CHECK_BASKET, "for phrase in ALWAYS if", "for phrase in () if"),
     "basket check always phrase counted in an attribute": (CHECK_BASKET, "for phrase in ALWAYS if not _says(phrase, read)]", "for phrase in ALWAYS if not _says(phrase, written, read)]"),
-    "basket check revised on allowed on an unrevised day": (CHECK_BASKET, "if revised is None and _says(REVISED, written, read):", "if False:"),
+    "basket check revised on allowed on an unrevised day": (CHECK_BASKET, "    elif _says(REVISED, written, read):", "    elif False:"),
     "basket check oldest day file read": (CHECK_BASKET, "newest = days[-1]", "newest = days[0]"),
     "basket check missing index allowed": (CHECK_BASKET, "    if not (site_dir / INDEX).is_file():\n", "    if False:\n"),
     "basket check marker not required": (CHECK_BASKET, "    if not (site_dir / MARKER).is_file():\n", "    if False:\n"),
@@ -861,6 +863,35 @@ MUTATIONS = {
     "basket build tables never rebuilt": (BUILD, "and report.is_file() and not rebuild:", "and report.is_file():"),
     "basket build unchanged pages show the new run": (BUILD, "return previous, True, False", "return public, True, False"),
     "basket build collected by in UTC": (BUILD, 'f"{now.astimezone(ISRAEL):%H:%M}"', 'f"{now:%H:%M}"'),
+    # basket: final fix wave
+    "final revision keeps no earlier reason": (BUILD, '"revised": previous["revised"],', '"revised": None,'),
+    "final earlier revisions not on the page": (WORDS, 'earlier_part = f" Earlier: {before}." if before else ""', 'earlier_part = ""'),
+    "final earlier revisions oldest first": (PAGE, 'for run in reversed(public["revisions"]) if run.get("revised")]', 'for run in public["revisions"] if run.get("revised")]'),
+    "final site bucket unversioned": (SITE_TEMPLATE, "      VersioningConfiguration:\n        Status: Enabled\n", ""),
+    "final site bucket versioning suspended": (SITE_TEMPLATE, "        Status: Enabled", "        Status: Suspended"),
+    "final guard passes a differing day as unchanged": (GUARD, "if not published.is_file() or local.read_bytes() == published.read_bytes():", "if True:"),
+    "final guard compares a day new to the bucket": (GUARD, "if not published.is_file() or local.read_bytes()", "if local.read_bytes()"),
+    "final guard takes a revision without a reason": (GUARD, 'isinstance(new.get("revised"), dict) and ', ""),
+    "final guard takes a reason as text": (GUARD, 'isinstance(new.get("revised"), dict)', 'new.get("revised") is not None'),
+    "final guard takes as many revisions": (GUARD, "len(revisions) > len(earlier)", "len(revisions) >= len(earlier)"),
+    "final guard takes revisions that are not a list": (GUARD, 'isinstance(new.get("revised"), dict) and isinstance(revisions, list)', 'isinstance(new.get("revised"), dict) and revisions'),
+    "final guard reads a published day without revisions": (GUARD, " and isinstance(earlier, list)", ""),
+    "final guard reads an unreadable day as empty": (GUARD, "    except (UnicodeDecodeError, json.JSONDecodeError):\n        return None", "    except (UnicodeDecodeError, json.JSONDecodeError):\n        return {}"),
+    "final guard crashes on a file not UTF-8": (GUARD, "except (UnicodeDecodeError, json.JSONDecodeError):", "except json.JSONDecodeError:"),
+    "final guard reads a JSON list as a day": (GUARD, "return day if isinstance(day, dict) else None", "return day"),
+    "final guard reads only the local day": (GUARD, "for path, day in ((local, new), (published, old)) if day is None]", "for path, day in ((local, new),) if day is None]"),
+    "final guard exits 0 on a problem": (GUARD, "return 1 if problems else 0", "return 0"),
+    "final guard passes with no local folder": (GUARD, "    if not local.is_dir():\n", "    if False:\n"),
+    "final check needs no revised on on a revised day": (CHECK_BASKET, "        if not _says(REVISED, read):\n", "        if False:\n"),
+    "final check counts revised on in an attribute": (CHECK_BASKET, "if not _says(REVISED, read):", "if not _says(REVISED, written, read):"),
+    "final check right curly apostrophe not folded": (CHECK_BASKET, 'str.maketrans("\\u2018\\u2019", "\'\'")', 'str.maketrans("\\u2018", "\'")'),
+    "final check left curly apostrophe not folded": (CHECK_BASKET, 'str.maketrans("\\u2018\\u2019", "\'\'")', 'str.maketrans("\\u2019", "\'")'),
+    "final check apostrophes never folded": (CHECK_BASKET, ".translate(APOSTROPHES)", ""),
+    "final always says only median": (WORDS, '"the chain\'s median across its stores")', '"median")'),
+    "final fingerprint over the basket package only": (RECORD, "Path(basket_package.__file__).parent.parent)", "Path(basket_package.__file__).parent)"),
+    "final store of a sub-chain left out counted with a file": (RULES, " and sub_chain not in excluded_sub_chains.get(chain, ())", ""),
+    "final build counts a store of a sub-chain left out": (BUILD, "stores_with_file_keys(con, included_stores, sub_chains)", "stores_with_file_keys(con, included_stores, {})"),
+    "final candidates count a store of a sub-chain left out": (CANDIDATES_MAIN, "stores_with_file(con, included_stores, sub_chains)", "stores_with_file(con, included_stores, {})"),
 }
 
 

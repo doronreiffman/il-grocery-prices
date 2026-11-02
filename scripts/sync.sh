@@ -35,7 +35,11 @@ err=$(mktemp)
 trap 'rm -f "$err"' EXIT
 if site_bucket=$(aws cloudformation describe-stacks --stack-name "$SITE_STACK" --profile "$PROFILE" --region "$REGION" \
     --query "Stacks[0].Outputs[?OutputKey=='SiteBucketName'].OutputValue" --output text 2>"$err"); then
-  aws s3 sync "s3://$site_bucket/days/" site/days/ --profile "$PROFILE" --region "$REGION"
+  # --exact-timestamps: the bucket's copy wins unless the local file has its size and its exact time. Without
+  # it a download skips a local file of the same size that is no newer than the object (awscli 2.34.9,
+  # customizations/s3/syncstrategy/base.py), so a day file built here before a same-sized published one was
+  # uploaded would stay and be compared with.
+  aws s3 sync "s3://$site_bucket/days/" site/days/ --exact-timestamps --profile "$PROFILE" --region "$REGION"
 elif grep -q "does not exist" "$err"; then
   echo "no stack $SITE_STACK yet, so no published day files to sync"
 else

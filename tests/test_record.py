@@ -197,12 +197,17 @@ def test_manifests_for_sorts_and_keeps_to_the_chain_and_the_files(tmp_path):
 
 # ---- the code's fingerprint ----
 
-def test_code_fingerprint_is_12_hex_and_changes_with_a_source_file(tmp_path, monkeypatch):
-    (tmp_path / "__init__.py").write_text("")
-    (tmp_path / "rules.py").write_text("a = 1\n")
-    monkeypatch.setattr(basket, "__file__", str(tmp_path / "__init__.py"))
+def test_code_fingerprint_is_12_hex_over_src_and_changes_with_either_package(tmp_path, monkeypatch):
+    for package, module in (("basket", "rules.py"), ("collector", "names.py")):
+        (tmp_path / package).mkdir()
+        (tmp_path / package / "__init__.py").write_text("")
+        (tmp_path / package / module).write_text("a = 1\n")
+    monkeypatch.setattr(basket, "__file__", str(tmp_path / "basket" / "__init__.py"))
     before = code_fingerprint()
     assert re.fullmatch(r"[0-9a-f]{12}", before)
-    assert before == handler.code_sha(tmp_path)
-    (tmp_path / "rules.py").write_text("a = 2\n")
-    assert code_fingerprint() != before
+    assert before == handler.code_sha(tmp_path)  # the folder holding both packages, as src/ holds them
+    (tmp_path / "basket" / "rules.py").write_text("a = 2\n")
+    after_basket = code_fingerprint()
+    assert after_basket != before
+    (tmp_path / "collector" / "names.py").write_text("a = 2\n")  # the collector's code is part of the number too
+    assert code_fingerprint() != after_basket

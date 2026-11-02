@@ -2,7 +2,8 @@
 # Upload the built basket site to its bucket behind CloudFront (docs/operations.md, "The headline basket, by hand"):
 #   sh scripts/publish.sh
 # This writes to AWS: run it only on the owner's go, given after the owner has checked the "current as of"
-# date on Nevo's page against docs/terms.md. Nothing is uploaded unless every check passes.
+# date on Nevo's page against docs/terms.md. Nothing is uploaded unless every check passes, the published-day
+# guard (basket.guard) included.
 set -eu
 PROFILE=flights-sam
 REGION=il-central-1
@@ -54,6 +55,20 @@ case "$bucket" in
 esac
 if [ -z "$distribution" ] || [ "$distribution" = None ]; then
   echo "stack output SiteDistributionId is '$distribution'; nothing uploaded" >&2
+  exit 1
+fi
+
+# B12: a published day file is replaced only by a revision of it. The bucket's day files are copied (a read)
+# into a temporary folder and compared with the build's (basket.guard): a build into a site/ that sync.sh did
+# not fill would otherwise replace a published day, its revision reason included. On an empty bucket (the
+# first upload) the copy finds no object and exits 0, and the guard reads an empty folder: the CLI creates the
+# destination folder and returns 1 or 2 only for a failed or warned transfer (awscli 2.34.9,
+# customizations/s3/subcommands.py), so set -e stops here only on a real failure to read.
+published=$(mktemp -d)
+trap 'rm -rf "$published"' EXIT
+aws s3 cp "s3://$bucket/days/" "$published/days/" --recursive --profile "$PROFILE" --region "$REGION"
+if ! PYTHONPATH=src "$PYTHON" -m basket.guard "$SITE/days" "$published/days"; then
+  echo "the published-day guard failed; nothing uploaded" >&2
   exit 1
 fi
 

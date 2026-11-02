@@ -225,7 +225,7 @@ def test_revise_keeps_first_totals_and_adds_the_line(tmp_path):
     assert public["chains"]["yochananof"]["total"] == "24.43" and public["run_id"] == second.record.run_id
     assert public["revised"] == {"on": "2026-01-02", "reason": "a parser fix"}  # the Israel date of now; stripped
     assert public["revisions"] == [{"run_id": first.record.run_id, "code_sha": first.record.code_sha,
-                                    "built_at": first.record.built_at, "totals": FIRST_TOTALS}]
+                                    "built_at": first.record.built_at, "revised": None, "totals": FIRST_TOTALS}]
     assert ("Revised on 2 January 2026: a parser fix. First published: Osher Ad ₪22.65, Rami Levy ₪23.30, "
             "Yochananof ₪24.40, Shufersal ₪25.80, Carrefour ₪27.16.") in read_index(site)
     reprice(data, "yochananof", "001", ("6.60", "5.20", "12.50"))  # 24.43 -> 24.45
@@ -234,8 +234,12 @@ def test_revise_keeps_first_totals_and_adds_the_line(tmp_path):
     assert [revision["totals"] for revision in public["revisions"]] == [
         FIRST_TOTALS, FIRST_TOTALS | {"yochananof": "24.43"}]  # the first publication stays first
     assert public["revisions"][1]["run_id"] == second.record.run_id
+    # Every reason survives: the first revision's with the run it revised, the second's as the day's.
+    assert [revision["revised"] for revision in public["revisions"]] == [
+        None, {"on": "2026-01-02", "reason": "a parser fix"}]
     assert public["revised"] == {"on": "2026-01-03", "reason": "a second fix"}
-    assert "a second fix. First published: Osher Ad ₪22.65, Rami Levy ₪23.30, Yochananof ₪24.40," in read_index(site)
+    assert ("Revised on 3 January 2026: a second fix. Earlier: on 2 January 2026: a parser fix. First published: "
+            "Osher Ad ₪22.65, Rami Levy ₪23.30, Yochananof ₪24.40,") in read_index(site)
 
 
 def test_revise_then_unchanged(tmp_path):
@@ -262,6 +266,22 @@ def test_rebuild_flag_re_extracts(tmp_path):
     rebuilt = build_at(data, site, LAST, revise="store 1's file replaced", rebuild=True)
     assert all(isinstance(rebuilt.extraction_seconds[slug], float) for slug in SLUGS)
     assert rebuilt.revised and rebuilt.record.chains["yochananof"].items[MILK].median == "6.63"
+
+
+def test_a_store_whose_file_names_a_sub_chain_left_out_has_no_file(tmp_path):
+    # As Shufersal's store 779 on 2026-11-02: in a kept sub-chain in the store list, Be (005) by its file's name.
+    data, site = golden_tree(tmp_path), tmp_path / "site"
+    folder = data / "raw" / "chain=shufersal" / f"date={DAY.isoformat()}"
+    list_name, list_bytes = store_list("shufersal")
+    store_3 = "<Store><StoreID>3</StoreID><StoreType>1</StoreType><StoreName>סניף 3</StoreName></Store>"
+    online = "<Store><StoreID>413</StoreID>"
+    listed = gzip.decompress(list_bytes).decode().replace(online, store_3 + online)
+    (folder / list_name).write_bytes(gzip.compress(listed.encode(), mtime=0))
+    (folder / f"PriceFull{CHAIN_IDS['shufersal']}-005-003-20260101-080000.gz").write_bytes(
+        price_file("shufersal", ("1.00", "1.00", "1.00")))
+    shufersal = build_at(data, site, NOW).record.chains["shufersal"]
+    assert (shufersal.included, shufersal.with_file, shufersal.stores_with_file) == (3, 2, ("1", "2"))
+    assert shufersal.items[MILK].listing == 2 and shufersal.total == "25.80"  # its rows are left out as well
 
 
 def test_missing_basket_item_in_a_chain_is_left_out_not_a_crash(tmp_path):
