@@ -166,3 +166,11 @@ def test_rejects_text_that_is_not_json(tmp_path):
 def test_amounts_are_plain(tmp_path):
     basket = load_basket(write(tmp_path, [item(size={"amount": "1000.00", "kind": "gml"})]), min_items=1)
     assert str(basket.items[0].size.amount) == "1000"
+
+
+def test_v1_basket_loads():
+    basket = load_basket(Path(__file__).parent.parent / "basket" / "v1.json")  # the default limits, 25 to 40
+    assert len(basket.items) == 32
+    assert basket.version == "v1"
+    assert basket.since == date(2026, 11, 2)
+    assert all(is_gs1(item.code) for item in basket.items)
