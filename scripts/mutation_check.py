@@ -49,6 +49,7 @@ RETRY_THREE_HOURS_ON = ("template.yaml", [_T + "test_retry_runs_start_three_hour
 CHECK_LAST = ("template.yaml", [_T + "test_one_check_after_the_last_retry_run_can_have_finished"])
 ALL_KINDS = ("template.yaml", [_T + "test_each_chain_has_runs_of_each_mode_over_the_kinds_it_collects"])
 HANDLER_EVENTS = ("template.yaml", [_T + "test_every_event_is_one_the_handler_takes"])
+BARCODE = ("src/basket/barcode.py", ["tests/test_barcode.py"])
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
 MUTATIONS = {
@@ -664,6 +665,12 @@ MUTATIONS = {
     "an unknown chain unblocked in the doc": (OPERATIONS, "--payload '{\"mode\": \"unblock\", \"chain\": \"ramilevy\"}'", "--payload '{\"mode\": \"unblock\", \"chain\": \"victory\"}'"),
     "a real address in the doc": (OPERATIONS, "'AlertEmail=<email>'", "'AlertEmail=owner@mail.example.net'"),
     "the doc's timetable off the schedules": (OPERATIONS, "| 06:39 | Carrefour", "| 06:40 | Carrefour"),
+    # basket: barcodes
+    "barcode check digit ignored": (BARCODE, "(3 if place % 2 == 0 else 1)", "(1 if place % 2 == 0 else 1)"),
+    "barcode leading zeros kept": (BARCODE, 'significant = digits.lstrip("0")', "significant = digits"),
+    "barcode non-ASCII digits accepted": (BARCODE, "if not _DIGITS.fullmatch(digits):", "if not digits.isdigit():"),
+    "barcode seven significant digits accepted": (BARCODE, "8 <= len(digits) <= 14", "7 <= len(digits) <= 14"),
+    "barcode fifteen significant digits accepted": (BARCODE, "8 <= len(digits) <= 14", "8 <= len(digits) <= 15"),
 }
 
 
