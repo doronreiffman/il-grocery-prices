@@ -9,17 +9,19 @@ ranking (B8); its rank and total, or None (B9); its price for each basket item i
 with its stores' lowest and highest price, the number of stores listing the item and how many of
 them list it under two codes (B5); the keys of its stores with a file, by number; the files the
 extraction read (B1); the run ids of the manifests that stored them (B11); and the extraction's
-counts (B3). Then the basket codes that count, in the basket's order, those left out and why, and
-the headline, or None. Money is a string with two decimals, rounded half up, for display only: a
-total is the sum of the exact medians, rounded once. The day is YYYY-MM-DD. The JSON has its keys
-sorted at every level and its Hebrew as written. Nothing here reads the clock, so two runs of one
-day over the same inputs and code differ only in run id and build time.
+counts (B3) with the placeholder rows among its included stores (B4, counted by the caller). Then
+the basket codes that count, in the basket's order, those left out and why, and the headline, or
+None. Money is a string with two decimals, rounded half up, for display only: a total is the sum of
+the exact medians, rounded once. The day is YYYY-MM-DD. The JSON has its keys sorted at every level
+and its Hebrew as written. Nothing here reads the clock, so two runs of one day over the same
+inputs, code and collection time differ only in run id and build time.
 
 The public day (B10, B12). The record less each chain's store keys, files and manifests (the counts
 stay), with `revisions` (empty) and `revised` (None) for the publish step to fill, as JSON-ready
 values: lists where the record holds tuples, as a day file reads back. What a rebuild compares with
-the published day is the public day less the run's own fields: run id, fingerprint, build time,
-revisions and revised.
+the published day is its numbers: the public day less the run's own fields and provenance (run id,
+fingerprint, build time, collected by, revisions and revised), so step one's day and step two's
+run of it compare equal though one was collected at the actual time and the other at 11:00.
 
 Manifests (B11). A chain's manifests in the record are those of the day, under
 `<manifest dir>/date=<day>/<slug>-<run id>.json`, that stored one of the files the extraction read.
@@ -41,7 +43,7 @@ from basket.rules import ChainDay, ChainResult, DayResult, Headline, LeftOut
 
 CENT = Decimal("0.01")
 PRIVATE = ("stores_with_file", "files", "manifests")  # per chain; the public day keeps the counts only
-RUN_FIELDS = ("run_id", "code_sha", "built_at", "revisions", "revised")
+NOT_COMPARED = ("run_id", "code_sha", "built_at", "collected_by", "revisions", "revised")
 
 
 @dataclass(frozen=True)
@@ -92,24 +94,24 @@ def money(amount: Decimal) -> str:
 
 def build_record(day: date, basket: Basket, result: DayResult, days: Sequence[ChainDay],
                  store_keys: Mapping[str, tuple[str, ...]], reports: Mapping[str, ExtractReport],
-                 manifests: Mapping[str, tuple[str, ...]], run_id: str, code_sha: str, built_at: datetime,
-                 collected_by: str) -> DayRecord:
+                 placeholders: Mapping[str, int], manifests: Mapping[str, tuple[str, ...]], run_id: str,
+                 code_sha: str, built_at: datetime, collected_by: str) -> DayRecord:
     """The day's record from the rules' result and each chain's day, store keys (`stores_with_file_keys`),
-    extraction report and manifests (`manifests_for`), all by slug; the chains in the result's (slug) order.
-    `built_at` must carry a time zone."""
+    extraction report, placeholder rows among its included stores and manifests (`manifests_for`), all by
+    slug; the chains in the result's (slug) order. `built_at` must carry a time zone."""
     by_slug = {chain_day.slug: chain_day for chain_day in days}
     chains = {slug: _chain_record(by_slug[slug], result.chains[slug], store_keys[slug], reports[slug],
-                                  manifests[slug]) for slug in result.chains}
+                                  placeholders[slug], manifests[slug]) for slug in result.chains}
     return DayRecord(day, basket.version, run_id, code_sha, _utc_iso(built_at), collected_by, chains,
                      result.items_in, result.left_out, result.headline)
 
 
 def _chain_record(chain_day: ChainDay, chain: ChainResult, store_keys: tuple[str, ...], report: ExtractReport,
-                  manifests: tuple[str, ...]) -> ChainRecord:
+                  placeholders: int, manifests: tuple[str, ...]) -> ChainRecord:
     items = {code: ItemPrice(money(price.median), money(price.low), money(price.high), price.listing,
                              price.double_coded) for code, price in chain.items.items()}
     extraction = {"stores": report.stores, "rows": report.rows, "unreadable_prices": report.unreadable_prices,
-                  "repeated": report.repeated, "conflicting": report.conflicting}
+                  "repeated": report.repeated, "conflicting": report.conflicting, "placeholders": placeholders}
     return ChainRecord(chain_day.included, chain_day.with_file, chain_day.in_ranking, chain.rank,
                        None if chain.total is None else money(chain.total), items, tuple(store_keys),
                        tuple(report.files), tuple(manifests), extraction)
@@ -145,8 +147,8 @@ def public_day(record: DayRecord) -> dict:
 
 
 def comparable(public: dict) -> dict:
-    """What a rebuild compares with a published day (B12): the public day without the run's own fields."""
-    return {key: value for key, value in public.items() if key not in RUN_FIELDS}
+    """What a rebuild compares with a published day (B12): the public day without the run's fields and provenance."""
+    return {key: value for key, value in public.items() if key not in NOT_COMPARED}
 
 
 def manifests_for(manifest_dir: Path, day: date, slug: str, files: Sequence[str]) -> tuple[str, ...]:

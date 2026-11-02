@@ -776,6 +776,8 @@ MUTATIONS = {
     "record naive build time accepted": (RECORD, "if moment.tzinfo is None or moment.utcoffset() is None:", "if False:"),
     "record Hebrew escaped": (RECORD, "ensure_ascii=False", "ensure_ascii=True"),
     "record keys not sorted": (RECORD, "sort_keys=True, indent=1", "sort_keys=False, indent=1"),
+    "record comparable keeps collected_by": (RECORD, '"built_at", "collected_by", "revisions"', '"built_at", "revisions"'),
+    "record placeholder count dropped": (RECORD, '"placeholders": placeholders}', '"placeholders": 0}'),
 }
 
 

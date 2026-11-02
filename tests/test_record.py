@@ -29,6 +29,7 @@ DAYS = (ChainDay("d", 5, 1, False), ChainDay("c", 2, 2, True), ChainDay("b", 3, 
 STORE_KEYS = {"a": ("1", "2", "10", "11"), "b": ("3", "4"), "c": ("1", "2"), "d": ("7",)}
 MANIFESTS = {"a": ("030000Z-main-0001",), "b": ("030500Z-main-0002", "060500Z-retry-0003"), "c": ("031000Z-main-0004",),
              "d": ()}
+PLACEHOLDERS = {"a": 5, "b": 0, "c": 2, "d": 9}  # rows at or below 0.01 among the included stores (B4)
 
 
 def a_result(milk_at_a: str = "5.90", left_out: LeftOut = LeftOut(EGGS, "coverage", {"a": "1 of 4"})) -> DayResult:
@@ -53,11 +54,12 @@ def report(slug: str, stores: tuple[str, ...]) -> ExtractReport:
                          repeated=2, conflicting=3)
 
 
-def a_record(result: DayResult | None = None, run_id: str = RUN_ID, code_sha: str = SHA, built_at: datetime = BUILT):
-    """The record of `result` (default `a_result()`) over chains a to d, collected by 11:00."""
+def a_record(result: DayResult | None = None, run_id: str = RUN_ID, code_sha: str = SHA, built_at: datetime = BUILT,
+             collected_by: str = "11:00"):
+    """The record of `result` (default `a_result()`) over chains a to d."""
     return build_record(DAY, BASKET, result or a_result(), DAYS, STORE_KEYS,
-                        {slug: report(slug, keys) for slug, keys in STORE_KEYS.items()}, MANIFESTS,
-                        run_id, code_sha, built_at, "11:00")
+                        {slug: report(slug, keys) for slug, keys in STORE_KEYS.items()}, PLACEHOLDERS, MANIFESTS,
+                        run_id, code_sha, built_at, collected_by)
 
 
 # ---- money ----
@@ -82,7 +84,9 @@ def test_build_record_carries_each_chain_by_slug_with_its_prices_files_and_manif
         stores_with_file=("1", "2", "10", "11"),
         files=("PriceFull-1.gz", "PriceFull-2.gz", "PriceFull-10.gz", "PriceFull-11.gz"),
         manifests=("030000Z-main-0001",),
-        extraction={"stores": 4, "rows": 40, "unreadable_prices": 1, "repeated": 2, "conflicting": 3})
+        extraction={"stores": 4, "rows": 40, "unreadable_prices": 1, "repeated": 2, "conflicting": 3,
+                    "placeholders": 5})
+    assert {slug: chain.extraction["placeholders"] for slug, chain in record.chains.items()} == PLACEHOLDERS
     out = record.chains["d"]
     assert (out.included, out.with_file, out.in_ranking, out.rank, out.total) == (5, 1, False, None, None)
     assert out.items == {MILK: ItemPrice("4.00", "4.00", "4.00", 1, 0)}
@@ -141,6 +145,7 @@ def test_public_day_has_counts_not_store_lists():
     assert public["chains"]["a"]["items"][MILK] == {"median": "5.90", "low": "5.50", "high": "6.40", "listing": 3,
                                                     "double_coded": 0}
     assert public["chains"]["b"]["with_file"] == 2
+    assert {slug: chain["extraction"]["placeholders"] for slug, chain in public["chains"].items()} == PLACEHOLDERS
     text = json.dumps(public)
     assert "PriceFull" not in text and "main-0001" not in text
     assert (public["revisions"], public["revised"]) == ([], None)
@@ -153,10 +158,10 @@ def test_comparable_ignores_run_fields_but_not_a_median():
     published = json.loads(json.dumps(public_day(first)))  # as the day file reads back
     published["revisions"] = [{"run_id": "000000Z-basket-0000", "code_sha": "ffffffffffff", "built_at": "x"}]
     published["revised"] = {"on": "2026-11-03", "reason": "a parser fix"}
-    second = a_record(run_id="113000Z-basket-ffff", code_sha="ba9876543210", built_at=BUILT + timedelta(hours=1))
+    second = a_record(run_id="113000Z-basket-ffff", code_sha="ba9876543210", built_at=BUILT + timedelta(hours=1),
+                      collected_by="09:47")  # step one's actual time against step two's 11:00 (B11)
     assert comparable(public_day(second)) == comparable(published)
-    assert set(comparable(published)) == {"day", "basket_version", "collected_by", "chains", "items_in", "left_out",
-                                          "headline"}
+    assert set(comparable(published)) == {"day", "basket_version", "chains", "items_in", "left_out", "headline"}
     one_agora = a_record(a_result(milk_at_a="5.91"))  # the median alone: the totals stay as given
     assert comparable(public_day(one_agora)) != comparable(published)
 
