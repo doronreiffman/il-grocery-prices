@@ -56,6 +56,7 @@ STORES = ("src/basket/stores.py", ["tests/test_stores.py"])
 CHAINS_BASKET = ("src/basket/chains.py", ["tests/test_stores.py"])
 UNITS_BASKET = ("src/basket/units.py", ["tests/test_units.py"])
 BASKET_FILE = ("src/basket/basket_file.py", ["tests/test_basket_file.py"])
+RULES = ("src/basket/rules.py", ["tests/test_rules.py"])
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
 MUTATIONS = {
@@ -744,6 +745,19 @@ MUTATIONS = {
     "basket file coverage not a dict accepted": (BASKET_FILE, "        if not isinstance(coverage, dict):", "        if False:"),
     "basket file items not a list accepted": (BASKET_FILE, "        if not isinstance(listed, list):", "        if False:"),
     "basket file text accepted as a field": (BASKET_FILE, "    if not isinstance(value, str):", "    if False:"),
+    # basket: rules
+    "rules placeholders kept": (RULES, "p.price > 0.01", "p.price >= 0.01"),
+    "rules null prices kept": (RULES, "p.price IS NOT NULL AND p.price > 0.01", "(p.price IS NULL OR p.price > 0.01)"),
+    "rules excluded store counted": (RULES, "if store in included.get(chain, ()):", "if chain in counts:"),
+    "rules Be rows kept when the list includes the store": (RULES, "AND NOT EXISTS (SELECT 1 FROM excluded_sub_chains x WHERE x.chain = p.chain AND x.sub_chain = p.sub_chain)", "AND true"),
+    "rules median takes the lower middle": (RULES, "return (ordered[middle - 1] + ordered[middle]) / 2", "return ordered[middle - 1]"),
+    "rules coverage guard at a third": (RULES, "listing[slug] * 2 >= with_file[slug]", "listing[slug] * 3 >= with_file[slug]"),
+    "rules size guard ignores a chain": (RULES, "sizes.get((slug, code)) for slug in ranking}", "sizes.get((slug, code)) for slug in ranking[:-1]}"),
+    "rules unstated size blocks": (RULES, "if size is not None and size != item.size", "if size != item.size"),
+    "rules half a chain's stores read as a third": (RULES, "with_file * 2 >= included", "with_file * 3 >= included"),
+    "rules chain out of ranking still guards": (RULES, "_guard(item, ranking, prices", "_guard(item, [day.slug for day in days], prices"),
+    "rules headline with two chains": (RULES, "if len(order) >= 3:", "if len(order) >= 2:"),
+    "rules gap rounded down": (RULES, "rounding=ROUND_HALF_UP", 'rounding="ROUND_DOWN"'),
 }
 
 
