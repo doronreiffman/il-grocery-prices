@@ -62,6 +62,7 @@ MUTATIONS = {
     "kind returned as published, not as in KINDS": (NAMES, "    kind = _CANONICAL[prefix.group().lower()]", "    kind = prefix.group()"),
     "store 039's date and time run together refused": (NAMES, r'r"-(?P<day>\d{8})(?:\d{4})?"', r'r"-(?P<day>\d{8})"'),
     "store taken from the sub-chain": (NAMES, "        store = groups[-1]", "        store = groups[0]"),
+    "sub-chain read as the store": (NAMES, "    sub_chain = groups[0] if len(groups) == 2 else None", "    sub_chain = groups[-1]"),
     "price file without a store accepted": (NAMES, '    else:\n        return None\n    digits = rest["day"]', '    else:\n        store = None\n    digits = rest["day"]'),
     "text after the name accepted": (NAMES, "_REST.fullmatch(name, prefix.end())", "_REST.match(name, prefix.end())"),
     # payload

@@ -8,6 +8,9 @@ A file belongs to the day in its name, never to the time it was fetched. The sha
     pricefull7290058140886-039-202610310517.gz        Rami Levy's store 039: lower case, no
                                                       sub-chain, date and time run together
 
+A name with two groups before the date carries the sub-chain, then the store. With one group
+(store 039's names, the Stores files) there is no sub-chain to read, and `sub_chain` is None.
+
 A name is ASCII (ruling R20): a name that parses goes into a download link, and urllib fails on a
 non-ASCII path outside Http's handling. Without re.ASCII, `\\d` takes other scripts' digits and
 case-folding reads `ſ` (long s) as an s and `ı` (dotless i) as an i.
@@ -34,13 +37,15 @@ _REST = re.compile(
 
 @dataclass(frozen=True)
 class FileName:
-    """A parsed name: `raw` as given, `kind` as in KINDS, `store` as published (None for Stores)."""
+    """A parsed name: `raw` as given, `kind` as in KINDS, `store` as published (None for Stores),
+    `sub_chain` as published (None unless the name carries a sub-chain and a store)."""
 
     raw: str
     kind: str
     chain_id: str
     store: str | None
     day: datetime.date
+    sub_chain: str | None = None
 
 
 def parse_file_name(name: str) -> FileName | None:
@@ -57,9 +62,11 @@ def parse_file_name(name: str) -> FileName | None:
         store = groups[-1]
     else:
         return None
+    sub_chain = groups[0] if len(groups) == 2 else None
     digits = rest["day"]
     try:
         day = datetime.date(int(digits[:4]), int(digits[4:6]), int(digits[6:]))
     except ValueError:
         return None
-    return FileName(raw=name, kind=kind, chain_id=rest["chain"], store=store, day=day)
+    return FileName(raw=name, kind=kind, chain_id=rest["chain"], store=store, day=day,
+                    sub_chain=sub_chain)

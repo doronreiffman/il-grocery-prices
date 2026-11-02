@@ -14,27 +14,28 @@ def test_kinds():
     assert KINDS == ("Stores", "PriceFull", "PromoFull", "Price", "Promo")
 
 
-@pytest.mark.parametrize("name, kind, chain, store, day", [
+@pytest.mark.parametrize("name, kind, chain, sub_chain, store, day", [
     # Shufersal: the listing shows names without .gz; the blob path has it
-    ("PriceFull7290027600007-002-045-20261031-030000", "PriceFull", "7290027600007", "045", date(2026, 10, 31)),
-    ("Stores7290027600007-000-20261031-020", "Stores", "7290027600007", None, date(2026, 10, 31)),
-    ("Promo7290027600007-002-045-20261031-020000.gz", "Promo", "7290027600007", "045", date(2026, 10, 31)),
-    ("PromoFull7290027600007-000-878-20261031-030000", "PromoFull", "7290027600007", "878", date(2026, 10, 31)),
-    ("Price7290027600007-001-030-20261031-040000", "Price", "7290027600007", "030", date(2026, 10, 31)),
+    ("PriceFull7290027600007-002-045-20261031-030000", "PriceFull", "7290027600007", "002", "045", date(2026, 10, 31)),
+    ("Stores7290027600007-000-20261031-020", "Stores", "7290027600007", None, None, date(2026, 10, 31)),
+    ("Promo7290027600007-002-045-20261031-020000.gz", "Promo", "7290027600007", "002", "045", date(2026, 10, 31)),
+    ("PromoFull7290027600007-000-878-20261031-030000", "PromoFull", "7290027600007", "000", "878", date(2026, 10, 31)),
+    ("Price7290027600007-001-030-20261031-040000", "Price", "7290027600007", "001", "030", date(2026, 10, 31)),
     # Rami Levy on NCR
-    ("PriceFull7290058140886-001-722-20261101-001016.gz", "PriceFull", "7290058140886", "722", date(2026, 11, 1)),
-    ("Stores7290058140886-000-20261031-050500.xml", "Stores", "7290058140886", None, date(2026, 10, 31)),
+    ("PriceFull7290058140886-001-722-20261101-001016.gz", "PriceFull", "7290058140886", "001", "722", date(2026, 11, 1)),
+    ("Stores7290058140886-000-20261031-050500.xml", "Stores", "7290058140886", None, None, date(2026, 10, 31)),
     # Rami Levy's store 039: lower case, no sub-chain, date and time run together (YYYYMMDDHHMM)
-    ("pricefull7290058140886-039-202610310517.gz", "PriceFull", "7290058140886", "039", date(2026, 10, 31)),
-    ("promofull7290058140886-039-202610310517.gz", "PromoFull", "7290058140886", "039", date(2026, 10, 31)),
-    ("price7290058140886-039-202610310517.gz", "Price", "7290058140886", "039", date(2026, 10, 31)),
-    ("promo7290058140886-039-202611010004.gz", "Promo", "7290058140886", "039", date(2026, 11, 1)),
+    ("pricefull7290058140886-039-202610310517.gz", "PriceFull", "7290058140886", None, "039", date(2026, 10, 31)),
+    ("promofull7290058140886-039-202610310517.gz", "PromoFull", "7290058140886", None, "039", date(2026, 10, 31)),
+    ("price7290058140886-039-202610310517.gz", "Price", "7290058140886", None, "039", date(2026, 10, 31)),
+    ("promo7290058140886-039-202611010004.gz", "Promo", "7290058140886", None, "039", date(2026, 11, 1)),
     # Carrefour
-    ("PriceFull7290055700007-001-472-20261031-051016.gz", "PriceFull", "7290055700007", "472", date(2026, 10, 31)),
-    ("Stores7290055700007-000-20261031-000100.xml", "Stores", "7290055700007", None, date(2026, 10, 31)),
+    ("PriceFull7290055700007-001-472-20261031-051016.gz", "PriceFull", "7290055700007", "001", "472", date(2026, 10, 31)),
+    ("Stores7290055700007-000-20261031-000100.xml", "Stores", "7290055700007", None, None, date(2026, 10, 31)),
 ])
-def test_published_names(name, kind, chain, store, day):
-    assert parse_file_name(name) == FileName(raw=name, kind=kind, chain_id=chain, store=store, day=day)
+def test_published_names(name, kind, chain, sub_chain, store, day):
+    assert parse_file_name(name) == FileName(
+        raw=name, kind=kind, chain_id=chain, store=store, day=day, sub_chain=sub_chain)
 
 
 def test_full_kinds_never_read_as_the_short_ones():
@@ -46,6 +47,13 @@ def test_full_kinds_never_read_as_the_short_ones():
 
 def test_store_is_the_group_before_the_date_not_the_sub_chain():
     assert parse_file_name("PriceFull7290027600007-001-030-20261031-030000").store == "030"
+
+
+def test_sub_chain_is_the_group_before_the_store():
+    shufersal = parse_file_name("PriceFull7290027600007-005-030-20261102-030000")
+    assert (shufersal.sub_chain, shufersal.store) == ("005", "030")
+    # store 039's names carry the store only: there is no sub-chain to read
+    assert parse_file_name("pricefull7290058140886-039-202611010514.gz").sub_chain is None
 
 
 def test_day_comes_from_the_name_not_the_clock():
