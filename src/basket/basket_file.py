@@ -28,6 +28,7 @@ from basket.barcode import is_gs1, normalize
 from basket.units import Size, plain
 
 KINDS = frozenset({"gml", "unit"})
+DEFAULT_BASKET = Path(__file__).parent / "baskets" / "v1.json"  # the package's approved basket
 
 
 class BadBasket(Exception):
