@@ -16,6 +16,6 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install -r requirements-dev.txt
-      - run: pytest --cov=collector --cov=basket --cov-fail-under=95
+      - run: pytest --cov=collector --cov=src/basket --cov-fail-under=95
       - run: python scripts/mutation_check.py
       - run: cfn-lint --regions il-central-1 -- template.yaml

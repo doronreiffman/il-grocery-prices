@@ -61,6 +61,8 @@ RECORD = ("src/basket/record.py", ["tests/test_record.py"])
 CANDIDATES = ("src/basket/candidates.py", ["tests/test_candidates.py"])
 WORDS = ("src/basket/words.py", ["tests/test_page.py"])
 PAGE = ("src/basket/page.py", ["tests/test_page.py"])
+# tests/test_check.py is the collector's morning check; the basket check's tests have their own file
+CHECK_BASKET = ("src/basket/check.py", ["tests/test_basket_check.py"])
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
 MUTATIONS = {
@@ -812,6 +814,26 @@ MUTATIONS = {
     "page store id unescaped": (PAGE, "<li>store {_text(store.id)} {_he(store.name)}</li>", "<li>store {store.id} {_he(store.name)}</li>"),
     "page one everyday item read as plural": (WORDS, "{'item' if item_count == 1 else 'items'}", "items"),
     "page one product read as plural": (WORDS, "{'product' if count == 1 else 'products'}", "products"),
+    # basket: check
+    "basket check entities not unescaped": (CHECK_BASKET, "html.unescape(text)", "text"),
+    "basket check tags not stripped": (CHECK_BASKET, "flatten(strip_tags(raw))", "flatten(raw)"),
+    "basket check never phrases not sought": (CHECK_BASKET, "for phrase in NEVER if", "for phrase in () if"),
+    "basket check never phrase sought only with tags stripped": (CHECK_BASKET, "if _says(phrase, written, read)]", "if _says(phrase, read)]"),
+    "basket check never phrase sought only as written": (CHECK_BASKET, "if _says(phrase, written, read)]", "if _says(phrase, written)]"),
+    "basket check credit line not required": (CHECK_BASKET, 'NOTICES = {"the credit line": CREDIT_START, ', "NOTICES = {"),
+    "basket check shopping advice not required": (CHECK_BASKET, """CREDIT_START, f'"{NOT_ADVICE}"': NOT_ADVICE}""", "CREDIT_START}"),
+    "basket check noindex not required": (CHECK_BASKET, "        if not _says(NOINDEX, written):\n", "        if False:\n"),
+    "basket check script allowed": (CHECK_BASKET, "        if SCRIPT in written:\n", "        if False:\n"),
+    "basket check 'we' allowed": (CHECK_BASKET, "(?:we|our|us)", "(?:our|us)"),
+    "basket check words matched inside words": (CHECK_BASKET, r'r"\b(?:we|our|us)\b"', r'r"(?:we|our|us)"'),
+    "basket check always phrases not required": (CHECK_BASKET, "for phrase in ALWAYS if", "for phrase in () if"),
+    "basket check always phrase counted in an attribute": (CHECK_BASKET, "for phrase in ALWAYS if not _says(phrase, read)]", "for phrase in ALWAYS if not _says(phrase, written, read)]"),
+    "basket check revised on allowed on an unrevised day": (CHECK_BASKET, "if revised is None and _says(REVISED, written, read):", "if False:"),
+    "basket check oldest day file read": (CHECK_BASKET, "newest = days[-1]", "newest = days[0]"),
+    "basket check missing index allowed": (CHECK_BASKET, "    if not (site_dir / INDEX).is_file():\n", "    if False:\n"),
+    "basket check marker not required": (CHECK_BASKET, "    if not (site_dir / MARKER).is_file():\n", "    if False:\n"),
+    "basket check no pages passes": (CHECK_BASKET, "    if not pages:\n        raise NoPages", "    if False:\n        raise NoPages"),
+    "basket check exit 0 on a hit": (CHECK_BASKET, "return 1 if problems else 0", "return 0"),
 }
 
 
