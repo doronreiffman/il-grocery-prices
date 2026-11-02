@@ -60,8 +60,8 @@ def test_included_drops_be_and_online_for_shufersal():
     assert included(SHUFERSAL_STORES, "shufersal") == {"30"}
 
 
-def test_included_keeps_everything_for_the_others():
-    assert included(NCR_STORES, "ramilevy") == {"1", "39"}
+def test_included_drops_rami_levy_039_and_keeps_everything_for_the_others():
+    assert included(NCR_STORES, "ramilevy") == {"1"}
     for slug in ("osherad", "carrefour", "yochananof"):
         assert included(NCR_STORES, slug) == {"1", "39"}
 
@@ -69,7 +69,7 @@ def test_included_keeps_everything_for_the_others():
 def test_excluded_lists_the_dropped_stores_with_names():
     assert excluded(SHUFERSAL_STORES, "shufersal") == [Store("93", "5", "סניף לדוגמה 1", "1"),
                                                         Store("413", "2", "שופרסל ONLINE", "2")]
-    assert excluded(NCR_STORES, "ramilevy") == []
+    assert excluded(NCR_STORES, "osherad") == []
 
 
 def test_exclusions_name_every_chain_and_say_why():
@@ -88,9 +88,17 @@ def test_carrefour_online_store_471_is_out():
     assert "store 471 'קרפור אונליין   כפר סבא @ קרפור (5304)'" in EXCLUDED["carrefour"].why
 
 
-def test_the_survey_found_nothing_to_leave_out_at_the_other_three():
+def test_rami_levy_internet_store_039_is_out():
+    online = Store("39", "1", "מרלוג אינטרנט", "2")  # its store list of 2026-11-02
+    stores = [Store("1", "1", "סניף לדוגמה 1", "1"), online]
+    assert included(stores, "ramilevy") == {"1"}
+    assert excluded(stores, "ramilevy") == [online]
+    assert "store 039 'מרלוג אינטרנט'" in EXCLUDED["ramilevy"].why
+
+
+def test_the_survey_found_nothing_to_leave_out_at_the_other_two():
     nothing = Exclusion(frozenset(), frozenset(), "")
-    assert [EXCLUDED[slug] for slug in ("ramilevy", "osherad", "yochananof")] == [nothing] * 3
+    assert [EXCLUDED[slug] for slug in ("osherad", "yochananof")] == [nothing] * 2
 
 
 def test_an_unknown_chain_is_refused():

@@ -704,6 +704,7 @@ MUTATIONS = {
     "stores Be included": (CHAINS_BASKET, 'frozenset({"5"})', "frozenset()"),
     "stores online store included": (CHAINS_BASKET, 'frozenset({"413"})', "frozenset()"),
     "stores Carrefour online store included": (CHAINS_BASKET, 'frozenset({"471"})', "frozenset()"),
+    "stores Rami Levy 039 included": (CHAINS_BASKET, 'frozenset({"39"})', "frozenset()"),
     "stores sub-chain compared padded": (STORES, "_stores_in(child, store_key(published) if published else None)", "_stores_in(child, published or None)"),
     "stores store id kept padded": (STORES, "yield Store(store_key(store_id), sub_chain", "yield Store(store_id, sub_chain"),
     "stores StoreId spelling ignored": (STORES, 'STORE_ID_TAGS = ("StoreID", "StoreId")', 'STORE_ID_TAGS = ("StoreID",)'),
