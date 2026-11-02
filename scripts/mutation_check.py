@@ -837,7 +837,10 @@ MUTATIONS = {
     "basket check exit 0 on a hit": (CHECK_BASKET, "return 1 if problems else 0", "return 0"),
     # basket: build
     "basket build unchanged day rewritten": (BUILD, "write_day=not unchanged)", "write_day=True)"),
-    "basket build revision without a reason accepted": (BUILD, "    if revise is None:\n        raise RevisionNeeded", "    if False:\n        raise RevisionNeeded"),
+    "basket build revision without a reason accepted": (BUILD, "    if reason is None:\n        raise RevisionNeeded", "    if False:\n        raise RevisionNeeded"),
+    "basket build blank reason accepted": (BUILD, r'if not reason or "\n" in reason or "\r" in reason:', r'if "\n" in reason or "\r" in reason:'),
+    "basket build multi-line reason accepted": (BUILD, r'if not reason or "\n" in reason or "\r" in reason:', "if not reason:"),
+    "basket build reason stored unstripped": (BUILD, '"reason": reason}', '"reason": revise}'),
     "basket build first totals dropped on revision": (BUILD, 'previous["revisions"] + [earlier]', "[earlier]"),
     "basket build record overwritten": (BUILD, 'open(path, "x", encoding="utf-8")', 'open(path, "w", encoding="utf-8")'),
     "basket build tables never rebuilt": (BUILD, "and report.is_file() and not rebuild:", "and report.is_file():"),

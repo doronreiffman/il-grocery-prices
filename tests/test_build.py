@@ -219,11 +219,11 @@ def test_revise_keeps_first_totals_and_adds_the_line(tmp_path):
     data, site = golden_tree(tmp_path), tmp_path / "site"
     first = build_at(data, site, NOW)
     reprice(data, "yochananof", "001", ("6.56", "5.20", "12.50"))  # Yochananof 24.40 -> 24.43
-    second = build_at(data, site, LATER, revise="a parser fix", rebuild=True)
+    second = build_at(data, site, LATER, revise=" a parser fix \t", rebuild=True)
     assert (second.unchanged, second.revised) == (False, True)
     public = json.loads(day_file(site).read_text(encoding="utf-8"))
     assert public["chains"]["yochananof"]["total"] == "24.43" and public["run_id"] == second.record.run_id
-    assert public["revised"] == {"on": "2026-01-02", "reason": "a parser fix"}  # the Israel date of now
+    assert public["revised"] == {"on": "2026-01-02", "reason": "a parser fix"}  # the Israel date of now; stripped
     assert public["revisions"] == [{"run_id": first.record.run_id, "code_sha": first.record.code_sha,
                                     "built_at": first.record.built_at, "totals": FIRST_TOTALS}]
     assert ("Revised on 2 January 2026: a parser fix. First published: Osher Ad ₪22.65, Rami Levy ₪23.30, "
@@ -236,6 +236,19 @@ def test_revise_keeps_first_totals_and_adds_the_line(tmp_path):
     assert public["revisions"][1]["run_id"] == second.record.run_id
     assert public["revised"] == {"on": "2026-01-03", "reason": "a second fix"}
     assert "a second fix. First published: Osher Ad ₪22.65, Rami Levy ₪23.30, Yochananof ₪24.40," in read_index(site)
+
+
+def test_revise_then_unchanged(tmp_path):
+    data, site = golden_tree(tmp_path), tmp_path / "site"
+    build_at(data, site, NOW)
+    reprice(data, "yochananof", "001", ("6.56", "5.20", "12.50"))
+    build_at(data, site, LATER, revise="a one-line reason", rebuild=True)
+    third = build_at(data, site, LAST)  # the revised numbers again
+    assert (third.unchanged, third.revised) == (True, False)
+    public = json.loads(day_file(site).read_text(encoding="utf-8"))
+    assert len(public["revisions"]) == 1 and public["revisions"][0]["totals"] == FIRST_TOTALS
+    assert public["revised"] == {"on": "2026-01-02", "reason": "a one-line reason"}
+    assert "Revised on 2 January 2026: a one-line reason. First published: Osher Ad ₪22.65," in read_index(site)
 
 
 def test_rebuild_flag_re_extracts(tmp_path):
@@ -297,7 +310,12 @@ def test_main_exit_codes(tmp_path, capsys, monkeypatch):
     reprice(data, "yochananof", "001", ("6.56", "5.20", "12.50"))
     capsys.readouterr()
     assert main(args(data, "--min-items", "1", "--rebuild")) == 1
-    assert f"chains.yochananof.items.{MILK}" in capsys.readouterr().err
+    refused = capsys.readouterr().err
+    assert f"chains.yochananof.items.{MILK}" in refused
+    for blank in ("", "  \t ", "a parser fix\nand more", "a parser fix\rand more"):  # B12: one line of text
+        assert main(args(data, "--min-items", "1", "--rebuild", "--revise", blank)) == 1
+        assert capsys.readouterr().err == refused
+    assert json.loads((data.parent / "site" / "days" / "2026-01-01.json").read_text(encoding="utf-8"))["revised"] is None
 
     data = golden_tree(tmp_path / "no-store-list")
     (data / "raw" / "chain=yochananof" / "date=2026-01-01" / store_list("yochananof")[0]).unlink()

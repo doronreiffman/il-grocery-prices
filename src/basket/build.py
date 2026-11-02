@@ -1,6 +1,6 @@
 """The build command: one day's three steps on the Mac, extract, basket and page, and the revision rule (B12).
 
-    PYTHONPATH=src .venv/bin/python -m basket.build --day 2026-11-02 --basket basket/v1-proposed.json
+    PYTHONPATH=src .venv/bin/python -m basket.build --day 2026-11-02
 
 The data folder (`--data`, default `data`) holds the day's raw files under `raw/chain=<slug>/date=<day>/`,
 the collector's manifests under `manifests/date=<day>/`, the tables under `tables/` and the private records
@@ -24,9 +24,10 @@ Publish (B12). With no `days/<day>.json` on the site, the day is published as bu
 numbers are compared with it (`basket.record.comparable`). Equal: the day file is left as it is and the
 index and method pages are rendered from it, so the page goes on showing the day as published, its
 "collected by" time and any revision line included. Different: the build stops with RevisionNeeded naming
-what differs, unless a one-line reason is given; then the day file is rewritten with the earlier run added
-to the end of `revisions` (its run id, code fingerprint, build time and totals; the first entry is the day
-as first published) and `revised` set to the reason and the Israel date of `now`.
+what differs, unless a one-line reason is given (stripped of the spaces around it; a blank reason, or one
+holding a line break, is no reason); then the day file is rewritten with the earlier run added to the end
+of `revisions` (its run id, code fingerprint, build time and totals; the first entry is the day as first
+published) and `revised` set to the reason and the Israel date of `now`.
 
 Only `main` reads the time of day, and gives it as `now`; the extraction timer feeds the printout alone.
 """
@@ -155,13 +156,24 @@ def _publish(record: DayRecord, site_dir: Path, now: datetime, revise: str | Non
     previous = json.loads(published.read_text(encoding="utf-8"))
     if comparable(public) == comparable(previous):
         return previous, True, False
-    if revise is None:
+    reason = _one_line(revise)
+    if reason is None:
         raise RevisionNeeded(f"{published} is published with other numbers: {', '.join(_differing(public, previous))}"
                              " differ. To republish it, give a one-line reason with --revise.")
     earlier = {"run_id": previous["run_id"], "code_sha": previous["code_sha"], "built_at": previous["built_at"],
                "totals": {slug: chain["total"] for slug, chain in previous["chains"].items()}}
-    revised = {"on": now.astimezone(ISRAEL).date().isoformat(), "reason": revise}
+    revised = {"on": now.astimezone(ISRAEL).date().isoformat(), "reason": reason}
     return public | {"revisions": previous["revisions"] + [earlier], "revised": revised}, False, True
+
+
+def _one_line(revise: str | None) -> str | None:
+    """The reason with the spaces around it stripped; None for no reason, a blank one, or one of more than a line."""
+    if revise is None:
+        return None
+    reason = revise.strip()
+    if not reason or "\n" in reason or "\r" in reason:
+        return None
+    return reason
 
 
 def _differing(new: dict, old: dict) -> list[str]:
