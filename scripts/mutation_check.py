@@ -50,6 +50,7 @@ CHECK_LAST = ("template.yaml", [_T + "test_one_check_after_the_last_retry_run_ca
 ALL_KINDS = ("template.yaml", [_T + "test_each_chain_has_runs_of_each_mode_over_the_kinds_it_collects"])
 HANDLER_EVENTS = ("template.yaml", [_T + "test_every_event_is_one_the_handler_takes"])
 BARCODE = ("src/basket/barcode.py", ["tests/test_barcode.py"])
+PRICEFILE = ("src/basket/pricefile.py", ["tests/test_pricefile.py"])
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
 MUTATIONS = {
@@ -672,6 +673,13 @@ MUTATIONS = {
     "barcode non-ASCII digits accepted": (BARCODE, "if not _DIGITS.fullmatch(digits):", "if not digits.isdigit():"),
     "barcode seven significant digits accepted": (BARCODE, "8 <= len(digits) <= 14", "7 <= len(digits) <= 14"),
     "barcode fifteen significant digits accepted": (BARCODE, "8 <= len(digits) <= 14", "8 <= len(digits) <= 15"),
+    # basket: price files
+    "pricefile ItemNm ignored": (PRICEFILE, 'NAME_TAGS = ("ItemName", "ItemNm")', 'NAME_TAGS = ("ItemName",)'),
+    "pricefile PriceUpdateDate ignored": (PRICEFILE, 'UPDATED_TAGS = ("PriceUpdateTime", "PriceUpdateDate")', 'UPDATED_TAGS = ("PriceUpdateTime",)'),
+    "pricefile second ZIP member skipped": (PRICEFILE, "return [archive.read(member) for member in members]", "return [archive.read(member) for member in members[:1]]"),
+    "pricefile text not stripped": (PRICEFILE, 'return (element.text or "").strip()', 'return element.text or ""'),
+    "pricefile ZIP folder read as a file": (PRICEFILE, "members = [member for member in archive.infolist() if not member.is_dir()]", "members = archive.infolist()"),
+    "pricefile well-formed HTML read as a file of no items": (PRICEFILE, "    if not body.startswith(XML_STARTS):", "    if False:"),
 }
 
 

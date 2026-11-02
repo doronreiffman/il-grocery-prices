@@ -7,7 +7,8 @@ import pytest
 from collector.names import KINDS, FileName, parse_file_name
 
 FIXTURES = Path(__file__).parent / "fixtures"
-CHAIN_IDS = {"shufersal": "7290027600007", "ncr": "7290058140886", "carrefour": "7290055700007"}
+CHAIN_IDS = {"shufersal": "7290027600007", "ncr": "7290058140886", "carrefour": "7290055700007",
+             "basket": "7290000000001"}  # the basket's own fixture: a made-up chain in the common layout
 
 
 def test_kinds():
@@ -67,7 +68,7 @@ def test_day_comes_from_the_name_not_the_clock():
 
 def test_every_fixture_file_name_parses():
     files = sorted(p for p in FIXTURES.glob("*/*") if p.suffix in (".gz", ".xml"))
-    assert len(files) == 10
+    assert len(files) == 11
     for path in files:
         parsed = parse_file_name(path.name)
         assert parsed is not None, path.name
