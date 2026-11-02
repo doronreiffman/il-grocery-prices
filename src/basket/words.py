@@ -101,8 +101,8 @@ def headline_lines(headline: Headline | None, item_count: int, day: date,
                    nothing_counted: bool = False) -> tuple[str, str]:
     """The headline's two lines; without a headline, why there is none (`nothing_counted`: no item passed the
     day's checks, else fewer than three chains in the ranking) and the items line."""
-    items = (f"{item_count} everyday items, listed shelf prices before promotions, from the chains' price files of "
-             f"{day:%A %-d %B %Y}.")
+    items = (f"{item_count} everyday {'item' if item_count == 1 else 'items'}, listed shelf prices before promotions, "
+             f"from the chains' price files of {day:%A %-d %B %Y}.")
     if headline is None:
         return NO_ITEMS if nothing_counted else NO_CHAINS, items
     return (f"Lowest listed total today: {CHAIN_NAMES[headline.lowest]}, ₪{money(headline.lowest_total)}.",
@@ -187,9 +187,10 @@ def excluded_line(slug: str, stores: Sequence[Store]) -> str:
 
 
 def basket_intro(basket: Basket) -> str:
+    count = len(basket.items)
     return (f"Basket {basket.version}, chosen from the files of {basket.selection_day:%-d %B %Y}: "
-            f"{len(basket.items)} products all five chains listed, each identified by its barcode, with its names "
-            "and size written by hand.")
+            f"{count} {'product' if count == 1 else 'products'} all five chains listed, each identified by its "
+            "barcode, with its names and size written by hand.")
 
 
 def stores_line(slug: str, included: int, with_file: int, stores: Sequence[Store]) -> str:

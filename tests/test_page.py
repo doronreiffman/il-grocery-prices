@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from basket.barcode import normalize
-from basket.basket_file import load_basket
+from basket.basket_file import Basket, load_basket
 from basket.chains import SLUGS
 from basket.extract import ExtractReport
 from basket.page import build_site, render_day, render_index, render_method
@@ -78,6 +78,10 @@ def method(public: dict | None = None) -> str:
     return render_method(BASKET, EXCLUSIONS, public or a_public())
 
 
+def method_of(basket: Basket, exclusions: dict | None = None) -> str:
+    return render_method(basket, exclusions or EXCLUSIONS, a_public())
+
+
 def visible(page: str) -> str:
     """The page's text as a reader sees it: tags dropped, entities read, spaces collapsed, lower case."""
     return " ".join(unescape(re.sub(r"<[^>]+>", " ", page)).split()).lower()
@@ -116,6 +120,17 @@ def test_headline_without_comparison():
         "No comparison today: fewer than three chains published enough files.", items)
     assert headline_lines(None, 3, DAY, nothing_counted=True) == (
         "No comparison today: no basket item passed the day's checks.", items)
+
+
+def test_item_counts_read_singular_at_one():
+    one = "1 everyday item, listed shelf prices before promotions, from the chains' price files of Monday 2 November 2026."
+    assert headline_lines(None, 1, DAY)[1] == one
+    headline = Headline("ramilevy", Decimal("5.90"), "carrefour", Decimal("6.90"), 17)
+    assert headline_lines(headline, 1, DAY)[1] == f"Highest: Carrefour, ₪6.90, 17% more. {one}"
+    single = Basket(BASKET.version, BASKET.since, BASKET.selection_day, BASKET.items[:1])
+    assert ("Basket v1, chosen from the files of 2 November 2026: 1 product all five chains listed, each identified "
+            "by its barcode, with its names and size written by hand.") in method_of(single)
+    assert "2 November 2026: 3 products all five chains listed" in method()
 
 
 def test_index_with_fewer_than_three_chains_in_the_ranking_says_so_and_shows_no_totals():
@@ -317,6 +332,13 @@ def test_method_page_lists_every_item_and_exclusion():
     assert "A different basket gives a different order." in page
     assert '<a href="days/2026-11-02.json">days/2026-11-02.json</a>' in page
     assert "0123456789ab" in page  # the code's fingerprint, from the day
+
+
+def test_method_page_escapes_store_ids():
+    odd = EXCLUSIONS | {"shufersal": [Store("6<0&4", "5", "בי מוזר", "1")]}  # an id as a store list might give it
+    page = method_of(BASKET, odd)
+    assert f"<li>store 6&lt;0&amp;4 {RTL}בי מוזר</span></li>" in page
+    assert "6<0&4" not in page
 
 
 def test_hebrew_names_are_rtl():

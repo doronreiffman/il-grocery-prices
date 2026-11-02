@@ -809,6 +809,9 @@ MUTATIONS = {
     "page no-items reason never given": (WORDS, "return NO_ITEMS if nothing_counted else NO_CHAINS, items", "return NO_CHAINS, items"),
     "page first totals sorted as text": (WORDS, "sorted((Decimal(total), slug, total)", "sorted((total, slug, total)"),
     "page Be sub-chain not named": (WORDS, 'SUB_CHAIN_NAMES = {"shufersal": {"5": "Be"}}', "SUB_CHAIN_NAMES = {}"),
+    "page store id unescaped": (PAGE, "<li>store {_text(store.id)} {_he(store.name)}</li>", "<li>store {store.id} {_he(store.name)}</li>"),
+    "page one everyday item read as plural": (WORDS, "{'item' if item_count == 1 else 'items'}", "items"),
+    "page one product read as plural": (WORDS, "{'product' if count == 1 else 'products'}", "products"),
 }
 
 

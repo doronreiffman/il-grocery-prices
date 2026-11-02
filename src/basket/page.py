@@ -288,5 +288,5 @@ def _excluded(slug: str, stores: Sequence[Store]) -> str:
     grouped = [store for store in stores if store.id not in EXCLUDED[slug].stores]
     if not grouped:
         return line
-    names = "".join(f"<li>store {store.id} {_he(store.name)}</li>" for store in grouped)
+    names = "".join(f"<li>store {_text(store.id)} {_he(store.name)}</li>" for store in grouped)
     return f"{line}<details><summary>The {len(grouped)} stores by name</summary><ul>{names}</ul></details>"
