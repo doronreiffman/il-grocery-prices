@@ -55,6 +55,7 @@ EXTRACT = ("src/basket/extract.py", ["tests/test_extract.py"])
 STORES = ("src/basket/stores.py", ["tests/test_stores.py"])
 CHAINS_BASKET = ("src/basket/chains.py", ["tests/test_stores.py"])
 UNITS_BASKET = ("src/basket/units.py", ["tests/test_units.py"])
+BASKET_FILE = ("src/basket/basket_file.py", ["tests/test_basket_file.py"])
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
 MUTATIONS = {
@@ -725,6 +726,24 @@ MUTATIONS = {
     "units non-finite quantity accepted": (UNITS_BASKET, "if not amount.is_finite() or amount", "if amount"),
     "units amount not made plain": (UNITS_BASKET, "Size(Decimal(plain(amount * factor)), kind)", "Size(amount * factor, kind)"),
     "units one unit read as a size": (UNITS_BASKET, 'if kind == "unit" and amount == 1:', "if False:"),
+    # basket: basket file
+    "basket file check digit not checked": (BASKET_FILE, "    if not is_gs1(code):", "    if False:"),
+    "basket file duplicates allowed": (BASKET_FILE, "        if digits in first_with:", "        if False:"),
+    "basket file leading zeros told apart": (BASKET_FILE, "digits = normalize(item.code)", "digits = item.code"),
+    "basket file floor at 24": (BASKET_FILE, "min_items: int = 25", "min_items: int = 24"),
+    "basket file ceiling at 41": (BASKET_FILE, "max_items: int = 40", "max_items: int = 41"),
+    "basket file floor excluded": (BASKET_FILE, "if not min_items <= len(items) <= max_items:", "if not min_items < len(items) <= max_items:"),
+    "basket file ceiling excluded": (BASKET_FILE, "if not min_items <= len(items) <= max_items:", "if not min_items <= len(items) < max_items:"),
+    "basket file empty English name allowed": (BASKET_FILE, "if not name_en.strip() or not name_he.strip():", "if not name_he.strip():"),
+    "basket file empty Hebrew name allowed": (BASKET_FILE, "if not name_en.strip() or not name_he.strip():", "if not name_en.strip():"),
+    "basket file blank name allowed": (BASKET_FILE, "if not name_en.strip() or not name_he.strip():", "if not name_en or not name_he:"),
+    "basket file unknown kind allowed": (BASKET_FILE, "    if kind not in KINDS:", "    if False:"),
+    "basket file zero amount allowed": (BASKET_FILE, "or amount <= 0:", "or amount < 0:"),
+    "basket file non-finite amount allowed": (BASKET_FILE, "if not amount.is_finite() or amount <= 0:", "if amount <= 0:"),
+    "basket file amount not made plain": (BASKET_FILE, "Size(Decimal(plain(amount)), kind)", "Size(amount, kind)"),
+    "basket file coverage not a dict accepted": (BASKET_FILE, "        if not isinstance(coverage, dict):", "        if False:"),
+    "basket file items not a list accepted": (BASKET_FILE, "        if not isinstance(listed, list):", "        if False:"),
+    "basket file text accepted as a field": (BASKET_FILE, "    if not isinstance(value, str):", "    if False:"),
 }
 
 
