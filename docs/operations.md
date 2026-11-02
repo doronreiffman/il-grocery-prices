@@ -1,6 +1,6 @@
 # Operating the collector
 
-How to deploy the collector, run it by hand, read what it wrote, clear a stopped chain, drop a chain, and what it costs. What the collector does and why: [collector.md](collector.md); each portal's mechanics: [portals.md](portals.md).
+How to deploy the collector, run it by hand, read what it wrote, clear a stopped chain, drop a chain, and what it costs; then how to build and publish the headline basket by hand. What the collector does and why: [collector.md](collector.md); each portal's mechanics: [portals.md](portals.md).
 
 ## What runs when
 
@@ -170,7 +170,7 @@ From the repo root:
 python3.13 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
 pytest --cov=collector --cov-fail-under=95
-cfn-lint --regions il-central-1 -- template.yaml
+cfn-lint --regions il-central-1 -- template.yaml site-template.yaml
 python scripts/mutation_check.py
 ```
 
@@ -185,3 +185,91 @@ Estimates from [collector.md](collector.md), "Cost":
 - **S3 writes:** about 2,000 a day at $0.0055 per 1,000: about $0.35 a month.
 - **Lambda:** a few invocations of up to 15 minutes a day, inside the monthly free tier. The worst case, all 16 collecting runs and the check running the full 15 minutes at 512 MB, is 7,650 GB-seconds a day, about 230,000 a month.
 - **Total:** about $1 to $3 a month in the first year.
+
+## The headline basket, by hand
+
+Step one of the headline basket (`docs/headline-basket.md`, "The pipeline"): one day's page, built on the Mac from the archive and uploaded by hand. The site has a stack of its own, `il-grocery-prices-site` (`site-template.yaml`: a private S3 bucket that only one CloudFront distribution reads), separate from the collector's so a site change never touches the archive. It costs under $0.05 a month (`docs/headline-basket.md`, "Cost"). Two steps wait on the owner's go: the stack's deploy and the first upload ("The two gates", below).
+
+### Five steps
+
+1. **Sync the day** (read-only on AWS):
+
+   ```bash
+   sh scripts/sync.sh YYYY-MM-DD
+   ```
+
+   After the identity check it copies the day's full price files and store lists into `data/raw/`, the day's manifests into `data/manifests/`, and, once the site's stack exists, every published day file into `site/days/`. Before the stack exists it says so in one line and goes on; any other failure to read the stack stops it. The published day files are what the build compares with ("Revising a day", below), and they keep the upload's `--delete` (step 5) from removing earlier days from the site.
+
+2. **Build:**
+
+   ```bash
+   PYTHONPATH=src .venv/bin/python -m basket.build --day YYYY-MM-DD --collected-by 10:45
+   ```
+
+   Extract, basket and page in one command. Each chain's table is extracted from the raw files unless it is already under `data/tables/prices/chain=<slug>/date=<day>/` with its `report.json`; the basket (`basket/v1.json`) is priced; the run's private record is written once to `data/basket/date=<day>/basket-<run id>.json`; the pages go to `site/` (`index.html`, `method.html`, `days/<day>.json` and the marker `.basket-site`). `--collected-by` sets the time on the credit line ("the files of 2 November 2026, collected by 10:45 Israel time"). Without it the build takes the clock as it runs, which on a hand build hours after the morning says nothing about the files, so the hand build passes the day's check time, 10:45: the collector's last schedule, which starts after the last retry run can have finished ("What runs when", above). On 2026-11-02 the last run started at 10:15 and stored nothing, and the last run that stored a file started at 10:03 (the day's 16 manifests). A later build of the same day leaves this time out of its comparison (B12), so it never makes a day "changed".
+
+3. **Check:**
+
+   ```bash
+   PYTHONPATH=src .venv/bin/python -m basket.check site
+   ```
+
+   The same check `scripts/publish.sh` runs before it uploads: no never-phrase and no "we", "our" or "us" on any page; the credit line, "Not shopping advice." and `noindex` on every page, and no script; every always-phrase on the index page, and "Revised on" there only on a revised day; the marker. Exit 0 when clean; 1 with problems, one a line naming the file and the rule; 2 when there is no page.
+
+4. **Review** `site/index.html` and `site/method.html` in a browser (`open site/index.html site/method.html`): the headline, the bars, the item table and the notes against the printout, and the method page.
+
+5. **Publish,** on the owner's go only, given after the owner has checked the "current as of" date on Nevo's page against `docs/terms.md` (a date past 19-07-2026 means the clause is read again first):
+
+   ```bash
+   sh scripts/publish.sh
+   ```
+
+   It writes to AWS, and uploads nothing unless every check passes, in this order: the identity check; `site/` carries the marker `.basket-site`, and its full path holds no `[`, `]`, `?` or `*` (the upload's filters would misread them); the check of step 3; the bucket and the distribution from the stack's outputs, the bucket's name starting `il-grocery-prices-site-sitebucket-` (so never the archive bucket) and the distribution's ID not empty. Then two uploads, each an allowlist with its content type set: `*.html` as `text/html; charset=utf-8` and `*.json` as `application/json; charset=utf-8`, both with `Cache-Control: max-age=300`; then one CloudFront invalidation of `/*`; then it prints the site's address. Nothing else in `site/` (the marker, a `.DS_Store`) is uploaded. Each upload runs with `--delete`, which removes from the bucket any page or day file `site/` does not hold: once a day is published, build only into a `site/` that step 1 filled, never into a fresh one.
+
+### What the build prints
+
+One line per chain, in slug order: `extracted in N.N s` or `table kept`, and its rows. Then the page's two headline lines, word for word. Then what happened to the day file: `published: site/days/<day>.json` for a day not yet on the site; `unchanged: site/days/<day>.json already holds these numbers and is left as it is` for a day published with the same numbers (the pages are then rendered from the published file, its "collected by" time included); or `revised: site/days/<day>.json, the earlier totals kept under revisions`. Last, the record's path. A bad basket file, a chain with no store list on or before the day, or a published day with other numbers and no `--revise` stops the build with a message and exit 1.
+
+### Revising a day
+
+A published day comes back into `site/days/` with the sync, and the build compares its numbers with the published ones (B12), leaving out the run id, the code fingerprint, the build time and the "collected by" time. Equal: `unchanged`, and the day file stays as it is. Different: the build stops, names what differs, and asks for a reason. To republish, build again with a one-line reason:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m basket.build --day YYYY-MM-DD --collected-by 10:45 --revise "<one-line reason>"
+```
+
+The day file then keeps the earlier run at the end of `revisions` (its run id, code fingerprint, build time and totals; the first entry is the day as first published), `revised` holds the reason and the Israel date, and the index page says "Revised on <date>: <reason>. First published: <the earlier totals>." A blank reason, or one with a line break, is refused. Every build writes its private record, a refused one included. Then check, review and publish as above. A scheduled run (step two, not built yet) never revises; only a hand build given a reason does.
+
+`--rebuild` extracts every chain's table again from the raw files, for instance after a parser fix; without it a table already there with its `report.json` is kept, and its counts come from the report. If the new tables change the day's numbers, the day needs `--revise` as above.
+
+### Measured on 2026-11-02
+
+On this Mac, from `docs/headline-basket-plan.md`, "Deviations" (Task 4 and Task 13). The sync brought 356 MB of raw files and 16 manifests. Extraction, as `basket.extract` printed it, with peak memory from `/usr/bin/time -l`:
+
+| Chain | Seconds | Rows | Parquet | Peak memory |
+|---|---|---|---|---|
+| Shufersal | 93.9 | 2,322,336 | 41.2 MB | 937 MB |
+| Rami Levy | 38.8 | 993,278 | 23.1 MB | 673 MB |
+| Osher Ad | 5.9 | 151,604 | 3.3 MB | 234 MB |
+| Carrefour | 46.6 | 1,196,548 | 21.0 MB | 733 MB |
+| Yochananof | 18.2 | 476,502 | 6.8 MB | 473 MB |
+| Five chains | 203.4 | 5,140,268 | 95.4 MB | |
+
+A build with every table kept took 1.2 s, and a second build of the day 0.9 s (`unchanged`); with `--rebuild`, 205 s in all and 930 MB peak resident memory, also `unchanged`. The day's totals for basket v1's 32 items, lowest first: Rami Levy ₪401.40 (96 of its 98 included stores with a file), Osher Ad ₪402.50 (24 of 24), Yochananof ₪408.92 (47 of 51), Shufersal ₪470.82 (318 of 320), Carrefour ₪487.42 (146 of 146); every chain in the ranking and all 32 items counted. The headline lines:
+
+- "Lowest listed total today: Rami Levy, ₪401.40."
+- "Highest: Carrefour, ₪487.42, 21% more. 32 everyday items, listed shelf prices before promotions, from the chains' price files of Monday 2 November 2026."
+
+### The two gates
+
+1. **The stack,** once, on the owner's go. The identity must show account `137953273942` and a user ARN ending in `user/doron-admin`; then the deploy, as flights-archive deploys its site (no SAM: the template holds no code); then the outputs:
+
+   ```bash
+   aws sts get-caller-identity --profile flights-sam --region il-central-1
+   aws cloudformation deploy --template-file site-template.yaml --stack-name il-grocery-prices-site --profile flights-sam --region il-central-1
+   aws cloudformation describe-stacks --stack-name il-grocery-prices-site --query "Stacks[0].Outputs" --output table --profile flights-sam --region il-central-1
+   ```
+
+   The outputs name the bucket (`SiteBucketName`), the distribution (`SiteDistributionId`) and the address (`SiteDomainName`); both scripts read them from the stack.
+
+2. **The first upload,** on the owner's go: the owner reviews `site/index.html` and `site/method.html` on the Mac and checks the date on Nevo's page; then `sh scripts/publish.sh` (step 5). Open the printed address, and fetch `days/2026-11-02.json` from it.

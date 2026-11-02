@@ -4,13 +4,14 @@ script; the index page carries every ALWAYS phrase and says REVISED only on a re
 
     PYTHONPATH=src .venv/bin/python -m basket.check site
 
-Runs before every upload. Each `.html` under the folder is read two ways: as written (attributes and markup
-included) and with tags stripped (the text a reader sees). In both, entities are unescaped, whitespace is
-collapsed and case is ignored, so an entity, a tag or a line break cannot hide a phrase. A NEVER phrase found
-in either is a problem, and so is REVISED on the index page. A phrase that must be there (the credit line's
-fixed start, "Not shopping advice.", and on the index page every ALWAYS phrase) counts only in the text a
-reader sees. `noindex` and `<script` are tags, looked for as written. The words "we", "our" and "us" are
-matched whole in the text a reader sees; attributes hold chain slugs and codes, not words.
+Runs before every upload (`scripts/publish.sh`). Each `.html` under the folder is read two ways: as written
+(attributes and markup included) and with tags stripped (the text a reader sees). In both, entities are
+unescaped, whitespace is collapsed and case is ignored, so an entity, a tag or a line break cannot hide a
+phrase. A NEVER phrase found in either is a problem, and so is REVISED on the index page. A phrase that must
+be there (the credit line's fixed start, "Not shopping advice.", and on the index page every ALWAYS phrase)
+counts only in the text a reader sees. `noindex` and `<script` are tags, looked for as written. The words
+"we", "our" and "us" are matched whole in the text a reader sees; attributes hold chain slugs and codes, not
+words.
 
 The day is revised when the newest `days/<day>.json` (ISO dates sort as dates) has `"revised"` set; null, or
 no day file, is a day never revised. The marker `.basket-site`, which `basket.page.build_site` writes, marks

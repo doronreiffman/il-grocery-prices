@@ -38,6 +38,7 @@ STORE_FOR_CHECK = ("src/collector/store.py", ["tests/test_check.py"])
 HANDLER = ("src/collector/handler.py", ["tests/test_handler.py"])
 TEMPLATE = ("template.yaml", ["tests/test_template.py"])
 OPERATIONS = ("docs/operations.md", ["tests/test_template.py"])
+SITE_TEMPLATE = ("site-template.yaml", ["tests/test_site_template.py"])
 # Rules the R7/R30 table in test_template.py also pins: each of these names the one test that must
 # catch it by itself, so the rule's own test is proved, not only the table.
 _T = "tests/test_template.py::"
@@ -680,6 +681,20 @@ MUTATIONS = {
     "an unknown chain unblocked in the doc": (OPERATIONS, "--payload '{\"mode\": \"unblock\", \"chain\": \"ramilevy\"}'", "--payload '{\"mode\": \"unblock\", \"chain\": \"victory\"}'"),
     "a real address in the doc": (OPERATIONS, "'AlertEmail=<email>'", "'AlertEmail=owner@mail.example.net'"),
     "the doc's timetable off the schedules": (OPERATIONS, "| 06:39 | Carrefour", "| 06:40 | Carrefour"),
+    # site template: the bucket
+    "public access unblocked": (SITE_TEMPLATE, "      PublicAccessBlockConfiguration:\n        BlockPublicAcls: true\n        BlockPublicPolicy: true\n        IgnorePublicAcls: true\n        RestrictPublicBuckets: true\n", ""),
+    "site bucket public policies allowed": (SITE_TEMPLATE, "        RestrictPublicBuckets: true", "        RestrictPublicBuckets: false"),
+    "site bucket with ACLs": (SITE_TEMPLATE, "ObjectOwnership: BucketOwnerEnforced", "ObjectOwnership: ObjectWriter"),
+    "site bucket unencrypted": (SITE_TEMPLATE, "      BucketEncryption:\n        ServerSideEncryptionConfiguration:\n          - ServerSideEncryptionByDefault:\n              SSEAlgorithm: AES256\n", ""),
+    # site template: the policy, the origin and the viewers
+    "site readable by anyone": (SITE_TEMPLATE, "            Principal:\n              Service: cloudfront.amazonaws.com", '            Principal: "*"'),
+    "site policy without the distribution condition": (SITE_TEMPLATE, '            Condition:\n              StringEquals:\n                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${SiteDistribution}"\n', ""),
+    "signing not always": (SITE_TEMPLATE, "SigningBehavior: always", "SigningBehavior: no-override"),
+    "site origin without the access control": (SITE_TEMPLATE, "            OriginAccessControlId: !GetAtt SiteOriginAccessControl.Id\n", ""),
+    "global bucket name as origin": (SITE_TEMPLATE, "DomainName: !GetAtt SiteBucket.RegionalDomainName", "DomainName: !GetAtt SiteBucket.DomainName"),
+    "site served over http": (SITE_TEMPLATE, "ViewerProtocolPolicy: redirect-to-https", "ViewerProtocolPolicy: allow-all"),
+    "no default root object": (SITE_TEMPLATE, "        DefaultRootObject: index.html\n", ""),
+    "site bucket name not in the outputs": (SITE_TEMPLATE, "  SiteBucketName:\n    Value: !Ref SiteBucket\n", ""),
     # basket: barcodes
     "barcode check digit ignored": (BARCODE, "(3 if place % 2 == 0 else 1)", "(1 if place % 2 == 0 else 1)"),
     "barcode leading zeros kept": (BARCODE, 'significant = digits.lstrip("0")', "significant = digits"),
