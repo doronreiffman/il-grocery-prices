@@ -53,6 +53,9 @@ HANDLER_EVENTS = ("template.yaml", [_T + "test_every_event_is_one_the_handler_ta
 BARCODE = ("src/basket/barcode.py", ["tests/test_barcode.py"])
 PRICEFILE = ("src/basket/pricefile.py", ["tests/test_pricefile.py"])
 EXTRACT = ("src/basket/extract.py", ["tests/test_extract.py"])
+DUCK = ("src/basket/duck.py", ["tests/test_duck.py"])
+EXTRACT_FOR_DUCK = ("src/basket/extract.py", ["tests/test_duck.py"])
+RULES_FOR_DUCK = ("src/basket/rules.py", ["tests/test_duck.py"])
 STORES = ("src/basket/stores.py", ["tests/test_stores.py"])
 CHAINS_BASKET = ("src/basket/chains.py", ["tests/test_stores.py"])
 UNITS_BASKET = ("src/basket/units.py", ["tests/test_units.py"])
@@ -716,7 +719,7 @@ MUTATIONS = {
     "extract conflict not counted": (EXTRACT, "                conflicting += 1", "                pass"),
     "extract unreadable price kept as zero": (EXTRACT, "    except InvalidOperation:\n        return None", "    except InvalidOperation:\n        return Decimal(0)"),
     "extract three-decimal price accepted": (EXTRACT, "-value.as_tuple().exponent > 2", "-value.as_tuple().exponent > 3"),
-    "extract empty table not written": (EXTRACT, "        with duckdb.connect() as con:", "        if count == 0:\n            return 0\n        with duckdb.connect() as con:"),
+    "extract empty table not written": (EXTRACT, "        with duck.connect() as con:", "        if count == 0:\n            return 0\n        with duck.connect() as con:"),
     "extract sub-chain padded": (EXTRACT, "sub_chain = None if parsed.sub_chain is None else store_key(parsed.sub_chain)", "sub_chain = parsed.sub_chain"),
     "extract conflict copy not read": (EXTRACT, "parse_file_name(published_name(path.name))", "parse_file_name(path.name)"),
     "extract another day's file read": (EXTRACT, ' or parsed.day != day:', ":"),
@@ -727,6 +730,14 @@ MUTATIONS = {
     "extract a store of no rows counted": (EXTRACT, "stores=sum(1 for c in counts if c.rows)", "stores=len(counts)"),
     "extract None written as empty text": (EXTRACT, 'NULLABLE = ("sub_chain", "code_norm", "price")', 'NULLABLE = ("price",)'),
     "extract empty text read as NULL": (EXTRACT, "allow_quoted_nulls = false", "allow_quoted_nulls = true"),
+    # basket: duck
+    "duck temp directory not set": (DUCK, '        con.execute("SET temp_directory = ?", [temp_directory])', "        pass"),
+    "duck memory limit not set": (DUCK, '        con.execute("SET memory_limit = ?", [memory_limit])', "        pass"),
+    "duck blank temp directory set": (DUCK, "    if temp_directory.strip():", "    if temp_directory:"),
+    "duck blank memory limit set": (DUCK, "    if memory_limit.strip():", "    if True:"),
+    "duck process environment ignored": (DUCK, "    env = os.environ if env is None else env", "    env = {} if env is None else env"),
+    "extract connects without duck": (EXTRACT_FOR_DUCK, "        with duck.connect() as con:", '        with __import__("duckdb").connect() as con:'),
+    "rules connects without duck": (RULES_FOR_DUCK, "    con = duck.connect()\n", "    con = duckdb.connect()\n"),
     # basket: stores
     "stores Be included": (CHAINS_BASKET, 'frozenset({"5"})', "frozenset()"),
     "stores online store included": (CHAINS_BASKET, 'frozenset({"413"})', "frozenset()"),

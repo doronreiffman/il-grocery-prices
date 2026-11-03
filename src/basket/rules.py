@@ -56,6 +56,7 @@ from pathlib import Path
 
 import duckdb
 
+from basket import duck
 from basket.barcode import normalize
 from basket.basket_file import Basket, BasketItem
 from basket.extract import table_path
@@ -131,7 +132,7 @@ def open_day(tables_dir: Path, day: date, slugs: Sequence[str]) -> duckdb.DuckDB
     for slug, path in paths.items():
         if not path.is_file():
             raise MissingTable(f"no table for chain {slug!r} on {day.isoformat()}: {path}")
-    con = duckdb.connect()
+    con = duck.connect()
     union = " UNION ALL ".join(
         f"SELECT {_literal(slug)} AS chain, * FROM read_parquet({_literal(str(path))}, hive_partitioning = false)"
         for slug, path in paths.items())

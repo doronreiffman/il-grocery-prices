@@ -39,8 +39,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-import duckdb
-
+from basket import duck
 from basket.barcode import is_gs1, normalize
 from basket.pricefile import Item, read_items
 from collector.names import parse_file_name
@@ -170,7 +169,7 @@ def write_table(rows: Iterable[Row], out: Path) -> int:
     with tempfile.TemporaryDirectory() as temp:
         csv_path = Path(temp) / "rows.csv"
         count = _write_csv(rows, csv_path)
-        with duckdb.connect() as con:
+        with duck.connect() as con:
             con.execute(_copy_sql(csv_path, out))
     return count
 
