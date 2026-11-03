@@ -52,6 +52,17 @@ RETRY_THREE_HOURS_ON = ("template.yaml", [_T + "test_retry_runs_start_three_hour
 CHECK_LAST = ("template.yaml", [_T + "test_one_check_after_the_last_retry_run_can_have_finished"])
 ALL_KINDS = ("template.yaml", [_T + "test_each_chain_has_runs_of_each_mode_over_the_kinds_it_collects"])
 HANDLER_EVENTS = ("template.yaml", [_T + "test_every_event_is_one_the_handler_takes"])
+BASKET_TEMPLATE = ("template.yaml", ["tests/test_basket_template.py"])
+# The basket function's rules, each named for the one test in test_basket_template.py that must catch it by itself.
+_B = "tests/test_basket_template.py::"
+BASKET_OWN_SWITCH = ("template.yaml", [_B + "test_schedules_follow_the_baskets_own_switch_in_israel_time"])
+BASKET_AFTER_EXTRACT = ("template.yaml", [_B + "test_basket_runs_after_the_last_extraction_can_have_finished"])
+EXTRACT_AFTER_CHECK = ("template.yaml", [_B + "test_extraction_starts_after_the_collectors_check_can_have_finished"])
+COLLECTED_BY_PINNED = ("template.yaml", [_B + "test_collected_by_is_the_extractions_start"])
+NO_DELETE_BASKET = ("template.yaml", [_B + "test_role_cannot_delete_bypass_the_lock_or_change_either_bucket"])
+READ_RECORDS_FOR_RETRY = ("template.yaml", [_B + "test_role_grants_exactly_what_the_code_does"])
+TMP_SIZE = ("template.yaml", [_B + "test_function_has_two_gb_two_gb_of_tmp_and_lambdas_longest_run"])
+LAYER_ATTACHED = ("template.yaml", [_B + "test_function_runs_the_basket_handler_on_python_313_arm64_with_the_layer"])
 BARCODE = ("src/basket/barcode.py", ["tests/test_barcode.py"])
 PRICEFILE = ("src/basket/pricefile.py", ["tests/test_pricefile.py"])
 EXTRACT = ("src/basket/extract.py", ["tests/test_extract.py"])
@@ -601,8 +612,8 @@ MUTATIONS = {
     "production ping unidentified": (HANDLER, "ping=partial(ping, user_agent=ping_user_agent(cfg.user_agent)),", 'ping=partial(ping, user_agent=""),'),
     "production code_sha not the package's": (HANDLER, "        code_sha=CODE_SHA,\n    )", '        code_sha="",\n    )'),
     # template: the three the plan names
-    "schedule enabled by default": (TEMPLATE, "    Default: DISABLED\n", "    Default: ENABLED\n"),
-    "delete allowed": (TEMPLATE, "                - s3:PutObjectRetention\n", "                - s3:PutObjectRetention\n                - s3:DeleteObject\n"),
+    "schedule enabled by default": (TEMPLATE, "  ScheduleState:\n    Type: String\n    Default: DISABLED\n", "  ScheduleState:\n    Type: String\n    Default: ENABLED\n"),
+    "delete allowed": (TEMPLATE, "                - s3:PutObjectRetention\n              Resource:\n", "                - s3:PutObjectRetention\n                - s3:DeleteObject\n              Resource:\n"),
     "UTC schedule": (TEMPLATE, 'ScheduleExpression: "cron(30 6 * * ? *)"\n            ScheduleExpressionTimezone: Asia/Jerusalem', 'ScheduleExpression: "cron(30 6 * * ? *)"\n            ScheduleExpressionTimezone: UTC'),
     # template: the bucket
     "bucket without Object Lock": (TEMPLATE, "      ObjectLockEnabled: true\n", "      ObjectLockEnabled: false\n"),
@@ -619,40 +630,40 @@ MUTATIONS = {
     "a public bucket policy added": (TEMPLATE, "  AlertTopic:\n    Type: AWS::SNS::Topic\n",
                                      '  OpenPolicy:\n    Type: AWS::S3::BucketPolicy\n    Properties:\n      Bucket: !Ref ArchiveBucket\n      PolicyDocument:\n        Statement:\n          - Effect: Allow\n            Principal: "*"\n            Action: s3:GetObject\n            Resource: !Sub "${ArchiveBucket.Arn}/*"\n\n  AlertTopic:\n    Type: AWS::SNS::Topic\n'),
     # template: the function
-    "function on x86": (TEMPLATE, "Architectures: [arm64]", "Architectures: [x86_64]"),
-    "function on an older Python": (TEMPLATE, "Runtime: python3.13", "Runtime: python3.12"),
+    "function on x86": (TEMPLATE, "Architectures: [arm64]\n      MemorySize: 512", "Architectures: [x86_64]\n      MemorySize: 512"),
+    "function on an older Python": (TEMPLATE, "Handler: collector.handler.handler\n      Runtime: python3.13", "Handler: collector.handler.handler\n      Runtime: python3.12"),
     "function memory halved": (TEMPLATE, "MemorySize: 512", "MemorySize: 256"),
-    "function timeout cut to five minutes": (TEMPLATE, "      Timeout: 900\n", "      Timeout: 300\n"),
-    "Lambda retries a failed run": (TEMPLATE, "      EventInvokeConfig:\n        MaximumRetryAttempts: 0", "      EventInvokeConfig:\n        MaximumRetryAttempts: 2"),
+    "function timeout cut to five minutes": (TEMPLATE, "not attempted.\n      Timeout: 900\n", "not attempted.\n      Timeout: 300\n"),
+    "Lambda retries a failed run": (TEMPLATE, "is the real retry.\n      EventInvokeConfig:\n        MaximumRetryAttempts: 0", "is the real retry.\n      EventInvokeConfig:\n        MaximumRetryAttempts: 2"),
     "handler pointed elsewhere": (TEMPLATE, "Handler: collector.handler.handler", "Handler: collector.handler.run"),
-    "code from the repo root": (TEMPLATE, "CodeUri: src/", "CodeUri: ./"),
+    "code from the repo root": (TEMPLATE, "CodeUri: src/\n      Handler: collector.handler.handler", "CodeUri: ./\n      Handler: collector.handler.handler"),
     "alert topic not given to the function (R5)": (TEMPLATE, "          ALERT_TOPIC_ARN: !Ref AlertTopic\n", ""),
-    "retention not ten years (R5)": (TEMPLATE, 'RETENTION_DAYS: "3650"', 'RETENTION_DAYS: "365"'),
+    "retention not ten years (R5)": (TEMPLATE, 'HEALTHCHECK_URL: !Ref HealthcheckUrl\n          RETENTION_DAYS: "3650"', 'HEALTHCHECK_URL: !Ref HealthcheckUrl\n          RETENTION_DAYS: "365"'),
     "logs to Lambda's default group": (TEMPLATE, "      LoggingConfig:\n        LogGroup: !Ref CollectorLogs\n", ""),
-    "logs kept forever": (TEMPLATE, "      RetentionInDays: 30\n", ""),
+    "logs kept forever": (TEMPLATE, '/collector"\n      RetentionInDays: 30\n', '/collector"\n'),
     "function name not in the outputs": (TEMPLATE, "  CollectorFunctionName:\n    Value: !Ref CollectorFunction\n", ""),
     # template: the role
-    "governance bypass allowed": (TEMPLATE, "                - s3:PutObjectRetention\n", "                - s3:PutObjectRetention\n                - s3:BypassGovernanceRetention\n"),
-    "bucket settings writable": (TEMPLATE, "                - s3:PutObjectRetention\n", "                - s3:PutObjectRetention\n                - s3:PutBucketObjectLockConfiguration\n"),
-    "S3 full access added": (TEMPLATE, "      Policies:\n        - Statement:\n", "      Policies:\n        - AmazonS3FullAccess\n        - Statement:\n"),
+    "governance bypass allowed": (TEMPLATE, "                - s3:PutObjectRetention\n              Resource:\n", "                - s3:PutObjectRetention\n                - s3:BypassGovernanceRetention\n              Resource:\n"),
+    "bucket settings writable": (TEMPLATE, "                - s3:PutObjectRetention\n              Resource:\n", "                - s3:PutObjectRetention\n                - s3:PutBucketObjectLockConfiguration\n              Resource:\n"),
+    "S3 full access added": (TEMPLATE, "      Policies:\n        - Statement:\n            # Raw files,", "      Policies:\n        - AmazonS3FullAccess\n        - Statement:\n            # Raw files,"),
     "every S3 action on state": (TEMPLATE, "              Action:\n                - s3:GetObject\n                - s3:PutObject\n", '              Action: "s3:*"\n'),
     "locked writes anywhere in the bucket": (TEMPLATE, '                - !Sub "${ArchiveBucket.Arn}/raw/*"\n                - !Sub "${ArchiveBucket.Arn}/manifests/*"\n                - !Sub "${ArchiveBucket.Arn}/checks/*"\n            # The check reads',
                                              '                - !Sub "${ArchiveBucket.Arn}/*"\n            # The check reads'),
     "check records not writable": (TEMPLATE, '                - !Sub "${ArchiveBucket.Arn}/checks/*"\n            # The check reads', "            # The check reads"),
-    "manifests not readable by the check": (TEMPLATE, '              Action: s3:GetObject\n              Resource:\n                - !Sub "${ArchiveBucket.Arn}/raw/*"\n                - !Sub "${ArchiveBucket.Arn}/manifests/*"\n',
-                                            '              Action: s3:GetObject\n              Resource:\n                - !Sub "${ArchiveBucket.Arn}/raw/*"\n'),
+    "manifests not readable by the check": (TEMPLATE, '- Sid: ReadStored\n              Effect: Allow\n              Action: s3:GetObject\n              Resource:\n                - !Sub "${ArchiveBucket.Arn}/raw/*"\n                - !Sub "${ArchiveBucket.Arn}/manifests/*"\n',
+                                            '- Sid: ReadStored\n              Effect: Allow\n              Action: s3:GetObject\n              Resource:\n                - !Sub "${ArchiveBucket.Arn}/raw/*"\n'),
     "state not readable": (TEMPLATE, "                - s3:GetObject\n                - s3:PutObject\n              Resource: !Sub", "                - s3:PutObject\n              Resource: !Sub"),
-    "no ListBucket": (TEMPLATE, "              Action: s3:ListBucket\n", "              Action: s3:ListAllMyBuckets\n"),
-    "a condition on the bucket list": (TEMPLATE, "              Resource: !GetAtt ArchiveBucket.Arn\n", '              Resource: !GetAtt ArchiveBucket.Arn\n              Condition:\n                StringLike:\n                  s3:prefix: ["raw/*"]\n'),
+    "no ListBucket": (TEMPLATE, "- Sid: ListBucketSoMissingKeyIs404\n              Effect: Allow\n              Action: s3:ListBucket\n", "- Sid: ListBucketSoMissingKeyIs404\n              Effect: Allow\n              Action: s3:ListAllMyBuckets\n"),
+    "a condition on the bucket list": (TEMPLATE, "              Resource: !GetAtt ArchiveBucket.Arn\n            - Sid: EmailAlerts\n", '              Resource: !GetAtt ArchiveBucket.Arn\n              Condition:\n                StringLike:\n                  s3:prefix: ["raw/*"]\n            - Sid: EmailAlerts\n'),
     "alerts publishable to any topic": (TEMPLATE, "              Resource: !Ref AlertTopic\n", '              Resource: "*"\n'),
     # template: the parameters and the alert email
     "User-Agent pattern takes http": (TEMPLATE, r"AllowedPattern: '.*\+https://.*@.*'", r"AllowedPattern: '.*\+https?://.*@.*'"),
     "User-Agent pattern without the email": (TEMPLATE, r"AllowedPattern: '.*\+https://.*@.*'", r"AllowedPattern: '.*\+https://.*'"),
     "User-Agent pattern dropped": (TEMPLATE, r"AllowedPattern: '.*\+https://.*@.*'", "AllowedPattern: '.*'"),
-    "health-check URL of any shape": (TEMPLATE, r"AllowedPattern: 'https://hc-ping\.com/[-A-Za-z0-9_/]+'", "AllowedPattern: '.*'"),
-    "health-check URL shown in the stack": (TEMPLATE, "    NoEcho: true\n", "    NoEcho: false\n"),
+    "health-check URL of any shape": (TEMPLATE, "the morning check pings it.\n    AllowedPattern: 'https://hc-ping\\.com/[-A-Za-z0-9_/]+'", "the morning check pings it.\n    AllowedPattern: '.*'"),
+    "health-check URL shown in the stack": (TEMPLATE, "  HealthcheckUrl:\n    Type: String\n    NoEcho: true\n", "  HealthcheckUrl:\n    Type: String\n    NoEcho: false\n"),
     "alert email given a default": (TEMPLATE, "  AlertEmail:\n    Type: String\n", "  AlertEmail:\n    Type: String\n    Default: you@example.org\n"),
-    "schedule switch takes any value": (TEMPLATE, "    AllowedValues: [ENABLED, DISABLED]\n", ""),
+    "schedule switch takes any value": (TEMPLATE, "    AllowedValues: [ENABLED, DISABLED]\n    Description: Start DISABLED", "    Description: Start DISABLED"),
     "alerts not by email": (TEMPLATE, "        - Protocol: email\n", "        - Protocol: email-json\n"),
     "a ping URL in the template": (TEMPLATE, "e.g. https://hc-ping.com/<uuid>;", "e.g. https://hc-ping.com/0f3e2d1c-5b4a;"),
     # template: the schedules (ruling R7)
@@ -1013,6 +1024,79 @@ MUTATIONS = {
     # the DuckDB layer
     "layer wheel's hash altered": (LAYER_PIN, "sha256:364992ba", "sha256:464992ba"),
     "layer built for x86": (LAYER_MAKEFILE, "manylinux_2_28_aarch64", "manylinux_2_28_x86_64"),
+    # template: the basket function (step two), the rules the plan names
+    "basket schedule on the collector's switch": (BASKET_OWN_SWITCH, "Input: '{\"mode\": \"basket\", \"collected_by\": \"12:03\"}'\n            State: !Ref BasketScheduleState",
+                                                  "Input: '{\"mode\": \"basket\", \"collected_by\": \"12:03\"}'\n            State: !Ref ScheduleState"),
+    "basket run before the last extraction can have finished": (BASKET_AFTER_EXTRACT, '"cron(33 12 * * ? *)"', '"cron(13 12 * * ? *)"'),
+    "an extraction before the collector's check can have finished": (EXTRACT_AFTER_CHECK, '"cron(3 12 * * ? *)"\n            ScheduleExpressionTimezone: Asia/Jerusalem\n            Input: \'{"mode": "extract", "chain": "yochananof"}\'',
+                                                                     '"cron(50 11 * * ? *)"\n            ScheduleExpressionTimezone: Asia/Jerusalem\n            Input: \'{"mode": "extract", "chain": "yochananof"}\''),
+    "collected by the check's time, not the extractions'": (COLLECTED_BY_PINNED, '"collected_by": "12:03"', '"collected_by": "11:48"'),
+    "basket role deletes in the site bucket": (NO_DELETE_BASKET, "- Sid: WriteSite\n              Effect: Allow\n              Action: s3:PutObject\n", "- Sid: WriteSite\n              Effect: Allow\n              Action: s3:DeleteObject\n"),
+    "basket records not readable for a refused put": (READ_RECORDS_FOR_RETRY, '                - !Sub "${ArchiveBucket.Arn}/tables/*"\n                - !Sub "${ArchiveBucket.Arn}/basket/*"\n',
+                                                      '                - !Sub "${ArchiveBucket.Arn}/tables/*"\n'),
+    "basket /tmp at 512 MB": (TMP_SIZE, "{Size: 2048}", "{Size: 512}"),
+    "basket function without the DuckDB layer": (LAYER_ATTACHED, "      Layers: [!Ref DuckDbLayer]\n", ""),
+    # template: the basket function
+    "basket function on x86": (BASKET_TEMPLATE, "Handler: basket.handler.handler\n      Runtime: python3.13\n      Architectures: [arm64]", "Handler: basket.handler.handler\n      Runtime: python3.13\n      Architectures: [x86_64]"),
+    "basket function on an older Python": (BASKET_TEMPLATE, "Handler: basket.handler.handler\n      Runtime: python3.13", "Handler: basket.handler.handler\n      Runtime: python3.12"),
+    "basket handler pointed elsewhere": (BASKET_TEMPLATE, "Handler: basket.handler.handler", "Handler: basket.handler.run"),
+    "basket code from the repo root": (BASKET_TEMPLATE, "CodeUri: src/\n      Handler: basket.handler.handler", "CodeUri: ./\n      Handler: basket.handler.handler"),
+    "basket function memory halved": (BASKET_TEMPLATE, "MemorySize: 2048", "MemorySize: 1024"),
+    "basket function timeout cut to five minutes": (BASKET_TEMPLATE, "spaced by it.\n      Timeout: 900\n", "spaced by it.\n      Timeout: 300\n"),
+    "basket Lambda retries a failed run": (BASKET_TEMPLATE, "rerun is by hand.\n      EventInvokeConfig:\n        MaximumRetryAttempts: 0", "rerun is by hand.\n      EventInvokeConfig:\n        MaximumRetryAttempts: 2"),
+    "basket logs to Lambda's default group": (BASKET_TEMPLATE, "      LoggingConfig:\n        LogGroup: !Ref BasketLogs\n", ""),
+    "basket logs kept forever": (BASKET_TEMPLATE, '/basket"\n      RetentionInDays: 30\n', '/basket"\n'),
+    "basket logs under another group name": (BASKET_TEMPLATE, 'LogGroupName: !Sub "/${AWS::StackName}/basket"', 'LogGroupName: !Sub "/${AWS::StackName}/collector-basket"'),
+    "basket function name not in the outputs": (BASKET_TEMPLATE, "  BasketFunctionName:\n    Value: !Ref BasketFunction\n", ""),
+    "basket site bucket not given to the function": (BASKET_TEMPLATE, "          SITE_BUCKET: !Ref SiteBucketName\n", ""),
+    "basket pings the collector's check": (BASKET_TEMPLATE, "HEALTHCHECK_URL: !Ref BasketHealthcheckUrl", "HEALTHCHECK_URL: !Ref HealthcheckUrl"),
+    "basket retention not ten years": (BASKET_TEMPLATE, 'USER_AGENT: !Ref UserAgent\n          RETENTION_DAYS: "3650"', 'USER_AGENT: !Ref UserAgent\n          RETENTION_DAYS: "365"'),
+    "DuckDB temp folder in the read-only working directory": (BASKET_TEMPLATE, "DUCKDB_TEMP_DIRECTORY: /tmp/duckdb", "DUCKDB_TEMP_DIRECTORY: .tmp"),
+    "DuckDB memory limit over the function's": (BASKET_TEMPLATE, "DUCKDB_MEMORY_LIMIT: 1200MB", "DUCKDB_MEMORY_LIMIT: 4GB"),
+    # template: the basket function's role
+    "basket role with S3 full access": (BASKET_TEMPLATE, "      Policies:\n        - Statement:\n            # The extractions", "      Policies:\n        - AmazonS3FullAccess\n        - Statement:\n            # The extractions"),
+    "basket records deletable": (BASKET_TEMPLATE, "                - s3:PutObjectRetention\n              Resource: !Sub", "                - s3:PutObjectRetention\n                - s3:DeleteObject\n              Resource: !Sub"),
+    "basket governance bypass allowed": (BASKET_TEMPLATE, "                - s3:PutObjectRetention\n              Resource: !Sub", "                - s3:PutObjectRetention\n                - s3:BypassGovernanceRetention\n              Resource: !Sub"),
+    "basket bucket settings writable": (BASKET_TEMPLATE, "                - s3:PutObjectRetention\n              Resource: !Sub", "                - s3:PutObjectRetention\n                - s3:PutBucketPolicy\n              Resource: !Sub"),
+    "basket records put without their retention": (BASKET_TEMPLATE, "                - s3:PutObject\n                - s3:PutObjectRetention\n              Resource: !Sub", "                - s3:PutObject\n              Resource: !Sub"),
+    "basket records writable anywhere in the archive": (BASKET_TEMPLATE, 'Resource: !Sub "${ArchiveBucket.Arn}/basket/*"', 'Resource: !Sub "${ArchiveBucket.Arn}/*"'),
+    "basket tables writable anywhere in the archive": (BASKET_TEMPLATE, 'Resource: !Sub "${ArchiveBucket.Arn}/tables/*"', 'Resource: !Sub "${ArchiveBucket.Arn}/*"'),
+    "basket tables not readable": (BASKET_TEMPLATE, '                - !Sub "${ArchiveBucket.Arn}/checks/*"\n                - !Sub "${ArchiveBucket.Arn}/tables/*"\n', '                - !Sub "${ArchiveBucket.Arn}/checks/*"\n'),
+    "basket every S3 action on the site": (BASKET_TEMPLATE, "- Sid: WriteSite\n              Effect: Allow\n              Action: s3:PutObject\n", '- Sid: WriteSite\n              Effect: Allow\n              Action: "s3:*"\n'),
+    "basket site writable anywhere": (BASKET_TEMPLATE, '                - !Sub "arn:aws:s3:::${SiteBucketName}/index.html"\n', '                - !Sub "arn:aws:s3:::${SiteBucketName}/*"\n'),
+    "basket no list of the archive": (BASKET_TEMPLATE, "- Sid: ListArchive\n              Effect: Allow\n              Action: s3:ListBucket\n", "- Sid: ListArchive\n              Effect: Allow\n              Action: s3:ListAllMyBuckets\n"),
+    "basket no list of the site": (BASKET_TEMPLATE, "- Sid: ListSite\n              Effect: Allow\n              Action: s3:ListBucket\n", "- Sid: ListSite\n              Effect: Allow\n              Action: s3:ListAllMyBuckets\n"),
+    "basket a condition on the site list": (BASKET_TEMPLATE, '              Resource: !Sub "arn:aws:s3:::${SiteBucketName}"\n', '              Resource: !Sub "arn:aws:s3:::${SiteBucketName}"\n              Condition:\n                StringLike:\n                  s3:prefix: ["days/*"]\n'),
+    "basket invalidates any distribution": (BASKET_TEMPLATE, ":distribution/${SiteDistributionId}", ":distribution/*"),
+    # template: the basket's parameters
+    "site bucket of any name": (BASKET_TEMPLATE, "AllowedPattern: 'il-grocery-prices-site-sitebucket-.+'", "AllowedPattern: '.+'"),
+    "site bucket pattern takes the bare prefix": (BASKET_TEMPLATE, "AllowedPattern: 'il-grocery-prices-site-sitebucket-.+'", "AllowedPattern: 'il-grocery-prices-site-sitebucket-.*'"),
+    "distribution id of any shape": (BASKET_TEMPLATE, "AllowedPattern: 'E[A-Z0-9]+'", "AllowedPattern: '.*'"),
+    "a site parameter given a default": (BASKET_TEMPLATE, "  SiteDistributionId:\n    Type: String\n", "  SiteDistributionId:\n    Type: String\n    Default: E0123456789ABC\n"),
+    "basket ping URL shown in the stack": (BASKET_TEMPLATE, "  BasketHealthcheckUrl:\n    Type: String\n    NoEcho: true\n", "  BasketHealthcheckUrl:\n    Type: String\n    NoEcho: false\n"),
+    "basket ping URL of any shape": (BASKET_TEMPLATE, "e.g. https://hc-ping.com/<uuid>\n    AllowedPattern: 'https://hc-ping\\.com/[-A-Za-z0-9_/]+'", "e.g. https://hc-ping.com/<uuid>\n    AllowedPattern: '.*'"),
+    "basket schedules enabled by default": (BASKET_TEMPLATE, "  BasketScheduleState:\n    Type: String\n    Default: DISABLED\n", "  BasketScheduleState:\n    Type: String\n    Default: ENABLED\n"),
+    "basket switch takes any value": (BASKET_TEMPLATE, "    AllowedValues: [ENABLED, DISABLED]\n    Description: The basket's", "    Description: The basket's"),
+    # template: the basket's schedules
+    "a basket schedule in UTC": (BASKET_TEMPLATE, 'ScheduleExpression: "cron(33 12 * * ? *)"\n            ScheduleExpressionTimezone: Asia/Jerusalem', 'ScheduleExpression: "cron(33 12 * * ? *)"\n            ScheduleExpressionTimezone: UTC'),
+    "a basket schedule always on": (BASKET_TEMPLATE, "Input: '{\"mode\": \"extract\", \"chain\": \"ramilevy\"}'\n            State: !Ref BasketScheduleState", "Input: '{\"mode\": \"extract\", \"chain\": \"ramilevy\"}'\n            State: ENABLED"),
+    "a basket schedule with a flexible start window": (BASKET_TEMPLATE, "Input: '{\"mode\": \"extract\", \"chain\": \"shufersal\"}'\n            State: !Ref BasketScheduleState\n            FlexibleTimeWindow: {Mode: \"OFF\"}",
+                                                       "Input: '{\"mode\": \"extract\", \"chain\": \"shufersal\"}'\n            State: !Ref BasketScheduleState\n            FlexibleTimeWindow: {Mode: \"FLEXIBLE\", MaximumWindowInMinutes: 15}"),
+    "Scheduler retries a failed basket invoke": (BASKET_TEMPLATE, "\"12:03\"}'\n            State: !Ref BasketScheduleState\n            FlexibleTimeWindow: {Mode: \"OFF\"}\n            RetryPolicy: {MaximumRetryAttempts: 0}",
+                                                 "\"12:03\"}'\n            State: !Ref BasketScheduleState\n            FlexibleTimeWindow: {Mode: \"OFF\"}\n            RetryPolicy: {MaximumRetryAttempts: 185}"),
+    "two extractions at different minutes": (BASKET_TEMPLATE, '"cron(3 12 * * ? *)"\n            ScheduleExpressionTimezone: Asia/Jerusalem\n            Input: \'{"mode": "extract", "chain": "carrefour"}\'',
+                                             '"cron(4 12 * * ? *)"\n            ScheduleExpressionTimezone: Asia/Jerusalem\n            Input: \'{"mode": "extract", "chain": "carrefour"}\''),
+    "an extraction of a chain the code does not know": (BASKET_TEMPLATE, "Input: '{\"mode\": \"extract\", \"chain\": \"carrefour\"}'", "Input: '{\"mode\": \"extract\", \"chain\": \"victory\"}'"),
+    "a chain without an extraction": (BASKET_TEMPLATE, "Input: '{\"mode\": \"extract\", \"chain\": \"yochananof\"}'", "Input: '{\"mode\": \"extract\", \"chain\": \"osherad\"}'"),
+    "a scheduled extraction pinned to a day": (BASKET_TEMPLATE, "Input: '{\"mode\": \"extract\", \"chain\": \"osherad\"}'", "Input: '{\"mode\": \"extract\", \"chain\": \"osherad\", \"day\": \"2026-11-03\"}'"),
+    "the basket event without collected_by": (BASKET_TEMPLATE, "Input: '{\"mode\": \"basket\", \"collected_by\": \"12:03\"}'", "Input: '{\"mode\": \"basket\"}'"),
+    "collected_by not a clock": (BASKET_TEMPLATE, '"collected_by": "12:03"', '"collected_by": "12.03"'),
+    # template: the DuckDB layer
+    "layer built without the Makefile": (BASKET_TEMPLATE, "    Metadata:\n      BuildMethod: makefile\n", "    Metadata:\n      BuildMethod: python3.13\n"),
+    "layer for x86": (BASKET_TEMPLATE, "CompatibleArchitectures: [arm64]", "CompatibleArchitectures: [x86_64]"),
+    "layer for an older Python": (BASKET_TEMPLATE, "CompatibleRuntimes: [python3.13]", "CompatibleRuntimes: [python3.12]"),
+    "layer from the repo root": (BASKET_TEMPLATE, "ContentUri: layer/", "ContentUri: ./"),
+    "layer's old versions retained": (BASKET_TEMPLATE, "RetentionPolicy: Delete", "RetentionPolicy: Retain"),
 }
 
 

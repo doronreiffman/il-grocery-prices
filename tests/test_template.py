@@ -118,21 +118,27 @@ def _prefix(key: str) -> dict:
 # --- the stack ---
 
 
-def test_the_stack_holds_only_its_four_resources(resources):
-    """Nothing else in the stack may hold permissions on the bucket (a bucket policy, another role)."""
+def test_the_stack_holds_only_its_seven_resources(resources):
+    """Nothing else in the stack may hold permissions on the bucket (a bucket policy, another role); the basket
+    function's role is pinned in tests/test_basket_template.py."""
     assert {name: resource["Type"] for name, resource in resources.items()} == {
         "ArchiveBucket": "AWS::S3::Bucket",
         "CollectorFunction": "AWS::Serverless::Function",
         "CollectorLogs": "AWS::Logs::LogGroup",
         "AlertTopic": "AWS::SNS::Topic",
+        "DuckDbLayer": "AWS::Serverless::LayerVersion",
+        "BasketLogs": "AWS::Logs::LogGroup",
+        "BasketFunction": "AWS::Serverless::Function",
     }
 
 
-def test_outputs_name_the_bucket_and_the_function(template):
-    """docs/operations.md reads both from the stack's outputs."""
+def test_outputs_name_the_bucket_and_the_functions(template):
+    """docs/operations.md reads the bucket's and the collector's names from the stack's outputs; the basket
+    function's is for its manual runs."""
     assert template["Outputs"] == {
         "ArchiveBucketName": {"Value": {"Ref": "ArchiveBucket"}},
         "CollectorFunctionName": {"Value": {"Ref": "CollectorFunction"}},
+        "BasketFunctionName": {"Value": {"Ref": "BasketFunction"}},
     }
 
 
@@ -261,11 +267,14 @@ def test_alerts_go_to_one_email_subscription(resources):
 # --- the parameters ---
 
 
-def test_parameters_are_the_four_and_only_the_switch_has_a_default(template):
-    """The User-Agent, the email and the ping URL are given at deploy; none of them is in the repo."""
+def test_parameters_are_the_eight_and_only_the_two_switches_have_defaults(template):
+    """The User-Agent, the email, the two ping URLs and the site's bucket and distribution are given at deploy;
+    none of them is in the repo."""
     parameters = template["Parameters"]
-    assert set(parameters) == {"UserAgent", "AlertEmail", "HealthcheckUrl", "ScheduleState"}
-    assert [name for name, parameter in parameters.items() if "Default" in parameter] == ["ScheduleState"]
+    assert set(parameters) == {"UserAgent", "AlertEmail", "HealthcheckUrl", "ScheduleState",
+                               "SiteBucketName", "SiteDistributionId", "BasketHealthcheckUrl", "BasketScheduleState"}
+    assert sorted(name for name, parameter in parameters.items() if "Default" in parameter) == [
+        "BasketScheduleState", "ScheduleState"]
 
 
 def test_schedules_start_switched_off(template):

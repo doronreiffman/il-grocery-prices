@@ -25,6 +25,29 @@ Parameters:
     Default: DISABLED
     AllowedValues: [ENABLED, DISABLED]
     Description: Start DISABLED to test the stack with manual runs; redeploy with ENABLED to go live.
+  SiteBucketName:
+    Type: String
+    Description: The site stack's bucket (its output SiteBucketName), where the basket run puts the pages and day files.
+    # The code refuses any other name too (basket.handler.SITE_BUCKET_PREFIX), so the archive bucket is
+    # never taken for the site's.
+    AllowedPattern: 'il-grocery-prices-site-sitebucket-.+'
+    ConstraintDescription: must be the site stack's bucket, il-grocery-prices-site-sitebucket-...
+  SiteDistributionId:
+    Type: String
+    Description: The site stack's CloudFront distribution (its output SiteDistributionId), invalidated after an upload.
+    AllowedPattern: 'E[A-Z0-9]+'
+    ConstraintDescription: must be a CloudFront distribution id, E and then capital letters and digits
+  BasketHealthcheckUrl:
+    Type: String
+    NoEcho: true
+    Description: healthchecks.io ping URL of the basket run's own check, e.g. https://hc-ping.com/<uuid>
+    AllowedPattern: 'https://hc-ping\.com/[-A-Za-z0-9_/]+'
+    ConstraintDescription: must be a healthchecks.io ping URL, https://hc-ping.com/...
+  BasketScheduleState:
+    Type: String
+    Default: DISABLED
+    AllowedValues: [ENABLED, DISABLED]
+    Description: The basket's six schedules, on or off apart from the collector's; start DISABLED and run the basket by hand first.
 
 Resources:
   ArchiveBucket:
@@ -291,8 +314,184 @@ Resources:
         - Protocol: email
           Endpoint: !Ref AlertEmail
 
+  BasketFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: basket.handler.handler
+      Runtime: python3.13
+      Architectures: [arm64]
+      # Left alone, DuckDB takes 80% of what it reads as the machine's memory, not the function's;
+      # DUCKDB_MEMORY_LIMIT below holds it under the 2 GB (src/basket/duck.py).
+      MemorySize: 2048
+      # Lambda's longest run; the schedules below are spaced by it.
+      Timeout: 900
+      # /tmp holds one chain's price files of the day, its table and DuckDB's spill folder.
+      EphemeralStorage: {Size: 2048}
+      # DuckDB, built by sam build from layer/; the function's own zip is src/ alone, so the record's
+      # code fingerprint is the one computed on the Mac.
+      Layers: [!Ref DuckDbLayer]
+      # Scheduler invokes asynchronously; Lambda would otherwise run a failed invocation twice more.
+      # The basket run's /fail ping is the alert, and a rerun is by hand.
+      EventInvokeConfig:
+        MaximumRetryAttempts: 0
+      LoggingConfig:
+        LogGroup: !Ref BasketLogs
+      Environment:
+        Variables:
+          BUCKET: !Ref ArchiveBucket
+          SITE_BUCKET: !Ref SiteBucketName
+          DISTRIBUTION_ID: !Ref SiteDistributionId
+          HEALTHCHECK_URL: !Ref BasketHealthcheckUrl
+          USER_AGENT: !Ref UserAgent
+          RETENTION_DAYS: "3650"
+          # Lambda's working directory, where DuckDB would put its temp folder, is read-only.
+          DUCKDB_TEMP_DIRECTORY: /tmp/duckdb
+          DUCKDB_MEMORY_LIMIT: 1200MB
+      Policies:
+        - Statement:
+            # The extractions read the day's price files and the basket run the tables, the store
+            # lists and the manifests; both look for the day's check record under checks/ first. A
+            # locked put of a record that S3 refuses is compared through head_object, which needs
+            # s3:GetObject.
+            - Sid: ReadArchive
+              Effect: Allow
+              Action: s3:GetObject
+              Resource:
+                - !Sub "${ArchiveBucket.Arn}/raw/*"
+                - !Sub "${ArchiveBucket.Arn}/manifests/*"
+                - !Sub "${ArchiveBucket.Arn}/checks/*"
+                - !Sub "${ArchiveBucket.Arn}/tables/*"
+                - !Sub "${ArchiveBucket.Arn}/basket/*"
+            # Each chain's table and report of the day: plain puts, replacing an earlier run's.
+            - Sid: WriteTables
+              Effect: Allow
+              Action: s3:PutObject
+              Resource: !Sub "${ArchiveBucket.Arn}/tables/*"
+            # The basket run's records: written once and locked, each put setting its own retain-until
+            # date, which needs s3:PutObjectRetention, as the collector's locked writes do.
+            - Sid: WriteOnceLockedRecords
+              Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:PutObjectRetention
+              Resource: !Sub "${ArchiveBucket.Arn}/basket/*"
+            # Lists a day's files and the check records; without it, S3 answers a missing table with
+            # 403 instead of 404.
+            - Sid: ListArchive
+              Effect: Allow
+              Action: s3:ListBucket
+              Resource: !GetAtt ArchiveBucket.Arn
+            # The site's published copy of the day, which the run's numbers are compared with.
+            - Sid: ReadPublishedDays
+              Effect: Allow
+              Action: s3:GetObject
+              Resource: !Sub "arn:aws:s3:::${SiteBucketName}/days/*"
+            # The two pages and the day files; nothing else in the site bucket.
+            - Sid: WriteSite
+              Effect: Allow
+              Action: s3:PutObject
+              Resource:
+                - !Sub "arn:aws:s3:::${SiteBucketName}/index.html"
+                - !Sub "arn:aws:s3:::${SiteBucketName}/method.html"
+                - !Sub "arn:aws:s3:::${SiteBucketName}/days/*"
+            # Finds the site's latest day; without it, S3 answers a day not yet published with 403
+            # instead of 404.
+            - Sid: ListSite
+              Effect: Allow
+              Action: s3:ListBucket
+              Resource: !Sub "arn:aws:s3:::${SiteBucketName}"
+            # One invalidation after an upload, of the site's distribution only.
+            - Sid: Invalidate
+              Effect: Allow
+              Action: cloudfront:CreateInvalidation
+              Resource: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${SiteDistributionId}"
+      # Israel time, as the collector's. The extractions read the archive bucket only and touch no
+      # portal, so the five share a minute. They start 15 minutes after the collector's check, by when
+      # it can have finished (Lambda's longest run), and the basket run 30 minutes after them: 15
+      # minutes after the last extraction can have finished, for its table's put and the schedulers'
+      # lag. Neither mode runs on a day without the check's record, so a late check fails the run
+      # rather than building on a partial morning. The switch is the basket's own, so the collector
+      # keeps running while step two is tested. No flexible window and no Scheduler retries.
+      Events:
+        ExtractShufersal:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(3 12 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "extract", "chain": "shufersal"}'
+            State: !Ref BasketScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        ExtractRamiLevy:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(3 12 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "extract", "chain": "ramilevy"}'
+            State: !Ref BasketScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        ExtractOsherAd:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(3 12 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "extract", "chain": "osherad"}'
+            State: !Ref BasketScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        ExtractCarrefour:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(3 12 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "extract", "chain": "carrefour"}'
+            State: !Ref BasketScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        ExtractYochananof:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(3 12 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "extract", "chain": "yochananof"}'
+            State: !Ref BasketScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        Basket:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(33 12 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "basket", "collected_by": "12:03"}'
+            State: !Ref BasketScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+  # Created before the function, as the collector's is, so the first run can't create
+  # /aws/lambda/<name> with no retention.
+  BasketLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/${AWS::StackName}/basket"
+      RetentionInDays: 30
+
+  # DuckDB for the basket function: sam build runs the target build-DuckDbLayer of layer/Makefile,
+  # which installs the hash-pinned wheel for Lambda's arm64 Linux.
+  DuckDbLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      ContentUri: layer/
+      CompatibleRuntimes: [python3.13]
+      CompatibleArchitectures: [arm64]
+      RetentionPolicy: Delete
+    Metadata:
+      BuildMethod: makefile
+
 Outputs:
   ArchiveBucketName:
     Value: !Ref ArchiveBucket
   CollectorFunctionName:
     Value: !Ref CollectorFunction
+  BasketFunctionName:
+    Value: !Ref BasketFunction
