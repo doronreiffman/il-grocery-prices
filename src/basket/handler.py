@@ -9,14 +9,17 @@ Every field is checked before anything is read. Then neither mode runs until the
 record for the day under `checks/date=<day>/` (MorningNotChecked): the check is the morning's last run, so its record
 shows that every chain's runs are over. Each run works in a folder of its own under `tmp_root` (`/tmp` in Lambda),
 `basket-` and a random suffix, and removes it when it ends, failed or not: a warm Lambda keeps `/tmp` from one
-invocation to the next. A run Lambda kills at its timeout never gets to remove its folder, so each run, before it
-makes its own, removes every `basket-*` folder under `tmp_root`: one invocation runs in an execution environment at a
-time, so such a folder is always an earlier run's.
+invocation to the next. A run Lambda kills at its timeout never gets to remove its folder, nor DuckDB its spill files,
+so each run, before it makes its own, removes every `basket-*` folder under `tmp_root`, and DuckDB's temp folder
+(DUCKDB_TEMP_DIRECTORY) when it holds anything: one invocation runs in an execution environment at a time, so what
+they hold is always an earlier run's. DuckDB's folder is swept only when it is a folder of its own under `tmp_root`.
+A removal that fails is logged as a warning and the run goes on.
 
 The extract mode fetches the chain's price files of the day from the archive bucket into the work folder, runs
 `basket.extract` over them as the Mac does, and puts the table and its report back under `tables/`, replacing an
-earlier run's. Its summary, logged as one JSON line and returned, counts the files read and passed over and the
-stores and rows in the table, and gives the extraction's own seconds (the fetch and the put left out).
+earlier run's. Its summary, logged as one JSON line and returned, counts the files read and passed over, the stores
+and rows in the table and the rows whose price could not be read, and gives the extraction's own seconds (the fetch
+and the put left out).
 
 The basket mode fetches each chain's table of the day (MissingTable, naming the chain and the table's key, when its
 extraction run did not run or did not finish), its store list and its manifests, and the site's published copy of the
@@ -39,7 +42,7 @@ never pings: a chain whose extraction failed shows in the basket run as a missin
 
 Environment: BUCKET (the archive bucket), SITE_BUCKET (the site stack's bucket: refused unless its name starts with
 SITE_BUCKET_PREFIX, so the archive bucket is never taken for it), DISTRIBUTION_ID, HEALTHCHECK_URL, USER_AGENT (each
-required), RETENTION_DAYS (default 3650).
+required), RETENTION_DAYS (default 3650), DUCKDB_TEMP_DIRECTORY (optional: the folder `basket.duck` gives DuckDB).
 """
 import json
 import logging
@@ -62,6 +65,7 @@ from basket.basket_file import DEFAULT_BASKET
 from basket.build import build_day
 from basket.chains import SLUGS
 from basket.check import check_site
+from basket.duck import TEMP_DIRECTORY_VAR
 from basket.extract import extract
 from basket.guard import guard_days
 from basket.rules import MissingTable
@@ -103,6 +107,7 @@ class Config:
     healthcheck_url: str
     user_agent: str
     retention_days: int
+    duckdb_temp_directory: Path | None = None  # DuckDB's temp folder, swept at run start; None when unset
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> "Config":
@@ -112,9 +117,11 @@ class Config:
         if not env["SITE_BUCKET"].startswith(SITE_BUCKET_PREFIX):
             raise ValueError(f"SITE_BUCKET must be the site stack's bucket, whose name starts with {SITE_BUCKET_PREFIX}, "
                              f"not {env['SITE_BUCKET']!r}")
+        spill = env.get(TEMP_DIRECTORY_VAR, "").strip()  # as basket.duck reads it
         return cls(bucket=env["BUCKET"], site_bucket=env["SITE_BUCKET"], distribution_id=env["DISTRIBUTION_ID"],
                    healthcheck_url=env["HEALTHCHECK_URL"], user_agent=check_user_agent(env["USER_AGENT"]),
-                   retention_days=int(env.get("RETENTION_DAYS", RETENTION_DAYS)))
+                   retention_days=int(env.get("RETENTION_DAYS", RETENTION_DAYS)),
+                   duckdb_temp_directory=Path(spill) if spill else None)
 
 
 @dataclass
@@ -170,7 +177,7 @@ def run(cfg: Config, event: dict, deps: Deps, now: datetime, tmp_root: Path) -> 
         if not deps.archive.day_checked(day):
             raise MorningNotChecked(f"the collector's check has not written its record for {day}: the morning is "
                                     f"not over, or the check failed (checks/date={day}/)")
-        _sweep(tmp_root)
+        _sweep(tmp_root, cfg.duckdb_temp_directory)
         work = Path(tempfile.mkdtemp(prefix="basket-", dir=tmp_root))
         try:
             if mode == "extract":
@@ -179,7 +186,7 @@ def run(cfg: Config, event: dict, deps: Deps, now: datetime, tmp_root: Path) -> 
                 summary = _basket(event, deps, now, work, day)
                 _ping(deps, cfg.healthcheck_url, "success", json.dumps(summary))
         finally:
-            shutil.rmtree(work, ignore_errors=True)
+            _remove(work)
     except Exception as err:
         if pings:
             _ping(deps, cfg.healthcheck_url, "fail", _cut(f"{type(err).__name__}: {err}", FAIL_BYTES))
@@ -193,14 +200,44 @@ def _cut(text: str, limit: int) -> str:
     return text.encode()[:limit].decode(errors="ignore")
 
 
-def _sweep(tmp_root: Path) -> None:
-    """Remove the `basket-*` folders under `tmp_root`: earlier runs' work folders, left by a run Lambda killed at
-    its timeout. How many, logged when there were any."""
+def _sweep(tmp_root: Path, spill: Path | None) -> None:
+    """Remove what runs Lambda killed at its timeout left: the `basket-*` folders under `tmp_root` (earlier runs' work
+    folders) and DuckDB's temp folder `spill` (its spill files). How many of each, logged when there were any."""
     stale = [path for path in tmp_root.glob("basket-*") if path.is_dir()]
     for path in stale:
-        shutil.rmtree(path, ignore_errors=True)
+        _remove(path)
     if stale:
         log.info("removed the work folders earlier runs left under %s: %d", tmp_root, len(stale))
+    if spill is not None and spill.is_dir():
+        _sweep_spill(tmp_root, spill)
+
+
+def _sweep_spill(tmp_root: Path, spill: Path) -> None:
+    """Remove DuckDB's temp folder `spill` when it holds anything (`basket.duck` makes it again when it next
+    connects), and say how many entries it held. Only a folder of its own strictly under `tmp_root`: the setting
+    names it, and a wrong one must not empty /tmp or anything outside it, so a link, `tmp_root` itself or a folder
+    elsewhere is left as it is, with a warning. A folder that cannot be listed is a warning too."""
+    if spill.is_symlink() or tmp_root.resolve() not in spill.resolve().parents:
+        log.warning("DuckDB's temp folder %s is not a folder of its own under %s: left as it is", spill, tmp_root)
+        return
+    try:
+        left = list(spill.iterdir())
+    except OSError as error:
+        log.warning("could not read DuckDB's temp folder %s: %s: %s", spill, type(error).__name__, error)
+        return
+    if left:
+        _remove(spill)
+        log.info("removed what earlier runs left in DuckDB's temp folder %s: %d", spill, len(left))
+
+
+def _remove(path: Path) -> None:
+    """Remove `path` and all it holds. What cannot be removed is left and logged as a warning, one a part, and the
+    run goes on: /tmp is the next run's to sweep, never a reason to fail this one."""
+    shutil.rmtree(path, onexc=_not_removed)
+
+
+def _not_removed(function, path, error: BaseException) -> None:
+    log.warning("could not remove %s: %s: %s", path, type(error).__name__, error)
 
 
 def _ping(deps: Deps, base: str, kind: str, message: str) -> None:
@@ -230,8 +267,8 @@ def _extract(slug: str, day: date, deps: Deps, now: datetime, work: Path) -> dic
     seconds = time.perf_counter() - started
     keys = deps.archive.put_table(slug, day, work / "tables")
     return {"mode": "extract", "chain": slug, "day": day.isoformat(), "run_id": run_id, "files": len(report.files),
-            "skipped": len(report.skipped), "stores": report.stores, "rows": report.rows, "seconds": round(seconds, 1),
-            "keys": keys}
+            "skipped": len(report.skipped), "stores": report.stores, "rows": report.rows,
+            "unreadable_prices": report.unreadable_prices, "seconds": round(seconds, 1), "keys": keys}
 
 
 def _basket(event: dict, deps: Deps, now: datetime, work: Path, day: date) -> dict:

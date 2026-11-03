@@ -11,6 +11,7 @@ import inspect
 import json
 import logging
 import re
+from dataclasses import replace
 from datetime import date, datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -145,6 +146,14 @@ def test_config_from_env_reads_the_five_and_the_retention():
     assert Config.from_env(ENV | {"RETENTION_DAYS": "30"}).retention_days == 30
 
 
+def test_config_reads_duckdbs_temp_folder_as_basket_duck_does():
+    """The folder the run sweeps is the one `basket.duck` gives DuckDB: the same variable, read without the spaces
+    around it, and none when unset or blank."""
+    assert CFG.duckdb_temp_directory is None
+    assert Config.from_env(ENV | {"DUCKDB_TEMP_DIRECTORY": " /tmp/duckdb "}).duckdb_temp_directory == Path("/tmp/duckdb")
+    assert Config.from_env(ENV | {"DUCKDB_TEMP_DIRECTORY": "  "}).duckdb_temp_directory is None
+
+
 @pytest.mark.parametrize("site_bucket", ["il-grocery-prices-archivebucket-0123456789ab",
                                          "il-grocery-prices-site-0123456789ab",
                                          "x-il-grocery-prices-site-sitebucket-0123456789ab"])
@@ -251,14 +260,15 @@ def test_extract_fetches_the_days_files_extracts_and_puts_the_table(data, tmp_ro
                              *[("get", raw_key(slug, DAY, price_file_name(slug, store))) for store in PRICES[slug]]]
     keys = [table_key(slug, DAY, name) for name in TABLE_FILES]
     assert summary == {"mode": "extract", "chain": slug, "day": "2026-01-01", "run_id": summary["run_id"], "files": 2,
-                       "skipped": 0, "stores": 2, "rows": ROWS[slug], "seconds": summary["seconds"], "keys": keys}
+                       "skipped": 0, "stores": 2, "rows": ROWS[slug], "unreadable_prices": 0,
+                       "seconds": summary["seconds"], "keys": keys}
     assert re.fullmatch(r"090000Z-extract-[0-9a-f]{4}", summary["run_id"])  # the run's start in UTC
     assert isinstance(summary["seconds"], float) and summary["seconds"] >= 0
     # the summary counts what the extraction's report says
     report = json.loads(archive.read_raw(keys[1]))
     assert report["files"] == [price_file_name(slug, store) for store in PRICES[slug]]
-    assert (summary["files"], summary["skipped"], summary["stores"], summary["rows"]) == (
-        len(report["files"]), len(report["skipped"]), report["stores"], report["rows"])
+    assert (summary["files"], summary["skipped"], summary["stores"], summary["rows"], summary["unreadable_prices"]) == (
+        len(report["files"]), len(report["skipped"]), report["stores"], report["rows"], report["unreadable_prices"])
     # the table holds the day's rows, and both files went up plain, replaceable by a re-run
     assert parquet_of(archive.read_raw(keys[0]), tmp_path / "read") == (TABLE_COLUMNS, ROWS[slug])
     assert {key: archive.objects[key].lock_mode for key in archive.objects if key.startswith("tables/")} == {
@@ -276,6 +286,14 @@ def test_extract_of_a_day_with_no_files_puts_an_empty_table(tmp_path, tmp_root):
     assert summary["keys"] == [table_key("osherad", DAY, name) for name in TABLE_FILES]
     assert parquet_of(archive.read_raw(summary["keys"][0]), tmp_path / "read") == (TABLE_COLUMNS, 0)
     assert json.loads(archive.read_raw(summary["keys"][1]))["rows"] == 0
+
+
+def test_the_extract_summary_counts_the_unreadable_prices(data, tmp_root):
+    """The rows whose price could not be read are in the table with no price; the summary says how many, as the
+    extraction's report and the basket record do, so the log shows them without opening the report."""
+    reprice(data, "ramilevy", "001", ("not a price", "4.90", "11.90"))
+    summary = run(CFG, {"mode": "extract", "chain": "ramilevy"}, deps_of(archive_from(data)), NOW, tmp_root)
+    assert (summary["rows"], summary["unreadable_prices"]) == (ROWS["ramilevy"], 1)
 
 
 def test_extract_leaves_tmp_root_empty(data, tmp_root, monkeypatch):
@@ -317,6 +335,112 @@ def test_a_stale_work_folder_from_an_earlier_run_is_gone_after_this_one(data, tm
     messages = [r.getMessage() for r in caplog.records if r.name == "basket.handler" and r.levelno == logging.INFO]
     assert messages[0] == f"removed the work folders earlier runs left under {tmp_root}: 1"
     assert len(messages) == 2  # the sweep's line, then the summary
+
+
+def test_what_duckdb_left_in_its_temp_folder_is_gone_before_the_run(data, tmp_root, monkeypatch, caplog):
+    """DuckDB spills to its temp folder above its memory limit and removes the files when it closes; a run Lambda
+    killed mid-spill leaves them, and a warm Lambda keeps /tmp. The next run removes the folder before it starts
+    (`basket.duck` makes it again) and says how many entries it held; an empty or missing folder passes unremarked."""
+    spill = tmp_root / "duckdb"
+    (spill / "nested").mkdir(parents=True)
+    (spill / "duckdb_temp_storage-0.tmp").write_bytes(b"spilled")
+    (spill / "nested" / "more.tmp").write_bytes(b"spilled")
+    seen = []
+
+    def extract_seen(*args):
+        seen.append(spill.exists())
+        return extract_module.extract(*args)
+
+    monkeypatch.setattr(handler_module, "extract", extract_seen)
+    cfg = replace(CFG, duckdb_temp_directory=spill)
+    with caplog.at_level(logging.INFO, logger="basket.handler"):
+        run(cfg, {"mode": "extract", "chain": "osherad"}, deps_of(archive_from(data)), NOW, tmp_root)
+    assert seen == [False] and not spill.exists()
+    messages = [r.getMessage() for r in caplog.records if r.name == "basket.handler" and r.levelno == logging.INFO]
+    assert messages[0] == f"removed what earlier runs left in DuckDB's temp folder {spill}: 2"
+    assert len(messages) == 2  # the sweep's line, then the summary
+
+    caplog.clear()
+    spill.mkdir()  # as basket.duck leaves it after a run that did not spill
+    with caplog.at_level(logging.INFO, logger="basket.handler"):
+        run(cfg, {"mode": "extract", "chain": "osherad"}, deps_of(archive_from(data)), NOW, tmp_root)
+        spill.rmdir()
+        run(cfg, {"mode": "extract", "chain": "osherad"}, deps_of(archive_from(data)), NOW, tmp_root)
+    assert [r.levelno for r in caplog.records if r.name == "basket.handler"] == [logging.INFO, logging.INFO]
+
+
+@pytest.mark.parametrize("where", ["elsewhere", "tmp_root", "a link"])
+def test_a_duckdb_folder_not_its_own_under_tmp_root_is_left_alone(data, tmp_root, tmp_path, caplog, where):
+    """The setting names the folder the sweep removes, so a wrong one must not empty /tmp or anything outside it:
+    a folder outside `tmp_root`, `tmp_root` itself or a link is left as it is, with a warning, and the run goes on."""
+    if where == "elsewhere":
+        spill = tmp_path / "elsewhere"
+        spill.mkdir()
+        kept = spill / "kept.tmp"
+    elif where == "tmp_root":
+        spill, kept = tmp_root, tmp_root / "kept.tmp"
+    else:
+        (tmp_root / "real").mkdir()
+        kept = tmp_root / "real" / "kept.tmp"
+        spill = tmp_root / "duckdb"
+        spill.symlink_to(tmp_root / "real", target_is_directory=True)
+    kept.write_bytes(b"kept")
+    cfg = replace(CFG, duckdb_temp_directory=spill)
+    with caplog.at_level(logging.INFO, logger="basket.handler"):
+        summary = run(cfg, {"mode": "extract", "chain": "osherad"}, deps_of(archive_from(data)), NOW, tmp_root)
+    assert summary["rows"] == ROWS["osherad"]
+    assert kept.read_bytes() == b"kept" and spill.exists()
+    warnings = [r.getMessage() for r in caplog.records if r.name == "basket.handler" and r.levelno == logging.WARNING]
+    assert warnings == [f"DuckDB's temp folder {spill} is not a folder of its own under {tmp_root}: left as it is"]
+
+
+def test_a_duckdb_folder_that_cannot_be_read_is_logged_and_the_run_stands(data, tmp_root, caplog):
+    """A folder whose entries cannot be listed is left as it is, with a warning naming it, and the run goes on, as
+    a failed removal does."""
+    spill = tmp_root / "duckdb"
+    spill.mkdir()
+    (spill / "spilled.tmp").write_bytes(b"spilled")
+    spill.chmod(0o000)  # its entries cannot be listed
+    cfg = replace(CFG, duckdb_temp_directory=spill)
+    try:
+        with caplog.at_level(logging.INFO, logger="basket.handler"):
+            summary = run(cfg, {"mode": "extract", "chain": "osherad"}, deps_of(archive_from(data)), NOW, tmp_root)
+    finally:
+        spill.chmod(0o700)
+    assert summary["rows"] == ROWS["osherad"]
+    assert (spill / "spilled.tmp").exists()
+    [warning] = [r.getMessage() for r in caplog.records if r.name == "basket.handler" and r.levelno == logging.WARNING]
+    assert warning.startswith(f"could not read DuckDB's temp folder {spill}: PermissionError: ")
+
+
+def test_a_folder_the_run_cannot_remove_is_logged_and_the_run_stands(data, tmp_root, monkeypatch, caplog):
+    """A removal that fails leaves what it could not remove and logs a warning naming it, rather than passing in
+    silence; the run's outcome stands. The next run's sweep tries again."""
+    locked = []
+
+    def extract_locking(raw, slug, day, tables):
+        report = extract_module.extract(raw, slug, day, tables)
+        folder = tables.parent / "locked"
+        folder.mkdir()
+        (folder / "kept.txt").write_text("kept")
+        folder.chmod(0o500)  # its entries cannot be removed
+        locked.append(folder)
+        return report
+
+    monkeypatch.setattr(handler_module, "extract", extract_locking)
+    try:
+        with caplog.at_level(logging.INFO, logger="basket.handler"):
+            summary = run(CFG, {"mode": "extract", "chain": "osherad"}, deps_of(archive_from(data)), NOW, tmp_root)
+    finally:
+        for folder in locked:
+            folder.chmod(0o700)
+    assert summary["rows"] == ROWS["osherad"]
+    [folder] = locked
+    warnings = [r.getMessage() for r in caplog.records if r.name == "basket.handler" and r.levelno == logging.WARNING]
+    assert warnings and all(message.startswith("could not remove ") for message in warnings)
+    assert warnings[0].startswith(f"could not remove {folder / 'kept.txt'}: PermissionError: ")
+    assert (folder / "kept.txt").exists()
+    assert json.loads([r.getMessage() for r in caplog.records if r.levelno == logging.INFO][-1]) == summary
 
 
 # ---- logging ----

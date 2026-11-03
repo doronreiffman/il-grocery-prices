@@ -129,6 +129,15 @@ def test_fetch_store_list_stops_after_fourteen_days(archive, tmp_path):
     assert day_store_list(tmp_path / "raw", SLUG, DAY) == (b"thirteen days back", days_back(13))
 
 
+def test_fetch_store_list_reads_a_name_in_any_case_as_the_mac_does(archive, tmp_path):
+    """The Mac's build reads a published name in any case (`basket.stores.is_store_list`); an S3 prefix matches in
+    one case only, so the fetch lists the day's whole folder and reads each name as the Mac does."""
+    stored(archive, DAY, stores_name(DAY).lower(), b"named in lower case")
+    stored(archive, DAY, PRICE, b"a price file")
+    assert archive.fetch_store_list(SLUG, DAY, tmp_path / "raw") == DAY
+    assert day_store_list(tmp_path / "raw", SLUG, DAY) == (b"named in lower case", DAY)
+
+
 def test_fetch_manifests_takes_the_chains_only(archive, tmp_path):
     archive.put_record(manifest_key(DAY, SLUG, "063000Z-main-ab12"), b'{"run": 1}', NOW)
     archive.put_record(manifest_key(DAY, SLUG, "093000Z-retry-cd34"), b'{"run": 2}', NOW)

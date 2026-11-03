@@ -487,6 +487,7 @@ Resources:
       RetentionPolicy: Delete
     Metadata:
       BuildMethod: makefile
+      BuildArchitecture: arm64
 
 Outputs:
   ArchiveBucketName:

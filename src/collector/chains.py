@@ -38,7 +38,7 @@ NCR_URL = "https://url.publishedprices.co.il"
 # Shufersal's listing pages took 23 to 28 s each from il-central-1 on 2026-11-01 (7 to 9 s from the Mac
 # on 2026-10-31), and 30 s cut two runs short: it gets 60. At that speed its update files, which come
 # out every hour, never finish in a morning: Shufersal collects its store list and full files only, and
-# the update files wait for a polling run (owner, 2026-11-01; .claude/DECISIONS.md).
+# the update files wait for a polling run (owner, 2026-11-01).
 CHAINS: dict[str, Chain] = {chain.slug: chain for chain in (
     Chain("shufersal", "Shufersal", "shufersal", "https://prices.shufersal.co.il", timeout=60.0,
           kinds=("Stores", "PriceFull", "PromoFull")),

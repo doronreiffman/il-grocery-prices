@@ -324,13 +324,15 @@ def test_extraction_starts_after_the_collectors_check_can_have_finished(basket_s
 
 def test_layer_is_built_by_the_makefile_for_python_313_arm64(resources):
     """SAM builds a layer whose Metadata says makefile by running the target build-<LogicalId> of the Makefile
-    under its ContentUri."""
+    under its ContentUri. BuildArchitecture tells `sam build` the layer is arm64's, as the function is; without it
+    the build reads the layer as x86_64 and warns, though the Makefile installs the arm64 wheel either way
+    (https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/building-layers.html)."""
     layer = resources["DuckDbLayer"]
     assert layer["Type"] == "AWS::Serverless::LayerVersion"
     assert layer["Properties"] == {"ContentUri": "layer/", "CompatibleRuntimes": ["python3.13"],
                                    "CompatibleArchitectures": ["arm64"], "RetentionPolicy": "Delete"}
-    assert layer["Metadata"] == {"BuildMethod": "makefile"}
-    assert (LAYER / "Makefile").read_text().splitlines()[0] == "build-DuckDbLayer:"
+    assert layer["Metadata"] == {"BuildMethod": "makefile", "BuildArchitecture": "arm64"}
+    assert recipe((LAYER / "Makefile").read_text(), "build-DuckDbLayer"), "the Makefile has no recipe for the target"
 
 
 def test_layer_pins_duckdb_by_version_and_hash():
@@ -340,13 +342,37 @@ def test_layer_pins_duckdb_by_version_and_hash():
     assert dev == [lines[0].split()[0]], "the layer and the tests must run the same DuckDB"
 
 
+def recipe(makefile: str, target: str) -> list[str]:
+    """The command lines of `target`'s recipe in `makefile`, each without its leading tab: the tab-started lines after
+    the line `target:`, up to the first line that is neither one, a blank line nor a comment. Comments and blank
+    lines are left out, so the Makefile can be explained in place."""
+    lines = makefile.splitlines()
+    if f"{target}:" not in lines:
+        return []
+    commands = []
+    for line in lines[lines.index(f"{target}:") + 1:]:
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if not line.startswith("\t"):
+            break
+        commands.append(line[1:])
+    return commands
+
+
+def test_recipe_reads_the_targets_commands_past_comments_and_blank_lines():
+    makefile = ("# DuckDB for Lambda\n\nother:\n\techo other\n\nbuild-DuckDbLayer:\n\t# the arm64 wheel\n"
+                "\tpython3 -m pip install x\n\n\tcp a b\nnext:\n\techo next\n")
+    assert recipe(makefile, "build-DuckDbLayer") == ["python3 -m pip install x", "cp a b"]
+    assert recipe(makefile, "missing") == []
+    assert recipe("build-DuckDbLayer:\n    pip install x\n", "build-DuckDbLayer") == []  # spaces are no recipe
+
+
 def test_layer_makefile_builds_for_lambdas_arm64_linux():
-    lines = (LAYER / "Makefile").read_text().splitlines()
-    assert lines[0] == "build-DuckDbLayer:"
-    [command] = lines[1:]
-    assert command.startswith("\t"), "a recipe line starts with a tab"
+    """Pins the build's rules, not the file's shape: one pip install, for Lambda's arm64 Linux and Python 3.13,
+    binary wheels only, the hash-pinned requirements alone, into the folder SAM packs."""
+    [command] = recipe((LAYER / "Makefile").read_text(), "build-DuckDbLayer")
     for flag in ("--platform manylinux_2_28_aarch64", "--python-version 3.13", "--only-binary=:all:",
-                 "--require-hashes", "--implementation cp", '"$(ARTIFACTS_DIR)/python"'):
+                 "--require-hashes", "--no-deps", "--implementation cp", '"$(ARTIFACTS_DIR)/python"'):
         assert flag in command, flag
 
 

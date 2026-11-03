@@ -36,6 +36,17 @@ def test_a_temp_directory_not_there_yet_is_created(tmp_path):
     assert [path.name for path in folder.iterdir()] == ["spill.tmp"]
 
 
+def test_a_temp_directory_is_read_without_the_spaces_around_it(monkeypatch, tmp_path):
+    """The value counts as unset when only spaces, so it is read without them when set: the folder made and the one
+    DuckDB is given are the one the basket handler sweeps (`basket.handler.Config`)."""
+    monkeypatch.chdir(tmp_path)  # a path read with its spaces would be relative, and made here
+    folder = tmp_path / "duck"
+    con = connect({TEMP_DIRECTORY_VAR: f"  {folder}  "})
+    assert folder.is_dir()
+    assert con.execute("SELECT current_setting('temp_directory')").fetchone()[0] == str(folder)
+    assert [path.name for path in tmp_path.iterdir()] == ["duck"]
+
+
 def test_no_argument_reads_the_process_environment(monkeypatch, tmp_path):
     """The Lambda calls connect() bare: the variables it sets in the function's configuration are the process's."""
     monkeypatch.setenv(TEMP_DIRECTORY_VAR, str(tmp_path / "duck"))
@@ -45,9 +56,11 @@ def test_no_argument_reads_the_process_environment(monkeypatch, tmp_path):
     assert con.execute("SELECT current_setting('memory_limit')").fetchone()[0] == "95.3 MiB"
 
 
-def test_blank_values_count_as_unset():
+def test_blank_values_count_as_unset(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)  # a blank read as a folder would be made here, not in the repo
     con = connect({TEMP_DIRECTORY_VAR: " ", MEMORY_LIMIT_VAR: ""})
     assert con.execute("SELECT current_setting('temp_directory')").fetchone()[0] == ".tmp"
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_extract_and_rules_connect_through_duck(monkeypatch, tmp_path):

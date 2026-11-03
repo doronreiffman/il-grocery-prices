@@ -22,7 +22,8 @@ Which files. The day's price files are the `PriceFull` files under `raw/chain=<s
 name says that kind and that day (B1, as `basket.extract.day_files` reads them); a conflict copy counts by
 its published name and is fetched under its stored name. Every one is fetched: `day_files` then takes each
 store's latest from the work folder, as on the Mac. The store list is the greatest name of the day that
-`basket.stores.is_store_list` accepts (B2), else that of each earlier day in turn, back to 13 days before
+`basket.stores.is_store_list` accepts (B2), read from a list of the day's whole folder (an S3 prefix matches in one
+case only, and that parse reads a name in any case), else that of each earlier day in turn, back to 13 days before
 the day: S3 has no cheap "latest folder before", and a chain with no store list for two weeks is the
 collector's problem, which the build refuses as NoStoreList. A table is fetched whole or not at all.
 
@@ -97,7 +98,8 @@ class _Archive:
         `basket.stores.day_store_list` finds it; the day it is from, or None when none of those days has one."""
         for back in range(STORE_LIST_LOOKBACK_DAYS):
             listed_day = day - timedelta(days=back)
-            names = [name for name in map(_stored_name, self._keys(raw_key(slug, listed_day, "Stores")))
+            # the whole folder: a prefix matches in one case only, and the Mac's parse reads a name in any case
+            names = [name for name in map(_stored_name, self._keys(raw_key(slug, listed_day, "")))
                      if is_store_list(name, listed_day)]
             if names:
                 name = max(names)
