@@ -70,6 +70,7 @@ CHECK_BASKET = ("src/basket/check.py", ["tests/test_basket_check.py"])
 BUILD = ("src/basket/build.py", ["tests/test_build.py"])
 GUARD = ("src/basket/guard.py", ["tests/test_guard.py"])
 ARCHIVE = ("src/basket/archive.py", ["tests/test_archive.py"])
+SITE = ("src/basket/site.py", ["tests/test_site.py"])
 CANDIDATES_MAIN = ("src/basket/candidates.py", ["tests/test_candidates.py::test_main_counts_only_the_included_stores_and_writes_the_day_s_table"])
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
@@ -928,6 +929,30 @@ MUTATIONS = {
     "archive a delete before a table put": (ARCHIVE, "            self._put_plain(key, (folder / name).read_bytes(), _CONTENT_TYPES[name])\n",
                                             '            getattr(self, "client", None) and self.client.delete_object(Bucket=self.bucket, Key=key)\n            self._put_plain(key, (folder / name).read_bytes(), _CONTENT_TYPES[name])\n'),
     "archive record put plain": (ARCHIVE, "self.put_record(key, body, now)", 'self._put_plain(key, body, "application/json")'),
+    # basket: site (step two)
+    "site day file always put": (SITE, "        if with_day:\n", "        if True:\n"),
+    "site pages always put": (SITE, "        if with_pages:\n", "        if True:\n"),
+    "site S3 put without cache control": (SITE, ", CacheControl=cache_control)", ")"),
+    "site upload without cache control": (SITE, "content_type, CACHE_CONTROL)", 'content_type, "")'),
+    "site invalidates the index page only": (SITE, '"Items": ["/*"]', '"Items": ["/index.html"]'),
+    "site latest day the smallest": (SITE, "return max(days, default=None)", "return min(days, default=None)"),
+    "site cache control not publish.sh's": (SITE, 'CACHE_CONTROL = "max-age=300"', 'CACHE_CONTROL = "max-age=3000"'),
+    "site day file under another key": (SITE, 'return f"days/{day.isoformat()}.json"', 'return f"day/{day.isoformat()}.json"'),
+    "site pages put as JSON": (SITE, "files += [(name, HTML) for name in PAGES]", "files += [(name, JSON) for name in PAGES]"),
+    "site day file put as HTML": (SITE, "files.append((day_key(day), JSON))", "files.append((day_key(day), HTML))"),
+    "site day file put before the pages": (SITE, "        if with_pages:\n            files += [(name, HTML) for name in PAGES]\n        if with_day:\n            files.append((day_key(day), JSON))\n",
+                                           "        if with_day:\n            files.append((day_key(day), JSON))\n        if with_pages:\n            files += [(name, HTML) for name in PAGES]\n"),
+    "site puts before every file is found": (SITE, "            if not (site_dir / key).is_file():\n", "            if False:\n"),
+    "site key with more after .json read as a day": (SITE, r'\.json$")', r'\.json")'),
+    "site impossible date stops the latest day": (SITE, "except ValueError:", "except TypeError:"),
+    "site bare 404 read as an error": (SITE, "if _code(err) in MISSING:", 'if _code(err) == "NoSuchKey":'),
+    "site read error hidden": (SITE, "if _code(err) in MISSING:", "if True:"),
+    "site listing stops at the first page": (SITE, 'for page in self.s3.get_paginator("list_objects_v2").paginate(Bucket=self.bucket, Prefix=prefix):',
+                                             "for page in [self.s3.list_objects_v2(Bucket=self.bucket, Prefix=prefix)]:"),
+    "site invalidation under a fixed reference": (SITE, '"CallerReference": reference}', '"CallerReference": "basket"}'),
+    "site invalidation id not CloudFront's": (SITE, 'return answer["Invalidation"]["Id"]', "return reference"),
+    "site a delete before a put": (SITE, "        self.s3.put_object(Bucket=self.bucket, Key=key, Body=body, ContentType=content_type, CacheControl=cache_control)\n",
+                                   "        self.s3.delete_object(Bucket=self.bucket, Key=key)\n        self.s3.put_object(Bucket=self.bucket, Key=key, Body=body, ContentType=content_type, CacheControl=cache_control)\n"),
 }
 
 
