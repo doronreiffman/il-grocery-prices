@@ -30,10 +30,11 @@ day, the run id, the headline, whether the day was unchanged, whether the pages 
 invalidation's id and the record's key.
 
 The basket mode reports to healthchecks.io: `/start` before it looks for the check record; then the plain URL with
-the run's summary when the run succeeds, or `/fail` with the error's name and text, its first 100,000 characters,
-when anything fails, MorningNotChecked included. An event refused as bad (ValueError) sends no ping. A ping that fails
-is logged as a warning naming its kind (start, success or fail) and the run goes on: its outcome never hangs on
-healthchecks.io. The ping URL is a secret: no part of it reaches the log, the error's text included. The extract mode
+the run's summary when the run succeeds, or `/fail` with the error's name and text when anything fails,
+MorningNotChecked included. The /fail body is cut to its first 100,000 bytes of UTF-8, since healthchecks.io keeps the
+first 100 kB of a body; a character the cut would split is dropped. An event refused as bad (ValueError) sends no ping.
+A ping that fails is logged as a warning naming its kind (start, success or fail) and the run goes on: its outcome
+never hangs on healthchecks.io. The ping URL is a secret: no part of it reaches the log, the error's text included. The extract mode
 never pings: a chain whose extraction failed shows in the basket run as a missing table.
 
 Environment: BUCKET (the archive bucket), SITE_BUCKET (the site stack's bucket: refused unless its name starts with
@@ -82,7 +83,7 @@ ISRAEL = ZoneInfo("Asia/Jerusalem")
 CLOCK = re.compile(r"^[0-2][0-9]:[0-5][0-9]$")
 BASKET_FILE = DEFAULT_BASKET  # read at call time, as MIN_ITEMS is: the tests give the golden day's own
 MIN_ITEMS = 25  # the fewest items the basket may hold, as the hand build's default
-FAIL_CHARS = 100_000  # a /fail ping's body: the error's name and text, cut to this many characters
+FAIL_BYTES = 100_000  # a /fail ping's body: the error's name and text, cut to this many bytes of UTF-8
 PING_PATHS = {"start": "/start", "success": "", "fail": "/fail"}  # each ping's kind and its path after the URL
 
 
@@ -181,10 +182,15 @@ def run(cfg: Config, event: dict, deps: Deps, now: datetime, tmp_root: Path) -> 
             shutil.rmtree(work, ignore_errors=True)
     except Exception as err:
         if pings:
-            _ping(deps, cfg.healthcheck_url, "fail", f"{type(err).__name__}: {err}"[:FAIL_CHARS])
+            _ping(deps, cfg.healthcheck_url, "fail", _cut(f"{type(err).__name__}: {err}", FAIL_BYTES))
         raise
     log.info(json.dumps(summary, sort_keys=True))
     return summary
+
+
+def _cut(text: str, limit: int) -> str:
+    """`text` cut to its first `limit` bytes of UTF-8, less a character the cut would split."""
+    return text.encode()[:limit].decode(errors="ignore")
 
 
 def _sweep(tmp_root: Path) -> None:

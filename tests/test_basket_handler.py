@@ -503,13 +503,13 @@ def test_site_check_failure_uploads_nothing(morning, tmp_root, monkeypatch):
 
 def test_guard_failure_uploads_nothing(morning, tmp_root, monkeypatch):
     """The guard is given the built day file and the site's published copy; the first run's guard is the real one,
-    the second's finds a problem."""
+    the second's finds a problem, in a text of Hebrew letters (two bytes each in UTF-8) too long for the ping."""
     seen = []
 
     def guard(local_days, published_days):
         seen.append({name: {path.name: path.read_bytes() for path in folder.iterdir()}
                      for name, folder in (("local", local_days), ("published", published_days))})
-        return guard_days(local_days, published_days) if len(seen) == 1 else ["days/2026-01-01.json: " + "x" * 200_000]
+        return guard_days(local_days, published_days) if len(seen) == 1 else ["days/2026-01-01.json: " + "א" * 200_000]
 
     monkeypatch.setattr(handler_module, "guard_days", guard)
     deps = deps_of(morning)
@@ -520,13 +520,16 @@ def test_guard_failure_uploads_nothing(morning, tmp_root, monkeypatch):
     deps.ping.calls.clear()
     with pytest.raises(SiteCheckFailed) as raised:
         run(CFG, BASKET_EVENT, deps, AGAIN, tmp_root)
-    assert str(raised.value).startswith("the published-day guard failed:\ndays/2026-01-01.json: xxx")
+    assert str(raised.value).startswith("the published-day guard failed:\ndays/2026-01-01.json: אאא")
     assert seen[1] == {"local": {"2026-01-01.json": published}, "published": {"2026-01-01.json": published}}
     assert deps.site.objects == site and deps.site.invalidations == [first["run_id"]]
     assert len(records_of(morning)) == 2
     assert pinged(deps) == [f"{URL}/start", f"{URL}/fail"]
     body = deps.ping.calls[1][1]
-    assert body.startswith("SiteCheckFailed: the published-day guard failed:\n") and len(body) == 100_000  # cut
+    # cut to healthchecks.io's 100 kB by bytes, the ASCII head's 71 leaving an odd count for the two-byte letters: the
+    # half letter at the cut is dropped, never sent broken
+    assert body.startswith("SiteCheckFailed: the published-day guard failed:\n")
+    assert f"SiteCheckFailed: {raised.value}".startswith(body) and len(body.encode()) == 99_999
 
 
 def test_collected_by_is_required_and_a_clock(morning, tmp_root):
