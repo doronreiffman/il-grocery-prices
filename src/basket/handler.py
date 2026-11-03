@@ -29,8 +29,9 @@ invalidation's id and the record's key.
 The basket mode reports to healthchecks.io: `/start` before it looks for the check record; then the plain URL with
 the run's summary when the run succeeds, or `/fail` with the error's name and text, its first 100,000 characters,
 when anything fails, MorningNotChecked included. An event refused as bad (ValueError) sends no ping. A ping that fails
-is logged as a warning and the run goes on: its outcome never hangs on healthchecks.io. The extract mode never pings:
-a chain whose extraction failed shows in the basket run as a missing table.
+is logged as a warning naming its kind (start, success or fail) and the run goes on: its outcome never hangs on
+healthchecks.io. The ping URL is a secret: no part of it reaches the log, the error's text included. The extract mode
+never pings: a chain whose extraction failed shows in the basket run as a missing table.
 
 Environment: BUCKET (the archive bucket), SITE_BUCKET (the site stack's bucket: refused unless its name starts with
 SITE_BUCKET_PREFIX, so the archive bucket is never taken for it), DISTRIBUTION_ID, HEALTHCHECK_URL, USER_AGENT (each
@@ -49,6 +50,7 @@ from datetime import date, datetime, timezone
 from functools import partial
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 from basket.archive import S3Archive, table_key
@@ -78,6 +80,7 @@ CLOCK = re.compile(r"^[0-2][0-9]:[0-5][0-9]$")
 BASKET_FILE = DEFAULT_BASKET  # read at call time, as MIN_ITEMS is: the tests give the golden day's own
 MIN_ITEMS = 25  # the fewest items the basket may hold, as the hand build's default
 FAIL_CHARS = 100_000  # a /fail ping's body: the error's name and text, cut to this many characters
+PING_PATHS = {"start": "/start", "success": "", "fail": "/fail"}  # each ping's kind and its path after the URL
 
 
 class MorningNotChecked(Exception):
@@ -158,7 +161,7 @@ def run(cfg: Config, event: dict, deps: Deps, now: datetime, tmp_root: Path) -> 
     day = event_day(event, now)
     pings = mode == "basket"  # the extract mode never pings
     if pings:
-        _ping(deps, f"{cfg.healthcheck_url}/start", "")
+        _ping(deps, cfg.healthcheck_url, "start", "")
     try:
         if not deps.archive.day_checked(day):
             raise MorningNotChecked(f"the collector's check has not written its record for {day}: the morning is "
@@ -169,24 +172,34 @@ def run(cfg: Config, event: dict, deps: Deps, now: datetime, tmp_root: Path) -> 
                 summary = _extract(event["chain"], day, deps, now, work)
             else:
                 summary = _basket(event, deps, now, work, day)
-                _ping(deps, cfg.healthcheck_url, json.dumps(summary))
+                _ping(deps, cfg.healthcheck_url, "success", json.dumps(summary))
         finally:
             shutil.rmtree(work, ignore_errors=True)
     except Exception as err:
         if pings:
-            _ping(deps, f"{cfg.healthcheck_url}/fail", f"{type(err).__name__}: {err}"[:FAIL_CHARS])
+            _ping(deps, cfg.healthcheck_url, "fail", f"{type(err).__name__}: {err}"[:FAIL_CHARS])
         raise
     log.info(json.dumps(summary, sort_keys=True))
     return summary
 
 
-def _ping(deps: Deps, url: str, message: str) -> None:
-    """Ping healthchecks.io; a failure is logged with the URL's last path segment, never raised."""
+def _ping(deps: Deps, base: str, kind: str, message: str) -> None:
+    """Ping healthchecks.io at `base` and the path of the ping's kind (PING_PATHS). A failure is logged by the kind,
+    with the URL masked out of the error's text, and never raised."""
     try:
-        deps.ping(url, message)
+        deps.ping(base + PING_PATHS[kind], message)
     except Exception as exc:  # healthchecks.io down or slow: the run's outcome stands
-        log.warning("health-check ping /%s failed: %s: %s", url.rstrip("/").rsplit("/", 1)[-1], type(exc).__name__,
-                    exc)
+        log.warning("the %s ping to healthchecks.io failed: %s: %s", kind, type(exc).__name__, _masked(str(exc), base))
+
+
+def _masked(text: str, url: str) -> str:
+    """`text` with the URL, its host and each segment of its path replaced by "<hidden>"; an error's text can quote
+    the URL it failed on, and the ping URL is a secret."""
+    parts = urlsplit(url)
+    for secret in (url, parts.netloc, *parts.path.split("/")):
+        if secret:
+            text = text.replace(secret, "<hidden>")
+    return text
 
 
 def _extract(slug: str, day: date, deps: Deps, now: datetime, work: Path) -> dict:

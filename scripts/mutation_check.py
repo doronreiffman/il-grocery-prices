@@ -986,15 +986,15 @@ MUTATIONS = {
                                                        "    except ZeroDivisionError:\n        raise\n    if True:\n"),
     "basket handler an unchanged day file uploaded again": (BASKET_HANDLER, "with_day=not outcome.unchanged", "with_day=True"),
     "basket handler pages uploaded for a day before the site's latest": (BASKET_HANDLER, "day >= latest", "day <= latest"),
-    "basket handler no /fail ping": (BASKET_HANDLER, '            _ping(deps, f"{cfg.healthcheck_url}/fail", f"{type(err).__name__}: {err}"[:FAIL_CHARS])\n', "            pass\n"),
+    "basket handler no /fail ping": (BASKET_HANDLER, '            _ping(deps, cfg.healthcheck_url, "fail", f"{type(err).__name__}: {err}"[:FAIL_CHARS])\n', "            pass\n"),
     "basket handler a missing table passed over": (BASKET_HANDLER, "                raise MissingTable(f\"no table for chain {slug!r} on {day}: its extraction run did not run or did not \"\n"
                                                                    "                                   f\"finish ({table_key(slug, day, 'prices.parquet')})\")\n",
                                                    "                continue\n"),
-    "basket handler no /start ping": (BASKET_HANDLER, '        _ping(deps, f"{cfg.healthcheck_url}/start", "")\n', "        pass\n"),
+    "basket handler no /start ping": (BASKET_HANDLER, '        _ping(deps, cfg.healthcheck_url, "start", "")\n', "        pass\n"),
     "basket handler a day without a check record not pinged as a failure": (BASKET_HANDLER, "    except Exception as err:\n        if pings:\n",
                                                                             "    except Exception as err:\n        if pings and not isinstance(err, MorningNotChecked):\n"),
     "basket handler the extract mode pings": (BASKET_HANDLER, '    pings = mode == "basket"  # the extract mode never pings\n', "    pings = True\n"),
-    "basket handler no success ping": (BASKET_HANDLER, "                _ping(deps, cfg.healthcheck_url, json.dumps(summary))\n", "                pass\n"),
+    "basket handler no success ping": (BASKET_HANDLER, '                _ping(deps, cfg.healthcheck_url, "success", json.dumps(summary))\n', "                pass\n"),
     "basket handler a failing ping raised": (BASKET_HANDLER, "    except Exception as exc:  # healthchecks.io down or slow: the run's outcome stands\n", "    except ZeroDivisionError as exc:\n"),
     "basket handler site not checked": (BASKET_HANDLER, "        problems = check_site(site)\n", "        problems = []\n"),
     "basket handler days not guarded": (BASKET_HANDLER, '        problems = guard_days(site / "days", published / "days")\n', "        problems = []\n"),
@@ -1004,6 +1004,10 @@ MUTATIONS = {
     "basket handler collected_by not the event's": (BASKET_HANDLER, 'collected_by=event["collected_by"]', "collected_by=None"),
     "basket handler /fail body not cut": (BASKET_HANDLER, "[:FAIL_CHARS]", ""),
     "basket handler item floor lowered": (BASKET_HANDLER, "MIN_ITEMS = 25  #", "MIN_ITEMS = 1  #"),
+    "basket handler a failed ping logged by its URL": (BASKET_HANDLER, 'failed: %s: %s", kind, type(exc).__name__', 'failed: %s: %s", base + PING_PATHS[kind], type(exc).__name__'),
+    "basket handler a failed ping's error text logged unmasked": (BASKET_HANDLER, "_masked(str(exc), base))", "exc)"),
+    "basket handler the ping's id left in an error's text": (BASKET_HANDLER, "(url, parts.netloc, *parts.path.split(\"/\"))", "(url, parts.netloc)"),
+    "basket handler the ping's host left in an error's text": (BASKET_HANDLER, "(url, parts.netloc, *parts.path.split(\"/\"))", "(url, *parts.path.split(\"/\"))"),
 }
 
 

@@ -533,23 +533,27 @@ def test_a_day_without_a_check_record_pings_fail(morning, tmp_root):
 
 
 def test_a_failing_ping_is_logged_not_raised(morning, tmp_root, caplog):
-    deps = Deps(archive=morning, site=MemorySite(), ping=Recorder(raises=OSError("healthchecks.io is down")))
-    with caplog.at_level(logging.WARNING, logger="basket.handler"):
+    """Each failed ping is logged by its kind; the ping URL is a secret, and no part of it reaches the log, though the
+    error's own text quotes it."""
+    error = OSError(f"{URL}/start: no answer from hc-ping.example for check 0000-test")
+    deps = Deps(archive=morning, site=MemorySite(), ping=Recorder(raises=error))
+    hidden = "OSError: <hidden>/start: no answer from <hidden> for check <hidden>"
+    with caplog.at_level(logging.INFO, logger="basket.handler"):
         summary = run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
     assert summary["uploaded"] == PUBLISHED and sorted(deps.site.objects) == sorted(PUBLISHED)
     assert pinged(deps) == [f"{URL}/start", URL]
     warnings = [(r.levelno, r.getMessage()) for r in caplog.records if r.levelno >= logging.WARNING]
-    assert warnings == [(logging.WARNING, "health-check ping /start failed: OSError: healthchecks.io is down"),
-                        (logging.WARNING, "health-check ping /0000-test failed: OSError: healthchecks.io is down")]
+    assert warnings == [(logging.WARNING, f"the start ping to healthchecks.io failed: {hidden}"),
+                        (logging.WARNING, f"the success ping to healthchecks.io failed: {hidden}")]
     # a failing /fail ping leaves the run's own error to be raised
-    caplog.clear()
     for name in TABLE_FILES:
         del morning.objects[table_key("osherad", DAY, name)]
-    with caplog.at_level(logging.WARNING, logger="basket.handler"), pytest.raises(MissingTable):
+    with caplog.at_level(logging.INFO, logger="basket.handler"), pytest.raises(MissingTable):
         run(CFG, BASKET_EVENT, deps, AGAIN, tmp_root)
-    assert [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING] == [
-        "health-check ping /start failed: OSError: healthchecks.io is down",
-        "health-check ping /fail failed: OSError: healthchecks.io is down"]
+    assert [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING][2:] == [
+        f"the start ping to healthchecks.io failed: {hidden}", f"the fail ping to healthchecks.io failed: {hidden}"]
+    for part in ("0000-test", "hc-ping.example", URL):  # the check's id, the host, the URL: none is logged
+        assert part not in caplog.text
 
 
 def test_work_folder_is_removed_after_success_and_after_failure(morning, tmp_root, monkeypatch):
