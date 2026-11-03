@@ -314,7 +314,7 @@ Logs go to the log group `/il-grocery-prices/basket`, kept 30 days. A run ends w
 
 ### Sizing
 
-The function has 2,048 MB of memory, 2,048 MB of `/tmp` and 900 s. DuckDB's temp folder is `/tmp/duckdb` and its memory limit 1,200 MB, both set in the function's environment (`DUCKDB_TEMP_DIRECTORY`, `DUCKDB_MEMORY_LIMIT`). `/tmp` holds one chain's price files of the day, the temporary CSV its rows go through, its table and DuckDB's spill folder. On the Mac, Shufersal's extraction, the largest, took 93.9 s and 937 MB at its peak ("Measured on 2026-11-02", above), and its temporary CSV comes to about 480 MB (205 bytes a row, measured 2026-11-03 on Osher Ad's and Yochananof's rows).
+The function has 2,048 MB of memory, 2,048 MB of `/tmp` and 900 s. DuckDB's temp folder is `/tmp/duckdb` and its memory limit 1,200 MB, both set in the function's environment (`DUCKDB_TEMP_DIRECTORY`, `DUCKDB_MEMORY_LIMIT`). `/tmp` holds one chain's price files of the day, the temporary CSV its rows go through, its table and DuckDB's spill folder. On the Mac, Shufersal's extraction, the largest, took 93.9 s and 937 MB at its peak ("Measured on 2026-11-02", above), and its temporary CSV comes to about 480 MB at about 200 bytes a row, about 650 MB of `/tmp` with the day's raw files and the table (`docs/headline-basket-step-two-plan.md`, "Deviations", the first entry).
 
 In Lambda, measured on the first run: …
 
