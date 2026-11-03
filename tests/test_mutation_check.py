@@ -52,17 +52,19 @@ def test_main_reports_each_mutation_by_pytests_exit_and_restores_the_file(check,
     rule.write_text("LIMIT = 0\n")
     seen = []
     monkeypatch.setattr(check, "ROOT", tmp_path)
-    monkeypatch.setattr(check, "MUTATIONS", mutations(caught=1, missed=0, renamed=4, unimportable=2))
+    monkeypatch.setattr(check, "MUTATIONS", mutations(caught=1, missed=0, renamed=4, unimportable=2, killed=-9))
     monkeypatch.setattr(check.subprocess, "run", fake_pytest(rule, seen))
     assert check.main([]) == 1
-    assert seen == ["LIMIT = 1\n", "LIMIT = 0\n", "LIMIT = 4\n", "LIMIT = 2\n"]  # each run saw its own mutation
+    assert seen == ["LIMIT = 1\n", "LIMIT = 0\n", "LIMIT = 4\n", "LIMIT = 2\n", "LIMIT = -9\n"]  # each its own
     assert rule.read_text() == "LIMIT = 0\n"
     lines = capsys.readouterr().out.splitlines()
     assert lines[0] == "CAUGHT caught"
     assert lines[1] == "MISSED missed"
     assert lines[2] == "ERROR  renamed: pytest exited 4 (USAGE_ERROR), not a test failure: ERROR: not found"
     assert lines[3] == "ERROR  unimportable: pytest exited 2 (INTERRUPTED), not a test failure: ERROR: not found"
-    assert lines[4] == "Files restored. Missed: ['missed'] Errors: ['renamed', 'unimportable']"
+    # a pytest killed by a signal (the out-of-memory killer's -9) exits with a code pytest does not define
+    assert lines[4] == "ERROR  killed: pytest exited -9 (not pytest's), not a test failure: ERROR: not found"
+    assert lines[5] == "Files restored. Missed: ['missed'] Errors: ['renamed', 'unimportable', 'killed']"
 
 
 # What pytest 9.1.1 prints with the check's flags (-qq -x -p no:cacheprovider), measured 2026-11-03.

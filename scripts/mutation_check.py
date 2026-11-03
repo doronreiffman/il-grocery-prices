@@ -1169,6 +1169,7 @@ MUTATIONS = {
     "mutation check runs with duplicate names": (MUTATION_CHECK, '    if duplicates:\n        print(f"DUPLICATE', '    if False:\n        print(f"DUPLICATE'),
     "mutation check shows the file, not a collection error's cause": (MUTATION_CHECK, '    exception = [line for line in lines if line.startswith("E ")]\n', '    exception = []\n'),
     "mutation check shows pytest's last line, not a missing test's id": (MUTATION_CHECK, '    error = [line for line in lines if line.startswith("ERROR")]\n', '    error = []\n'),
+    "mutation check crashes on a signal's exit": (MUTATION_CHECK, '    try:\n        return ExitCode(returncode).name\n    except ValueError:', '    if True:\n        return ExitCode(returncode).name\n    if False:'),
 }
 
 
