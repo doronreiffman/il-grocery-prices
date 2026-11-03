@@ -157,7 +157,7 @@ aws lambda invoke --function-name "$FN" --payload '{"mode": "unblock", "chain": 
 
 ## Carrefour from il-central-1
 
-Carrefour is reported to refuse visitors from outside Israel; whether AWS's Tel Aviv addresses get through is unknown until its first run from the stack. If that run is blocked, drop Carrefour (below) and record it in `.claude/OPEN_ISSUES.md`. Never another route to it.
+Carrefour is reported to refuse visitors from outside Israel; whether AWS's Tel Aviv addresses get through is unknown until its first run from the stack. If that run is blocked, drop Carrefour (below) and record it in the project notes. Never another route to it.
 
 ## Dropping a chain
 
