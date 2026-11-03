@@ -69,6 +69,7 @@ PAGE = ("src/basket/page.py", ["tests/test_page.py"])
 CHECK_BASKET = ("src/basket/check.py", ["tests/test_basket_check.py"])
 BUILD = ("src/basket/build.py", ["tests/test_build.py"])
 GUARD = ("src/basket/guard.py", ["tests/test_guard.py"])
+ARCHIVE = ("src/basket/archive.py", ["tests/test_archive.py"])
 CANDIDATES_MAIN = ("src/basket/candidates.py", ["tests/test_candidates.py::test_main_counts_only_the_included_stores_and_writes_the_day_s_table"])
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
@@ -903,6 +904,30 @@ MUTATIONS = {
     "final store of a sub-chain left out counted with a file": (RULES, " and sub_chain not in excluded_sub_chains.get(chain, ())", ""),
     "final build counts a store of a sub-chain left out": (BUILD, "stores_with_file_keys(con, included_stores, sub_chains)", "stores_with_file_keys(con, included_stores, {})"),
     "final candidates count a store of a sub-chain left out": (CANDIDATES_MAIN, "stores_with_file(con, included_stores, sub_chains)", "stores_with_file(con, included_stores, {})"),
+    # basket: archive (step two)
+    "archive table key out of the tables folder": (ARCHIVE, 'return f"tables/prices/chain={slug}', 'return f"tables/chain={slug}'),
+    "archive record key out of the basket folder": (ARCHIVE, 'basket-{run_id}.json"', '{run_id}.json"'),
+    "archive day checked without a check record": (ARCHIVE, "return bool(self._keys(folder))", "return True"),
+    "archive another day's check counted": (ARCHIVE, 'folder = check_key(day, "x").rsplit("/", 1)[0] + "/"', 'folder = "checks/"'),
+    "archive price files of another kind fetched": (ARCHIVE, 'parsed.kind != "PriceFull"', 'parsed.kind != "Stores"'),
+    "archive price file of another day fetched": (ARCHIVE, " or parsed.day != day", ""),
+    "archive conflict copy not fetched": (ARCHIVE, "parse_file_name(published_name(_stored_name(key)))", "parse_file_name(_stored_name(key))"),
+    "archive price file keys unsorted": (ARCHIVE, "return sorted(keys)", "return keys"),
+    "archive raw file written under its published name": (ARCHIVE, "            name = _stored_name(key)\n", "            name = published_name(key)\n"),
+    "archive store list looked for one day only": (ARCHIVE, "STORE_LIST_LOOKBACK_DAYS = 14", "STORE_LIST_LOOKBACK_DAYS = 1"),
+    "archive store list looked for a day too far back": (ARCHIVE, "range(STORE_LIST_LOOKBACK_DAYS)", "range(STORE_LIST_LOOKBACK_DAYS + 1)"),
+    "archive store list of another day taken": (ARCHIVE, " if is_store_list(name, listed_day)]", "]"),
+    "archive store list's oldest name taken": (ARCHIVE, "name = max(names)", "name = min(names)"),
+    "archive store list written under the asked day": (ARCHIVE, "folder = _day_folder(raw_dir, slug, listed_day)", "folder = _day_folder(raw_dir, slug, day)"),
+    "archive every chain's manifests fetched": (ARCHIVE, 'manifest_key(day, slug, "").removesuffix(".json")', 'manifest_key(day, slug, "").rsplit("/", 1)[0]'),
+    "archive table's parquet written without its report": (ARCHIVE, "        if None in bodies.values():\n            return False\n        folder.mkdir(parents=True, exist_ok=True)\n        for name, body in bodies.items():\n            (folder / name).write_bytes(body)\n",
+                                                           "        folder.mkdir(parents=True, exist_ok=True)\n        for name, body in bodies.items():\n            if body is not None:\n                (folder / name).write_bytes(body)\n        if None in bodies.values():\n            return False\n"),
+    "archive table without its parquet taken": (ARCHIVE, "if None in bodies.values():", 'if bodies["report.json"] is None:'),
+    "archive table put locked": (ARCHIVE, "self._put_plain(key, (folder / name).read_bytes(), _CONTENT_TYPES[name])", "self._put_locked(key, (folder / name).read_bytes(), None, _CONTENT_TYPES[name])"),
+    "archive table content types swapped": (ARCHIVE, '{"prices.parquet": "application/vnd.apache.parquet", "report.json": "application/json"}', '{"prices.parquet": "application/json", "report.json": "application/vnd.apache.parquet"}'),
+    "archive a delete before a table put": (ARCHIVE, "            self._put_plain(key, (folder / name).read_bytes(), _CONTENT_TYPES[name])\n",
+                                            '            getattr(self, "client", None) and self.client.delete_object(Bucket=self.bucket, Key=key)\n            self._put_plain(key, (folder / name).read_bytes(), _CONTENT_TYPES[name])\n'),
+    "archive record put plain": (ARCHIVE, "self.put_record(key, body, now)", 'self._put_plain(key, body, "application/json")'),
 }
 
 

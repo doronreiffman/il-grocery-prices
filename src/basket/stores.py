@@ -101,6 +101,10 @@ def day_store_list(raw_dir: Path, slug: str, day: date) -> tuple[bytes, date] | 
     return None
 
 
-def _is_store_list(name: str, day: date) -> bool:
+def is_store_list(name: str, day: date) -> bool:
+    """Whether a stored name is a `Stores` file of that day, read by its published name."""
     parsed = parse_file_name(published_name(name))
     return parsed is not None and parsed.kind == "Stores" and parsed.day == day
+
+
+_is_store_list = is_store_list
