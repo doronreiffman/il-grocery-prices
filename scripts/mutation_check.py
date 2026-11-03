@@ -39,6 +39,8 @@ HANDLER = ("src/collector/handler.py", ["tests/test_handler.py"])
 TEMPLATE = ("template.yaml", ["tests/test_template.py"])
 OPERATIONS = ("docs/operations.md", ["tests/test_template.py"])
 SITE_TEMPLATE = ("site-template.yaml", ["tests/test_site_template.py"])
+LAYER_PIN = ("layer/requirements.txt", ["tests/test_basket_template.py"])
+LAYER_MAKEFILE = ("layer/Makefile", ["tests/test_basket_template.py"])
 # Rules the R7/R30 table in test_template.py also pins: each of these names the one test that must
 # catch it by itself, so the rule's own test is proved, not only the table.
 _T = "tests/test_template.py::"
@@ -1008,6 +1010,9 @@ MUTATIONS = {
     "basket handler a failed ping's error text logged unmasked": (BASKET_HANDLER, "_masked(str(exc), base))", "exc)"),
     "basket handler the ping's id left in an error's text": (BASKET_HANDLER, "(url, parts.netloc, *parts.path.split(\"/\"))", "(url, parts.netloc)"),
     "basket handler the ping's host left in an error's text": (BASKET_HANDLER, "(url, parts.netloc, *parts.path.split(\"/\"))", "(url, *parts.path.split(\"/\"))"),
+    # the DuckDB layer
+    "layer wheel's hash altered": (LAYER_PIN, "sha256:364992ba", "sha256:464992ba"),
+    "layer built for x86": (LAYER_MAKEFILE, "manylinux_2_28_aarch64", "manylinux_2_28_x86_64"),
 }
 
 
