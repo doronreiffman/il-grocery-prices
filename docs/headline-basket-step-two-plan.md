@@ -382,6 +382,7 @@ Prerequisites: Tasks 1 to 9 merged to `main` and pushed, CI green; `git status -
 
 (Appended during execution: what reality forced, and why.)
 
+- 2026-11-03, planning (the controller's measurement on this Mac, read-only over the synced 2026-11-02 day, with `basket.extract`'s own CSV writer): the extraction's temporary CSV is 206 bytes a row for Osher Ad (151,604 rows, 29.8 MB) and 201 for Yochananof (476,502 rows, 91.5 MB), so Shufersal's 2,322,336 rows come to about 480 MB; with its 111 MB of raw files and 41 MB of Parquet a Shufersal run needs about 650 MB of `/tmp`, hence 2,048 MB of ephemeral storage. The DuckDB wheel for Lambda's platform: 18.6 MB zipped (PyPI's listing), 53 MB unpacked.
 - 2026-11-03, setup: the work ran on branch `q14-step-two` in the same checkout, not a worktree, as step one did: the venv and the synced day live here and one implementer ran at a time.
 - 2026-11-03, Task 2: a fifth test pins the bare `connect()` reading `os.environ` (the Lambda's only path), with its mutation; two mutations pin the two call sites; `import duckdb` left `extract.py` once nothing else used it.
 - 2026-11-03, Task 3: the fetches read through `read_raw` (a key listed then gone raises `KeyError`), not the bare `_get`; 21 mutations instead of the four named; the store-list lookup lists the prefix `Stores` (case-sensitive) where the Mac's parse is not (latent: every chain's list starts with a capital S, and `scripts/sync.sh` syncs `Stores*` only).
