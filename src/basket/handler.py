@@ -2,7 +2,7 @@
 Scheduler sends the events each morning; the owner sends the same with a "day" to run an earlier day by hand.
 
     {"mode": "extract", "chain": "<slug>"}         the chain's full price files of the day into its table
-    {"mode": "basket", "collected_by": "HH:MM"}    the day's record, pages and day file (not built yet)
+    {"mode": "basket", "collected_by": "HH:MM"}    the day's record, pages and day file, built and published
 
 "day" (YYYY-MM-DD) is optional in both; without it the day is the Israel calendar date when the invocation starts.
 Every field is checked before anything is read. Then neither mode runs until the collector's check has written its
@@ -14,6 +14,23 @@ The extract mode fetches the chain's price files of the day from the archive buc
 `basket.extract` over them as the Mac does, and puts the table and its report back under `tables/`, replacing an
 earlier run's. Its summary, logged as one JSON line and returned, counts the files read and passed over and the
 stores and rows in the table, and gives the extraction's own seconds (the fetch and the put left out).
+
+The basket mode fetches each chain's table of the day (MissingTable, naming the chain and the table's key, when its
+extraction run did not run or did not finish), its store list and its manifests, and the site's published copy of the
+day, then runs `basket.build.build_day` over the work folder as the Mac does, with the tables kept and never with a
+reason to revise: a day whose numbers differ from its published copy stops with RevisionNeeded, and only a hand build
+revises. The built site must pass `basket.check` and `basket.guard` (SiteCheckFailed). The upload puts the two pages
+only when the day is the site's latest or later, so a run for an earlier day leaves the front page alone, and the day
+file unless the published one already holds its numbers; one invalidation follows any upload. The run's record goes
+up to the archive, write-once and locked, whatever stopped the run once the record was written. The summary gives the
+day, the run id, the headline, whether the day was unchanged, whether the pages went up, the keys uploaded, the
+invalidation's id and the record's key.
+
+The basket mode reports to healthchecks.io: `/start` before it looks for the check record; then the plain URL with
+the run's summary when the run succeeds, or `/fail` with the error's name and text, its first 100,000 characters,
+when anything fails, MorningNotChecked included. An event refused as bad (ValueError) sends no ping. A ping that fails
+is logged as a warning and the run goes on: its outcome never hangs on healthchecks.io. The extract mode never pings:
+a chain whose extraction failed shows in the basket run as a missing table.
 
 Environment: BUCKET (the archive bucket), SITE_BUCKET (the site stack's bucket: refused unless its name starts with
 SITE_BUCKET_PREFIX, so the archive bucket is never taken for it), DISTRIBUTION_ID, HEALTHCHECK_URL, USER_AGENT (each
@@ -34,9 +51,14 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from basket.archive import S3Archive
+from basket.archive import S3Archive, table_key
+from basket.basket_file import DEFAULT_BASKET
+from basket.build import build_day
 from basket.chains import SLUGS
+from basket.check import check_site
 from basket.extract import extract
+from basket.guard import guard_days
+from basket.rules import MissingTable
 from basket.site import S3Site
 from collector.handler import ping, ping_user_agent
 from collector.http import check_user_agent
@@ -53,10 +75,17 @@ SITE_BUCKET_PREFIX = "il-grocery-prices-site-sitebucket-"
 MODES = ("extract", "basket")
 ISRAEL = ZoneInfo("Asia/Jerusalem")
 CLOCK = re.compile(r"^[0-2][0-9]:[0-5][0-9]$")
+BASKET_FILE = DEFAULT_BASKET  # read at call time, as MIN_ITEMS is: the tests give the golden day's own
+MIN_ITEMS = 25  # the fewest items the basket may hold, as the hand build's default
+FAIL_CHARS = 100_000  # a /fail ping's body: the error's name and text, cut to this many characters
 
 
 class MorningNotChecked(Exception):
     """The collector's check has not written its record for the day."""
+
+
+class SiteCheckFailed(Exception):
+    """The built site failed `basket.check` or the published-day guard (`basket.guard`); the problems, one a line."""
 
 
 @dataclass(frozen=True)
@@ -113,7 +142,8 @@ def event_day(event: dict, now: datetime) -> date:
 def run(cfg: Config, event: dict, deps: Deps, now: datetime, tmp_root: Path) -> dict:
     """Do what `event` asks (see the module's docstring), in a work folder under `tmp_root`; `now` is the invocation's
     start, aware. Raises ValueError for a bad event or a naive `now`, before anything is read, and MorningNotChecked
-    while the day has no check record, before anything is fetched. Returns a summary, also logged."""
+    while the day has no check record, before anything is fetched. Returns a summary, also logged. The basket mode
+    pings healthchecks.io from its start on, its failures included."""
     mode = event.get("mode") if isinstance(event, dict) else None
     if mode not in MODES:
         raise ValueError(f"the event's mode must be extract or basket, not {mode!r} (event {event!r})")
@@ -126,19 +156,37 @@ def run(cfg: Config, event: dict, deps: Deps, now: datetime, tmp_root: Path) -> 
             raise ValueError(f"the basket event's collected_by must be a time as HH:MM, not {collected_by!r}")
     _aware(now)
     day = event_day(event, now)
-    if not deps.archive.day_checked(day):
-        raise MorningNotChecked(f"the collector's check has not written its record for {day}: the morning is not "
-                                f"over, or the check failed (checks/date={day}/)")
-    work = Path(tempfile.mkdtemp(prefix="basket-", dir=tmp_root))
+    pings = mode == "basket"  # the extract mode never pings
+    if pings:
+        _ping(deps, f"{cfg.healthcheck_url}/start", "")
     try:
-        if mode == "extract":
-            summary = _extract(event["chain"], day, deps, now, work)
-        else:
-            raise NotImplementedError("the basket mode is not built yet")
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
+        if not deps.archive.day_checked(day):
+            raise MorningNotChecked(f"the collector's check has not written its record for {day}: the morning is "
+                                    f"not over, or the check failed (checks/date={day}/)")
+        work = Path(tempfile.mkdtemp(prefix="basket-", dir=tmp_root))
+        try:
+            if mode == "extract":
+                summary = _extract(event["chain"], day, deps, now, work)
+            else:
+                summary = _basket(event, deps, now, work, day)
+                _ping(deps, cfg.healthcheck_url, json.dumps(summary))
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+    except Exception as err:
+        if pings:
+            _ping(deps, f"{cfg.healthcheck_url}/fail", f"{type(err).__name__}: {err}"[:FAIL_CHARS])
+        raise
     log.info(json.dumps(summary, sort_keys=True))
     return summary
+
+
+def _ping(deps: Deps, url: str, message: str) -> None:
+    """Ping healthchecks.io; a failure is logged with the URL's last path segment, never raised."""
+    try:
+        deps.ping(url, message)
+    except Exception as exc:  # healthchecks.io down or slow: the run's outcome stands
+        log.warning("health-check ping /%s failed: %s: %s", url.rstrip("/").rsplit("/", 1)[-1], type(exc).__name__,
+                    exc)
 
 
 def _extract(slug: str, day: date, deps: Deps, now: datetime, work: Path) -> dict:
@@ -151,6 +199,44 @@ def _extract(slug: str, day: date, deps: Deps, now: datetime, work: Path) -> dic
     return {"mode": "extract", "chain": slug, "day": day.isoformat(), "run_id": run_id, "files": len(report.files),
             "skipped": len(report.skipped), "stores": report.stores, "rows": report.rows, "seconds": round(seconds, 1),
             "keys": keys}
+
+
+def _basket(event: dict, deps: Deps, now: datetime, work: Path, day: date) -> dict:
+    tables, raw, site, published = work / "tables", work / "raw", work / "site", work / "published"
+    records = []
+    try:
+        for slug in SLUGS:
+            if not deps.archive.fetch_table(slug, day, tables):
+                raise MissingTable(f"no table for chain {slug!r} on {day}: its extraction run did not run or did not "
+                                   f"finish ({table_key(slug, day, 'prices.parquet')})")
+            deps.archive.fetch_store_list(slug, day, raw)  # None: build_day refuses the chain as NoStoreList
+            deps.archive.fetch_manifests(slug, day, work / "manifests")
+        # The site's published copy of the day: under site/ for build_day to compare the new numbers with, under
+        # published/ for the guard; with none, the guard finds an empty folder.
+        (published / "days").mkdir(parents=True)
+        copy = deps.site.published_day(day)
+        if copy is not None:
+            (site / "days").mkdir(parents=True)
+            for folder in (site / "days", published / "days"):
+                (folder / f"{day.isoformat()}.json").write_bytes(copy)
+        latest = deps.site.latest_published_day()
+        with_pages = latest is None or day >= latest  # the pages show the site's latest day
+        outcome = build_day(day, work, site, BASKET_FILE, now, revise=None, rebuild=False, min_items=MIN_ITEMS,
+                            collected_by=event["collected_by"])
+        problems = check_site(site)
+        if problems:
+            raise SiteCheckFailed("\n".join(["the site check failed:", *problems]))
+        problems = guard_days(site / "days", published / "days")
+        if problems:
+            raise SiteCheckFailed("\n".join(["the published-day guard failed:", *problems]))
+        uploaded = deps.site.upload(site, day, with_pages=with_pages, with_day=not outcome.unchanged)
+        invalidation = deps.site.invalidate(outcome.record.run_id) if uploaded else None
+    finally:  # every build of every day is kept, a refused one included
+        for path in sorted((work / "basket" / f"date={day.isoformat()}").glob("basket-*.json")):
+            records.append(deps.archive.put_basket_record(path, now))
+    return {"mode": "basket", "day": day.isoformat(), "run_id": outcome.record.run_id,
+            "headline": list(outcome.headline_lines), "unchanged": outcome.unchanged, "pages": with_pages,
+            "uploaded": uploaded, "invalidation": invalidation, "record": records[0] if records else None}
 
 
 def handler(event, context):  # pragma: no cover - the boto3 clients and the wall clock; run() is tested

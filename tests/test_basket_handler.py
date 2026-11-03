@@ -1,11 +1,13 @@
 """The scheduled build's Lambda entry point (`basket.handler`): the config, the event's day, the refusals before
-anything is read, the check-record gate, and the extract mode.
+anything is read, the check-record gate, the extract mode and the basket mode.
 
-run() is driven with a Deps over a MemoryArchive filled from test_build's golden day (`archive_from`, which the basket
-mode's tests reuse), a MemorySite and a recorded ping, and a tmp_root of the test's own, so a work folder left behind
-shows.
+run() is driven with a Deps over a MemoryArchive filled from test_build's golden day (`archive_from`), a MemorySite and
+a recorded ping, and a tmp_root of the test's own, so a work folder left behind shows. The basket mode's tests start
+from the morning as the extractions leave it (`morning`: the golden archive with the five chains' tables), and build
+with the golden day's basket and an item floor of 1, since its codes are synthetic.
 """
 import gzip
+import inspect
 import json
 import logging
 import re
@@ -16,18 +18,27 @@ from zoneinfo import ZoneInfo
 import duckdb
 import pytest
 
+from basket import build as build_module
 from basket import extract as extract_module
 from basket import handler as handler_module
-from basket.archive import TABLE_FILES, MemoryArchive, table_key
-from basket.handler import REQUIRED, SITE_BUCKET_PREFIX, Config, Deps, MorningNotChecked, event_day, run
+from basket.archive import TABLE_FILES, MemoryArchive, record_key, table_key
+from basket.basket_file import DEFAULT_BASKET
+from basket.build import RevisionNeeded
+from basket.guard import guard_days
+from basket.handler import (REQUIRED, SITE_BUCKET_PREFIX, Config, Deps, MorningNotChecked, SiteCheckFailed, event_day,
+                            run)
 from basket.pricefile import BadPriceFile
-from basket.site import MemorySite
-from collector.store import RETENTION_DAYS, check_key, raw_key
-from test_build import DAY, PRICES, SLUGS, golden_tree, price_file_name
+from basket.record import code_fingerprint
+from basket.rules import MissingTable
+from basket.site import CACHE_CONTROL, HTML, JSON, MemorySite
+from collector.store import LOCK_MODE, RETENTION_DAYS, check_key, raw_key
+from test_build import BASKET, DAY, PRICES, SLUGS, golden_tree, price_file_name, reprice
 from test_extract import TABLE_COLUMNS
 
 ROOT = Path(__file__).parent.parent
 NOW = datetime(2026, 1, 1, 9, 0, tzinfo=timezone.utc)  # 11:00 in Israel, the golden day's morning
+RUN_AT = datetime(2026, 1, 1, 9, 30, tzinfo=timezone.utc)  # 11:30 in Israel, the basket run's time
+AGAIN = datetime(2026, 1, 1, 9, 45, tzinfo=timezone.utc)  # a second basket run the same morning
 NAIVE = datetime(2026, 1, 1, 11, 0)
 CHECK = check_key(DAY, "090000Z-check-0001")
 UA = "il-grocery-prices/0.1 (+https://github.com/example/il-grocery-prices; owner@example.org)"
@@ -37,6 +48,12 @@ ENV = {"BUCKET": "il-grocery-prices-archivebucket-0123456789ab",
 CFG = Config(bucket="il-grocery-prices-archivebucket-0123456789ab",
              site_bucket="il-grocery-prices-site-sitebucket-0123456789ab", distribution_id="E0123456789ABC",
              healthcheck_url="https://hc-ping.example/0000-test", user_agent=UA, retention_days=3650)
+URL = CFG.healthcheck_url
+BASKET_EVENT = {"mode": "basket", "collected_by": "11:00"}
+PUBLISHED = ["index.html", "method.html", "days/2026-01-01.json"]
+HEADLINE = ["Lowest listed total today: Osher Ad, ₪22.65.",
+            "Highest: Carrefour, ₪27.16, 20% more. 3 everyday items, listed shelf prices before promotions, from the "
+            "chains' price files of Thursday 1 January 2026."]  # the golden day's two lines (test_build)
 # The golden day's rows per chain: two stores of three codes each, less Yochananof's store 2 without EGGS, plus
 # the placeholder row in Shufersal's store 1 (test_build's PRICES and PLACEHOLDER).
 ROWS = {"shufersal": 7, "ramilevy": 6, "osherad": 6, "carrefour": 6, "yochananof": 5}
@@ -59,13 +76,19 @@ class RecordingArchive(MemoryArchive):
 
 
 class Recorder:
-    """A ping: records each call's arguments in `calls`."""
+    """A ping: records each call's arguments in `calls`, and what `watch()` gives at each call in `seen` when given;
+    raises `raises` when given."""
 
-    def __init__(self):
-        self.calls = []
+    def __init__(self, raises=None, watch=None):
+        self.calls, self.seen = [], []
+        self.raises, self.watch = raises, watch
 
     def __call__(self, *args):
         self.calls.append(args)
+        if self.watch is not None:
+            self.seen.append(self.watch())
+        if self.raises is not None:
+            raise self.raises
 
 
 def archive_from(data: Path) -> MemoryArchive:
@@ -200,12 +223,16 @@ def test_run_refuses_a_day_without_a_check_record(data, tmp_root):
     archive = archive_from(data)
     record = archive.objects.pop(CHECK)  # the morning as it stands before the collector's check has run
     before = dict(archive.objects)
-    for event in ({"mode": "extract", "chain": "ramilevy"}, {"mode": "basket", "collected_by": "11:00"}):
+    # the extract mode never pings; the basket mode pings /start, then /fail for the refusal
+    for event, pings in (({"mode": "extract", "chain": "ramilevy"}, []),
+                         ({"mode": "basket", "collected_by": "11:00"}, [f"{URL}/start", f"{URL}/fail"])):
+        deps = deps_of(archive)
         with pytest.raises(MorningNotChecked, match=re.escape("for 2026-01-01: ") + ".*checks/date=2026-01-01/"):
-            run(CFG, event, deps_of(archive), NOW, tmp_root)
+            run(CFG, event, deps, NOW, tmp_root)
         assert archive.objects == before  # nothing written
         assert archive.reads == [("list", "checks/date=2026-01-01/")]  # nothing fetched: the check's folder only
         assert list(tmp_root.iterdir()) == []
+        assert [url for url, _ in deps.ping.calls] == pings and deps.site.objects == {}
         archive.reads.clear()
     archive.put_record(CHECK, record.body, NOW)
     summary = run(CFG, {"mode": "extract", "chain": "ramilevy"}, deps_of(archive), NOW, tmp_root)
@@ -288,3 +315,274 @@ def test_the_basket_package_logs_at_info():
     """Lambda's runtime may give the root logger WARNING; the summary still reaches CloudWatch."""
     assert logging.getLogger("basket").level == logging.INFO
     assert handler_module.log.getEffectiveLevel() == logging.INFO
+
+
+# ---- the basket mode ----
+
+def extracted(archive: MemoryArchive, tmp_root: Path, chains=SLUGS) -> MemoryArchive:
+    """The archive after the extract mode has run for each of `chains`, as the morning's schedules run it; its
+    `reads` cleared."""
+    for slug in chains:
+        run(CFG, {"mode": "extract", "chain": slug}, deps_of(archive), NOW, tmp_root)
+    archive.reads.clear()
+    return archive
+
+
+@pytest.fixture
+def golden_basket(monkeypatch):
+    """The golden day's basket and an item floor of 1 in place of v1's and its 25: the golden codes are synthetic."""
+    monkeypatch.setattr(handler_module, "BASKET_FILE", BASKET)
+    monkeypatch.setattr(handler_module, "MIN_ITEMS", 1)
+
+
+@pytest.fixture
+def morning(data, tmp_root, golden_basket):
+    """The archive as the basket run finds it: the golden day, its check record and the five chains' tables."""
+    return extracted(archive_from(data), tmp_root)
+
+
+def records_of(archive: MemoryArchive) -> list[str]:
+    return sorted(key for key in archive.objects if key.startswith("basket/"))
+
+
+def pinged(deps: Deps) -> list[str]:
+    return [url for url, _ in deps.ping.calls]
+
+
+def test_first_run_publishes_the_day_and_pings(morning, tmp_root):
+    deps = deps_of(morning)
+    summary = run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    run_id = summary["run_id"]
+    assert re.fullmatch(r"093000Z-basket-[0-9a-f]{4}", run_id)  # the run's start in UTC
+    assert summary == {"mode": "basket", "day": "2026-01-01", "run_id": run_id, "headline": HEADLINE,
+                       "unchanged": False, "pages": True, "uploaded": PUBLISHED, "invalidation": "memory-1",
+                       "record": record_key(DAY, run_id)}
+    assert sorted(deps.site.objects) == sorted(PUBLISHED)
+    assert deps.site.invalidations == [run_id]  # one invalidation, under the run's id
+    # the record, write-once and locked, the only one
+    assert records_of(morning) == [record_key(DAY, run_id)]
+    stored = morning.objects[record_key(DAY, run_id)]
+    assert stored.lock_mode == LOCK_MODE and json.loads(stored.body)["run_id"] == run_id
+    # /start, then the plain URL with the summary
+    assert pinged(deps) == [f"{URL}/start", URL]
+    assert deps.ping.calls[0][1] == "" and json.loads(deps.ping.calls[1][1]) == summary
+    public = json.loads(deps.site.objects["days/2026-01-01.json"][0])
+    assert public["collected_by"] == "11:00"  # the event's, not the run's 11:30
+    assert public["code_sha"] == code_fingerprint() and public["run_id"] == run_id
+    assert list(tmp_root.iterdir()) == []
+
+
+def test_unchanged_day_uploads_pages_not_the_day_file(morning, tmp_root):
+    deps = deps_of(morning)
+    first = run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    published = deps.site.objects["days/2026-01-01.json"]
+    second = run(CFG, BASKET_EVENT, deps, AGAIN, tmp_root)
+    assert (second["unchanged"], second["pages"], second["uploaded"]) == (True, True, ["index.html", "method.html"])
+    assert second["headline"] == HEADLINE
+    assert deps.site.objects["days/2026-01-01.json"] == published  # the day file as first published
+    assert deps.site.invalidations == [first["run_id"], second["run_id"]]
+    assert records_of(morning) == sorted([first["record"], second["record"]])  # every build of the day is kept
+    assert first["record"] != second["record"]
+
+
+def test_an_earlier_day_than_the_sites_latest_uploads_its_day_file_not_the_pages(morning, tmp_root):
+    deps = deps_of(morning)
+    later = {"days/2026-01-02.json": (b'{"day": "2026-01-02"}', JSON, CACHE_CONTROL),
+             "index.html": (b"<p>2 January</p>", HTML, CACHE_CONTROL),
+             "method.html": (b"<p>the method, 2 January</p>", HTML, CACHE_CONTROL)}
+    deps.site.objects.update(later)
+    summary = run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    assert (summary["unchanged"], summary["pages"], summary["uploaded"]) == (False, False, ["days/2026-01-01.json"])
+    assert deps.site.invalidations == [summary["run_id"]]
+    assert {key: deps.site.objects[key] for key in later} == later  # the front page stays the later day's
+    assert sorted(deps.site.objects) == sorted([*later, "days/2026-01-01.json"])
+
+
+def test_an_earlier_day_already_published_and_unchanged_uploads_nothing_and_does_not_invalidate(morning, tmp_root):
+    deps = deps_of(morning)
+    first = run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    deps.site.objects["days/2026-01-02.json"] = (b'{"day": "2026-01-02"}', JSON, CACHE_CONTROL)
+    site = dict(deps.site.objects)
+    deps.ping.calls.clear()
+    second = run(CFG, BASKET_EVENT, deps, AGAIN, tmp_root)
+    assert (second["unchanged"], second["pages"], second["uploaded"], second["invalidation"]) == (True, False, [], None)
+    assert deps.site.objects == site and deps.site.invalidations == [first["run_id"]]
+    assert records_of(morning) == sorted([first["record"], second["record"]])
+    assert pinged(deps) == [f"{URL}/start", URL] and json.loads(deps.ping.calls[1][1]) == second
+
+
+def test_differing_numbers_fail_loudly_and_publish_nothing(data, morning, tmp_root):
+    deps = deps_of(morning)
+    first = run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    site = dict(deps.site.objects)
+    # Yochananof's store 1 publishes again under the same name, its milk 6.60 -> 6.63: the archive keeps the new
+    # file beside the first, as the collector does, and the chain's extraction runs again
+    reprice(data, "yochananof", "001", ("6.56", "5.20", "12.50"))
+    name = price_file_name("yochananof", "001")
+    body = (data / "raw" / "chain=yochananof" / f"date={DAY.isoformat()}" / name).read_bytes()
+    morning.put_raw(raw_key("yochananof", DAY, name), body, NOW)
+    extracted(morning, tmp_root, ["yochananof"])
+    deps.ping.calls.clear()
+    with pytest.raises(RevisionNeeded, match=re.escape("chains.yochananof.total")) as raised:
+        run(CFG, BASKET_EVENT, deps, AGAIN, tmp_root)
+    assert deps.site.objects == site and deps.site.invalidations == [first["run_id"]]  # nothing went up
+    [second] = [key for key in records_of(morning) if key != first["record"]]  # the refused run's record, all the same
+    assert morning.objects[second].lock_mode == LOCK_MODE
+    assert pinged(deps) == [f"{URL}/start", f"{URL}/fail"]
+    body = deps.ping.calls[1][1]
+    assert body == f"RevisionNeeded: {raised.value}" and "chains.yochananof.total" in body
+    assert list(tmp_root.iterdir()) == []
+
+
+def test_missing_table_names_the_chain_uploads_nothing_and_pings_fail(morning, tmp_root):
+    for name in TABLE_FILES:  # Osher Ad's extraction did not run
+        del morning.objects[table_key("osherad", DAY, name)]
+    deps = deps_of(morning)
+    with pytest.raises(MissingTable) as raised:
+        run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    message = str(raised.value)
+    assert "'osherad'" in message and table_key("osherad", DAY, "prices.parquet") in message
+    assert "2026-01-01" in message
+    assert deps.site.objects == {} and deps.site.invalidations == []
+    assert records_of(morning) == []  # stopped before the build: no record
+    assert pinged(deps) == [f"{URL}/start", f"{URL}/fail"]
+    assert deps.ping.calls[1][1] == f"MissingTable: {message}"
+    assert list(tmp_root.iterdir()) == []
+
+
+def test_a_chain_with_no_files_publishes_with_the_chain_out_of_the_ranking(data, tmp_root, golden_basket):
+    archive = archive_from(data)
+    for store in PRICES["osherad"]:  # Osher Ad's store list came, and no price file
+        del archive.objects[raw_key("osherad", DAY, price_file_name("osherad", store))]
+    extracted(archive, tmp_root)
+    deps = deps_of(archive)
+    summary = run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    assert summary["uploaded"] == PUBLISHED
+    osherad = json.loads(deps.site.objects["days/2026-01-01.json"][0])["chains"]["osherad"]
+    assert (osherad["included"], osherad["with_file"], osherad["in_ranking"]) == (2, 0, False)
+    assert summary["headline"][0] == "Lowest listed total today: Rami Levy, ₪23.30."
+    assert pinged(deps) == [f"{URL}/start", URL]
+
+
+def test_site_check_failure_uploads_nothing(morning, tmp_root, monkeypatch):
+    checked = []
+
+    def check_site(site_dir):
+        checked.append(sorted(path.name for path in site_dir.iterdir()))
+        return ["index.html: x"]
+
+    monkeypatch.setattr(handler_module, "check_site", check_site)
+    deps = deps_of(morning)
+    with pytest.raises(SiteCheckFailed) as raised:
+        run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    assert str(raised.value) == "the site check failed:\nindex.html: x"
+    assert checked == [[".basket-site", "days", "index.html", "method.html"]]  # the built site
+    assert deps.site.objects == {} and deps.site.invalidations == []
+    assert len(records_of(morning)) == 1  # the record went up all the same
+    assert pinged(deps) == [f"{URL}/start", f"{URL}/fail"]
+    assert deps.ping.calls[1][1] == "SiteCheckFailed: the site check failed:\nindex.html: x"
+
+
+def test_guard_failure_uploads_nothing(morning, tmp_root, monkeypatch):
+    """The guard is given the built day file and the site's published copy; the first run's guard is the real one,
+    the second's finds a problem."""
+    seen = []
+
+    def guard(local_days, published_days):
+        seen.append({name: {path.name: path.read_bytes() for path in folder.iterdir()}
+                     for name, folder in (("local", local_days), ("published", published_days))})
+        return guard_days(local_days, published_days) if len(seen) == 1 else ["days/2026-01-01.json: " + "x" * 200_000]
+
+    monkeypatch.setattr(handler_module, "guard_days", guard)
+    deps = deps_of(morning)
+    first = run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    published = deps.site.objects["days/2026-01-01.json"][0]
+    assert seen == [{"local": {"2026-01-01.json": published}, "published": {}}]  # nothing published yet
+    site = dict(deps.site.objects)
+    deps.ping.calls.clear()
+    with pytest.raises(SiteCheckFailed) as raised:
+        run(CFG, BASKET_EVENT, deps, AGAIN, tmp_root)
+    assert str(raised.value).startswith("the published-day guard failed:\ndays/2026-01-01.json: xxx")
+    assert seen[1] == {"local": {"2026-01-01.json": published}, "published": {"2026-01-01.json": published}}
+    assert deps.site.objects == site and deps.site.invalidations == [first["run_id"]]
+    assert len(records_of(morning)) == 2
+    assert pinged(deps) == [f"{URL}/start", f"{URL}/fail"]
+    body = deps.ping.calls[1][1]
+    assert body.startswith("SiteCheckFailed: the published-day guard failed:\n") and len(body) == 100_000  # cut
+
+
+def test_collected_by_is_required_and_a_clock(morning, tmp_root):
+    deps = deps_of(morning)
+    for event in ({"mode": "basket"}, {"mode": "basket", "collected_by": "11:00:00"}):
+        with pytest.raises(ValueError, match="collected_by"):
+            run(CFG, event, deps, RUN_AT, tmp_root)
+    assert morning.reads == []  # checked before any fetch, the check record's included
+    assert deps.ping.calls == [] and deps.site.objects == {} and list(tmp_root.iterdir()) == []
+
+
+def test_a_day_without_a_check_record_pings_fail(morning, tmp_root):
+    morning.objects.pop(CHECK)
+    deps = Deps(archive=morning, site=MemorySite(), ping=Recorder(watch=lambda: list(morning.reads)))
+    with pytest.raises(MorningNotChecked) as raised:
+        run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    assert deps.ping.calls == [(f"{URL}/start", ""), (f"{URL}/fail", f"MorningNotChecked: {raised.value}")]
+    gate = ("list", "checks/date=2026-01-01/")
+    assert deps.ping.seen == [[], [gate]]  # /start before the gate, /fail after it
+    assert morning.reads == [gate] and records_of(morning) == []
+    assert deps.site.objects == {} and list(tmp_root.iterdir()) == []
+
+
+def test_a_failing_ping_is_logged_not_raised(morning, tmp_root, caplog):
+    deps = Deps(archive=morning, site=MemorySite(), ping=Recorder(raises=OSError("healthchecks.io is down")))
+    with caplog.at_level(logging.WARNING, logger="basket.handler"):
+        summary = run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    assert summary["uploaded"] == PUBLISHED and sorted(deps.site.objects) == sorted(PUBLISHED)
+    assert pinged(deps) == [f"{URL}/start", URL]
+    warnings = [(r.levelno, r.getMessage()) for r in caplog.records if r.levelno >= logging.WARNING]
+    assert warnings == [(logging.WARNING, "health-check ping /start failed: OSError: healthchecks.io is down"),
+                        (logging.WARNING, "health-check ping /0000-test failed: OSError: healthchecks.io is down")]
+    # a failing /fail ping leaves the run's own error to be raised
+    caplog.clear()
+    for name in TABLE_FILES:
+        del morning.objects[table_key("osherad", DAY, name)]
+    with caplog.at_level(logging.WARNING, logger="basket.handler"), pytest.raises(MissingTable):
+        run(CFG, BASKET_EVENT, deps, AGAIN, tmp_root)
+    assert [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING] == [
+        "health-check ping /start failed: OSError: healthchecks.io is down",
+        "health-check ping /fail failed: OSError: healthchecks.io is down"]
+
+
+def test_work_folder_is_removed_after_success_and_after_failure(morning, tmp_root, monkeypatch):
+    during = []
+
+    def build_seen(*args, **kwargs):
+        during.append([path.name for path in tmp_root.iterdir()])
+        return build_module.build_day(*args, **kwargs)
+
+    monkeypatch.setattr(handler_module, "build_day", build_seen)
+    deps = Deps(archive=morning, site=MemorySite(),
+                ping=Recorder(watch=lambda: [path.name for path in tmp_root.iterdir()]))
+    run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    [[work]] = during
+    assert work.startswith("basket-")
+    assert deps.ping.seen == [[], [work]]  # the success ping goes out before the work folder is removed
+    assert list(tmp_root.iterdir()) == []
+
+    monkeypatch.setattr(handler_module, "check_site", lambda site_dir: ["index.html: x"])
+    with pytest.raises(SiteCheckFailed):
+        run(CFG, BASKET_EVENT, deps, AGAIN, tmp_root)
+    assert len(during) == 2 and during[1][0].startswith("basket-")
+    assert list(tmp_root.iterdir()) == []
+
+
+def test_the_scheduled_run_builds_the_approved_basket_at_the_hand_builds_floor():
+    """The two constants the basket mode's tests replace hold the approved basket and the hand build's item floor."""
+    assert handler_module.BASKET_FILE == DEFAULT_BASKET
+    assert handler_module.MIN_ITEMS == 25 == inspect.signature(build_module.build_day).parameters["min_items"].default
+
+
+def test_the_scheduled_run_never_revises():
+    """A day whose numbers differ stops the scheduled run; only a hand build revises, with a reason."""
+    source = inspect.getsource(handler_module)
+    assert re.findall(r"\brevise\s*=\s*[^,)\s]+", source) == ["revise=None"]
+    assert "--revise" not in source
