@@ -71,6 +71,7 @@ BUILD = ("src/basket/build.py", ["tests/test_build.py"])
 GUARD = ("src/basket/guard.py", ["tests/test_guard.py"])
 ARCHIVE = ("src/basket/archive.py", ["tests/test_archive.py"])
 SITE = ("src/basket/site.py", ["tests/test_site.py"])
+BASKET_HANDLER = ("src/basket/handler.py", ["tests/test_basket_handler.py"])
 CANDIDATES_MAIN = ("src/basket/candidates.py", ["tests/test_candidates.py::test_main_counts_only_the_included_stores_and_writes_the_day_s_table"])
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
@@ -953,6 +954,32 @@ MUTATIONS = {
     "site invalidation id not CloudFront's": (SITE, 'return answer["Invalidation"]["Id"]', "return reference"),
     "site a delete before a put": (SITE, "        self.s3.put_object(Bucket=self.bucket, Key=key, Body=body, ContentType=content_type, CacheControl=cache_control)\n",
                                    "        self.s3.delete_object(Bucket=self.bucket, Key=key)\n        self.s3.put_object(Bucket=self.bucket, Key=key, Body=body, ContentType=content_type, CacheControl=cache_control)\n"),
+    # basket: the scheduled build's handler (step two)
+    "basket handler site bucket outside the prefix accepted": (BASKET_HANDLER, '        if not env["SITE_BUCKET"].startswith(SITE_BUCKET_PREFIX):\n', "        if False:\n"),
+    "basket handler runs before the morning's check": (BASKET_HANDLER, "    if not deps.archive.day_checked(day):\n", "    if False:\n"),
+    "basket handler work folder left behind": (BASKET_HANDLER, "        shutil.rmtree(work, ignore_errors=True)\n", "        pass\n"),
+    "basket handler table put before the extraction": (BASKET_HANDLER, '    report = extract(work / "raw", slug, day, work / "tables")\n    seconds = time.perf_counter() - started\n    keys = deps.archive.put_table(slug, day, work / "tables")\n',
+                                                       '    keys = deps.archive.put_table(slug, day, work / "tables")\n    report = extract(work / "raw", slug, day, work / "tables")\n    seconds = time.perf_counter() - started\n'),
+    "basket handler work folder removed only after a success": (BASKET_HANDLER, "    finally:\n        shutil.rmtree(work, ignore_errors=True)\n",
+                                                                "    except ZeroDivisionError:\n        raise\n    shutil.rmtree(work, ignore_errors=True)\n"),
+    "basket handler work folder outside tmp_root": (BASKET_HANDLER, 'tempfile.mkdtemp(prefix="basket-", dir=tmp_root)', 'tempfile.mkdtemp(prefix="basket-")'),
+    "basket handler naive now accepted by run": (BASKET_HANDLER, "    _aware(now)\n    day = event_day(event, now)\n", "    day = event_day(event, now)\n"),
+    "basket handler naive now read as this machine's": (BASKET_HANDLER, "        return _aware(now).astimezone(ISRAEL).date()\n", "        return now.astimezone(ISRAEL).date()\n"),
+    "basket handler day in UTC": (BASKET_HANDLER, "_aware(now).astimezone(ISRAEL).date()", "_aware(now).astimezone(timezone.utc).date()"),
+    "basket handler event's day ignored": (BASKET_HANDLER, '    if "day" not in event:\n', "    if True:\n"),
+    "basket handler a day that is no string raised as a TypeError": (BASKET_HANDLER, "    except (TypeError, ValueError):", "    except ValueError:"),
+    "basket handler unknown mode read as a basket run": (BASKET_HANDLER, "    if mode not in MODES:\n", "    if mode is None:\n"),
+    "basket handler unknown chain accepted": (BASKET_HANDLER, '        if event.get("chain") not in SLUGS:\n', '        if "chain" not in event:\n'),
+    "basket handler collected_by not a clock accepted": (BASKET_HANDLER, "if not isinstance(collected_by, str) or not CLOCK.fullmatch(collected_by):", "if collected_by is None:"),
+    "basket handler collected_by with a trailing newline accepted": (BASKET_HANDLER, "CLOCK.fullmatch(collected_by)", "CLOCK.match(collected_by)"),
+    "basket handler User-Agent not checked by the config": (BASKET_HANDLER, 'user_agent=check_user_agent(env["USER_AGENT"])', 'user_agent=env["USER_AGENT"]'),
+    "basket handler a blank variable accepted": (BASKET_HANDLER, 'if not env.get(name, "").strip()]', "if name not in env]"),
+    "basket handler distribution and ping URL not required": (BASKET_HANDLER, 'REQUIRED = ("BUCKET", "SITE_BUCKET", "DISTRIBUTION_ID", "HEALTHCHECK_URL", "USER_AGENT")', 'REQUIRED = ("BUCKET", "SITE_BUCKET", "USER_AGENT")'),
+    "basket handler RETENTION_DAYS ignored": (BASKET_HANDLER, 'retention_days=int(env.get("RETENTION_DAYS", RETENTION_DAYS))', "retention_days=RETENTION_DAYS"),
+    "basket handler RETENTION_DAYS default not ten years": (BASKET_HANDLER, 'env.get("RETENTION_DAYS", RETENTION_DAYS)', 'env.get("RETENTION_DAYS", 365)'),
+    "basket handler run id under another mode": (BASKET_HANDLER, 'new_run_id(now, "extract")', 'new_run_id(now, "basket")'),
+    "basket handler summary not logged": (BASKET_HANDLER, "    log.info(json.dumps(summary, sort_keys=True))\n", "    pass\n"),
+    "basket log level left to the runtime": (BASKET_HANDLER, 'logging.getLogger("basket").setLevel(logging.INFO)\n', "\n"),
 }
 
 
