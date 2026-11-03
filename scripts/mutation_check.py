@@ -5,20 +5,27 @@
 
 Each mutation names the file it breaks and the test files that must catch it. It edits source files
 in place while it runs: run nothing else from this checkout until it finishes. Files are restored
-afterwards. Exit code 1 if any mutation goes unnoticed, or if its text to break is not found exactly
-once (the script is out of date). Exit code 2, before anything runs, if two entries share a name: the
-dict literal would keep only the last, and the first would never run.
+afterwards. A mutation is caught only when pytest exits 1 (a test failed or errored); any other
+non-zero exit means pytest could not run the tests as asked (a test id that no longer exists, 4; a
+module that no longer imports, 2; no tests collected, 5), which proves nothing about the rule, so it
+is reported as ERROR. That includes a break that stops the broken module importing (a syntax error,
+a name a test imports removed): pick a break that leaves the module importable. Exit code 1 if any
+mutation goes unnoticed or errs, or if its text to break is not found exactly once (the script is
+out of date). Exit code 2, before anything runs, if two entries share a name: the dict literal would
+keep only the last, and the first would never run.
 
-Copied from flights-archive's harness, with one change: the test runs write no bytecode. Python
-trusts a cached .pyc whose source has the same size and the same whole-second mtime, so a
-same-length mutation written and restored within one second could otherwise leave the broken code
-cached for the next run.
+Copied from flights-archive's harness, with two changes: only exit 1 counts as caught (above), and
+the test runs write no bytecode. Python trusts a cached .pyc whose source has the same size and the
+same whole-second mtime, so a same-length mutation written and restored within one second could
+otherwise leave the broken code cached for the next run.
 """
 import ast
 import os
 import subprocess
 import sys
 from pathlib import Path
+
+from pytest import ExitCode
 
 ROOT = Path(__file__).resolve().parent.parent
 NAMES = ("src/collector/names.py", ["tests/test_names.py"])
@@ -85,6 +92,7 @@ GUARD = ("src/basket/guard.py", ["tests/test_guard.py"])
 ARCHIVE = ("src/basket/archive.py", ["tests/test_archive.py"])
 SITE = ("src/basket/site.py", ["tests/test_site.py"])
 BASKET_HANDLER = ("src/basket/handler.py", ["tests/test_basket_handler.py"])
+MUTATION_CHECK = ("scripts/mutation_check.py", ["tests/test_mutation_check.py"])  # this file: the run has loaded it
 CANDIDATES_MAIN = ("src/basket/candidates.py", ["tests/test_candidates.py::test_main_counts_only_the_included_stores_and_writes_the_day_s_table"])
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
@@ -1136,6 +1144,12 @@ MUTATIONS = {
     "layer for an older Python": (BASKET_TEMPLATE, "CompatibleRuntimes: [python3.13]", "CompatibleRuntimes: [python3.12]"),
     "layer from the repo root": (BASKET_TEMPLATE, "ContentUri: layer/", "ContentUri: ./"),
     "layer's old versions retained": (BASKET_TEMPLATE, "RetentionPolicy: Delete", "RetentionPolicy: Retain"),
+    # the mutation check itself (each text to break spans a line end, so it occurs once: here it is written \n)
+    "mutation check counts any non-zero exit as caught": (MUTATION_CHECK, '    if returncode == ExitCode.TESTS_FAILED:\n        return "CAUGHT"', '    if returncode != ExitCode.OK:\n        return "CAUGHT"'),
+    "mutation check passes with errors": (MUTATION_CHECK, '(found or " Every mutation was caught."))\n    return 1 if missed or errors else 0', '(found or " Every mutation was caught."))\n    return 1 if missed else 0'),
+    "mutation check runs with duplicate names": (MUTATION_CHECK, '    if duplicates:\n        print(f"DUPLICATE', '    if False:\n        print(f"DUPLICATE'),
+    "mutation check shows the file, not a collection error's cause": (MUTATION_CHECK, '    exception = [line for line in lines if line.startswith("E ")]\n', '    exception = []\n'),
+    "mutation check shows pytest's last line, not a missing test's id": (MUTATION_CHECK, '    error = [line for line in lines if line.startswith("ERROR")]\n', '    error = []\n'),
 }
 
 
@@ -1148,6 +1162,32 @@ def duplicate_names(source: str) -> list[str]:
                      for key in node.value.keys if key is not None]  # None: a ** unpacking
             return sorted({name for name in names if names.count(name) > 1}, key=str)
     raise RuntimeError("no MUTATIONS = {...} in the source")
+
+
+def verdict(returncode: int) -> str:
+    """CAUGHT when pytest says a test failed, MISSED when every test passed, ERROR for any other exit."""
+    if returncode == ExitCode.TESTS_FAILED:
+        return "CAUGHT"
+    if returncode == ExitCode.OK:
+        return "MISSED"
+    return "ERROR"
+
+
+def _exit_name(returncode: int) -> str:
+    try:
+        return ExitCode(returncode).name
+    except ValueError:  # a signal, or a code pytest does not define
+        return "not pytest's"
+
+
+def _telling_line(run: subprocess.CompletedProcess) -> str:
+    """The line of pytest's output that names why it could not run the tests: its last `E ` line (a collection
+    error's exception; the `ERROR` line after it names only the file), else its last `ERROR` line (a test id not
+    found), else its last line."""
+    lines = [line for line in (run.stdout + run.stderr).splitlines() if line.strip()]
+    exception = [line for line in lines if line.startswith("E ")]
+    error = [line for line in lines if line.startswith("ERROR")]
+    return (exception or error or lines or ["(no output)"])[-1]
 
 
 def main(wanted: list[str]) -> int:
@@ -1163,6 +1203,7 @@ def main(wanted: list[str]) -> int:
     env = os.environ | {"PYTHONDONTWRITEBYTECODE": "1"}
     originals = {}
     missed = []
+    errors = []
     try:
         for name, ((rel, tests), old, new) in chosen.items():
             path = ROOT / rel
@@ -1177,15 +1218,21 @@ def main(wanted: list[str]) -> int:
                                      capture_output=True, text=True, cwd=ROOT, env=env)
             finally:
                 path.write_text(original)
-            caught = run.returncode != 0
-            print(("CAUGHT " if caught else "MISSED ") + name)
-            if not caught:
-                missed.append(name)
+            outcome = verdict(run.returncode)
+            if outcome == "ERROR":
+                print(f"ERROR  {name}: pytest exited {run.returncode} ({_exit_name(run.returncode)}), not a test "
+                      f"failure: {_telling_line(run)}")
+                errors.append(name)
+            else:
+                print(f"{outcome} {name}")
+                if outcome == "MISSED":
+                    missed.append(name)
     finally:
         for path, original in originals.items():
             path.write_text(original)
-    print("Files restored." + (f" Missed: {missed}" if missed else " Every mutation was caught."))
-    return 1 if missed else 0
+    found = (f" Missed: {missed}" if missed else "") + (f" Errors: {errors}" if errors else "")
+    print("Files restored." + (found or " Every mutation was caught."))
+    return 1 if missed or errors else 0
 
 
 if __name__ == "__main__":
