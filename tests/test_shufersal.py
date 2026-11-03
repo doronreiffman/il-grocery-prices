@@ -21,7 +21,7 @@ import pytest
 from collector.chains import CHAINS
 from collector.http import Blocked, Http, HttpError, build_opener
 from collector.names import parse_file_name
-from collector.sources import Listed, ListingUnreadable, Source
+from collector.sources import Listed, ListingUnreadable, OutOfTime, Source
 from collector.sources import shufersal
 from collector.sources.shufersal import CATEGORY, ShufersalSource
 
@@ -467,6 +467,69 @@ def test_refreshed_link_is_downloaded_once():
         ShufersalSource(now=lambda: SE + timedelta(hours=1)).download(http, item_030())
     assert (caught.value.status, caught.value.url) == (403, FRESH_LINK)
     assert portal.requested == [OLD_LINK, listing_url(2, 1), FRESH_LINK]
+
+
+class ShortFrom:
+    """The run's time check, as the run loop lends it: short of time from its `n`th call on (counted from 1)."""
+
+    def __init__(self, n):
+        self.n, self.calls = n, 0
+
+    def __call__(self):
+        self.calls += 1
+        return self.calls >= self.n
+
+
+def test_the_refresh_stops_before_a_page_when_the_run_is_short_of_time():
+    """The refresh reads the category again from page 1 on its own, at up to 39 s a page from il-central-1,
+    so one begun late could outlast Lambda's 900 s, and a run Lambda kills writes no manifest. It asks the run's time
+    check before each page it reads and stops with OutOfTime, naming the file and the page it did not read."""
+    routes = {listing_url(2, 1): served(page(2, names(1), last=3)), listing_url(2, 2): served(page(2, names(2), last=3)),
+              listing_url(2, 3): served(page(2, [NAME], last=3).replace(OLD_SIGNATURE, FRESH_SIGNATURE)),
+              OLD_LINK: refused(), FRESH_LINK: gz()}
+    http, portal = connect(routes)
+    with pytest.raises(OutOfTime) as caught:
+        ShufersalSource(now=lambda: SE).download(http, item_030(), ShortFrom(2))
+    assert str(caught.value) == f"{NAME}: its link expired; stopped before page 2 of the PriceFull listing"
+    assert portal.requested == [OLD_LINK, listing_url(2, 1)]
+
+
+def test_the_refresh_reads_no_page_when_the_run_is_already_short_of_time():
+    http, portal = connect({OLD_LINK: refused(), listing_url(2, 1): served(fixture(2))})
+    with pytest.raises(OutOfTime) as caught:
+        ShufersalSource(now=lambda: SE).download(http, item_030(), ShortFrom(1))
+    assert str(caught.value) == f"{NAME}: its link expired; stopped before page 1 of the PriceFull listing"
+    assert portal.requested == [OLD_LINK]
+
+
+def test_the_fresh_link_is_not_fetched_when_the_refresh_leaves_the_run_short_of_time():
+    routes = {listing_url(2, 1): served(fixture(2).replace(OLD_SIGNATURE, FRESH_SIGNATURE)),
+              OLD_LINK: refused(), FRESH_LINK: gz()}
+    http, portal = connect(routes)
+    with pytest.raises(OutOfTime) as caught:
+        ShufersalSource(now=lambda: SE).download(http, item_030(), ShortFrom(2))
+    assert str(caught.value) == f"{NAME}: its link expired; stopped before the fresh link's download"
+    assert portal.requested == [OLD_LINK, listing_url(2, 1)]
+
+
+def test_a_link_that_has_not_expired_never_asks_the_time():
+    """Only the refresh makes requests of its own; a plain download is one request, after the run's own check."""
+    http, _ = connect({OLD_LINK: gz()})
+    check = ShortFrom(1)
+    assert ShufersalSource().download(http, item_030(), check) == GZ
+    assert check.calls == 0
+
+
+def test_the_listing_asks_the_time_before_each_page():
+    """The run loop checks between items too; asked before each page as well, a listing never begins a page short of
+    time, and stops with OutOfTime."""
+    routes = {listing_url(2, p): served(page(2, names(p), last=3)) for p in (1, 2, 3)}
+    http, portal = connect(routes)
+    listing = ShufersalSource().listing(http, ("PriceFull",), ShortFrom(2))
+    assert len(take(listing, 20)) == 20
+    with pytest.raises(OutOfTime, match=r"^before page 2 of the PriceFull listing$"):
+        next(listing)
+    assert portal.requested == [listing_url(2, 1)]
 
 
 @pytest.mark.parametrize("now", [

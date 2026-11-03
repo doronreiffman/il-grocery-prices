@@ -1,7 +1,7 @@
 """The chain list, the adapter each chain gets, and the interface every portal adapter implements."""
 import inspect
 import urllib.parse
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import FrozenInstanceError, fields
 from typing import get_args, get_type_hints
 
@@ -11,7 +11,7 @@ from collector import chains
 from collector.chains import CHAINS, Chain, source_for
 from collector.http import Blocked, Http, HttpError
 from collector.names import KINDS, parse_file_name
-from collector.sources import Listed, ListingUnreadable, Source, checked_name
+from collector.sources import Listed, ListingUnreadable, Source, checked_name, never_short
 from collector.sources.carrefour import CarrefourSource
 from collector.sources.ncr import NcrSource
 from collector.sources.shufersal import ShufersalSource
@@ -125,10 +125,24 @@ def test_listed_holds_the_parsed_name_and_its_link():
 
 
 def test_source_interface():
-    assert list(inspect.signature(Source.listing).parameters) == ["self", "http", "kinds"]
-    assert list(inspect.signature(Source.download).parameters) == ["self", "http", "item"]
-    assert get_type_hints(Source.listing) == {"http": Http, "kinds": tuple[str, ...], "return": Iterator[Listed]}
-    assert get_type_hints(Source.download) == {"http": Http, "item": Listed, "return": bytes}
+    """Both methods take the run's time check, never short when a caller gives none."""
+    assert list(inspect.signature(Source.listing).parameters) == ["self", "http", "kinds", "short_of_time"]
+    assert list(inspect.signature(Source.download).parameters) == ["self", "http", "item", "short_of_time"]
+    assert get_type_hints(Source.listing) == {"http": Http, "kinds": tuple[str, ...],
+                                              "short_of_time": Callable[[], bool], "return": Iterator[Listed]}
+    assert get_type_hints(Source.download) == {"http": Http, "item": Listed, "short_of_time": Callable[[], bool],
+                                               "return": bytes}
+    for method in (Source.listing, Source.download):
+        assert inspect.signature(method).parameters["short_of_time"].default is never_short
+    assert never_short() is False
+
+
+@pytest.mark.parametrize("adapter", [ShufersalSource, NcrSource, CarrefourSource])
+def test_every_adapter_takes_the_interfaces_parameters(adapter):
+    for name in ("listing", "download"):
+        ours, theirs = inspect.signature(getattr(adapter, name)), inspect.signature(getattr(Source, name))
+        assert list(ours.parameters) == list(theirs.parameters), (adapter.__name__, name)
+        assert ours.parameters["short_of_time"].default is never_short, (adapter.__name__, name)
 
 
 def test_source_counts_the_names_it_skipped():

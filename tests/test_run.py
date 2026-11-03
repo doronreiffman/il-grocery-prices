@@ -22,7 +22,7 @@ from botocore.exceptions import ClientError
 from collector.chains import CHAINS
 from collector.http import Blocked, Http, HttpError, build_opener
 from collector.names import KINDS, parse_file_name
-from collector.sources import Listed, ListingUnreadable
+from collector.sources import Listed, ListingUnreadable, OutOfTime, never_short
 from collector.sources.shufersal import ShufersalSource
 from collector.store import MemoryStore, manifest_key, raw_key
 from collector.run import RunResult, collect_chain, manifest_bytes, new_run_id, stored_name
@@ -107,9 +107,11 @@ class FakeSource:
         self.given = 0
         self.downloads = []
         self.events = []
+        self.time_checks = []  # the run's time check, as each call was lent it
 
-    def listing(self, http, kinds):
+    def listing(self, http, kinds, short_of_time=never_short):
         self.listing_calls.append((http, kinds))
+        self.time_checks.append(("listing", short_of_time))
         self.unparsed = 0
         for entry in self.entries:
             if isinstance(entry, BaseException):
@@ -123,9 +125,10 @@ class FakeSource:
             else:
                 entry()
 
-    def download(self, http, item):
+    def download(self, http, item, short_of_time=never_short):
         name = stored_name(item)
         self.downloads.append((http, item.url))
+        self.time_checks.append(("download", short_of_time))
         self.events.append(("download", name))
         queue = self.answers.get(name)
         answer = (queue.pop(0) if len(queue) > 1 else queue[0]) if queue else body(name)
@@ -620,6 +623,43 @@ def test_time_short_at_the_start_reads_nothing():
     assert result.listing_read_at is None and result.listed == []
     assert result.error == "stopped: under 90 s left"
     assert manifest(store)["error"] == "stopped: under 90 s left"
+
+
+def test_the_run_lends_the_adapter_its_own_time_check():
+    """An adapter that makes requests of its own between the run's checks (Shufersal's refresh after an
+    expired link, NCR's listing reads) asks the run's own check, ruling R32's 90 s, before each."""
+    clock = Clock()
+    source = FakeSource([item(PRICE)])
+    collect(source, clock=clock)
+    assert [kind for kind, _ in source.time_checks] == ["listing", "download"]
+    for _, check in source.time_checks:
+        clock.left = 90.0
+        assert check() is False
+        clock.left = 89.9
+        assert check() is True
+
+
+def test_out_of_time_in_the_listing_stops_the_run_as_time_does():
+    source = FakeSource([item(PRICE), OutOfTime("before page 2 of the PriceFull listing"), item(PROMO)])
+    result, store = collect(source)
+    assert result.listed == [PRICE] and set(result.files) == {PRICE}
+    assert result.error == "stopped: under 90 s left" and result.blocked is None
+    assert result.failed == {} and result.not_attempted == []
+    assert manifest(store)["error"] == "stopped: under 90 s left"
+
+
+def test_out_of_time_in_a_download_fails_that_file_and_stops_the_run():
+    """Shufersal's refresh stopped short: the file was tried (its link had expired), so it is failed with why, not
+    tried again, and the run stops; the retry run lists it again."""
+    stop = OutOfTime(f"{PROMO}: its link expired; stopped before page 2 of the PromoFull listing")
+    source = FakeSource([item(PRICE), item(PROMO), item(PRICE_2)], {PROMO: stop})
+    result, store = collect(source)
+    assert source.downloaded == [PRICE, PROMO] and source.given == 2
+    assert result.failed == {PROMO: f"{PROMO}: its link expired; stopped before page 2 of the PromoFull listing: "
+                                     "under 90 s left"}
+    assert result.error == "stopped: under 90 s left" and result.blocked is None
+    assert result.not_attempted == [] and set(result.files) == {PRICE}
+    assert manifest(store)["failed"] == result.failed
 
 
 def test_ninety_seconds_left_is_enough():

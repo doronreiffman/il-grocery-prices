@@ -15,7 +15,10 @@ what happened, written whatever happened (docs/collector.md, "How a morning runs
   owner clears it. A latch that cannot be written leaves the block in the manifest, with the error
   "latch not written: …", and the invocation fails. An unreadable listing, or a listing that cannot be fetched, stops the run with an
   error. So does time: under 90 s left (ruling R32), checked before the listing is read, between its
-  items (a page is fetched inside the listing) and before each download.
+  items (a page is fetched inside the listing) and before each download. The adapters are lent the
+  same check for the requests they make on their own (Shufersal's re-read of a category for a
+  fresh link, NCR's listing answers) and raise OutOfTime when it says so: the run stops the
+  same way, and a file whose download stopped so is failed with where it stopped.
 
 In the result, `listed` holds that day's names as the listing gave them; `files` those stored or
 found stored by this run; `failed` those tried and not stored, with why; `not_attempted` those
@@ -35,7 +38,7 @@ from typing import NoReturn
 from collector.chains import Chain
 from collector.http import Blocked, Http, HttpError
 from collector.payload import BadPayload, check_payload, looks_like_html
-from collector.sources import Listed, ListingUnreadable, Source
+from collector.sources import Listed, ListingUnreadable, OutOfTime, Source
 from collector.store import manifest_key, raw_key
 
 MIN_TIME_LEFT = 90.0  # seconds (ruling R32); with less, the run stops and writes its manifest
@@ -132,7 +135,7 @@ class _Run:
         try:
             self._check_time()
             self.result.listing_read_at = _utc(self.now()).isoformat()
-            listing = iter(self.source.listing(self.http, self.kinds))
+            listing = iter(self.source.listing(self.http, self.kinds, self._short_of_time))
             while (item := self._next(listing)) is not None:
                 self._take(item)
                 self._check_time()
@@ -149,6 +152,8 @@ class _Run:
             self._latch(str(block))
         except ListingUnreadable as exc:
             self._stop(f"listing unreadable: {exc}")
+        except OutOfTime:  # an adapter's own request, short of time
+            self._stop(OUT_OF_TIME)
         except HttpError as exc:  # not read again: an NCR listing logs in afresh each time
             self._stop(f"listing failed: {exc}")
 
@@ -177,9 +182,12 @@ class _Run:
                     self.result.failed[name] = f"{problem}; not tried again: under 90 s left"
                 self._stop(OUT_OF_TIME)
             try:
-                data = self.source.download(self.http, item)
+                data = self.source.download(self.http, item, self._short_of_time)
             except Blocked as block:
                 self._fail_and_latch(name, str(block))
+            except OutOfTime as exc:  # tried: Shufersal's refresh after an expired link stopped short
+                self.result.failed[name] = f"{exc}: under 90 s left"
+                self._stop(OUT_OF_TIME)
             except ListingUnreadable as exc:  # Shufersal's expired-link refresh reads the listing again
                 self.result.failed[name] = f"listing unreadable: {exc}"
                 self._stop(f"listing unreadable: {exc}")

@@ -15,10 +15,10 @@ The listing checks the path and every name before giving the first file.
 """
 import json
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 from collector.http import Http
-from collector.sources import Listed, ListingUnreadable, Source, checked_name
+from collector.sources import Listed, ListingUnreadable, Source, checked_name, never_short
 
 BASE_URL = "https://prices.carrefour.co.il"
 PATH = re.compile(r"\bconst path\s*=\s*'([^']*)';")
@@ -30,7 +30,8 @@ class CarrefourSource(Source):
     def __init__(self):
         self.unparsed = 0
 
-    def listing(self, http: Http, kinds: tuple[str, ...]) -> Iterator[Listed]:
+    def listing(self, http: Http, kinds: tuple[str, ...],
+                short_of_time: Callable[[], bool] = never_short) -> Iterator[Listed]:  # one page: no request of its own
         self.unparsed = 0
         text = http.get(f"{BASE_URL}/").body.decode("utf-8", "replace")
         folder = _path(text)
@@ -43,7 +44,7 @@ class CarrefourSource(Source):
                 listed.append(Listed(parsed, f"{BASE_URL}/{folder}/{name}"))
         yield from listed
 
-    def download(self, http: Http, item: Listed) -> bytes:
+    def download(self, http: Http, item: Listed, short_of_time: Callable[[], bool] = never_short) -> bytes:
         return http.get(item.url).body
 
 

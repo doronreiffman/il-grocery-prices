@@ -17,6 +17,10 @@ What the portal does (docs/portals.md, "Shufersal", seen 2026-10-31):
 - A 403 from the file host from two minutes before the link's `se=` on is the link expiring, not a
   block (ruling R17: the slack covers Azure's clock running ahead of ours): download reads the
   category again for a fresh link and fetches it once. Any other refusal is a block.
+- A page took up to 39 s from il-central-1 on 2026-11-01 (docs/operations.md, Deploy step 6), so a
+  category's 21 pages read again could outlast Lambda's 900 s. Both the listing and the refresh ask the run's time check before
+  each page, and the refresh again before the fresh link's download: OutOfTime, naming the file and
+  where it stopped.
 """
 import urllib.parse
 from collections.abc import Callable, Iterator
@@ -26,7 +30,7 @@ from html.parser import HTMLParser
 
 from collector.http import Blocked, Http, HttpError
 from collector.names import parse_file_name
-from collector.sources import Listed, ListingUnreadable, Source
+from collector.sources import Listed, ListingUnreadable, OutOfTime, Source, never_short
 
 BASE_URL = "https://prices.shufersal.co.il"
 FILE_HOST = "pricesprodpublic.blob.core.windows.net"
@@ -49,26 +53,34 @@ class ShufersalSource(Source):
         self._now = now
         self.unparsed = 0
 
-    def listing(self, http: Http, kinds: tuple[str, ...]) -> Iterator[Listed]:
+    def listing(self, http: Http, kinds: tuple[str, ...],
+                short_of_time: Callable[[], bool] = never_short) -> Iterator[Listed]:
         self.unparsed = 0
         for kind in kinds:
-            for name_cell, link in _rows(http, kind):
+            for name_cell, link in _rows(http, kind, short_of_time):
                 name = parse_file_name(name_cell)
                 if name is None:
                     self.unparsed += 1
                 elif name.kind in kinds:
                     yield Listed(name, link)
 
-    def download(self, http: Http, item: Listed) -> bytes:
+    def download(self, http: Http, item: Listed, short_of_time: Callable[[], bool] = never_short) -> bytes:
         """The body of `item`. On its link expiring, the item's category is read again from page 1 to
         the page that lists the file, and the fresh link is fetched once; HttpError if the file is no
-        longer listed, ListingUnreadable if the listing no longer reads."""
+        longer listed, ListingUnreadable if the listing no longer reads, OutOfTime if `short_of_time`
+        says so before a page or the fresh link's download."""
         try:
             return http.get(item.url).body
         except Blocked as block:
             if not self._expired(block):
                 raise
-        return http.get(_fresh_link(http, item)).body
+        try:
+            link = _fresh_link(http, item, short_of_time)
+        except OutOfTime as stop:
+            raise OutOfTime(f"{item.name.raw}: its link expired; stopped {stop}") from None
+        if short_of_time():
+            raise OutOfTime(f"{item.name.raw}: its link expired; stopped before the fresh link's download")
+        return http.get(link).body
 
     def _expired(self, block: Blocked) -> bool:
         """Whether `block` is the file host refusing a link from EXPIRY_SLACK before its `se=` on."""
@@ -78,17 +90,17 @@ class ShufersalSource(Source):
         return expires is not None and expires - EXPIRY_SLACK <= self._now()
 
 
-def _fresh_link(http: Http, item: Listed) -> str:
-    for name_cell, link in _rows(http, item.name.kind):
+def _fresh_link(http: Http, item: Listed, short_of_time: Callable[[], bool]) -> str:
+    for name_cell, link in _rows(http, item.name.kind, short_of_time):
         if name_cell == item.name.raw:
             return link
     raise HttpError(f"{item.name.raw}: its link expired and the {item.name.kind} listing no longer lists it")
 
 
-def _rows(http: Http, kind: str) -> Iterator[tuple[str, str]]:
+def _rows(http: Http, kind: str, short_of_time: Callable[[], bool]) -> Iterator[tuple[str, str]]:
     """(file name, download link) for each row of `kind`'s pages, a page's rows all checked before
     the first of them is given."""
-    for page, grid in _pages(http, kind):
+    for page, grid in _pages(http, kind, short_of_time):
         rows = []
         for number, cells in enumerate(grid.rows, 1):
             where = f"{kind} page {page}, row {number}"
@@ -99,13 +111,20 @@ def _rows(http: Http, kind: str) -> Iterator[tuple[str, str]]:
         yield from rows
 
 
-def _pages(http: Http, kind: str) -> Iterator[tuple[int, "_Grid"]]:
-    """`kind`'s pages in order, each read when the caller asks for it."""
-    first = _page(http, kind, 1)
+def _pages(http: Http, kind: str, short_of_time: Callable[[], bool]) -> Iterator[tuple[int, "_Grid"]]:
+    """`kind`'s pages in order, each read when the caller asks for it, once `short_of_time` says there is time:
+    OutOfTime otherwise."""
+    first = _timed_page(http, kind, 1, short_of_time)
     last = _last_page(first, kind)
     yield 1, first
     for page in range(2, last + 1):
-        yield page, _page(http, kind, page)
+        yield page, _timed_page(http, kind, page, short_of_time)
+
+
+def _timed_page(http: Http, kind: str, page: int, short_of_time: Callable[[], bool]) -> "_Grid":
+    if short_of_time():
+        raise OutOfTime(f"before page {page} of the {kind} listing")
+    return _page(http, kind, page)
 
 
 def _page(http: Http, kind: str, page: int) -> "_Grid":

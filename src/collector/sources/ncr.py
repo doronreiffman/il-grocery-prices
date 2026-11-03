@@ -21,17 +21,20 @@ What the portal does (docs/portals.md, "Rami Levy, through NCR", seen 2026-10-31
   ListingUnreadable.
 - At the root a file downloads from `GET /file/d/<fname>`, in the session.
 
-The listing reads the whole directory and checks every name before giving the first.
+The listing reads the whole directory and checks every name before giving the first. Each listing
+answer is asked for only after the run's time check: a second read takes about a first read's time,
+once as long as 90 s, and the run checks only before the listing begins (the login, its first step,
+follows that check). OutOfTime names the answer it did not ask for, and which read.
 """
 import json
 import logging
 import re
 import urllib.parse
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from html.parser import HTMLParser
 
 from collector.http import Blocked, Http
-from collector.sources import Listed, ListingUnreadable, Source, checked_name
+from collector.sources import Listed, ListingUnreadable, OutOfTime, Source, checked_name, never_short
 
 BASE_URL = "https://url.publishedprices.co.il"
 LOGIN_PAGE = f"{BASE_URL}/login"
@@ -63,11 +66,12 @@ class NcrSource(Source):
         self.username = username
         self.unparsed = 0
 
-    def listing(self, http: Http, kinds: tuple[str, ...]) -> Iterator[Listed]:
+    def listing(self, http: Http, kinds: tuple[str, ...],
+                short_of_time: Callable[[], bool] = never_short) -> Iterator[Listed]:
         self.unparsed = 0
         file_page = self._log_in(http)
         listed = []
-        for number, fname in enumerate(_fnames(http, file_page, self.username), 1):
+        for number, fname in enumerate(_fnames(http, file_page, self.username, short_of_time), 1):
             name = checked_name(fname, f"the NCR listing, entry {number}")
             if name is None:
                 self.unparsed += 1
@@ -75,8 +79,8 @@ class NcrSource(Source):
                 listed.append(Listed(name, DOWNLOAD + fname))
         yield from listed
 
-    def download(self, http: Http, item: Listed) -> bytes:
-        return http.get(item.url).body
+    def download(self, http: Http, item: Listed, short_of_time: Callable[[], bool] = never_short) -> bytes:
+        return http.get(item.url).body  # one request, after the run's own check
 
     def _log_in(self, http: Http) -> "_Page":
         """The file browser, as the login lands on it; Blocked if it lands anywhere else."""
@@ -93,11 +97,10 @@ class NcrSource(Source):
         return page
 
 
-def _fnames(http: Http, file_page: "_Page", username: str) -> list[str]:
+def _fnames(http: Http, file_page: "_Page", username: str, short_of_time: Callable[[], bool]) -> list[str]:
     """Every entry's file name. A name sent twice reads the listing again from the start, once (ruling
-    R34); a second repeat is ListingUnreadable (ruling R21). The second read adds about one listing's
-    time to a run that starts with the listing, so it is not checked against the run's time left (QUEUE
-    q9 would bound it)."""
+    R34); a second repeat is ListingUnreadable (ruling R21). Each answer of either read is asked for only
+    once `short_of_time` says there is time: OutOfTime otherwise, saying which read."""
     token = file_page.csrftoken
     if not token:
         raise ListingUnreadable("the NCR file page carries no csrftoken")
@@ -106,26 +109,32 @@ def _fnames(http: Http, file_page: "_Page", username: str) -> list[str]:
     if file_page.cd != ROOT:
         raise ListingUnreadable(f"the NCR file page's directory is {file_page.cd!r}, not {ROOT}")
     length = _page_size(file_page)
-    fnames, repeat = _read_through(http, length, token, username)
+    fnames, repeat = _read_through(http, length, token, username, short_of_time)
     if repeat is None:
         return fnames
     log.warning("the NCR listing as %r sent %s; reading it again from the start, once", username, repeat)
     try:
-        fnames, repeat = _read_through(http, length, token, username)
+        fnames, repeat = _read_through(http, length, token, username, short_of_time)
     except ListingUnreadable as exc:  # the alert email carries the error alone; the warning stays in the log
         raise ListingUnreadable(f"on the second read from the start, after a repeated name: {exc}") from None
+    except OutOfTime as stop:
+        raise OutOfTime(f"{stop}, on the second read") from None
     if repeat is None:
         return fnames
     raise ListingUnreadable(f"the NCR listing repeated a name on two reads from the start: {repeat}")
 
 
-def _read_through(http: Http, length: int, token: str, username: str) -> tuple[list[str], str | None]:
+def _read_through(http: Http, length: int, token: str, username: str,
+                  short_of_time: Callable[[], bool]) -> tuple[list[str], str | None]:
     """One read of the listing from iDisplayStart 0, page after page until its first answer's total:
     every name and None; or, when a page sends a name an earlier page sent, the names before that page
-    and the repeat, in words. Each answer is logged: why the portal pages at all is unknown."""
+    and the repeat, in words. Each answer is logged: why the portal pages at all is unknown. Each is
+    asked for only once `short_of_time` says there is time: OutOfTime otherwise."""
     fnames: list[str] = []
     total = None
     while total is None or len(fnames) < total:
+        if short_of_time():
+            raise OutOfTime(f"before the NCR listing's answer from iDisplayStart {len(fnames)}")
         received, count = _answer(http.post(LISTING, _form(len(fnames), length, token), headers=AJAX).body)
         log.info("the NCR listing as %r answered from iDisplayStart %d: %d entries of the %d asked for; total %d",
                  username, len(fnames), len(received), length, count)

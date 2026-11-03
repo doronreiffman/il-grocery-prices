@@ -37,6 +37,7 @@ SOURCES = ("src/collector/sources/__init__.py", ["tests/test_chains.py"])
 SHUFERSAL = ("src/collector/sources/shufersal.py", ["tests/test_shufersal.py"])
 NAME_CHECK = ("src/collector/sources/__init__.py", ["tests/test_chains.py"])
 NCR = ("src/collector/sources/ncr.py", ["tests/test_ncr.py"])
+NEVER_SHORT = ("src/collector/sources/__init__.py", ["tests/test_chains.py"])
 CARREFOUR = ("src/collector/sources/carrefour.py", ["tests/test_carrefour.py"])
 STORE = ("src/collector/store.py", ["tests/test_store.py"])
 RUN = ("src/collector/run.py", ["tests/test_run.py"])
@@ -203,8 +204,8 @@ MUTATIONS = {
     # sources
     "Listed not frozen": (SOURCES, "@dataclass(frozen=True)\nclass Listed:", "@dataclass\nclass Listed:"),
     "Listed without its URL": (SOURCES, "    name: FileName\n    url: str\n", "    name: FileName\n"),
-    "listing takes no kinds": (SOURCES, "def listing(self, http: Http, kinds: tuple[str, ...])", "def listing(self, http: Http)"),
-    "download takes a URL, not the listed item": (SOURCES, "def download(self, http: Http, item: Listed)", "def download(self, http: Http, item: str)"),
+    "listing takes no kinds": (SOURCES, "def listing(self, http: Http, kinds: tuple[str, ...],\n", "def listing(self, http: Http,\n"),
+    "download takes a URL, not the listed item": (SOURCES, "def download(self, http: Http, item: Listed,", "def download(self, http: Http, item: str,"),
     "download returns text": (SOURCES, ") -> bytes:", ") -> str:"),
     "ListingUnreadable is an HttpError": (SOURCES, "class ListingUnreadable(Exception):", 'class ListingUnreadable(__import__("collector.http").http.HttpError):'),
     "Source without its unparsed count": (SOURCES, "    unparsed: int  #", "    #"),
@@ -218,8 +219,8 @@ MUTATIONS = {
     "last-page link naming two pages read as its first": (SHUFERSAL, "    if len(pages) != 1 or not pages[0].isdecimal():", "    if not pages or not pages[0].isdecimal():"),
     "last page that is no number escapes as ValueError": (SHUFERSAL, " or not pages[0].isdecimal():", ":"),
     "zero rows read as empty day": (SHUFERSAL, "    if not grid.rows:", "    if False:"),
-    "all pages read before the first row": (SHUFERSAL, "    yield 1, first\n    for page in range(2, last + 1):\n        yield page, _page(http, kind, page)\n",
-                                            "    rest = [(page, _page(http, kind, page)) for page in range(2, last + 1)]\n    yield 1, first\n    yield from rest\n"),
+    "all pages read before the first row": (SHUFERSAL, "    yield 1, first\n    for page in range(2, last + 1):\n        yield page, _timed_page(http, kind, page, short_of_time)\n",
+                                            "    rest = [(page, _timed_page(http, kind, page, short_of_time)) for page in range(2, last + 1)]\n    yield 1, first\n    yield from rest\n"),
     "a page's rows given before all are checked": (SHUFERSAL, "            rows.append((name, _checked_link(cells[0].href, name, where)))\n        yield from rows\n",
                                                    "            yield name, _checked_link(cells[0].href, name, where)\n"),
     "listing URL without storeId=0": (SHUFERSAL, "&storeId=0&page={page}", "&page={page}"),
@@ -252,8 +253,8 @@ MUTATIONS = {
     "unreadable se= escapes as ValueError": (SHUFERSAL, "    except (IndexError, ValueError):", "    except IndexError:"),
     "missing se= escapes as IndexError": (SHUFERSAL, "    except (IndexError, ValueError):", "    except ValueError:"),
     "refresh takes another file's link": (SHUFERSAL, "        if name_cell == item.name.raw:", "        if True:"),
-    "refreshed link not used": (SHUFERSAL, "        return http.get(_fresh_link(http, item)).body", "        _fresh_link(http, item)\n        return http.get(item.url).body"),
-    "refreshed more than once": (SHUFERSAL, "        return http.get(_fresh_link(http, item)).body", "        return self.download(http, Listed(item.name, _fresh_link(http, item)))"),
+    "refreshed link not used": (SHUFERSAL, "        return http.get(link).body", "        return http.get(item.url).body"),
+    "refreshed more than once": (SHUFERSAL, "        return http.get(link).body", "        return self.download(http, Listed(item.name, link), short_of_time)"),
     "file gone after expiry read as unreadable": (SHUFERSAL, '    raise HttpError(f"{item.name.raw}: its link expired', '    raise ListingUnreadable(f"{item.name.raw}: its link expired'),
     # names a link is built from (ruling R19)
     "slash in a linked name accepted": (NAME_CHECK, 'UNSAFE = ("/", ', "UNSAFE = ("),
@@ -306,7 +307,7 @@ MUTATIONS = {
     "empty answer before the total read as the end": (NCR, '            raise ListingUnreadable(f"the NCR listing stopped at', '            break\n            raise ListingUnreadable(f"the NCR listing stopped at'),
     "zero total read as an empty day": (NCR, "            if total < 1:", "            if False:"),
     "a name sent again read on": (NCR, "        if repeated is not None:", "        if False:"),
-    "a repeated name stops the listing at once": (NCR, "    try:\n        fnames, repeat = _read_through(http, length, token, username)\n", "    raise ListingUnreadable(repeat)\n    try:\n        fnames, repeat = _read_through(http, length, token, username)\n"),
+    "a repeated name stops the listing at once": (NCR, "    try:\n        fnames, repeat = _read_through(http, length, token, username, short_of_time)\n", "    raise ListingUnreadable(repeat)\n    try:\n        fnames, repeat = _read_through(http, length, token, username, short_of_time)\n"),
     "the read again goes unlogged": (NCR, '    log.warning("the NCR listing as %r sent %s; reading it again from the start, once", username, repeat)\n', ""),
     "a repeat on the second read accepted": (NCR, '    raise ListingUnreadable(f"the NCR listing repeated a name on two reads from the start: {repeat}")', "    return fnames"),
     "an error on the second read unmarked": (NCR, 'raise ListingUnreadable(f"on the second read from the start, after a repeated name: {exc}") from None', "raise"),
@@ -415,9 +416,9 @@ MUTATIONS = {
                                  "        if name in self.stored:\n            return\n        self.result.listed.append(name)\n"),
     "a name listed twice fetched again": (RUN, "        if name in self.seen:\n            return  #", "        if False:\n            return  #"),
     # run: the listing
-    "listing read before the files are fetched (R16)": (RUN, "            listing = iter(self.source.listing(self.http, self.kinds))", "            listing = iter(list(self.source.listing(self.http, self.kinds)))"),
-    "listing read twice": (RUN, "            listing = iter(self.source.listing(self.http, self.kinds))",
-                           "            listing = iter(self.source.listing(self.http, self.kinds)) if list(self.source.listing(self.http, self.kinds)) or True else None"),
+    "listing read before the files are fetched (R16)": (RUN, "            listing = iter(self.source.listing(self.http, self.kinds, self._short_of_time))", "            listing = iter(list(self.source.listing(self.http, self.kinds, self._short_of_time)))"),
+    "listing read twice": (RUN, "            listing = iter(self.source.listing(self.http, self.kinds, self._short_of_time))",
+                           "            listing = iter(self.source.listing(self.http, self.kinds, self._short_of_time)) if list(self.source.listing(self.http, self.kinds, self._short_of_time)) or True else None"),
     "listing_read_at in local time": (RUN, "self.result.listing_read_at = _utc(self.now()).isoformat()", "self.result.listing_read_at = self.now().isoformat()"),
     "unparsed not recorded (R13)": (RUN, "            self.result.unparsed = self.source.unparsed  #", "            pass  #"),
     "unparsed read before the listing is used up (R13)": (RUN, "                self._take(item)\n                self._check_time()\n            self.result.unparsed = self.source.unparsed  # final only now: it resets on the first next()\n",
@@ -425,7 +426,7 @@ MUTATIONS = {
     "unparsed taken from an unfinished listing (R13)": (RUN, "        except _Stop:\n            pass", "        except _Stop:\n            self.result.unparsed = self.source.unparsed"),
     "block in the listing escapes": (RUN, "        except Blocked as block:\n            self._latch(str(block))", "        except ZeroDivisionError as block:\n            self._latch(str(block))"),
     "unreadable listing escapes (R23)": (RUN, "        except ListingUnreadable as exc:\n", "        except ZeroDivisionError as exc:\n"),
-    "unreadable listing not recorded as an error (R23)": (RUN, '            self._stop(f"listing unreadable: {exc}")\n        except HttpError', "            raise _Stop\n        except HttpError"),
+    "unreadable listing not recorded as an error (R23)": (RUN, '            self._stop(f"listing unreadable: {exc}")\n        except OutOfTime:', "            raise _Stop\n        except OutOfTime:"),
     "listing HTTP error escapes": (RUN, "        except HttpError as exc:  # not read again", "        except ZeroDivisionError as exc:  # not read again"),
     "listing HTTP error not recorded as an error": (RUN, '            self._stop(f"listing failed: {exc}")', "            raise _Stop"),
     # run: blocks and the latch
@@ -450,6 +451,24 @@ MUTATIONS = {
     "payload not checked": (RUN, "                check_payload(name, data)", "                pass"),
     "failed file not recorded": (RUN, "        self.result.failed[name] = problem\n", ""),
     "unreadable listing from a download escapes (R23)": (RUN, "            except ListingUnreadable as exc:  # Shufersal's", "            except ZeroDivisionError as exc:  # Shufersal's"),
+    # the run's time check, lent to the adapters for the requests they make on their own
+    "Shufersal page read short of time": (SHUFERSAL, '    if short_of_time():\n        raise OutOfTime(f"before page {page}', '    if False:\n        raise OutOfTime(f"before page {page}'),
+    "Shufersal listing not given the time check": (SHUFERSAL, "for name_cell, link in _rows(http, kind, short_of_time):", "for name_cell, link in _rows(http, kind, never_short):"),
+    "Shufersal refresh not given the time check": (SHUFERSAL, "link = _fresh_link(http, item, short_of_time)", "link = _fresh_link(http, item, never_short)"),
+    "Shufersal fresh link fetched short of time": (SHUFERSAL, "        if short_of_time():\n            raise OutOfTime(f\"{item.name.raw}: its link expired; stopped before the fresh", "        if False:\n            raise OutOfTime(f\"{item.name.raw}: its link expired; stopped before the fresh"),
+    "Shufersal refresh stop not naming the file": (SHUFERSAL, '            raise OutOfTime(f"{item.name.raw}: its link expired; stopped {stop}") from None', "            raise"),
+    "NCR listing answer asked for short of time": (NCR, "        if short_of_time():\n            raise OutOfTime(f\"before the NCR listing's answer", "        if False:\n            raise OutOfTime(f\"before the NCR listing's answer"),
+    "NCR listing not given the time check": (NCR, "_fnames(http, file_page, self.username, short_of_time)", "_fnames(http, file_page, self.username, never_short)"),
+    "NCR first read not given the time check": (NCR, "    length = _page_size(file_page)\n    fnames, repeat = _read_through(http, length, token, username, short_of_time)", "    length = _page_size(file_page)\n    fnames, repeat = _read_through(http, length, token, username, never_short)"),
+    "NCR second read not given the time check": (NCR, "    try:\n        fnames, repeat = _read_through(http, length, token, username, short_of_time)", "    try:\n        fnames, repeat = _read_through(http, length, token, username, never_short)"),
+    "NCR second read's time stop not saying so": (NCR, '    except OutOfTime as stop:\n        raise OutOfTime(f"{stop}, on the second read") from None\n', ""),
+    "run lends the listing no time check": (RUN, "self.source.listing(self.http, self.kinds, self._short_of_time)", "self.source.listing(self.http, self.kinds)"),
+    "run lends the download no time check": (RUN, "self.source.download(self.http, item, self._short_of_time)", "self.source.download(self.http, item)"),
+    "run an adapter's time stop in the listing escapes": (RUN, "        except OutOfTime:  # an adapter's own request, short of time\n", "        except ZeroDivisionError:  # an adapter's own request, short of time\n"),
+    "run an adapter's time stop in the listing not recorded": (RUN, "            self._stop(OUT_OF_TIME)\n        except HttpError", "            raise _Stop\n        except HttpError"),
+    "run a download's time stop not failing the file": (RUN, '                self.result.failed[name] = f"{exc}: under 90 s left"\n', ""),
+    "run a download's time stop retried": (RUN, '                self.result.failed[name] = f"{exc}: under 90 s left"\n                self._stop(OUT_OF_TIME)\n', "                problem = str(exc)\n                continue\n"),
+    "a caller with no time limit always short": (NEVER_SHORT, '    """The time check for a caller with no time limit."""\n    return False', '    """The time check for a caller with no time limit."""\n    return True'),
     "a failed put stops the run (R23)": (RUN, "        except Exception as exc:  # a storage hiccup", "        except ZeroDivisionError as exc:  # a storage hiccup"),
     "files entry's SHA-256 not the body's": (RUN, '"sha256": hashlib.sha256(data).hexdigest()', '"sha256": hashlib.sha256(name.encode()).hexdigest()'),
     "files entry's size not the body's": (RUN, '"size": len(data),', '"size": len(name),'),

@@ -137,11 +137,11 @@ class FakeSource:
     def __init__(self, names, answers=None):
         self.names, self.answers = names, answers or {}
 
-    def listing(self, http, kinds):
+    def listing(self, http, kinds, short_of_time=None):
         for name in self.names:
             yield Listed(parse_file_name(name), f"https://portal.example/{name}")
 
-    def download(self, http, item):
+    def download(self, http, item, short_of_time=None):
         answer = self.answers.get(item.name.raw)
         if answer is not None:
             raise answer

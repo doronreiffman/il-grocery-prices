@@ -20,7 +20,7 @@ import pytest
 from collector.chains import CHAINS, source_for
 from collector.http import Blocked, Http, build_opener
 from collector.names import parse_file_name
-from collector.sources import Listed, ListingUnreadable, Source
+from collector.sources import Listed, ListingUnreadable, OutOfTime, Source
 from collector.sources import ncr
 from collector.sources.ncr import NcrSource
 
@@ -488,6 +488,49 @@ def test_the_second_read_pages_to_its_own_total():
     listed = list(NcrSource("RamiLevi").listing(http, ("Stores", "PriceFull", "PromoFull", "Price", "Promo")))
     assert [item.name.raw for item in listed] == NAMES
     assert [dict(form)["iDisplayStart"] for form in portal.sent("POST", LISTING)] == ["0", "5", "0", "5", "10"]
+
+
+class ShortFrom:
+    """The run's time check, as the run loop lends it: short of time from its `n`th call on (counted from 1)."""
+
+    def __init__(self, n):
+        self.n, self.calls = n, 0
+
+    def __call__(self):
+        self.calls += 1
+        return self.calls >= self.n
+
+
+def test_the_second_read_stops_when_the_run_is_short_of_time():
+    """The second read after a repeated name (R34) takes about one listing's time (1,826 entries in four
+    answers in about 4 s on 2026-11-01, a partial read about 90 s once). Each listing request asks the run's time
+    check first, so neither read begins an answer short of time; it stops with OutOfTime, saying which read."""
+    answers = [as_json({"aaData": ENTRIES[:5], "iTotalDisplayRecords": 14}),
+               as_json({"aaData": ENTRIES[4:9], "iTotalDisplayRecords": 14})]
+    http, portal = connect(file_page=served(file_html(5)), listing=answers)
+    check = ShortFrom(3)
+    with pytest.raises(OutOfTime) as caught:
+        list(NcrSource("RamiLevi").listing(http, ("PriceFull",), check))
+    assert str(caught.value) == "before the NCR listing's answer from iDisplayStart 0, on the second read"
+    assert portal.requested == THROUGH_THE_LISTING + [("POST", LISTING)]
+    assert check.calls == 3
+
+
+def test_a_read_stops_between_its_answers_when_the_run_is_short_of_time():
+    http, portal = connect(file_page=served(file_html(5)))
+    with pytest.raises(OutOfTime) as caught:
+        list(NcrSource("RamiLevi").listing(http, ("PriceFull",), ShortFrom(2)))
+    assert str(caught.value) == "before the NCR listing's answer from iDisplayStart 5"
+    assert portal.requested == THROUGH_THE_LISTING
+
+
+def test_a_download_never_asks_the_time():
+    """One request, after the run's own check."""
+    http, _ = connect()
+    check = ShortFrom(1)
+    listed = list(NcrSource("RamiLevi").listing(http, ("PriceFull",)))
+    NcrSource("RamiLevi").download(http, listed[0], check)
+    assert check.calls == 0
 
 
 @pytest.mark.parametrize("page_size, served_entries, total, received", [
