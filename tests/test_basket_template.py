@@ -22,7 +22,7 @@ from basket.chains import SLUGS
 from basket.duck import MEMORY_LIMIT_VAR, TEMP_DIRECTORY_VAR
 from basket.handler import REQUIRED, SITE_BUCKET_PREFIX, Config, Deps, run
 from basket.site import PAGES, day_key
-from collector.store import RETENTION_DAYS, check_key, manifest_key, raw_key
+from collector.store import RETENTION_DAYS, manifest_key, raw_key
 from test_template import DAILY, ISRAEL, TEMPLATE, _actions, _prefix, _resources
 
 ROOT = Path(__file__).parent.parent
@@ -158,13 +158,13 @@ def test_role_cannot_delete_bypass_the_lock_or_change_either_bucket(basket_state
 
 
 def test_role_grants_exactly_what_the_code_does(basket_statements):
-    """Reads of the archive's raw files, manifests, check records, tables and basket records (a refused locked put
-    of a record is compared through head_object, which needs s3:GetObject); plain puts of the tables; locked puts
-    of the records (each sets its retain-until date, which needs s3:PutObjectRetention); a list of the archive;
-    reads of the site's day files, puts of its two pages and day files, a list of it; one distribution's
-    invalidation."""
+    """Reads of the archive's raw files, manifests, tables and basket records (a refused locked put of a record is
+    compared through head_object, which needs s3:GetObject); plain puts of the tables; locked puts of the records
+    (each sets its retain-until date, which needs s3:PutObjectRetention); a list of the archive, which is all the
+    check-record gate needs; reads of the site's day files, puts of its two pages and day files, a list of it; one
+    distribution's invalidation."""
     archive = [{"Fn::Sub": "${ArchiveBucket.Arn}/" + folder + "/*"}
-               for folder in ("raw", "manifests", "checks", "tables", "basket")]
+               for folder in ("raw", "manifests", "tables", "basket")]
     by_sid = {statement["Sid"]: (sorted(_actions(statement)), _resources(statement)) for statement in basket_statements}
     assert by_sid == {
         "ReadArchive": (["s3:GetObject"], archive),
@@ -187,7 +187,7 @@ def test_role_prefixes_are_the_codes_keys(basket_statements):
     day = date(2026, 11, 1)
     by_sid = {statement["Sid"]: _resources(statement) for statement in basket_statements}
     table, record = table_key("shufersal", day, "prices.parquet"), record_key(day, "r")
-    read = [raw_key("shufersal", day, "x"), manifest_key(day, "shufersal", "r"), check_key(day, "r"), table, record]
+    read = [raw_key("shufersal", day, "x"), manifest_key(day, "shufersal", "r"), table, record]
     assert by_sid["ReadArchive"] == [_prefix(key) for key in read]
     assert by_sid["WriteTables"] == [_prefix(table)]
     assert by_sid["WriteOnceLockedRecords"] == [_prefix(record)]

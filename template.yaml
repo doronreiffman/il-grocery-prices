@@ -351,16 +351,15 @@ Resources:
       Policies:
         - Statement:
             # The extractions read the day's price files and the basket run the tables, the store
-            # lists and the manifests; both look for the day's check record under checks/ first. A
-            # locked put of a record that S3 refuses is compared through head_object, which needs
-            # s3:GetObject.
+            # lists and the manifests. Both look for the day's check record first by listing checks/,
+            # which ListArchive covers; no check record is read. A locked put of a record that S3
+            # refuses is compared through head_object, which needs s3:GetObject.
             - Sid: ReadArchive
               Effect: Allow
               Action: s3:GetObject
               Resource:
                 - !Sub "${ArchiveBucket.Arn}/raw/*"
                 - !Sub "${ArchiveBucket.Arn}/manifests/*"
-                - !Sub "${ArchiveBucket.Arn}/checks/*"
                 - !Sub "${ArchiveBucket.Arn}/tables/*"
                 - !Sub "${ArchiveBucket.Arn}/basket/*"
             # Each chain's table and report of the day: plain puts, replacing an earlier run's.
