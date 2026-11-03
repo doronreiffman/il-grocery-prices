@@ -33,7 +33,8 @@ DAILY = re.compile(r"cron\((?P<minute>[0-9]{1,2}) (?P<hour>[0-9]{1,2}) \* \* \? 
 
 # Rulings R7 and R30 (the controller's ledger), as amended by the owner on 2026-11-01: Shufersal's
 # invocations start 15 minutes apart, Lambda's longest run, so one chain never gets two requests at
-# once; so do the three NCR chains, which share one portal host, so their sessions never overlap (R30).
+# once; the three NCR chains', which share one portal host, start at least 15 minutes apart, so their
+# sessions never overlap (R30).
 # Shufersal collects its store list and full files only, one kind an invocation, each full kind twice in
 # the morning (the second run carries on where the first stopped) and once at the retry. A retry run
 # starts three hours after the first main run of its kinds; the check starts 15 minutes after the last

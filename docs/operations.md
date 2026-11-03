@@ -306,7 +306,7 @@ The basket run puts the two pages only when its day is the site's latest or the 
 In the archive bucket, beside the collector's keys:
 
 - `tables/prices/chain=<slug>/date=<day>/prices.parquet` and `report.json`: a chain's table of the day and its counts, plain and overwritable; a later extraction of the same day replaces them.
-- `basket/date=<day>/basket-<run id>.json`: the basket run's private record (B10), written once and locked for ten years (governance mode), as a manifest is. Every build writes one, a refused one included (`RevisionNeeded`, `SiteCheckFailed`); a run that stops before the build has priced the day (`MorningNotChecked`, `MissingTable`) writes none.
+- `basket/date=<day>/basket-<run id>.json`: the basket run's private record (B10), written once and locked for ten years (governance mode), as a manifest is. Every build writes one, a refused one included (`RevisionNeeded`, `SiteCheckFailed`); a run that stops before the build has priced the day (`MorningNotChecked`, `MissingTable`, `NoStoreList`) writes none.
 
 In the site bucket: `index.html` and `method.html` (only for the site's latest day) and `days/<day>.json` (only when the build wrote it), with the content types and the `Cache-Control: max-age=300` that `scripts/publish.sh` sets. Nothing is deleted in either bucket.
 
@@ -407,6 +407,7 @@ The second check emails when the basket run pings `/fail`, or when no ping arriv
 
 - `MorningNotChecked`: the collector's check has not written its record for the day: it has not run, or it failed. Read `/il-grocery-prices/collector` around the check's time, and the collector's own healthchecks.io check. Once the check has written its record, run the day's five extractions and its basket run by hand ("The manual runs", above): the extractions refused the day too.
 - `MissingTable`: it names the chain whose table of the day is missing, and the table's key: that chain's extraction did not run or did not finish. Read that extraction in the log group around the extraction's time, then run it and the basket run again by hand.
+- `NoStoreList`: it names the chain that has no store list on the day or any of the 13 days before it. The build stopped before it wrote the record, so there is none, and nothing went up. Look under the chain's `raw/chain=<slug>/` in the archive bucket for a `Stores` file of those days, and read `/il-grocery-prices/collector` for the chain's runs. Once the collector has stored a store list, run the basket run again by hand.
 - `RevisionNeeded`: the day is published with other numbers, and the error names what differs: a code or rule change moved a published number. The run published nothing and kept its record. When the new numbers are right, revise the day with a hand build given `--revise` and a one-line reason ("Revising a day", above), then check, review and publish as there.
 - `SiteCheckFailed`: the built page failed the word check (`basket.check`) or the published-day guard (`basket.guard`); the error lists the problems, one a line. Nothing went up. Fix the cause before the day is built again.
 

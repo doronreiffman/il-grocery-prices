@@ -139,8 +139,8 @@ Resources:
               Resource: !Ref AlertTopic
       # Israel time, so daylight saving needs no handling. Shufersal's invocations start 15 minutes
       # apart (Lambda's longest run), so one chain never gets two requests at once, and the three NCR
-      # chains' at least 15 minutes apart (ruling R30: they share url.publishedprices.co.il), so their
-      # sessions never overlap. Shufersal collects its store list and full files only, one kind an
+      # chains' start at least 15 minutes apart (ruling R30: they share url.publishedprices.co.il), so
+      # their sessions never overlap. Shufersal collects its store list and full files only, one kind an
       # invocation, each full kind twice in the morning, the second run carrying on where the first
       # stopped (owner, 2026-11-01). A retry run starts three hours after the first main run of its
       # kinds; the check starts at 11:48, 15 minutes after the last retry run (Osher Ad's, 11:18) can
