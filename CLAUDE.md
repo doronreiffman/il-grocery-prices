@@ -21,7 +21,7 @@ Personal portfolio project. Collects, every morning, the price files Israeli sup
 
 ## Active threads
 
-- Collector: live since 2026-11-01 (17 schedules, Shufersal full files only, check 10:45); first scheduled morning clean 2026-11-02; next: the Saturday check (q10), Osher Ad's later run (q12) · `.claude/OPEN_ISSUES.md` Collector.
+- Collector: live since 2026-11-01 (17 schedules, Shufersal full files only, check 11:48); first scheduled morning clean 2026-11-02; next: the Saturday check (q10), Osher Ad's later run (q12) · `.claude/OPEN_ISSUES.md` Collector.
 - Showcase (headline basket): design `docs/headline-basket.md` (read it before touching the basket); step one live since 2026-11-02 at https://d153udx05irk2f.cloudfront.net (noindex, by link; stack `il-grocery-prices-site`), each day a hand build until step two (q14); the basket is `src/basket/baskets/v1.json` (approved 2026-11-02; a change is a new version); how to run it by hand: `docs/operations.md`, "The headline basket, by hand" · q13, q14, `.claude/OPEN_ISSUES.md` Showcase.
 
 ## Working notes

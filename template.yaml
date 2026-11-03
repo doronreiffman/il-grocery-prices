@@ -120,8 +120,8 @@ Resources:
       # overlap. Shufersal collects its store list and full files only, one kind an invocation, each
       # full kind twice in the morning, the second run carrying on where the first stopped (owner,
       # 2026-11-01). A retry run starts three hours after the first main run of its kinds; the check
-      # starts at 10:45, 15 minutes after the last retry run (10:15) can have finished, for its
-      # manifest write and the schedulers' lag. No flexible window and no Scheduler retries.
+      # starts at 11:48, 15 minutes after the last retry run (Osher Ad's, 11:18) can have finished,
+      # for its manifest write and the schedulers' lag. No flexible window and no Scheduler retries.
       Events:
         MainShufersalStores:
           Type: ScheduleV2
@@ -162,7 +162,7 @@ Resources:
         MainOsherAd:
           Type: ScheduleV2
           Properties:
-            ScheduleExpression: "cron(48 6 * * ? *)"
+            ScheduleExpression: "cron(18 8 * * ? *)"
             ScheduleExpressionTimezone: Asia/Jerusalem
             Input: '{"mode": "main", "chain": "osherad"}'
             State: !Ref ScheduleState
@@ -243,7 +243,7 @@ Resources:
         RetryOsherAd:
           Type: ScheduleV2
           Properties:
-            ScheduleExpression: "cron(48 9 * * ? *)"
+            ScheduleExpression: "cron(18 11 * * ? *)"
             ScheduleExpressionTimezone: Asia/Jerusalem
             Input: '{"mode": "retry", "chain": "osherad"}'
             State: !Ref ScheduleState
@@ -270,7 +270,7 @@ Resources:
         Check:
           Type: ScheduleV2
           Properties:
-            ScheduleExpression: "cron(45 10 * * ? *)"
+            ScheduleExpression: "cron(48 11 * * ? *)"
             ScheduleExpressionTimezone: Asia/Jerusalem
             Input: '{"mode": "check"}'
             State: !Ref ScheduleState

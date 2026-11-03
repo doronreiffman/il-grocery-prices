@@ -35,13 +35,13 @@ DAILY = re.compile(r"cron\((?P<minute>[0-9]{1,2}) (?P<hour>[0-9]{1,2}) \* \* \? 
 # Shufersal collects its store list and full files only, one kind an invocation, each full kind twice in
 # the morning (the second run carries on where the first stopped) and once at the retry. A retry run
 # starts three hours after the first main run of its kinds; the check starts 15 minutes after the last
-# retry run can have finished (10:15 + 15 + 15 min). The four other chains fetch all five kinds in one run.
+# retry run can have finished (11:18 + 15 + 15 min). The four other chains fetch all five kinds in one run.
 SCHEDULES = {
     "MainShufersalStores": ("06:30", {"mode": "main", "chain": "shufersal", "kinds": ["Stores"]}),
     "MainRamiLevy": ("06:33", {"mode": "main", "chain": "ramilevy"}),
     "MainCarrefour": ("06:39", {"mode": "main", "chain": "carrefour"}),
     "MainShufersalPrices": ("06:45", {"mode": "main", "chain": "shufersal", "kinds": ["PriceFull"]}),
-    "MainOsherAd": ("06:48", {"mode": "main", "chain": "osherad"}),
+    "MainOsherAd": ("08:18", {"mode": "main", "chain": "osherad"}),
     "MainShufersalPricesAgain": ("07:00", {"mode": "main", "chain": "shufersal", "kinds": ["PriceFull"]}),
     "MainYochananof": ("07:03", {"mode": "main", "chain": "yochananof"}),
     "MainShufersalPromos": ("07:15", {"mode": "main", "chain": "shufersal", "kinds": ["PromoFull"]}),
@@ -50,10 +50,10 @@ SCHEDULES = {
     "RetryRamiLevy": ("09:33", {"mode": "retry", "chain": "ramilevy"}),
     "RetryCarrefour": ("09:39", {"mode": "retry", "chain": "carrefour"}),
     "RetryShufersalPrices": ("09:45", {"mode": "retry", "chain": "shufersal", "kinds": ["PriceFull"]}),
-    "RetryOsherAd": ("09:48", {"mode": "retry", "chain": "osherad"}),
+    "RetryOsherAd": ("11:18", {"mode": "retry", "chain": "osherad"}),
     "RetryYochananof": ("10:03", {"mode": "retry", "chain": "yochananof"}),
     "RetryShufersalPromos": ("10:15", {"mode": "retry", "chain": "shufersal", "kinds": ["PromoFull"]}),
-    "Check": ("10:45", {"mode": "check"}),
+    "Check": ("11:48", {"mode": "check"}),
 }
 CHECK_MARGIN = 15  # minutes after the last retry run can have finished
 SHUFERSAL_RUNS = {"main": [["Stores"], ["PriceFull"], ["PriceFull"], ["PromoFull"], ["PromoFull"]],
