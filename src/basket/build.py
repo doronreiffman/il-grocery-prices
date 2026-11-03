@@ -44,7 +44,7 @@ from zoneinfo import ZoneInfo
 
 import duckdb
 
-from basket.basket_file import BadBasket, load_basket
+from basket.basket_file import DEFAULT_BASKET, BadBasket, load_basket
 from basket.chains import EXCLUDED, SLUGS
 from basket.extract import ExtractReport, extract, table_path
 from basket.page import build_site, index_headline
@@ -209,7 +209,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--day", type=date.fromisoformat, required=True)
     parser.add_argument("--data", type=Path, default=Path("data"))
     parser.add_argument("--site", type=Path, default=Path("site"))
-    parser.add_argument("--basket", type=Path, default=Path("basket/v1.json"))
+    parser.add_argument("--basket", type=Path, default=DEFAULT_BASKET, help="default: the package's v1")
     parser.add_argument("--min-items", type=int, default=25)
     parser.add_argument("--chains", nargs="+", choices=SLUGS, default=list(SLUGS))
     parser.add_argument("--rebuild", action="store_true", help="extract every chain's table again")

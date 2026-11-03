@@ -6,8 +6,9 @@ from pathlib import Path
 
 import pytest
 
+from basket import basket_file
 from basket.barcode import is_gs1
-from basket.basket_file import BadBasket, Basket, BasketItem, load_basket
+from basket.basket_file import DEFAULT_BASKET, BadBasket, Basket, BasketItem, load_basket
 from basket.units import Size
 
 FIXTURE = Path(__file__).parent / "baskets" / "basket-test.json"
@@ -168,9 +169,10 @@ def test_amounts_are_plain(tmp_path):
     assert str(basket.items[0].size.amount) == "1000"
 
 
-def test_v1_basket_loads():
-    basket = load_basket(Path(__file__).parent.parent / "basket" / "v1.json")  # the default limits, 25 to 40
-    assert len(basket.items) == 32
+def test_v1_basket_is_the_default_and_loads():
+    assert DEFAULT_BASKET == Path(basket_file.__file__).parent / "baskets" / "v1.json"
+    basket = load_basket(DEFAULT_BASKET)  # the default limits, 25 to 40
     assert basket.version == "v1"
+    assert len(basket.items) == 32
     assert basket.since == date(2026, 11, 2)
     assert all(is_gs1(item.code) for item in basket.items)

@@ -21,8 +21,9 @@ without a word.
 
 The table holds every row, not only a basket's, at
 `tables/prices/chain=<slug>/date=<day>/prices.parquet`, overwritten by each run, with `report.json`
-beside it. The rows go through a CSV in a temporary directory, every field quoted, and DuckDB copies
-that CSV into Parquet. The CSV writes None as "", and the three columns that may be None (sub-chain,
+beside it. The rows go through a CSV in a temporary folder inside the table's own folder, every field
+quoted, and DuckDB copies that CSV into Parquet; so in Lambda the CSV is inside the run's work folder,
+and never in the system temp folder. The CSV writes None as "", and the three columns that may be None (sub-chain,
 normalized code, price) never hold "" otherwise, so "" there is read back as NULL; elsewhere "" stays
 "".
 
@@ -39,8 +40,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-import duckdb
-
+from basket import duck
 from basket.barcode import is_gs1, normalize
 from basket.pricefile import Item, read_items
 from collector.names import parse_file_name
@@ -167,10 +167,10 @@ def _row(day_file: DayFile, item: Item) -> Row:
 def write_table(rows: Iterable[Row], out: Path) -> int:
     """Write `rows` to the Parquet file `out`, replacing it; the number of rows. No rows still writes the columns."""
     out.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory() as temp:
+    with tempfile.TemporaryDirectory(dir=out.parent) as temp:
         csv_path = Path(temp) / "rows.csv"
         count = _write_csv(rows, csv_path)
-        with duckdb.connect() as con:
+        with duck.connect() as con:
             con.execute(_copy_sql(csv_path, out))
     return count
 

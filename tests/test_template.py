@@ -1,5 +1,5 @@
 """Pin the deploy settings the collector's safety depends on (template.yaml), and keep the operations
-doc's commands in step with them (docs/operations.md).
+doc's commands in step with them and with the basket function's schedules (docs/operations.md).
 
 cfn-lint (run in CI) checks the template is valid CloudFormation and SAM; it cannot know that a
 schedule must run in Israel time, that the bucket must keep what it holds, or that the role must
@@ -15,6 +15,8 @@ from pathlib import Path
 import pytest
 from cfnlint.decode import decode
 
+from basket import handler as basket_handler
+from basket.chains import SLUGS as BASKET_SLUGS
 from collector import handler, store
 from collector.chains import CHAINS
 from collector.http import check_user_agent
@@ -31,17 +33,18 @@ DAILY = re.compile(r"cron\((?P<minute>[0-9]{1,2}) (?P<hour>[0-9]{1,2}) \* \* \? 
 
 # Rulings R7 and R30 (the controller's ledger), as amended by the owner on 2026-11-01: Shufersal's
 # invocations start 15 minutes apart, Lambda's longest run, so one chain never gets two requests at
-# once; so do the three NCR chains, which share one portal host, so their sessions never overlap (R30).
+# once; the three NCR chains', which share one portal host, start at least 15 minutes apart, so their
+# sessions never overlap (R30).
 # Shufersal collects its store list and full files only, one kind an invocation, each full kind twice in
 # the morning (the second run carries on where the first stopped) and once at the retry. A retry run
 # starts three hours after the first main run of its kinds; the check starts 15 minutes after the last
-# retry run can have finished (10:15 + 15 + 15 min). The four other chains fetch all five kinds in one run.
+# retry run can have finished (11:18 + 15 + 15 min). The four other chains fetch all five kinds in one run.
 SCHEDULES = {
     "MainShufersalStores": ("06:30", {"mode": "main", "chain": "shufersal", "kinds": ["Stores"]}),
     "MainRamiLevy": ("06:33", {"mode": "main", "chain": "ramilevy"}),
     "MainCarrefour": ("06:39", {"mode": "main", "chain": "carrefour"}),
     "MainShufersalPrices": ("06:45", {"mode": "main", "chain": "shufersal", "kinds": ["PriceFull"]}),
-    "MainOsherAd": ("06:48", {"mode": "main", "chain": "osherad"}),
+    "MainOsherAd": ("08:18", {"mode": "main", "chain": "osherad"}),
     "MainShufersalPricesAgain": ("07:00", {"mode": "main", "chain": "shufersal", "kinds": ["PriceFull"]}),
     "MainYochananof": ("07:03", {"mode": "main", "chain": "yochananof"}),
     "MainShufersalPromos": ("07:15", {"mode": "main", "chain": "shufersal", "kinds": ["PromoFull"]}),
@@ -50,10 +53,10 @@ SCHEDULES = {
     "RetryRamiLevy": ("09:33", {"mode": "retry", "chain": "ramilevy"}),
     "RetryCarrefour": ("09:39", {"mode": "retry", "chain": "carrefour"}),
     "RetryShufersalPrices": ("09:45", {"mode": "retry", "chain": "shufersal", "kinds": ["PriceFull"]}),
-    "RetryOsherAd": ("09:48", {"mode": "retry", "chain": "osherad"}),
+    "RetryOsherAd": ("11:18", {"mode": "retry", "chain": "osherad"}),
     "RetryYochananof": ("10:03", {"mode": "retry", "chain": "yochananof"}),
     "RetryShufersalPromos": ("10:15", {"mode": "retry", "chain": "shufersal", "kinds": ["PromoFull"]}),
-    "Check": ("10:45", {"mode": "check"}),
+    "Check": ("11:48", {"mode": "check"}),
 }
 CHECK_MARGIN = 15  # minutes after the last retry run can have finished
 SHUFERSAL_RUNS = {"main": [["Stores"], ["PriceFull"], ["PriceFull"], ["PromoFull"], ["PromoFull"]],
@@ -82,9 +85,8 @@ def statements(function):
     return function["Policies"][0]["Statement"]
 
 
-@pytest.fixture(scope="module")
-def schedules(function):
-    """Each schedule's start, in minutes after Israel midnight, and its event."""
+def _daily(function) -> dict:
+    """Each of the function's schedules: its start, in minutes after Israel midnight, and its event."""
     found = {}
     for name, event in function["Events"].items():
         assert event["Type"] == "ScheduleV2", name
@@ -93,6 +95,18 @@ def schedules(function):
         assert daily, f"{name}: {expression} is not a once-a-day cron"
         found[name] = (int(daily["hour"]) * 60 + int(daily["minute"]), json.loads(event["Properties"]["Input"]))
     return found
+
+
+@pytest.fixture(scope="module")
+def schedules(function):
+    """The collector's schedules: each one's start, in minutes after Israel midnight, and its event."""
+    return _daily(function)
+
+
+@pytest.fixture(scope="module")
+def basket_schedules(resources):
+    """The basket function's schedules, the same way (tests/test_basket_template.py pins them)."""
+    return _daily(resources["BasketFunction"]["Properties"])
 
 
 def _minutes(clock: str) -> int:
@@ -118,21 +132,27 @@ def _prefix(key: str) -> dict:
 # --- the stack ---
 
 
-def test_the_stack_holds_only_its_four_resources(resources):
-    """Nothing else in the stack may hold permissions on the bucket (a bucket policy, another role)."""
+def test_the_stack_holds_only_its_seven_resources(resources):
+    """Nothing else in the stack may hold permissions on the bucket (a bucket policy, another role); the basket
+    function's role is pinned in tests/test_basket_template.py."""
     assert {name: resource["Type"] for name, resource in resources.items()} == {
         "ArchiveBucket": "AWS::S3::Bucket",
         "CollectorFunction": "AWS::Serverless::Function",
         "CollectorLogs": "AWS::Logs::LogGroup",
         "AlertTopic": "AWS::SNS::Topic",
+        "DuckDbLayer": "AWS::Serverless::LayerVersion",
+        "BasketLogs": "AWS::Logs::LogGroup",
+        "BasketFunction": "AWS::Serverless::Function",
     }
 
 
-def test_outputs_name_the_bucket_and_the_function(template):
-    """docs/operations.md reads both from the stack's outputs."""
+def test_outputs_name_the_bucket_and_the_functions(template):
+    """docs/operations.md reads the bucket's and the collector's names from the stack's outputs; the basket
+    function's is for its manual runs."""
     assert template["Outputs"] == {
         "ArchiveBucketName": {"Value": {"Ref": "ArchiveBucket"}},
         "CollectorFunctionName": {"Value": {"Ref": "CollectorFunction"}},
+        "BasketFunctionName": {"Value": {"Ref": "BasketFunction"}},
     }
 
 
@@ -261,11 +281,14 @@ def test_alerts_go_to_one_email_subscription(resources):
 # --- the parameters ---
 
 
-def test_parameters_are_the_four_and_only_the_switch_has_a_default(template):
-    """The User-Agent, the email and the ping URL are given at deploy; none of them is in the repo."""
+def test_parameters_are_the_eight_and_only_the_two_switches_have_defaults(template):
+    """The User-Agent, the email, the two ping URLs and the site's bucket and distribution are given at deploy;
+    none of them is in the repo."""
     parameters = template["Parameters"]
-    assert set(parameters) == {"UserAgent", "AlertEmail", "HealthcheckUrl", "ScheduleState"}
-    assert [name for name, parameter in parameters.items() if "Default" in parameter] == ["ScheduleState"]
+    assert set(parameters) == {"UserAgent", "AlertEmail", "HealthcheckUrl", "ScheduleState",
+                               "SiteBucketName", "SiteDistributionId", "BasketHealthcheckUrl", "BasketScheduleState"}
+    assert sorted(name for name, parameter in parameters.items() if "Default" in parameter) == [
+        "BasketScheduleState", "ScheduleState"]
 
 
 def test_schedules_start_switched_off(template):
@@ -433,42 +456,90 @@ def test_every_aws_command_in_the_doc_names_the_project_account(operations):
         assert "--region il-central-1" in command, command
 
 
+def _payloads(text: str) -> list[dict]:
+    return [json.loads(p) for p in re.findall(r"--payload '(\{[^']*\})'", text)]
+
+
+def _basket_event_is_taken(event: dict) -> None:
+    """The basket handler's checks (basket.handler.run): the chain one of its five, "collected_by" a time as HH:MM,
+    and "day", when given, a date as YYYY-MM-DD. A field it does not read, a misspelled "day" say, would run
+    another day than the doc means, so none is allowed."""
+    if event["mode"] == "extract":
+        assert set(event) <= {"mode", "chain", "day"}, event
+        assert event["chain"] in BASKET_SLUGS, event
+    else:
+        assert set(event) <= {"mode", "collected_by", "day"}, event
+        assert isinstance(event.get("collected_by"), str), event
+        assert basket_handler.CLOCK.fullmatch(event["collected_by"]), event
+    if "day" in event:
+        assert isinstance(event["day"], str), event
+        date.fromisoformat(event["day"])
+
+
 def test_the_docs_events_are_ones_the_handler_takes(operations):
-    payloads = [json.loads(p) for p in re.findall(r"--payload '(\{[^']*\})'", operations)]
+    """Each payload in the doc by the rules of the handler it goes to: the basket function's for its two modes, the
+    collector's for the rest."""
+    payloads = _payloads(operations)
     assert payloads
     for event in payloads:
+        if event["mode"] in basket_handler.MODES:
+            _basket_event_is_taken(event)
+            continue
         assert event["mode"] in ("main", "retry", "check", "unblock"), event
         if "chain" in event:
             assert event["chain"] in CHAINS, event
             assert set(event.get("kinds", KINDS)) <= set(CHAINS[event["chain"]].kinds), event
     assert {"mode": "check"} in payloads
     assert any(event["mode"] == "unblock" for event in payloads)
+    assert any(event["mode"] == "extract" for event in payloads)
+    assert any(event["mode"] == "basket" for event in payloads)
 
 
 def test_the_doc_runs_each_main_invocation_by_hand(operations, schedules):
     """A manual run per chain, the Shufersal ones by kinds group, as the schedule runs them."""
-    payloads = [json.loads(p) for p in re.findall(r"--payload '(\{[^']*\})'", operations)]
+    payloads = _payloads(operations)
     by_hand = sorted(json.dumps(event, sort_keys=True) for event in payloads if event["mode"] == "main")
     scheduled = sorted(json.dumps(event, sort_keys=True) for _, event in schedules.values() if event["mode"] == "main")
     assert by_hand == scheduled
 
 
-def test_the_docs_timetable_is_the_schedules(operations, schedules):
-    """The "What runs when" table: each row with an event shows a main run or the check at its time."""
+def test_the_docs_timetable_is_the_schedules(operations, schedules, basket_schedules):
+    """The doc's two timetables, "What runs when" and the basket's: each row with an event shows, at its time, a
+    collector's main run or its check, or one of the basket function's schedules, and every one of those has a row."""
     rows = re.findall(r"^\| ([0-9]{2}:[0-9]{2}) \| [^|]+ \| `(\{[^`]*\})` \|$", operations, re.MULTILINE)
     shown = sorted((_minutes(clock), json.dumps(json.loads(event), sort_keys=True)) for clock, event in rows)
-    scheduled = sorted((start, json.dumps(event, sort_keys=True)) for start, event in schedules.values()
-                       if event["mode"] in ("main", "check"))
+    collector = [(start, event) for start, event in schedules.values() if event["mode"] in ("main", "check")]
+    scheduled = sorted((start, json.dumps(event, sort_keys=True))
+                       for start, event in collector + list(basket_schedules.values()))
     assert shown == scheduled
 
 
+def test_the_doc_runs_each_extraction_by_hand(operations, basket_schedules):
+    """One manual extraction per chain, each the scheduled event with the day it is for added."""
+    by_hand = sorted(json.dumps({key: value for key, value in event.items() if key != "day"}, sort_keys=True)
+                     for event in _payloads(operations) if event["mode"] == "extract")
+    scheduled = sorted(json.dumps(event, sort_keys=True) for _, event in basket_schedules.values()
+                       if event["mode"] == "extract")
+    assert by_hand == scheduled
+
+
+def test_the_doc_runs_the_basket_by_hand_as_scheduled(operations, basket_schedules):
+    """The manual basket run is the scheduled event with a day added, so its "collected by" is the template's
+    and a moved schedule cannot leave another time in the doc."""
+    by_hand = [{key: value for key, value in event.items() if key != "day"}
+               for event in _payloads(operations) if event["mode"] == "basket"]
+    scheduled = [event for _, event in basket_schedules.values() if event["mode"] == "basket"]
+    assert by_hand == scheduled
+
+
 def test_the_doc_starts_collecting_runs_asynchronously(operations):
-    """A collecting run can take 15 minutes; the CLI waits 60 s for a synchronous answer, then gives
-    up and sends the invoke again, which would start a second run of the same chain."""
+    """A collecting run can take 15 minutes, and an extraction more than a minute (Shufersal's took 93.9 s on the
+    Mac); the CLI waits 60 s for a synchronous answer, then gives up and sends the invoke again, which would start
+    a second run of the same chain."""
     lines = [line for line in operations.splitlines() if "--payload" in line]
     for line in lines:
         event = json.loads(re.search(r"--payload '(\{[^']*\})'", line)[1])
-        if event["mode"] in ("main", "retry"):
+        if event["mode"] in ("main", "retry", "extract"):
             assert "--invocation-type Event" in line, line
 
 
