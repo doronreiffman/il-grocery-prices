@@ -316,16 +316,16 @@ Logs go to the log group `/il-grocery-prices/basket`, kept 30 days. A run ends w
 
 The function has 2,048 MB of memory, 2,048 MB of `/tmp` and 900 s. DuckDB's temp folder is `/tmp/duckdb` and its memory limit 1,200 MB, both set in the function's environment (`DUCKDB_TEMP_DIRECTORY`, `DUCKDB_MEMORY_LIMIT`). `/tmp` holds one chain's price files of the day, the temporary CSV its rows go through, its table and DuckDB's spill folder. The first three are in the run's work folder (`/tmp/basket-<random>`), which the run removes when it ends; a run Lambda kills at its timeout cannot, and Lambda keeps `/tmp` between invocations of one execution environment (https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtime-environment.html, read 2026-11-03), so each run, before it makes its own, removes any `basket-*` folder an earlier run left and logs how many. On the Mac, Shufersal's extraction, the largest, took 93.9 s and 937 MB at its peak ("Measured on 2026-11-02", above), and its temporary CSV comes to about 480 MB at about 200 bytes a row, about 650 MB of `/tmp` with the day's raw files and the table (`docs/headline-basket-step-two-plan.md`, "Deviations", the first entry).
 
-In Lambda, measured on the first run: …
+In Lambda, measured on the first run (2026-11-03, the 2026-11-02 day, by hand): every chain's `rows` equal to the Mac's, and about 1.1 times the Mac's seconds, not the 3 the plan estimated. `Max Memory Used` read 1,121 MB in Shufersal's run, the first in its execution environment, and the same 1,121 MB in every run after it, the basket run included, which all ran in that warm environment: the figure is the environment's peak, so the smaller chains' own peaks are not known beyond being at most that. Shufersal's init, the DuckDB import included, took 0.47 s.
 
 | Run | `rows` | `seconds` (the basket run: `Duration`) | `Max Memory Used` |
 |---|---|---|---|
-| Shufersal's extraction | … | … | … |
-| Rami Levy's extraction | … | … | … |
-| Osher Ad's extraction | … | … | … |
-| Carrefour's extraction | … | … | … |
-| Yochananof's extraction | … | … | … |
-| The basket run | | … | … |
+| Shufersal's extraction | 2,322,336 | 102.1 (`Duration` 122.9) | 1,121 MB |
+| Rami Levy's extraction | 993,278 | 44.7 (54.3) | 1,121 MB, the same warm environment |
+| Osher Ad's extraction | 151,604 | 6.9 (8.3) | same |
+| Carrefour's extraction | 1,196,548 | 54.0 (64.0) | same |
+| Yochananof's extraction | 476,502 | 20.9 (23.5) | same |
+| The basket run | | 6.0 | same |
 
 ### Deploying step two
 
