@@ -1,6 +1,7 @@
 """The day's table: one chain's full price files for a day, the latest per store, into one Parquet table."""
 import gzip
 import json
+import tempfile
 from dataclasses import asdict, astuple
 from datetime import date
 from decimal import Decimal
@@ -9,6 +10,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
+from basket import extract as extract_module
 from basket.extract import (DayFile, ExtractReport, RowCounts, day_files, extract, main, rows_from,
                             store_key, table_path, write_table)
 from basket.pricefile import BadPriceFile, read_items
@@ -190,6 +192,22 @@ def test_table_keeps_none_as_null_and_empty_text_as_empty(tmp_path):
     out = tmp_path / "prices.parquet"
     write_table([row], out)
     assert _read_table(out) == [astuple(row)]
+
+
+def test_the_csv_goes_in_a_folder_under_the_tables_folder_and_is_removed(tmp_path, monkeypatch):
+    """In Lambda the table's folder is inside the run's work folder, which the next run sweeps when Lambda killed
+    this one at its timeout; the system temp folder (`/tmp` itself) no run sweeps. Here the system temp folder is
+    one that does not exist, so a CSV written there would fail."""
+    seen = []
+    write_csv = extract_module._write_csv
+    monkeypatch.setattr(extract_module, "_write_csv", lambda rows, path: seen.append(path) or write_csv(rows, path))
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path / "no-such-folder"))
+    rows, _ = rows_from(_day_file(tmp_path, BASKET.name, BASKET.read_bytes()))
+    out = table_path(tmp_path / "tables", SLUG, DAY)
+    assert write_table(rows, out) == 2
+    [csv_path] = seen
+    assert csv_path.parent.parent == out.parent
+    assert [path.name for path in out.parent.iterdir()] == ["prices.parquet"]  # the CSV's folder removed
 
 
 def test_a_file_that_does_not_read_stops_the_extraction(tmp_path):

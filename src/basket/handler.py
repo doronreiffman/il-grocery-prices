@@ -7,8 +7,11 @@ Scheduler sends the events each morning; the owner sends the same with a "day" t
 "day" (YYYY-MM-DD) is optional in both; without it the day is the Israel calendar date when the invocation starts.
 Every field is checked before anything is read. Then neither mode runs until the collector's check has written its
 record for the day under `checks/date=<day>/` (MorningNotChecked): the check is the morning's last run, so its record
-shows that every chain's runs are over. Each run works in a folder of its own under `tmp_root` (`/tmp` in Lambda) and
-removes it when it ends, failed or not: a warm Lambda keeps `/tmp` from one invocation to the next.
+shows that every chain's runs are over. Each run works in a folder of its own under `tmp_root` (`/tmp` in Lambda),
+`basket-` and a random suffix, and removes it when it ends, failed or not: a warm Lambda keeps `/tmp` from one
+invocation to the next. A run Lambda kills at its timeout never gets to remove its folder, so each run, before it
+makes its own, removes every `basket-*` folder under `tmp_root`: one invocation runs in an execution environment at a
+time, so such a folder is always an earlier run's.
 
 The extract mode fetches the chain's price files of the day from the archive bucket into the work folder, runs
 `basket.extract` over them as the Mac does, and puts the table and its report back under `tables/`, replacing an
@@ -166,6 +169,7 @@ def run(cfg: Config, event: dict, deps: Deps, now: datetime, tmp_root: Path) -> 
         if not deps.archive.day_checked(day):
             raise MorningNotChecked(f"the collector's check has not written its record for {day}: the morning is "
                                     f"not over, or the check failed (checks/date={day}/)")
+        _sweep(tmp_root)
         work = Path(tempfile.mkdtemp(prefix="basket-", dir=tmp_root))
         try:
             if mode == "extract":
@@ -181,6 +185,16 @@ def run(cfg: Config, event: dict, deps: Deps, now: datetime, tmp_root: Path) -> 
         raise
     log.info(json.dumps(summary, sort_keys=True))
     return summary
+
+
+def _sweep(tmp_root: Path) -> None:
+    """Remove the `basket-*` folders under `tmp_root`: earlier runs' work folders, left by a run Lambda killed at
+    its timeout. How many, logged when there were any."""
+    stale = [path for path in tmp_root.glob("basket-*") if path.is_dir()]
+    for path in stale:
+        shutil.rmtree(path, ignore_errors=True)
+    if stale:
+        log.info("removed the work folders earlier runs left under %s: %d", tmp_root, len(stale))
 
 
 def _ping(deps: Deps, base: str, kind: str, message: str) -> None:

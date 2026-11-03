@@ -301,6 +301,24 @@ def test_extract_leaves_tmp_root_empty(data, tmp_root, monkeypatch):
     assert list(tmp_root.iterdir()) == []
 
 
+def test_a_stale_work_folder_from_an_earlier_run_is_gone_after_this_one(data, tmp_root, caplog):
+    """A run Lambda killed at its timeout never reached its `finally`, and a warm Lambda keeps /tmp: the next run in
+    that environment removes the folder it left. Only `basket-*` folders: anything else under tmp_root stays."""
+    stale = tmp_root / "basket-stale"
+    (stale / "tables").mkdir(parents=True)
+    (stale / "tables" / "rows.csv").write_bytes(b"store,code\n")
+    other = tmp_root / "other"
+    other.mkdir()
+    (other / "kept.txt").write_text("kept")
+    with caplog.at_level(logging.INFO, logger="basket.handler"):
+        run(CFG, {"mode": "extract", "chain": "ramilevy"}, deps_of(archive_from(data)), NOW, tmp_root)
+    assert [path.name for path in tmp_root.iterdir()] == ["other"]
+    assert (other / "kept.txt").read_text() == "kept"
+    messages = [r.getMessage() for r in caplog.records if r.name == "basket.handler" and r.levelno == logging.INFO]
+    assert messages[0] == f"removed the work folders earlier runs left under {tmp_root}: 1"
+    assert len(messages) == 2  # the sweep's line, then the summary
+
+
 # ---- logging ----
 
 def test_the_summary_is_logged_once_as_one_json_line(data, tmp_root, caplog):

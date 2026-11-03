@@ -25,6 +25,17 @@ def test_temp_directory_and_memory_limit_are_set_from_the_environment(tmp_path):
     assert con.execute("SELECT current_setting('memory_limit')").fetchone()[0] == "95.3 MiB"
 
 
+def test_a_temp_directory_not_there_yet_is_created(tmp_path):
+    """Its parents too; a folder already there is kept as it is."""
+    folder = tmp_path / "work" / "duck"
+    con = connect({TEMP_DIRECTORY_VAR: str(folder)})
+    assert folder.is_dir() and list(folder.iterdir()) == []
+    assert con.execute("SELECT current_setting('temp_directory')").fetchone()[0] == str(folder)
+    (folder / "spill.tmp").write_bytes(b"")
+    connect({TEMP_DIRECTORY_VAR: str(folder)})
+    assert [path.name for path in folder.iterdir()] == ["spill.tmp"]
+
+
 def test_no_argument_reads_the_process_environment(monkeypatch, tmp_path):
     """The Lambda calls connect() bare: the variables it sets in the function's configuration are the process's."""
     monkeypatch.setenv(TEMP_DIRECTORY_VAR, str(tmp_path / "duck"))
