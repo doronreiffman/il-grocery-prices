@@ -22,10 +22,10 @@ Personal portfolio project. Collects, every morning, the price files Israeli sup
 ## Active threads
 
 - Collector: live since 2026-11-01 (17 schedules, Shufersal full files only, check 11:48); first scheduled morning clean 2026-11-02; next: the Saturday check (q10) · `.claude/OPEN_ISSUES.md` Collector.
-- Showcase (headline basket): design `docs/headline-basket.md` (read it before touching the basket); step one live since 2026-11-02 at https://d153udx05irk2f.cloudfront.net (noindex, by link; stack `il-grocery-prices-site`), each day a hand build until step two goes on; step two (q14) built on branch `q14-step-two` and awaiting its deploy, which also carries q12 (the manual runs, then `BasketScheduleState=ENABLED` on the owner's go): `docs/operations.md`, "The headline basket, every morning"; the basket is `src/basket/baskets/v1.json` (approved 2026-11-02; a change is a new version); how to run it by hand: `docs/operations.md`, "The headline basket, by hand" · q13, q14, `.claude/OPEN_ISSUES.md` Showcase.
+- Showcase (headline basket): design `docs/headline-basket.md` (read it before touching the basket); step one live since 2026-11-02 at https://d153udx05irk2f.cloudfront.net (noindex, by link; stack `il-grocery-prices-site`), each day a hand build until step two goes on; step two (q14) built and reviewed on branch `q14-step-two`, awaiting its merge and deploy, which also carries q12 (Osher Ad's moved run); the manual runs, then `BasketScheduleState=ENABLED` on the owner's go: `docs/operations.md`, "The headline basket, every morning"; the basket is `src/basket/baskets/v1.json` (approved 2026-11-02; a change is a new version); how to run it by hand: `docs/operations.md`, "The headline basket, by hand" · q13, q14, `.claude/OPEN_ISSUES.md` Showcase.
 
 ## Working notes
 
-- Test baseline (2026-11-03, branch `q14-step-two`, the commit "docs: the headline basket every morning"): 1,142 tests, coverage 99.81% over `collector` and `src/basket`, 896 mutations, all caught.
+- Test baseline (2026-11-03, branch `q14-step-two` at d11719a): 1,145 tests, coverage 99.81% over `collector` and `src/basket`, 906 mutations, all caught.
 
 - Work queue `.claude/QUEUE.md`; open issues `.claude/OPEN_ISSUES.md`; decisions `.claude/DECISIONS.md`.
