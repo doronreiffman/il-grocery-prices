@@ -1,4 +1,4 @@
-# il-grocery-prices
+# Israeli grocery price tracker: one basket, five chains
 
 [![CI](https://github.com/doronreiffman/il-grocery-prices/actions/workflows/ci.yml/badge.svg)](https://github.com/doronreiffman/il-grocery-prices/actions/workflows/ci.yml) ![Python 3.13](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white) ![DuckDB](https://img.shields.io/badge/DuckDB-Parquet-FFF000?logo=duckdb&logoColor=black) ![AWS SAM](https://img.shields.io/badge/AWS%20SAM-Lambda%20%C2%B7%20S3%20%C2%B7%20CloudFront-232F3E)
 
