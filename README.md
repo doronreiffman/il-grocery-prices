@@ -41,15 +41,10 @@ This project collects them. It stores every morning's files exactly as published
 
 ## How it works
 
-```mermaid
-flowchart LR
-  P["Chains' portals<br/>Shufersal, NCR, Carrefour"] -->|"06:30 to 11:18"| C["Collector<br/>AWS Lambda, Tel Aviv"]
-  C -->|"files + manifests"| A[("Archive<br/>S3, locked 10 years")]
-  C -->|"11:48 check"| H["Email alert<br/>+ dead-man check"]
-  A -->|"12:03"| E["Extract<br/>price files to Parquet"]
-  E -->|"12:33"| B["Basket<br/>DuckDB SQL"]
-  B --> S["Site<br/>S3 + CloudFront"]
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/flow-dark.png">
+  <img alt="How it works: from 06:30 to 11:18 the collector, an AWS Lambda function in Tel Aviv, fetches the chains' portals (Shufersal, NCR, Carrefour) and writes files and manifests to the archive on S3, locked 10 years; its 11:48 check sends an email alert and pings a dead-man check; at 12:03 the price files are extracted to Parquet, at 12:33 the basket is priced with DuckDB SQL, and the site on S3 and CloudFront is updated." src="docs/img/flow-light.png">
+</picture>
 
 All times are Israel time.
 
