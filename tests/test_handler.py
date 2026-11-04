@@ -339,6 +339,23 @@ def test_check_without_alerts_writes_the_record_and_pings_without_email(caplog):
     assert not [r for r in handler_records if r.levelno >= logging.WARNING]  # no alert text logged
 
 
+def test_a_retry_short_of_time_on_a_day_listed_in_full_sends_no_email():
+    """Ruling R36 through the handler and the chains' own kinds: a Shufersal PromoFull retry that
+    stopped itself, on a day another run read the PromoFull listing in full and nothing is missing,
+    is recorded and sends no email; the ping goes as on any quiet morning."""
+    deps = make_deps()
+    clean_day(deps.store)
+    stopped = RunResult("shufersal", "081551Z-retry-9b10", "retry", DAY, ["PromoFull"], listed=[PROMO_FULL],
+                        error="stopped: under 90 s left")
+    deps.store.put_record(manifest_key(DAY, "shufersal", stopped.run_id), manifest_bytes(stopped, SHA), NOW)
+    summary = run(CFG, {"mode": "check"}, deps, NOW)
+    assert summary["alerts"] == 0 and deps.publish.calls == [] and len(deps.ping.calls) == 1
+    chains = json.loads(deps.store.read_raw(check_key(DAY, summary["run_id"])))["chains"]
+    assert chains["shufersal"]["failed"] is None
+    assert {slug: chain["short_of_time"] for slug, chain in chains.items()} == {
+        slug: ["081551Z-retry-9b10 (PromoFull)"] if slug == "shufersal" else [] for slug in CHAINS}
+
+
 LATCH = {"stopped": True, "since": "x", "reason": "HTTP 429", "alerted": False}
 
 
