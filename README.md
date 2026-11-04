@@ -10,6 +10,10 @@ Collects, every morning, the price files five Israeli supermarket chains must pu
 
 Built by Doron Reiffman ([LinkedIn](https://www.linkedin.com/in/doronreiffman)).
 
+![The basket page for 4 November 2026: three tiles reading lowest listed total ₪401.10 at Osher Ad, highest ₪487.42 at Carrefour and a 22% gap; the five chains' listed totals as bars that start at zero, lowest first; and the start of the item-by-item table of listed prices.](docs/img/basket.png)
+
+*The live page, as of 4 November 2026.*
+
 ## At a glance
 
 | | |
