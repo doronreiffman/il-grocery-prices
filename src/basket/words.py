@@ -103,12 +103,17 @@ def headline_lines(headline: Headline | None, item_count: int, day: date,
     """The headline's two lines; without a headline, why there is none (`nothing_counted`: no item passed the
     day's checks, else fewer than three chains in the ranking) and the items line."""
     items = (f"{item_count} everyday {'item' if item_count == 1 else 'items'}, listed shelf prices before promotions, "
-             f"from the chains' price files of {day:%A %-d %B %Y}.")
+             f"{files_of(day)}.")
     if headline is None:
         return NO_ITEMS if nothing_counted else NO_CHAINS, items
     return (f"Lowest listed total today: {CHAIN_NAMES[headline.lowest]}, ₪{money(headline.lowest_total)}.",
             f"Highest: {CHAIN_NAMES[headline.highest]}, ₪{money(headline.highest_total)}, "
             f"{headline.gap_percent}% more. {items}")
+
+
+def files_of(day: date) -> str:
+    """The date line: the items line's end, and the line under the site's name in every page's header."""
+    return f"from the chains' price files of {day:%A %-d %B %Y}"
 
 
 def credit(day: date, collected_by: str) -> str:
