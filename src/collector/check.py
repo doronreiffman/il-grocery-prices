@@ -20,7 +20,13 @@ For each chain, from that day's manifests (every run's, main and retry alike) an
   q7): a full kind the chain collects (PriceFull, PromoFull) that no run that day listed, main or
   retry, is a failed run too, unless one of its retry runs was blocked (as R31): R31's union over
   the retry runs stayed silent on a day Shufersal listed no PriceFull while its Stores run listed
-  something.
+  something. Ruling R36: a retry run whose error is the run's own time stop (OUT_OF_TIME, matched
+  exactly) is not a failed run when, for each kind it covers, some run of the day, main or retry,
+  covering that kind ended with no error and was not blocked (it read that kind's listing in full),
+  and the chain has nothing missing. The check record names each such run under `short_of_time`; it
+  raises no alert. Shufersal's slow listing pages stop its PromoFull retry short most mornings, and
+  "nothing missing" alone proves nothing: a run that stops while reading the listing never lists the
+  rest.
 - coverage, recorded and never alerted: the stores with a stored PriceFull that day, read from the
   file names, against the store ids in that day's latest stored Stores file, or when that day has
   none the latest stored in the seven days before. Store numbers are compared as numbers
@@ -34,6 +40,7 @@ from datetime import date, timedelta
 from typing import Literal
 
 from collector.names import KINDS, parse_file_name
+from collector.run import OUT_OF_TIME
 from collector.store import manifest_key, raw_key
 from collector.storelist import store_ids
 
@@ -53,8 +60,9 @@ class Alert:
 def check_day(store, slugs: list[str], day: date,
               kinds: Mapping[str, tuple[str, ...]] | None = None) -> tuple[list[Alert], dict]:
     """The alerts for `day` and the check record: per chain, the listed and stored counts, the
-    missing names, whether it is stopped, why its runs failed, and its coverage. `kinds` gives the
-    kinds a chain collects; a chain it leaves out is held to all five. Reads only."""
+    missing names, whether it is stopped, why its runs failed, the retry runs short of time that are
+    not failed runs (ruling R36), and its coverage. `kinds` gives the kinds a chain collects; a chain
+    it leaves out is held to all five. Reads only."""
     manifests = _manifests(store, day)
     alerts: list[Alert] = []
     chains = {}
@@ -99,7 +107,8 @@ def _check_chain(store, slug: str, day: date, manifests: list[dict],
     if state.get("stopped") and not state.get("alerted"):
         alerts.append(Alert(slug, "stopped", f"{slug} is stopped since {state.get('since')}: {state.get('reason')}. "
                                              "Nothing is fetched from it until an unblock run clears it."))
-    failure = _failure(manifests, kinds)
+    excused = _short_of_time(manifests, missing)
+    failure = _failure(manifests, kinds, excused)
     if failure:
         alerts.append(Alert(slug, "failed", f"{slug}: the day's runs fell short: {failure}."))
     record = {
@@ -109,6 +118,7 @@ def _check_chain(store, slug: str, day: date, manifests: list[dict],
         "missing": missing,
         "stopped": {"since": state.get("since"), "reason": state.get("reason")} if state.get("stopped") else None,
         "failed": failure,
+        "short_of_time": [f"{manifest['run_id']} ({', '.join(manifest['kinds'])})" for manifest in excused],
         "coverage": _coverage(store, slug, day, stored),
     }
     return alerts, record
@@ -121,9 +131,20 @@ def _missing_text(slug: str, day: date, missing: list[str]) -> str:
     return f"{slug}: {count} listed for {day.isoformat()} and not stored: {', '.join(missing[:MAX_NAMES])}{tail}."
 
 
-def _failure(manifests: list[dict], kinds: tuple[str, ...]) -> str | None:
-    """Why the chain's retry runs fall short of `kinds` (ruling R4), or why the day lacks a full kind
-    (ruling R35), or None when neither does."""
+def _short_of_time(manifests: list[dict], missing: list[str]) -> list[dict]:
+    """The retry runs whose error is the run's time stop, on a day each of their kinds was listed in
+    full by a run that ended with no error and was not blocked, with nothing missing (ruling R36)."""
+    if missing:
+        return []
+    complete = {kind for manifest in manifests if not manifest["error"] and not manifest["blocked"]
+                for kind in manifest["kinds"]}
+    return [manifest for manifest in manifests if manifest["mode"] == "retry" and manifest["error"] == OUT_OF_TIME
+            and set(manifest["kinds"]) <= complete]
+
+
+def _failure(manifests: list[dict], kinds: tuple[str, ...], excused: list[dict]) -> str | None:
+    """Why the chain's retry runs fall short of `kinds` (ruling R4), the `excused` ones' time stops left
+    out (ruling R36), or why the day lacks a full kind (ruling R35), or None when neither does."""
     retries = [manifest for manifest in manifests if manifest["mode"] == "retry"]
     covered = {kind for manifest in retries for kind in manifest["kinds"]}
     problems = []
@@ -131,7 +152,7 @@ def _failure(manifests: list[dict], kinds: tuple[str, ...]) -> str | None:
     if uncovered:
         problems.append(f"no retry run covered {', '.join(uncovered)}")
     problems += [f"retry run {manifest['run_id']} ({', '.join(manifest['kinds'])}) ended with: {manifest['error']}"
-                 for manifest in retries if manifest["error"]]
+                 for manifest in retries if manifest["error"] and manifest not in excused]
     listed = {name for manifest in retries for name in manifest["listed"]}
     if retries and not listed and not any(manifest["blocked"] for manifest in retries):
         unparsed = sum(manifest["unparsed"] for manifest in retries)

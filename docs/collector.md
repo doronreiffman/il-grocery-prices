@@ -88,6 +88,7 @@ The usernames are public (the government prints them) and there are no passwords
 
 - One email topic, subscribed to the owner's address (a deploy parameter).
 - Email when: a file listed for that day is still not stored after the retry run; a chain is stopped (one email per stop, not one a day); a run failed outright; or no run that day listed a chain's full price files, or its full promotion files. Coverage emails start only once thresholds exist (see "How a morning runs").
+- A retry run that stopped itself short of time is a failed run, with one exception: when, for each kind it covers, another run that day (main or retry) read that kind's whole listing (it ended with no error and was not blocked), and nothing listed is missing. Then no email goes, and the check record names the run under `short_of_time`. Nothing missing is not enough on its own: a run that stops while reading the listing never lists the rest, so files it never reached are missing without showing as missing.
 - A daily dead-man check: the check run pings healthchecks.io (period one day); if the ping doesn't arrive, healthchecks.io emails. This catches the case where nothing ran at all.
 - Individual download errors are logged, never emailed.
 
