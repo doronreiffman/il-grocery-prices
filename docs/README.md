@@ -1,0 +1,10 @@
+# Design notes
+
+Written while building the project: each note says what was decided and why, the alternatives rejected, and what a review changed. Tags like (q7) are items in the project's work queue, kept outside this repository.
+
+- [collector.md](collector.md): the collector's design: which chains and files, how a morning runs, the write-once archive, identification, alerts and cost.
+- [portals.md](portals.md): how each chain's portal serves its files, as observed, and what the code must handle because of it.
+- [operations.md](operations.md): deploying the collector, running it by hand, reading what it wrote, clearing a stopped chain, dropping a chain and what it costs; then building and publishing the headline basket.
+- [headline-basket.md](headline-basket.md): the headline basket's design: the basket, the number rules, the pipeline, and the words the page may and may not use.
+- [terms.md](terms.md): the law's clause on using the price files, quoted, and what it asks of the project.
+- The build plans, task by task, each with what changed during the build ("Deviations"): [collector-plan.md](collector-plan.md), [headline-basket-plan.md](headline-basket-plan.md) (step one, by hand) and [headline-basket-step-two-plan.md](headline-basket-step-two-plan.md) (step two, every morning).

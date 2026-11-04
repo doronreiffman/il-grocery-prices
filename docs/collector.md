@@ -1,6 +1,6 @@
 # The collector: design
 
-**Status:** design, 2026-10-31: builder check done and folded in; the owner's two decisions recorded. Waiting for the owner's approval. Nothing is built.
+**Status:** design, 2026-10-31: builder check done and folded in; the owner's two decisions recorded. Since then: built from this design and live since 1 November 2026; what changed during the build is in [collector-plan.md](collector-plan.md), "Deviations" and "Rulings made during the build", and the collector as it runs today is in [operations.md](operations.md).
 **Grade:** a portfolio project, but the collector is the one part held to production grade: a morning it misses cannot be recovered.
 
 ## What the project is
