@@ -1,5 +1,7 @@
 # il-grocery-prices
 
+[![CI](https://github.com/doronreiffman/il-grocery-prices/actions/workflows/ci.yml/badge.svg)](https://github.com/doronreiffman/il-grocery-prices/actions/workflows/ci.yml) ![Python 3.13](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white) ![DuckDB](https://img.shields.io/badge/DuckDB-Parquet-FFF000?logo=duckdb&logoColor=black) ![AWS SAM](https://img.shields.io/badge/AWS%20SAM-Lambda%20%C2%B7%20S3%20%C2%B7%20CloudFront-232F3E)
+
 Collects, every morning, the price files five Israeli supermarket chains must publish by law, keeps them in a write-once archive for ten years, and prices the same basket of 32 identical products at each chain from them.
 
 **Live site:** [d153udx05irk2f.cloudfront.net](https://d153udx05irk2f.cloudfront.net) · **Design notes:** [docs/](docs/README.md) · **Run it yourself:** [docs/operations.md](docs/operations.md)
@@ -7,6 +9,18 @@ Collects, every morning, the price files five Israeli supermarket chains must pu
 **Stack:** Python 3.13 · AWS SAM (Lambda, EventBridge Scheduler, S3 Object Lock, SNS, CloudWatch Logs) · DuckDB and Parquet · S3 + CloudFront for the site · healthchecks.io · GitHub Actions
 
 Built by Doron Reiffman ([LinkedIn](https://www.linkedin.com/in/doronreiffman)).
+
+## At a glance
+
+| | |
+|---|---|
+| Chains | 5 (Shufersal, Rami Levy, Osher Ad, Carrefour, Yochananof), on three portals |
+| Every morning | 17 collection runs from 06:30 to 11:48, then 6 basket runs at 12:03 and 12:33 (Israel time) |
+| Price rows read | 5,140,268 on 2 November 2026 |
+| Basket | 32 products, matched by barcode |
+| Kept for | 10 years, write-once (S3 Object Lock) |
+| Tests | 1,188 (99.8% coverage), plus 950 planted bugs, all caught |
+| Cost | about $1 to $3 a month, plus about $0.10 to $0.90 for the basket |
 
 ## Why
 
