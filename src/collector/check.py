@@ -23,10 +23,12 @@ For each chain, from that day's manifests (every run's, main and retry alike) an
   something. Ruling R36: a retry run whose error is the run's own time stop (OUT_OF_TIME, matched
   exactly) is not a failed run when, for each kind it covers, some run of the day, main or retry,
   covering that kind ended with no error and was not blocked (it read that kind's listing in full),
-  and the chain has nothing missing. The check record names each such run under `short_of_time`; it
-  raises no alert. Shufersal's slow listing pages stop its PromoFull retry short most mornings, and
-  "nothing missing" alone proves nothing: a run that stops while reading the listing never lists the
-  rest.
+  every name the retry listed was listed by such a run too (it saw all the retry saw), and the chain
+  has nothing missing. The check record names each such run under `short_of_time`; it raises no
+  alert. Shufersal's slow listing pages stop its PromoFull retry short most mornings, and "nothing
+  missing" alone proves nothing: a run that stops while reading the listing never lists the rest. A
+  run with no error proves only the listing that was up when it ran: one made before the day's files
+  were up lists nothing, and one made early lists only the stores published by then.
 - coverage, recorded and never alerted: the stores with a stored PriceFull that day, read from the
   file names, against the store ids in that day's latest stored Stores file, or when that day has
   none the latest stored in the seven days before. Store numbers are compared as numbers
@@ -133,13 +135,16 @@ def _missing_text(slug: str, day: date, missing: list[str]) -> str:
 
 def _short_of_time(manifests: list[dict], missing: list[str]) -> list[dict]:
     """The retry runs whose error is the run's time stop, on a day each of their kinds was listed in
-    full by a run that ended with no error and was not blocked, with nothing missing (ruling R36)."""
+    full by a run that ended with no error and was not blocked, such runs listed every name the retry
+    listed, and nothing is missing (ruling R36). A run lists only names of the kinds it covers, so the
+    names such runs listed are taken together."""
     if missing:
         return []
-    complete = {kind for manifest in manifests if not manifest["error"] and not manifest["blocked"]
-                for kind in manifest["kinds"]}
+    complete = [manifest for manifest in manifests if not manifest["error"] and not manifest["blocked"]]
+    complete_kinds = {kind for manifest in complete for kind in manifest["kinds"]}
+    complete_names = {name for manifest in complete for name in manifest["listed"]}
     return [manifest for manifest in manifests if manifest["mode"] == "retry" and manifest["error"] == OUT_OF_TIME
-            and set(manifest["kinds"]) <= complete]
+            and set(manifest["kinds"]) <= complete_kinds and set(manifest["listed"]) <= complete_names]
 
 
 def _failure(manifests: list[dict], kinds: tuple[str, ...], excused: list[dict]) -> str | None:
