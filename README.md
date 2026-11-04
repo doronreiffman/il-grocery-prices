@@ -77,3 +77,5 @@ Source: the price files Shufersal, Rami Levy, Osher Ad, Carrefour and Yochananof
 ## Operating it
 
 Deploying the collector and the basket function, the manual runs, clearing a stopped chain, dropping a chain, development and costs: [docs/operations.md](docs/operations.md). If a chain is stopped, see [A stopped chain](docs/operations.md#a-stopped-chain). If a basket morning fails, see [What a /fail email means](docs/operations.md#what-a-fail-email-means).
+
+This repository was recreated on 4 November 2026 after a visibility change on GitHub's side stayed stuck; its commit history carried over unchanged.
