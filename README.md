@@ -19,12 +19,12 @@ Built by Doron Reiffman ([LinkedIn](https://www.linkedin.com/in/doronreiffman)).
 | | |
 |---|---|
 | Chains | 5 (Shufersal, Rami Levy, Osher Ad, Carrefour, Yochananof), on three portals |
-| Every morning | 17 collection runs from 06:30 to 11:48, then 6 basket runs at 12:03 and 12:33 (Israel time) |
+| Every morning | 16 collection runs from 06:30 to 11:18 and a check at 11:48, then 6 basket runs at 12:03 and 12:33 (Israel time) |
 | Price rows read | 5,140,268 on 2 November 2026 |
 | Basket | 32 products, matched by barcode |
 | Kept for | 10 years, write-once (S3 Object Lock) |
 | Tests | 1,207 (99.8% coverage), plus 976 planted bugs, all caught |
-| Cost | about $1 to $3 a month, plus about $0.10 to $0.90 for the basket |
+| Cost | about $1 to $3 a month in the first year, plus about $0.10 to $0.90 for the basket (about $3.50 at worst) |
 
 ## Why
 
@@ -43,7 +43,7 @@ This project collects them. It stores every morning's files exactly as published
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/flow-dark.png">
-  <img alt="How it works: from 06:30 to 11:18 the collector, an AWS Lambda function in Tel Aviv, fetches the chains' portals (Shufersal, NCR, Carrefour) and writes files and manifests to the archive on S3, locked 10 years; its 11:48 check sends an email alert and pings a dead-man check; at 12:03 the price files are extracted to Parquet, at 12:33 the basket is priced with DuckDB SQL, and the site on S3 and CloudFront is updated." src="docs/img/flow-light.png">
+  <img alt="How it works: from 06:30 to 11:18 the collector, an AWS Lambda function in Tel Aviv, fetches the chains' portals (Shufersal, NCR, Carrefour) and writes files and manifests to the archive on S3, locked 10 years; its 11:48 check emails an alert when the morning falls short and pings a dead-man check; at 12:03 the price files are extracted to Parquet, at 12:33 the basket is priced with DuckDB SQL, and the site on S3 and CloudFront is updated." src="docs/img/flow-light.png">
 </picture>
 
 All times are Israel time.
