@@ -12,12 +12,12 @@ from basket.barcode import normalize
 from basket.basket_file import Basket, load_basket
 from basket.chains import SLUGS
 from basket.extract import ExtractReport
-from basket.page import build_site, render_day, render_index, render_method
+from basket.page import STYLE, build_site, render_day, render_index, render_method
 from basket.record import build_record, public_day
 from basket.rules import ChainPrice, Headline, LeftOut, chain_day, price_basket
 from basket.stores import Store
-from basket.words import (ALWAYS, MEDIAN_SENTENCE, NEVER, PRICES_SENTENCE, REVISED, TITLE, bar_label, credit,
-                          headline_lines, left_out_line, range_note, revised_line, too_few)
+from basket.words import (ALWAYS, BACK_LINK, MEDIAN_SENTENCE, NEVER, PRICES_SENTENCE, REVISED, TITLE, bar_label,
+                          credit, files_of, headline_lines, left_out_line, range_note, revised_line, too_few)
 
 BASKET = load_basket(Path(__file__).parent / "baskets" / "basket-test.json", min_items=1)
 MILK, PASTA, EGGS = (item.code for item in BASKET.items)  # 1000 gml, 500 gml, 12 unit
@@ -97,6 +97,17 @@ def cells(page: str) -> dict[str, dict[str, set[str]]]:
 def bar_rows(page: str) -> dict[str, str]:
     """Per chain: its entry in the list of totals."""
     return dict(re.findall(r'<li data-chain="(\w+)"[^>]*>(.*?)</li>', page, re.DOTALL))
+
+
+def bar_classes(page: str) -> dict[str, str]:
+    """Per chain: the class of its entry in the list of totals, "" for none."""
+    return {slug: classes for slug, classes in re.findall(r'<li data-chain="(\w+)"(?: class="([^"]*)")?>', page)}
+
+
+def tiles(page: str) -> dict[str, tuple[str, str, str]]:
+    """Per tile (by kind): its label, its figure and the line under it."""
+    return {kind: (label, figure, note) for kind, label, figure, note in re.findall(
+        r'<div class="tile (\w+)"><dt>(.*?)</dt><dd class="figure">(.*?)</dd><dd>(.*?)</dd></div>', page)}
 
 
 # ---- the words ----
@@ -263,7 +274,7 @@ def test_an_item_a_chain_does_not_list_says_so():
 def test_bars_are_scaled_to_the_highest_total_and_ties_share_a_rank():
     page = index(a_public(prices=with_prices(yochananof={MILK: ("5.90", "5.90", "5.90", 40)})))  # 12.00, as Rami Levy
     bars = bar_rows(page)
-    widths = {slug: re.search(r'<rect class="fill" width="([\d.]+)"', row).group(1)
+    widths = {slug: re.search(r'<rect class="fill" width="([\d.]+)%"', row).group(1)
               for slug, row in bars.items() if "<svg" in row}
     assert widths == {"ramilevy": "80.81", "yochananof": "80.81", "shufersal": "90.91", "carrefour": "100.00"}
     ranks = {slug: re.search(r'<span class="rank">(\d+)</span>', row).group(1) for slug, row in bars.items()
@@ -271,6 +282,68 @@ def test_bars_are_scaled_to_the_highest_total_and_ties_share_a_rank():
     assert ranks == {"ramilevy": "1", "yochananof": "1", "shufersal": "3", "carrefour": "4"}
     assert "Lowest listed total today: Rami Levy, ₪12.00." in page  # the headline names one of the two
     assert "₪14.85" in bars["carrefour"] and bar_label(96) in bars["carrefour"]
+
+
+def test_bars_start_at_zero_and_mark_the_lowest_ranked_chains():
+    page = index()
+    assert bar_classes(page) == {"ramilevy": "lowest", "yochananof": "", "shufersal": "", "carrefour": "",
+                                 "osherad": "out"}
+    for row in bar_rows(page).values():  # one bar per row, from zero: no offset, no cut axis
+        assert ' x="' not in row and "viewBox" not in row
+    tied = index(a_public(prices=with_prices(yochananof={MILK: ("5.90", "5.90", "5.90", 40)})))  # 12.00, as Rami Levy
+    assert [slug for slug, classes in bar_classes(tied).items() if classes == "lowest"] == ["ramilevy", "yochananof"]
+    thin = index(a_public(stores=STORES | {"carrefour": (100, 10), "yochananof": (40, 5)}))  # no comparison
+    assert "lowest" not in bar_classes(thin).values()  # Rami Levy still has rank 1, but nothing is compared
+    assert bar_classes(thin)["carrefour"] == "out"
+
+
+def test_tiles_show_the_headline_s_figures():
+    page = index()
+    assert tiles(page) == {"lowest": ("Lowest listed total today", "₪12.00", "Rami Levy"),
+                           "highest": ("Highest", "₪14.85", "Carrefour"),
+                           "gap": ("Gap", "24%", "(highest − lowest) ÷ lowest")}
+    assert '<dl class="tiles" aria-hidden="true">' in page  # the headline lines beneath say the same in words
+    assert page.index('<dl class="tiles"') < page.index('<p class="headline">')
+    public = a_public()
+    public["headline"] = public["headline"] | {"lowest_total": "12.005"}  # as the record's exact sum might give it
+    assert tiles(index(public))["lowest"][1] == "₪12.01"  # rounded as the headline rounds it
+    assert "Lowest listed total today: Rami Levy, ₪12.01." in index(public)
+
+
+def test_no_tiles_without_a_comparison():
+    short = {slug: {code: (median, low, high, 1) for code, (median, low, high, _) in items.items()}
+             for slug, items in PRICES.items()}
+    for public in (a_public(stores=STORES | {"carrefour": (100, 10), "yochananof": (40, 5)}), a_public(prices=short)):
+        page = index(public)
+        assert public["headline"] is None
+        assert 'class="tiles"' not in page and tiles(page) == {}
+
+
+def test_header_band_names_the_site_and_the_day_on_every_page():
+    assert files_of(DAY) == "from the chains' price files of Monday 2 November 2026"
+    line = f'<p class="dateline">{files_of(DAY)}</p></div></header>'
+    assert f'<header class="band"><div class="wrap"><h1>{TITLE}</h1>{line}' in index()
+    assert f'<header class="band"><div class="wrap"><a href="index.html">{BACK_LINK}</a>{line}' in method()
+    for page in (index(), method()):
+        assert page.index("</header>") < page.index("<main>")
+
+
+def test_wide_tables_scroll_in_a_named_box():
+    for page in (index(), method()):
+        regions = re.findall(r'<div class="table" tabindex="0" role="region" aria-labelledby="(\w+)"><table', page)
+        assert regions, "no table box"
+        for name in regions:
+            assert page.count(f'id="{name}"') == 1 and re.search(rf'<h2 id="{name}">', page)
+
+
+def test_style_has_a_dark_set_a_body_background_and_no_request():
+    dark = re.search(r"@media \(prefers-color-scheme: dark\) \{\s*:root \{(.*?)\}", STYLE, re.DOTALL).group(1)
+    for token in ("--bg", "--surface", "--text", "--accent", "--low-bg", "--low-text"):
+        assert f"{token}:" in dark, token
+    assert re.search(r"\nbody \{[^}]*background: var\(--bg\)", STYLE)
+    for page in (index(), method()):
+        assert '<meta name="color-scheme" content="light dark">' in page
+        assert not re.search(r"https?:|//|@import|url\(|<link|<img|<iframe|src=", page.lower()), "an outside request"
 
 
 def test_range_note_wide_range_renders():

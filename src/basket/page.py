@@ -1,21 +1,27 @@
 """The pages: a day's public record (`basket.record.public_day`) as the index page, the method page and the
 day's JSON, written into a site folder.
 
-The index (the design's "What a visitor sees"): the headline's two lines, the revised line on a revised
-day (B12), the sentence on what a price here is, the chains with their totals as bars, the item table, the
-notes and the credit line. The method page: the rules in plain words, the basket, the stores left out,
-what the page does not claim, the law and how to reproduce the number. Every page is one HTML file in
-English with one style block, no script, `noindex`, and the credit line in its footer with the link to the
-method page. The words are `basket.words`'.
+The index (the design's "What a visitor sees"): on a day that compares, the headline's figures as three
+tiles; the headline's two lines, the revised line on a revised day (B12), the sentence on what a price here
+is, the chains with their totals as bars, the item table, the notes and the credit line. The method page:
+the rules in plain words, the basket, the stores left out, what the page does not claim, the law and how to
+reproduce the number. Every page opens with a header band, the site's name (on the method page, the link
+back) over the date line, and is one HTML file in English with one style block, no script, `noindex`, and
+the credit line in its footer with the link to the method page. The words are `basket.words`', and the
+tiles' labels are the headline's own: "Lowest listed total today", "Highest", and the gap as B9 defines it.
+
+Look. One style block: colours as custom properties with a dark set for `prefers-color-scheme: dark`, the
+system font stack, tabular figures in tables, a header band, cards, and the item table scrolling in its own
+box on a narrow screen (its first column held in place) and its header row held at the top on a wide one.
 
 Order. Chains go by rank, the slug breaking a tie; a chain with no rank comes after those with one. Items
 go in the basket's order.
 
-Comparison. Only a day with a headline compares: the bars, inline SVG with the highest total the full
-width; the totals row; and in each row whose item counts, the lowest price among the chains in the
-ranking marked "low" (every chain at that price). Without a headline the chains and the table show no
-totals, no bars and no mark, and the item count in the headline is the table's rows; with one, it is the
-items that count.
+Comparison. Only a day with a headline compares: the tiles; the bars, inline SVG starting at zero with the
+highest total the full width, the chains ranked first (one, or several tied) marked "lowest"; the totals
+row; and in each row whose item counts, the lowest price among the chains in the ranking marked "low"
+(every chain at that price). Without a headline the chains and the table show no tiles, no totals, no bars
+and no mark, and the item count in the headline is the table's rows; with one, it is the items that count.
 
 A chain out of the ranking (B8) shows `too_few` in place of a bar; its prices are marked † and "out",
 and a note says why.
@@ -40,34 +46,145 @@ from pathlib import Path
 from basket import words
 from basket.basket_file import Basket
 from basket.chains import EXCLUDED
+from basket.record import money
 from basket.rules import Headline, LeftOut
 from basket.stores import Store
 
 MARKER = ".basket-site"
 HEBREW = re.compile(r"[\u0590-\u05FF]+(?:[\s\d%'\".,()\-]+[\u0590-\u05FF]+)*")
 STYLE = """
-body { margin: 0 auto; max-width: 52rem; padding: 0 16px 2rem; font: 16px/1.5 system-ui, sans-serif;
-       color: #1a1a1a; background: #fff; }
-h1 { font-size: 1.6rem; margin: 1.5rem 0 .5rem; }
-h2 { font-size: 1.2rem; margin-top: 2rem; }
-.headline { font-size: 1.25rem; font-weight: 600; margin: .25rem 0; }
-.revised { border-left: 4px solid #b45309; padding-left: .75rem; }
-ol.bars, ol.rules { list-style: none; padding: 0; }
-ol.bars li { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .5rem; margin: .5rem 0; }
-.rank { width: 1.25rem; }
-.name { width: 6.5rem; }
-ol.bars svg { flex: 1 1 8rem; height: .9rem; }
-.fill { fill: #2563eb; }
-.total { font-weight: 600; }
-.note, small { color: #555; font-size: .8rem; }
-ol.bars .note { flex-basis: 100%; padding-left: 1.75rem; }
+:root {
+  color-scheme: light dark;
+  --bg: #f5f6f4; --surface: #ffffff; --surface-2: #f0f2ef; --hover: #f7f8f6;
+  --border: #dde2de; --border-strong: #c3cac5; --axis: #9aa39d;
+  --text: #151b17; --text-2: #3f4a43; --text-3: #58635c;
+  --accent: #166534; --bar: #8b958f; --low-bg: #dcf3e3; --low-text: #0f4d27;
+  --warn: #9a4a06; --warn-bg: #fdf3e7; --shadow: 0 1px 2px rgb(16 24 20 / 6%);
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px;
+  --radius: 10px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1210; --surface: #151a17; --surface-2: #1c231f; --hover: #19201c;
+    --border: #2b342f; --border-strong: #3d4842; --axis: #56615b;
+    --text: #e7ebe8; --text-2: #b7c0ba; --text-3: #9aa59e;
+    --accent: #5cc485; --bar: #6f7a74; --low-bg: #163a24; --low-text: #b5f0c9;
+    --warn: #f0a45a; --warn-bg: #2a1f12; --shadow: 0 0 #0000;
+  }
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 var(--font); }
+.wrap, main { max-width: 67rem; margin: 0 auto; padding-left: var(--s4); padding-right: var(--s4); }
+a { color: var(--accent); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+.band { background: var(--surface); border-top: 3px solid var(--accent); border-bottom: 1px solid var(--border); }
+.band .wrap { padding-top: var(--s5); padding-bottom: var(--s5); }
+.band h1, .band .wrap > a { display: inline-block; margin: 0; font-size: 1.25rem; font-weight: 700; line-height: 1.3;
+                            letter-spacing: -0.01em; color: var(--text); }
+.band .wrap > a { text-decoration: none; }
+.band .wrap > a:hover { text-decoration: underline; }
+.dateline { margin: var(--s1) 0 0; color: var(--text-3); font-size: .9375rem; }
+main { padding-top: var(--s6); }
+main > h1 { font-size: 1.75rem; line-height: 1.25; letter-spacing: -0.015em; margin: 0 0 var(--s3); }
+h2 { font-size: 1.125rem; line-height: 1.35; margin: 0 0 var(--s4); }
+p { margin: 0 0 var(--s3); }
+main > p, main > section p, main > section ul { max-width: 46rem; }
+main > section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+                 box-shadow: var(--shadow); padding: var(--s5); margin: var(--s5) 0; }
+main > section > :last-child { margin-bottom: 0; }
+.tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s4); margin: 0 0 var(--s5); }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+        box-shadow: var(--shadow); padding: var(--s4) var(--s5); }
+.tile.lowest { box-shadow: inset 0 3px 0 var(--accent), var(--shadow); }
+.tile dt { color: var(--text-3); font-size: .8125rem; font-weight: 600; }
+.tile dd { margin: 0; color: var(--text-2); font-size: .9375rem; }
+.tile dd.figure { margin: var(--s1) 0 var(--s1); color: var(--text); font-size: 2.25rem; font-weight: 650;
+                  line-height: 1.15; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.headline { font-size: 1.25rem; font-weight: 600; line-height: 1.4; margin: 0 0 var(--s2); }
+.headline + p { color: var(--text-2); }
+.revised { border-left: 4px solid var(--warn); background: var(--warn-bg); padding: var(--s3) var(--s4);
+           border-radius: 0 8px 8px 0; }
+ol.bars, ol.rules { list-style: none; padding: 0; margin: 0; }
+ol.bars li { display: grid; grid-template-columns: 1.5rem 9rem minmax(0, 1fr) 6.5rem;
+             grid-template-areas: "rank name bar total" "rank note bar total"; column-gap: var(--s3);
+             align-items: center; padding: var(--s2) 0; }
+ol.bars li + li { border-top: 1px solid var(--border); }
+.rank { grid-area: rank; align-self: start; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.name { grid-area: name; font-weight: 600; }
+ol.bars .note { grid-area: note; color: var(--text-3); font-size: .8125rem; }
+ol.bars svg { grid-area: bar; display: block; width: 100%; height: 14px; border-left: 1px solid var(--axis); }
+.fill { fill: var(--bar); }
+li.lowest .fill { fill: var(--accent); }
+.total { grid-area: total; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+ol.bars li.out { grid-template-areas: "rank name name name" "rank note note note"; }
+li.out .name { color: var(--text-3); }
 .table { overflow-x: auto; }
-table { border-collapse: collapse; width: 100%; font-size: .9rem; }
-th, td { text-align: left; vertical-align: top; padding: .4rem; border-bottom: 1px solid #ddd; }
-th small, td small { display: block; }
-td.low { background: #dcfce7; font-weight: 600; }
-.out, .left-out th { color: #6b7280; }
-footer { margin-top: 3rem; border-top: 1px solid #ddd; padding-top: 1rem; font-size: .85rem; color: #444; }
+table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: .875rem;
+        font-variant-numeric: tabular-nums; }
+th, td { text-align: left; vertical-align: top; padding: var(--s3); border-bottom: 1px solid var(--border); }
+thead th { background: var(--surface-2); color: var(--text-2); font-size: .8125rem; font-weight: 600;
+           vertical-align: bottom; border-bottom-color: var(--border-strong); }
+th small, td small { display: block; margin-top: 2px; color: var(--text-3); font-size: .75rem; font-weight: 400;
+                     line-height: 1.35; text-wrap: balance; }
+tbody tr:hover > * { background: var(--hover); }
+table.prices { min-width: 44rem; }
+table.prices thead th + th, table.prices td { text-align: right; }
+table.prices td { font-size: .9375rem; font-weight: 600; }
+table.prices thead th:first-child { width: 20%; }
+table.prices th[scope="row"] { font-weight: 600; text-wrap: pretty; }
+table.prices td { padding-left: var(--s2); padding-right: var(--s2); }
+table.prices th[scope="row"] [lang="he"] { font-weight: 400; color: var(--text-2); }
+table.prices tbody tr:hover > td.low, td.low { background: var(--low-bg); color: var(--low-text); font-weight: 700; }
+.out, .left-out th, .left-out td { color: var(--text-3); }
+tfoot th, tfoot td { border-top: 2px solid var(--border-strong); border-bottom: 0; font-weight: 700; }
+table.basket { min-width: 40rem; }
+table.basket td:first-child { color: var(--text-3); }
+table.basket td:nth-child(4), table.basket th:nth-child(4) { text-align: right; padding-right: var(--s5); }
+.notes ul, main > section ul { padding-left: 1.25rem; margin: 0 0 var(--s3); }
+.notes li, main > section li { margin: 0 0 var(--s2); }
+.notes li { color: var(--text-2); font-size: .9375rem; }
+.lede { font-size: 1.0625rem; color: var(--text-2); }
+ol.rules li { display: grid; grid-template-columns: 10rem minmax(0, 1fr); gap: var(--s4); margin: 0;
+              padding: var(--s3) 0; border-top: 1px solid var(--border); }
+ol.rules li:first-child { border-top: 0; padding-top: 0; }
+ol.rules li > span { max-width: 46rem; color: var(--text-2); }
+details { margin: 0 0 var(--s4); }
+summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+details ul { columns: 3 13rem; column-gap: var(--s5); margin-top: var(--s2); font-size: .8125rem;
+             color: var(--text-2); }
+details li { break-inside: avoid; }
+footer { margin-top: var(--s7); background: var(--surface); border-top: 1px solid var(--border); color: var(--text-3);
+         font-size: .8125rem; }
+footer .wrap { padding-top: var(--s5); padding-bottom: var(--s6); }
+footer p { max-width: 46rem; margin: 0; }
+@media (min-width: 50rem) {
+  .table { overflow: visible; }
+  table.prices thead th { position: sticky; top: 0; z-index: 1; }
+}
+@media (max-width: 49.99rem) {
+  .table { margin: 0 calc(-1 * var(--s4)); }
+  table.prices th[scope="row"], table.prices thead th:first-child {
+    position: sticky; left: 0; z-index: 1; width: 9.5rem; background: var(--surface);
+    box-shadow: 1px 0 0 var(--border); }
+  table.prices thead th:first-child { background: var(--surface-2); }
+  table.prices th:first-child { padding-left: var(--s4); }
+}
+@media (max-width: 37.5rem) {
+  main { padding-top: var(--s5); }
+  main > section { padding: var(--s4); margin: var(--s4) 0; }
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s3); margin-bottom: var(--s4); }
+  .tile { padding: var(--s3) var(--s4); }
+  .tile.gap { grid-column: 1 / -1; }
+  .tile dd.figure { font-size: 1.75rem; }
+  .headline { font-size: 1.125rem; }
+  ol.bars li { grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+               grid-template-areas: "rank name total" "rank bar bar" "rank note note"; row-gap: var(--s1); }
+  ol.bars li.out { grid-template-areas: "rank name name" "rank note note"; }
+  ol.rules li { grid-template-columns: minmax(0, 1fr); gap: var(--s1); }
+}
 """
 
 
@@ -76,14 +193,15 @@ def render_index(public: dict, basket: Basket, exclusions: Mapping[str, Sequence
     chains = _ordered(public["chains"])
     compare = public["headline"] is not None
     first, second = index_headline(public, basket)
-    parts = [f"<h1>{_text(words.TITLE)}</h1>", f'<p class="headline">{_prose(first)}</p>', f"<p>{_prose(second)}</p>"]
+    parts = [_tiles(_headline(public["headline"]))] if compare else []
+    parts += [f'<p class="headline">{_prose(first)}</p>', f"<p>{_prose(second)}</p>"]
     if public["revised"]:
         parts.append(f'<p class="revised">{_prose(_revised(public))}</p>')
-    parts.append(f"<p>{_prose(words.PRICES_SENTENCE)}</p>")
+    parts.append(f'<p class="lede">{_prose(words.PRICES_SENTENCE)}</p>')
     parts.append(_bars(chains, compare))
     parts.append(_table(public, basket, chains, compare))
     parts.append(_notes(public, basket, exclusions, chains))
-    return _page(words.TITLE, parts, _credit(public))
+    return _page(_band(f"<h1>{_text(words.TITLE)}</h1>", public), words.TITLE, parts, _credit(public))
 
 
 def index_headline(public: dict, basket: Basket) -> tuple[str, str]:
@@ -100,18 +218,21 @@ def index_headline(public: dict, basket: Basket) -> tuple[str, str]:
 def render_method(basket: Basket, exclusions: Mapping[str, Sequence[Store]], public: dict) -> str:
     """The method page: the rules, the basket, the stores left out, the claims not made, the law, reproducing."""
     day = date.fromisoformat(public["day"])
-    rules = "".join(f"<li><b>{_text(name)}</b> {_prose(text)}</li>" for name, text in words.RULES)
+    rules = "".join(f"<li><b>{_text(name)}</b> <span>{_prose(text)}</span></li>" for name, text in words.RULES)
     not_claimed = "".join(f"<li>{_prose(line)}</li>" for line in words.NOT_CLAIMED)
-    parts = [f'<p><a href="index.html">{_text(words.BACK_LINK)}</a></p>', f"<h1>{_text(words.METHOD_TITLE)}</h1>",
-             f"<p>{_prose(words.METHOD_INTRO)}</p>",
-             "<h2>The rules</h2>", f'<ol class="rules">{rules}</ol>',
-             "<h2>The basket</h2>", f"<p>{_prose(words.basket_intro(basket))}</p>", _basket_table(basket),
-             "<h2>Stores left out</h2>", *(_excluded(slug, exclusions.get(slug, ())) for slug in words.CHAIN_NAMES),
-             "<h2>What this page does not claim</h2>", f"<ul>{not_claimed}</ul>",
-             "<h2>The law</h2>", f"<p>{_prose(words.LAW)}</p>",
-             "<h2>To reproduce this number</h2>",
-             f"<p>{_prose(words.reproduce(day, public['basket_version'], public['code_sha']))}</p>", _day_link(day)]
-    return _page(f"{words.METHOD_TITLE} · {words.TITLE}", parts, _credit(public))
+    parts = [f"<h1>{_text(words.METHOD_TITLE)}</h1>", f'<p class="lede">{_prose(words.METHOD_INTRO)}</p>',
+             _section("<h2>The rules</h2>", f'<ol class="rules">{rules}</ol>'),
+             _section('<h2 id="basket">The basket</h2>', f"<p>{_prose(words.basket_intro(basket))}</p>",
+                      _basket_table(basket)),
+             _section("<h2>Stores left out</h2>",
+                      *(_excluded(slug, exclusions.get(slug, ())) for slug in words.CHAIN_NAMES)),
+             _section("<h2>What this page does not claim</h2>", f"<ul>{not_claimed}</ul>"),
+             _section("<h2>The law</h2>", f"<p>{_prose(words.LAW)}</p>"),
+             _section("<h2>To reproduce this number</h2>",
+                      f"<p>{_prose(words.reproduce(day, public['basket_version'], public['code_sha']))}</p>",
+                      _day_link(day))]
+    back = f'<a href="index.html">{_text(words.BACK_LINK)}</a>'
+    return _page(_band(back, public), f"{words.METHOD_TITLE} · {words.TITLE}", parts, _credit(public))
 
 
 def render_day(public: dict) -> str:
@@ -132,7 +253,7 @@ def build_site(public: dict, basket: Basket, exclusions: Mapping[str, Sequence[S
     (site_dir / MARKER).write_text("", encoding="utf-8")
 
 
-def _page(title: str, parts: Sequence[str], footer: str) -> str:
+def _page(band: str, title: str, parts: Sequence[str], footer: str) -> str:
     body = "\n".join(parts)
     return f"""<!doctype html>
 <html lang="en">
@@ -140,17 +261,43 @@ def _page(title: str, parts: Sequence[str], footer: str) -> str:
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
+<meta name="color-scheme" content="light dark">
 <title>{_text(title)}</title>
 <style>{STYLE}</style>
 </head>
 <body>
+{band}
 <main>
 {body}
 </main>
-<footer>{footer}</footer>
+<footer><div class="wrap">{footer}</div></footer>
 </body>
 </html>
 """
+
+
+def _band(title: str, public: dict) -> str:
+    """The header band every page opens with: the site's name (`title`, the index's <h1> or the method page's
+    link back) and the date line."""
+    line = words.files_of(date.fromisoformat(public["day"]))
+    return f'<header class="band"><div class="wrap">{title}<p class="dateline">{_text(line)}</p></div></header>'
+
+
+def _section(*parts: str) -> str:
+    """A method page section: a card holding its heading and its parts."""
+    return f"<section>{''.join(parts)}</section>"
+
+
+def _tiles(headline: Headline) -> str:
+    """The headline's figures as three tiles: the lowest listed total and its chain, the highest and its chain, the
+    gap. Hidden from screen readers: the headline lines beneath say the same in words."""
+    tiles = (("lowest", "Lowest listed total today", f"₪{money(headline.lowest_total)}",
+              words.CHAIN_NAMES[headline.lowest]),
+             ("highest", "Highest", f"₪{money(headline.highest_total)}", words.CHAIN_NAMES[headline.highest]),
+             ("gap", "Gap", f"{headline.gap_percent}%", "(highest − lowest) ÷ lowest"))
+    shown = "".join(f'<div class="tile {kind}"><dt>{_text(label)}</dt><dd class="figure">{_text(figure)}</dd>'
+                    f"<dd>{_text(note)}</dd></div>" for kind, label, figure, note in tiles)
+    return f'<dl class="tiles" aria-hidden="true">{shown}</dl>'
 
 
 def _credit(public: dict) -> str:
@@ -209,12 +356,15 @@ def _bars(chains: list[tuple[str, dict]], compare: bool) -> str:
         elif compare:
             width = Decimal(chain["total"]) * 100 / highest
             line = (f'<span class="rank">{chain["rank"]}</span>{name}'
-                    f'<svg viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true">'
-                    f'<rect class="fill" width="{width:.2f}" height="10"/></svg>'
+                    f'<svg width="100%" height="14" aria-hidden="true">'
+                    f'<rect class="fill" width="{width:.2f}%" height="14" rx="4"/>'
+                    f'<rect class="fill" width="4" height="14"/></svg>'  # squares the end at zero
                     f'<span class="total">₪{chain["total"]}</span>{label}')
         else:
             line = f'<span class="rank"></span>{name}{label}'
-        rows.append(f'<li data-chain="{slug}">{line}</li>')
+        kind = "out" if not chain["in_ranking"] else "lowest" if compare and chain["rank"] == 1 else None
+        attributes = f' class="{kind}"' if kind else ""
+        rows.append(f'<li data-chain="{slug}"{attributes}>{line}</li>')
     heading = "Listed totals, lowest first" if compare else "The chains' files"
     return f'<section><h2>{heading}</h2><ol class="bars">{"".join(rows)}</ol></section>'
 
@@ -257,8 +407,9 @@ def _table(public: dict, basket: Basket, chains: list[tuple[str, dict]], compare
         totals = "".join(f'<td>₪{chain["total"]}</td>' if chain["total"] is not None else "<td>none</td>"
                          for _, chain in chains)
         foot = f'<tfoot><tr><th scope="row">Total of the items that count</th>{totals}</tr></tfoot>'
-    return (f'<section><h2>Listed prices by item</h2><div class="table"><table class="prices"><thead><tr>'
-            f'<th scope="col">Item</th>{head}</tr></thead><tbody>{"".join(rows)}</tbody>{foot}</table></div></section>')
+    return (f'<section><h2 id="prices">Listed prices by item</h2>{_scroller("prices")}<table class="prices">'
+            f'<thead><tr><th scope="col">Item</th>{head}</tr></thead><tbody>{"".join(rows)}</tbody>{foot}</table></div>'
+            "</section>")
 
 
 def _notes(public: dict, basket: Basket, exclusions: Mapping[str, Sequence[Store]],
@@ -279,6 +430,12 @@ def _notes(public: dict, basket: Basket, exclusions: Mapping[str, Sequence[Store
             f"{_day_link(date.fromisoformat(public['day']))}</section>")
 
 
+def _scroller(heading: str) -> str:
+    """The box a wide table scrolls in on a narrow screen, named by its section's heading and reachable by
+    keyboard, so the table can be scrolled without a pointer."""
+    return f'<div class="table" tabindex="0" role="region" aria-labelledby="{heading}">'
+
+
 def _day_link(day: date) -> str:
     path = f"days/{day.isoformat()}.json"
     return f'<p>The day\'s numbers as data: <a href="{path}">{path}</a>.</p>'
@@ -288,7 +445,7 @@ def _basket_table(basket: Basket) -> str:
     rows = "".join(f"<tr><td>{item.code}</td><td>{_text(item.name_en)}</td><td>{_he(item.name_he)}</td>"
                    f"<td>{_text(words.size_text(item.size))}</td><td>{_text(item.category)}</td></tr>"
                    for item in basket.items)
-    return (f'<div class="table"><table class="basket"><thead><tr><th scope="col">Barcode</th>'
+    return (f'{_scroller("basket")}<table class="basket"><thead><tr><th scope="col">Barcode</th>'
             f'<th scope="col">Name</th><th scope="col">Hebrew name</th><th scope="col">Size</th>'
             f'<th scope="col">Category</th></tr></thead><tbody>{rows}</tbody></table></div>')
 
