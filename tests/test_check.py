@@ -585,7 +585,8 @@ def nov_4(store, retry_error=STOPPED, stored_promo=range(1, 7), stores_retry=Tru
 
 def test_a_retry_short_of_time_on_a_day_listed_in_full_is_quiet_and_recorded():
     """Ruling R36, 4 November 2026: the retry stopped short, but a main run had read the whole PromoFull
-    listing and every name listed is stored. The run is no failed run; the record names it."""
+    listing, listing every name the retry listed, and every name listed is stored. The run is no failed
+    run; the record names it."""
     store = MemoryStore()
     nov_4(store)
     alerts, record = check_day(store, ["shufersal"], NOV_4, kinds=SHUFERSAL_KINDS)
@@ -633,10 +634,11 @@ def test_a_retry_with_another_error_on_a_day_listed_in_full_fails(error):
 
 def test_a_blocked_run_did_not_read_its_listing_in_full():
     """The only PromoFull run that ended with no error was blocked (the owner cleared the latch before
-    the retry): a block stops the listing, so the retry's time stop still fails the morning."""
+    the retry), after it listed every name the retry would: a block stops the listing, so the retry's
+    time stop still fails the morning."""
     store = MemoryStore()
     shufersal_promo_day(store, NOV_4, [("051514Z-main-db2b", range(1, 4), STOPPED, None),
-                                       ("053014Z-main-bd28", range(1, 5), None, "HTTP 403: https://x"),
+                                       ("053014Z-main-bd28", range(1, 6), None, "HTTP 403: https://x"),
                                        ("081551Z-retry-9b10", range(1, 6), STOPPED, None)], range(1, 6))
     alerts, record = check_day(store, ["shufersal"], NOV_4, kinds=SHUFERSAL_KINDS)
     assert kinds_of(alerts) == [("shufersal", "failed")]
@@ -657,14 +659,15 @@ def test_a_retry_run_that_read_the_listing_in_full_counts_too():
 
 
 def test_each_kind_of_a_retry_short_of_time_needs_a_listing_read_in_full():
-    """A retry over two kinds stopped short: PriceFull's main run read its listing in full, PromoFull's
-    stopped short, so the retry still fails; once a PromoFull run reads the whole listing, it does not."""
+    """A retry over two kinds stopped short before its PromoFull listing: PriceFull's main run read its
+    listing in full, PromoFull's stopped short, so the retry still fails; once a PromoFull run reads the
+    whole listing, it does not."""
     store = MemoryStore()
     manifest(store, "shufersal", "retry", kinds=["Stores"], listed=[stores_name(NOV_4)], day=NOV_4)
     prices, promos = [price(f"{n:03d}", day=NOV_4) for n in range(1, 7)], [promo(n, NOV_4) for n in range(1, 7)]
     manifest(store, "shufersal", "main", kinds=["PriceFull"], listed=prices, day=NOV_4)
     manifest(store, "shufersal", "main", kinds=["PromoFull"], listed=promos[:4], error=STOPPED, day=NOV_4)
-    manifest(store, "shufersal", "retry", kinds=["PriceFull", "PromoFull"], listed=prices + promos[:5], error=STOPPED,
+    manifest(store, "shufersal", "retry", kinds=["PriceFull", "PromoFull"], listed=prices, error=STOPPED,
              day=NOV_4, run_id="081551Z-retry-2k2k")
     stored(store, "shufersal", stores_name(NOV_4), *prices, *promos, day=NOV_4)
     alerts, record = check_day(store, ["shufersal"], NOV_4, kinds=SHUFERSAL_KINDS)
@@ -675,6 +678,38 @@ def test_each_kind_of_a_retry_short_of_time_needs_a_listing_read_in_full():
     alerts, record = check_day(store, ["shufersal"], NOV_4, kinds=SHUFERSAL_KINDS)
     assert alerts == []
     assert record["chains"]["shufersal"]["short_of_time"] == ["081551Z-retry-2k2k (PriceFull, PromoFull)"]
+
+
+@pytest.mark.parametrize("complete_run", [
+    ("040000Z-main-0a0a", range(1, 1)),  # A: made before the day's files were up: it listed nothing, with no error
+    ("051514Z-main-db2b", range(1, 4)),  # B: made before stores 4 and 5 published theirs
+])
+def test_a_retry_that_listed_names_no_complete_run_listed_fails(complete_run):
+    """A run that ended with no error read only the listing that was up when it ran. The stopped retry
+    listed names it never saw, and stopped where the stores after them were still unlisted: nothing
+    shows as missing, yet the morning may be short."""
+    run_id, stores = complete_run
+    store = MemoryStore()
+    shufersal_promo_day(store, NOV_4, [(run_id, stores, None, None),
+                                       ("081551Z-retry-9b10", range(1, 6), STOPPED, None)], range(1, 6))
+    alerts, record = check_day(store, ["shufersal"], NOV_4, kinds=SHUFERSAL_KINDS)
+    assert kinds_of(alerts) == [("shufersal", "failed")]
+    assert alerts[0].text == ("shufersal: the day's runs fell short: "
+                              "retry run 081551Z-retry-9b10 (PromoFull) ended with: stopped: under 90 s left.")
+    assert record["chains"]["shufersal"]["missing"] == []
+    assert record["chains"]["shufersal"]["short_of_time"] == []
+
+
+def test_a_retry_that_listed_nothing_still_needs_a_listing_read_in_full():
+    """3 November's shape, the retry stopped before it listed a name of the day: no complete run is
+    needed to have seen its names, but its kind still needs a run that read the whole listing."""
+    store = MemoryStore()
+    shufersal_promo_day(store, NOV_3, [("051514Z-main-4296", range(1, 4), STOPPED, None),
+                                       ("053014Z-main-f155", range(1, 5), STOPPED, None),
+                                       ("081551Z-retry-b079", range(1, 1), STOPPED, None)], range(1, 5))
+    alerts, record = check_day(store, ["shufersal"], NOV_3, kinds=SHUFERSAL_KINDS)
+    assert kinds_of(alerts) == [("shufersal", "failed")]
+    assert record["chains"]["shufersal"]["short_of_time"] == []
 
 
 def test_a_retry_short_of_time_leaves_the_chains_other_failures():
