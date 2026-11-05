@@ -745,7 +745,7 @@ def test_manifest_bytes():
         "listing_read_at": NOW_UTC, "listed": [PROMO, PRICE],
         "files": {PROMO: {"outcome": "stored", "size": 3, "sha256": "ab"}},
         "failed": {PRICE: "timed out"}, "not_attempted": [], "unparsed": 2, "blocked": None, "error": None,
-        "code_sha": CODE_SHA,
+        "pages": [], "code_sha": CODE_SHA,
     }
     assert list(record) == sorted(record)
     assert list(record["files"][PROMO]) == sorted(record["files"][PROMO])

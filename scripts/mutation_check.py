@@ -43,6 +43,8 @@ STORE = ("src/collector/store.py", ["tests/test_store.py"])
 RUN = ("src/collector/run.py", ["tests/test_run.py"])
 CHECK = ("src/collector/check.py", ["tests/test_check.py"])
 STORE_FOR_CHECK = ("src/collector/store.py", ["tests/test_check.py"])
+PAGES = ("src/collector/pages.py", ["tests/test_pages.py"])
+PAGES_FOR_CHECK = ("src/collector/pages.py", ["tests/test_check.py"])
 HANDLER = ("src/collector/handler.py", ["tests/test_handler.py"])
 TEMPLATE = ("template.yaml", ["tests/test_template.py"])
 OPERATIONS = ("docs/operations.md", ["tests/test_template.py"])
@@ -596,6 +598,26 @@ MUTATIONS = {
     "a main run's time stop recorded as an excused retry (R36)": (CHECK, 'if manifest["mode"] == "retry" and manifest["error"] == OUT_OF_TIME', 'if manifest["error"] == OUT_OF_TIME'),
     "an excused retry still a failed run (R36)": (CHECK, ' and manifest not in excused]', "]"),
     "an excused retry not in the record (R36)": (CHECK, "\"short_of_time\": [f\"{manifest['run_id']} ({', '.join(manifest['kinds'])})\" for manifest in excused],", '"short_of_time": [],'),
+    # pages: the day's readings of a kind joined across runs (R37)
+    "a blocked run counted (R37 join)": (PAGES, 'if kind in manifest["kinds"] and not manifest["blocked"]]', 'if kind in manifest["kinds"]]'),
+    "a legacy run with an error read in full (R37 join)": (PAGES, 'if not manifest.get("pages") and not manifest["error"]}', 'if not manifest.get("pages")}'),
+    "pages not split into blocks at a jump (R37 join)": (PAGES, '        if blocks and record["page"] == blocks[-1][-1]["page"] + 1:', "        if blocks:"),
+    "a block from page 1 not open at the front (R37 join)": (PAGES, '    return BEFORE if record["page"] == 1 else (1, record["first"])', '    return 1, record["first"]'),
+    "the last page open without every row taken (R37 join)": (PAGES, ' and record["taken_through"] == record["last"]:\n        return AFTER', ":\n        return AFTER"),
+    "the end read from the highest page, not the run's own pager (R37 join)": (PAGES, 'own_last = next((record["last_page"] or 1 for record in records if record["page"] == 1), None)',
+                                                                             'own_last = max((record["page"] for record in records), default=None)'),
+    "a page past the run's own last page opens the end (R37 join)": (PAGES, '    if record["page"] == own_last and', '    if record["page"] >= own_last and'),
+    "a block starting exactly where the reading ends left out (R37 join)": (PAGES, "        if start <= reading < end:", "        if start < reading < end:"),
+    "a gap joined (R37 join)": (PAGES, "        if start <= reading < end:", "        if reading < end:"),
+    "blocks not taken from the front (R37 join)": (PAGES, "    blocks.sort(key=lambda block: block[1])", "    pass"),
+    "blocks that start together not taken furthest first (R37 join)": (PAGES, "    blocks.sort(key=lambda block: block[2], reverse=True)", "    pass"),
+    "an out-of-order page ignored (R37 join)": (PAGES, '            if not record["in_order"]:', "            if False:"),
+    "an out-of-order page in a blocked run ignored (R37 join)": (PAGES, '            if not record["in_order"]:', '            if not record["in_order"] and not manifest["blocked"]:'),
+    "with joining off, a run that read every page in one go not counted (R37 join)": (PAGES, "if (BEFORE, AFTER) in _blocks(manifest, kind)}", "if False}"),
+    "a run that adds nothing named a contributor (R37 join)": (PAGES, "        if start <= reading < end:  # the block joins the reading and moves its end on\n            reading = end\n",
+                                                               "        if start <= reading:\n            reading = max(reading, end)\n"),
+    "other kinds' pages counted (R37 join)": (PAGES, ' if record["kind"] == kind]', "]"),
+    "unread counts a page read in part as read (R37 join)": (PAGES, 'read = {record["page"] for record in records if record["taken_through"] == record["last"]}', "read = touched"),
     # handler: main and retry
     "day in UTC": (HANDLER, "    day = now.astimezone(ISRAEL).date()", "    day = now.astimezone(timezone.utc).date()"),
     "naive now accepted by the handler": (HANDLER, '    if now.tzinfo is None or now.utcoffset() is None:\n        raise ValueError("now must carry a time zone")',

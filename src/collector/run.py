@@ -67,6 +67,7 @@ class RunResult:
     unparsed: int = 0
     blocked: str | None = None
     error: str | None = None
+    pages: list[dict] = field(default_factory=list)  # each listing page read: asdict(PageRead) | {"taken_through": ...}
 
 
 def collect_chain(chain: Chain, source: Source, http: Http, store, day: date, run_id: str, mode: str,
