@@ -382,3 +382,4 @@ The check: `read_in_full == {"PriceFull": ["044522Z-main-a001", "050002Z-main-a0
 
 ## Deviations
 
+- 2026-11-05, Task 1: also changed `tests/test_chains.py`, which pins `Listed`'s fields and each adapter's `listing` parameters, so the new `ends_page` and Shufersal's `starts` and `on_page` failed two of its tests. `Listed`'s fields now include `ends_page` (default False); a `PagedSource` adapter is compared with `PagedSource.listing`, any other with `Source.listing`; new tests pin `PagedSource.listing`'s parameters, defaults and types, `Start()` as a fresh pass, and `PageRead` and `Start` as frozen.

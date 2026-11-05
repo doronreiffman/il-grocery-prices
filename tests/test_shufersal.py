@@ -8,6 +8,7 @@ their rows renamed and their pager rewritten in the same markup.
 """
 import http.client
 import io
+import itertools
 import re
 import urllib.parse
 import urllib.request
@@ -21,7 +22,7 @@ import pytest
 from collector.chains import CHAINS
 from collector.http import Blocked, Http, HttpError, build_opener
 from collector.names import parse_file_name
-from collector.sources import Listed, ListingUnreadable, OutOfTime, Source
+from collector.sources import Listed, ListingUnreadable, OutOfTime, PageRead, Source
 from collector.sources import shufersal
 from collector.sources.shufersal import CATEGORY, ShufersalSource
 
@@ -332,6 +333,125 @@ def test_listing_reads_each_page_only_after_the_previous_pages_rows_are_taken():
     first_page, second_page = downloaded[:20], downloaded[20:]
     assert len(second_page) == 3
     assert portal.requested == [listing_url(2, 1), *first_page, listing_url(2, 2), *second_page]
+
+
+# ---- the record of each page read ----
+
+NAME_THAT_DOES_NOT_PARSE = "index"
+PRICE_NAME = "Price7290027600007-001-001-20261031-020000"  # a Price file on a PriceFull page: another kind
+
+
+def ticks(step):
+    """The adapter's timer in a test: each call `step` seconds after the one before, from 0."""
+    calls = itertools.count()
+    return lambda: next(calls) * step
+
+
+def recorded(routes, kinds=("PriceFull",)):
+    """The items a listing over `routes` gives, read to its end, and the pages it reports."""
+    http, _ = connect(routes)
+    reads = []
+    listed = list(ShufersalSource(timer=ticks(41.2)).listing(http, kinds, on_page=reads.append))
+    return listed, reads
+
+
+def test_each_page_read_is_reported_before_its_rows_are_given():
+    """The run loop records how far into each page it got, so a page's record comes before its first row."""
+    http, _ = connect({listing_url(2, p): served(page(2, names(p), last=3)) for p in (1, 2, 3)})
+    events, reads = [], []
+
+    def on_page(read):
+        reads.append(read)
+        events.append(("page", read.page))
+
+    for item in ShufersalSource(timer=ticks(41.2)).listing(http, ("PriceFull",), on_page=on_page):
+        events.append(item.name.raw)
+    assert events == [("page", 1), *names(1), ("page", 2), *names(2), ("page", 3), *names(3)]
+    assert reads[0] == PageRead("PriceFull", 1, 20, names(1)[0], names(1)[-1], 3, 41.2, True)
+
+
+def test_a_page_without_a_pager_records_no_last_page():
+    routes = {listing_url(2, 1): served(page(2, names(1), last=3)), listing_url(2, 2): served(page(2, names(2), last=None)),
+              listing_url(2, 3): served(page(2, names(3), last=3))}
+    listed, reads = recorded(routes)
+    assert reads[1].last_page is None
+    assert [read.page for read in reads] == [1, 2, 3]
+    assert len(listed) == 60
+
+
+@pytest.mark.parametrize("old, new", [
+    pytest.param('page=3">&gt;&gt;</a>', 'page=3">last</a>', id="no >> link"),
+    pytest.param('page=3">&gt;&gt;', 'page=xx">&gt;&gt;', id="a page that is no number"),
+])
+def test_a_later_pager_without_a_readable_last_page_is_recorded_not_refused(old, new):
+    """Only page 1's pager has been seen (docs/portals.md), and only page 1's sets how far the listing reads: a later
+    page's is recorded as it reads, never a stop."""
+    routes = {listing_url(2, 1): served(page(2, names(1), last=3)),
+              listing_url(2, 2): served(page(2, names(2), last=3).replace(old, new)),
+              listing_url(2, 3): served(page(2, names(3), last=3))}
+    listed, reads = recorded(routes)
+    assert [read.last_page for read in reads] == [3, None, 3]
+    assert len(listed) == 60
+
+
+def test_one_page_category_records_no_last_page():
+    """Stores fits on one page and has no pager: a list of one page, as the adapter reads it."""
+    _, reads = recorded({listing_url(5, 1): served(fixture(5))}, kinds=("Stores",))
+    name = "Stores7290027600007-000-20261031-020"
+    assert reads == [PageRead("Stores", 1, 1, name, name, None, 41.2, True)]
+
+
+def test_the_last_row_given_from_each_page_ends_it():
+    """A page's last rows may not parse or be of another kind; the last row the listing gives from the page still
+    ends it, so a run that took it took every row the page gives."""
+    routes = {listing_url(2, 1): served(page(2, [*names(1)[:18], NAME_THAT_DOES_NOT_PARSE, PRICE_NAME], last=2)),
+              listing_url(2, 2): served(page(2, names(2), last=2))}
+    listed, _ = recorded(routes)
+    assert [item.name.raw for item in listed] == names(1)[:18] + names(2)
+    assert [item.ends_page for item in listed] == [False] * 17 + [True] + [False] * 19 + [True]
+
+
+def test_a_page_out_of_order_is_recorded_and_the_listing_goes_on():
+    routes = {listing_url(2, 1): served(page(2, names(1), last=3)), listing_url(2, 2): served(page(2, names(2)[::-1], last=3)),
+              listing_url(2, 3): served(page(2, names(3), last=3))}
+    listed, reads = recorded(routes)
+    assert [read.in_order for read in reads] == [True, False, True]
+    assert len(listed) == 60
+
+
+def test_a_page_starting_before_the_last_name_of_the_page_before_is_out_of_order():
+    routes = {listing_url(2, 1): served(page(2, names(1), last=3)), listing_url(2, 2): served(page(2, names(2), last=3)),
+              listing_url(2, 3): served(page(2, names(1), last=3))}
+    _, reads = recorded(routes)
+    assert [read.in_order for read in reads] == [True, True, False]
+
+
+def test_a_name_repeated_across_a_page_boundary_is_in_order():
+    """The list can move on by a row between two page reads: the next page then begins with the last name read."""
+    routes = {listing_url(2, 1): served(page(2, names(1), last=2)),
+              listing_url(2, 2): served(page(2, [names(1)[-1], *names(2)[1:]], last=2))}
+    _, reads = recorded(routes)
+    assert [read.in_order for read in reads] == [True, True]
+
+
+def test_a_page_that_fails_its_checks_is_not_reported():
+    routes = {listing_url(2, 1): served(page(2, names(1), last=2)),
+              listing_url(2, 2): served(page(2, names(2), last=2).replace("pricesprodpublic.blob.core.windows.net",
+                                                                         "files.example.org"))}
+    http, _ = connect(routes)
+    reads = []
+    listing = ShufersalSource(timer=ticks(41.2)).listing(http, ("PriceFull",), on_page=reads.append)
+    with pytest.raises(ListingUnreadable, match="PriceFull page 2, row 1: the download link is on https://files.example.org"):
+        list(listing)
+    assert [read.page for read in reads] == [1]
+
+
+def test_a_listing_with_no_callback_reads_as_before():
+    routes = {listing_url(2, p): served(page(2, names(p), last=3)) for p in (1, 2, 3)}
+    http, _ = connect(routes)
+    without = [item.name.raw for item in ShufersalSource().listing(http, ("PriceFull",))]
+    with_one, _ = recorded(routes)
+    assert without == [item.name.raw for item in with_one] == names(1) + names(2) + names(3)
 
 
 # ---- links checked before anything is fetched ----

@@ -8,8 +8,12 @@ The run loop checks its time left before the listing, between its items and befo
 adapter that makes requests of its own beyond those (Shufersal's re-read of a category for a fresh link, each answer
 of an NCR listing read) asks the check the run lends it, `short_of_time`, before each, and raises OutOfTime when it
 says so; the default, for a caller with no time limit, is never short.
+
+A paged adapter (PagedSource: Shufersal's) also reports each listing page it reads (PageRead) and marks the last row
+it gives from each page (`Listed.ends_page`), so the run loop can record how far into the list a run got; the run
+loop tells it where to start each kind (Start).
 """
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -39,6 +43,7 @@ class Listed:
 
     name: FileName
     url: str
+    ends_page: bool = False  # the last row a paged listing gives from its page: taking it takes the page to its last row
 
 
 class Source(Protocol):
@@ -54,6 +59,41 @@ class Source(Protocol):
 
     def download(self, http: Http, item: Listed, short_of_time: Callable[[], bool] = never_short) -> bytes:
         """The body of `item`, as received; OutOfTime when `short_of_time` says so before a request of its own."""
+
+
+@dataclass(frozen=True)
+class PageRead:
+    """One page of a paged listing, as the adapter reports it once the page is read and every row on it checked."""
+
+    kind: str
+    page: int
+    rows: int
+    first: str  # the first row's file name as listed (any date, parsed or not)
+    last: str  # the last row's
+    last_page: int | None  # the last page this page's pager names; None when it names none
+    seconds: float  # the request's time, rounded to 0.1 s (Http's 0.5 s pause included)
+    in_order: bool  # every name at or after the one before it, and the first at or after the last of the page before
+
+
+@dataclass(frozen=True)
+class Start:
+    """Where a paged listing starts reading a kind."""
+
+    page: int = 1  # 1: a fresh pass; more: after page 1, resume at this page
+    furthest: str | None = None  # the furthest name the earlier runs took (the step-back compares with it)
+    detours: tuple[int, ...] = ()  # pages read once each, before page 1
+
+
+class PagedSource(Source):
+    """A portal adapter whose listing comes in numbered pages. A plain class, not a Protocol, so the run loop can tell
+    a paged adapter with isinstance."""
+
+    def listing(self, http: Http, kinds: tuple[str, ...], short_of_time: Callable[[], bool] = never_short,
+                starts: Mapping[str, Start] | None = None,
+                on_page: Callable[[PageRead], None] | None = None) -> Iterator[Listed]:
+        """As Source.listing, each kind read from `starts[kind]` (Start(), a fresh pass from page 1, when it has none).
+        `on_page` is called with each page read, once every row on it is checked and before its first row is given; a
+        page that fails a check raises and is not reported. The last row given from each page has `ends_page`."""
 
 
 UNSAFE = ("/", "\\", "..", "?", "#")  # could leave the folder or end the path

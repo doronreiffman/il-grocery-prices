@@ -1,7 +1,7 @@
 """The chain list, the adapter each chain gets, and the interface every portal adapter implements."""
 import inspect
 import urllib.parse
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import FrozenInstanceError, fields
 from typing import get_args, get_type_hints
 
@@ -11,7 +11,8 @@ from collector import chains
 from collector.chains import CHAINS, Chain, source_for
 from collector.http import Blocked, Http, HttpError
 from collector.names import KINDS, parse_file_name
-from collector.sources import Listed, ListingUnreadable, Source, checked_name, never_short
+from collector.sources import (Listed, ListingUnreadable, PagedSource, PageRead, Source, Start, checked_name,
+                               never_short)
 from collector.sources.carrefour import CarrefourSource
 from collector.sources.ncr import NcrSource
 from collector.sources.shufersal import ShufersalSource
@@ -117,7 +118,8 @@ def test_chain_is_frozen():
 def test_listed_holds_the_parsed_name_and_its_link():
     name = parse_file_name("PriceFull7290058140886-001-722-20261101-001016.gz")
     item = Listed(name=name, url=f"https://url.publishedprices.co.il/file/d/{name.raw}")
-    assert [f.name for f in fields(Listed)] == ["name", "url"]
+    assert [f.name for f in fields(Listed)] == ["name", "url", "ends_page"]
+    assert item.ends_page is False  # only a paged listing marks the last row it gives from a page
     assert item.name.store == "722"
     assert item == Listed(name=name, url=item.url)
     with pytest.raises(FrozenInstanceError):
@@ -137,10 +139,41 @@ def test_source_interface():
     assert never_short() is False
 
 
+def test_paged_source_interface():
+    """A paged listing takes Source's parameters, then where each kind starts and the callback each page read is
+    reported to; neither is needed, so a caller that keeps no page records calls it as any other listing."""
+    assert Source in PagedSource.__mro__
+    parameters = inspect.signature(PagedSource.listing).parameters
+    assert list(parameters) == ["self", "http", "kinds", "short_of_time", "starts", "on_page"]
+    assert parameters["short_of_time"].default is never_short
+    assert parameters["starts"].default is None
+    assert parameters["on_page"].default is None
+    assert get_type_hints(PagedSource.listing) == {
+        "http": Http, "kinds": tuple[str, ...], "short_of_time": Callable[[], bool],
+        "starts": Mapping[str, Start] | None, "on_page": Callable[[PageRead], None] | None,
+        "return": Iterator[Listed]}
+
+
+def test_a_start_by_default_is_a_fresh_pass():
+    assert (Start().page, Start().furthest, Start().detours) == (1, None, ())
+
+
+def test_page_records_and_start_points_are_frozen():
+    read = PageRead("PriceFull", 1, 20, "PriceFull-a", "PriceFull-b", 21, 41.2, True)
+    assert [f.name for f in fields(PageRead)] == ["kind", "page", "rows", "first", "last", "last_page", "seconds",
+                                                  "in_order"]
+    with pytest.raises(FrozenInstanceError):
+        read.page = 2
+    with pytest.raises(FrozenInstanceError):
+        Start().page = 2
+
+
 @pytest.mark.parametrize("adapter", [ShufersalSource, NcrSource, CarrefourSource])
 def test_every_adapter_takes_the_interfaces_parameters(adapter):
+    """A paged adapter takes PagedSource's parameters, any other Source's."""
+    interface = PagedSource if issubclass(adapter, PagedSource) else Source
     for name in ("listing", "download"):
-        ours, theirs = inspect.signature(getattr(adapter, name)), inspect.signature(getattr(Source, name))
+        ours, theirs = inspect.signature(getattr(adapter, name)), inspect.signature(getattr(interface, name))
         assert list(ours.parameters) == list(theirs.parameters), (adapter.__name__, name)
         assert ours.parameters["short_of_time"].default is never_short, (adapter.__name__, name)
 

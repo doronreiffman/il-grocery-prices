@@ -21,16 +21,22 @@ What the portal does (docs/portals.md, "Shufersal", seen 2026-10-31):
   category's 21 pages read again could outlast Lambda's 900 s. Both the listing and the refresh ask the run's time check before
   each page, and the refresh again before the fresh link's download: OutOfTime, naming the file and
   where it stopped.
+- Each page the listing reads is reported (`on_page`, a PageRead) once every row on it is checked, before its first
+  row is given: its rows, first and last name, the last page its pager names, the seconds its request took and
+  whether its names are in order. Only page 1's pager sets how far the listing reads, and only page 1's has been seen:
+  a later page's is read leniently and recorded, never a stop. The last row given from each page carries `ends_page`.
 """
+import itertools
+import time
 import urllib.parse
-from collections.abc import Callable, Iterator
-from dataclasses import dataclass
+from collections.abc import Callable, Iterator, Mapping
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
 
 from collector.http import Blocked, Http, HttpError
 from collector.names import parse_file_name
-from collector.sources import Listed, ListingUnreadable, OutOfTime, Source, never_short
+from collector.sources import Listed, ListingUnreadable, OutOfTime, PagedSource, PageRead, Start, never_short
 
 BASE_URL = "https://prices.shufersal.co.il"
 FILE_HOST = "pricesprodpublic.blob.core.windows.net"
@@ -41,28 +47,44 @@ LAST_PAGE = ">>"  # the pager's link to the last page
 EXPIRY = "%Y-%m-%dT%H:%M:%SZ"  # se=, as the links carry it
 EXPIRY_SLACK = timedelta(seconds=120)  # a 403 this long before se= is already expiry (ruling R17)
 
+Row = tuple[str, str]  # a listing row's file name, as listed (without .gz), and its download link
+
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-class ShufersalSource(Source):
-    """`now` is the clock a link's `se=` is compared with; it must give aware datetimes."""
+class ShufersalSource(PagedSource):
+    """`now` is the clock a link's `se=` is compared with; it must give aware datetimes. `timer` times each listing
+    page's request, in seconds; only differences between its readings count (a monotonic clock)."""
 
-    def __init__(self, now: Callable[[], datetime] = _utc_now):
+    def __init__(self, now: Callable[[], datetime] = _utc_now, timer: Callable[[], float] = time.monotonic):
         self._now = now
+        self._timer = timer
         self.unparsed = 0
 
-    def listing(self, http: Http, kinds: tuple[str, ...],
-                short_of_time: Callable[[], bool] = never_short) -> Iterator[Listed]:
+    def listing(self, http: Http, kinds: tuple[str, ...], short_of_time: Callable[[], bool] = never_short,
+                starts: Mapping[str, Start] | None = None,
+                on_page: Callable[[PageRead], None] | None = None) -> Iterator[Listed]:
         self.unparsed = 0
         for kind in kinds:
-            for name_cell, link in _rows(http, kind, short_of_time):
-                name = parse_file_name(name_cell)
-                if name is None:
-                    self.unparsed += 1
-                elif name.kind in kinds:
-                    yield Listed(name, link)
+            start = (starts or {}).get(kind, Start())
+            for _, rows in _pages(http, kind, short_of_time, start, on_page, self._timer):
+                yield from self._given(rows, kinds)
+
+    def _given(self, rows: list[Row], kinds: tuple[str, ...]) -> list[Listed]:
+        """The items a page's rows give: those whose names parse and are of `kinds`, the last of them ending the page
+        whatever rows after it were skipped; names that do not parse are counted in `unparsed`."""
+        given = []
+        for name_cell, link in rows:
+            name = parse_file_name(name_cell)
+            if name is None:
+                self.unparsed += 1
+            elif name.kind in kinds:
+                given.append(Listed(name, link))
+        if given:
+            given[-1] = replace(given[-1], ends_page=True)
+        return given
 
     def download(self, http: Http, item: Listed, short_of_time: Callable[[], bool] = never_short) -> bytes:
         """The body of `item`. On its link expiring, the item's category is read again from page 1 to
@@ -75,7 +97,7 @@ class ShufersalSource(Source):
             if not self._expired(block):
                 raise
         try:
-            link = _fresh_link(http, item, short_of_time)
+            link = _fresh_link(http, item, short_of_time, self._timer)
         except OutOfTime as stop:
             raise OutOfTime(f"{item.name.raw}: its link expired; stopped {stop}") from None
         if short_of_time():
@@ -90,62 +112,110 @@ class ShufersalSource(Source):
         return expires is not None and expires - EXPIRY_SLACK <= self._now()
 
 
-def _fresh_link(http: Http, item: Listed, short_of_time: Callable[[], bool]) -> str:
-    for name_cell, link in _rows(http, item.name.kind, short_of_time):
-        if name_cell == item.name.raw:
-            return link
+def _fresh_link(http: Http, item: Listed, short_of_time: Callable[[], bool], timer: Callable[[], float]) -> str:
+    """The fresh link to `item`, read from its category from page 1 on (a fresh pass, reported to no one: it serves one
+    download, not the listing) to the page that lists it."""
+    for _, rows in _pages(http, item.name.kind, short_of_time, Start(), None, timer):
+        for name_cell, link in rows:
+            if name_cell == item.name.raw:
+                return link
     raise HttpError(f"{item.name.raw}: its link expired and the {item.name.kind} listing no longer lists it")
 
 
-def _rows(http: Http, kind: str, short_of_time: Callable[[], bool]) -> Iterator[tuple[str, str]]:
-    """(file name, download link) for each row of `kind`'s pages, a page's rows all checked before
-    the first of them is given."""
-    for page, grid in _pages(http, kind, short_of_time):
-        rows = []
-        for number, cells in enumerate(grid.rows, 1):
-            where = f"{kind} page {page}, row {number}"
-            if len(cells) != CELLS:
-                raise ListingUnreadable(f"{where}: {len(cells)} cells, not {CELLS}")
-            name = cells[NAME_CELL].text
-            rows.append((name, _checked_link(cells[0].href, name, where)))
-        yield from rows
+def _pages(http: Http, kind: str, short_of_time: Callable[[], bool], start: Start,
+           on_page: Callable[[PageRead], None] | None,
+           timer: Callable[[], float]) -> Iterator[tuple[PageRead, list[Row]]]:
+    """`kind`'s pages from `start`, each read when the caller asks for it, once `short_of_time` says there is time
+    (OutOfTime otherwise), and reported to `on_page` before its rows are given. Only a fresh pass so far, whatever
+    `start` says: page 1, then pages 2 to the last page 1's pager names."""
+    read = _PageReader(http, kind, short_of_time, timer)
+    report = on_page or _unreported
+    first, rows = read(1)
+    report(first)
+    yield first, rows
+    for page in range(2, (first.last_page or 1) + 1):
+        record, rows = read(page)
+        report(record)
+        yield record, rows
 
 
-def _pages(http: Http, kind: str, short_of_time: Callable[[], bool]) -> Iterator[tuple[int, "_Grid"]]:
-    """`kind`'s pages in order, each read when the caller asks for it, once `short_of_time` says there is time:
-    OutOfTime otherwise."""
-    first = _timed_page(http, kind, 1, short_of_time)
-    last = _last_page(first, kind)
-    yield 1, first
-    for page in range(2, last + 1):
-        yield page, _timed_page(http, kind, page, short_of_time)
+def _unreported(read: PageRead) -> None:
+    """The report of a caller that keeps no page records."""
 
 
-def _timed_page(http: Http, kind: str, page: int, short_of_time: Callable[[], bool]) -> "_Grid":
+class _PageReader:
+    """One kind's pages for one pass: each page read, checked and recorded, its order checked against the page read
+    just before it."""
+
+    def __init__(self, http: Http, kind: str, short_of_time: Callable[[], bool], timer: Callable[[], float]):
+        self.http, self.kind, self.short_of_time, self.timer = http, kind, short_of_time, timer
+        self.before: PageRead | None = None  # the page read just before
+
+    def __call__(self, page: int) -> tuple[PageRead, list[Row]]:
+        rows, grid, seconds = _read_page(self.http, self.kind, page, self.short_of_time, self.timer)
+        names = [name for name, _ in rows]
+        record = PageRead(self.kind, page, len(rows), names[0], names[-1], _named_last_page(grid, self.kind, page),
+                          round(seconds, 1), _in_order(names, self.before, page))
+        self.before = record
+        return record, rows
+
+
+def _read_page(http: Http, kind: str, page: int, short_of_time: Callable[[], bool],
+               timer: Callable[[], float]) -> tuple[list[Row], "_Grid", float]:
+    """Page `page` of `kind`'s listing, read once `short_of_time` says there is time (OutOfTime otherwise): its rows,
+    every one checked before any is returned; the page as read, for its pager; and the seconds its request took,
+    Http's pause before it included."""
     if short_of_time():
         raise OutOfTime(f"before page {page} of the {kind} listing")
-    return _page(http, kind, page)
-
-
-def _page(http: Http, kind: str, page: int) -> "_Grid":
     url = f"{BASE_URL}/FileObject/UpdateCategory?catID={CATEGORY[kind]}&storeId=0&page={page}"
+    started = timer()
+    body = http.get(url).body
+    seconds = timer() - started
     grid = _Grid()
-    grid.feed(http.get(url).body.decode("utf-8", "replace"))
+    grid.feed(body.decode("utf-8", "replace"))
     grid.close()
     if not grid.rows:
         raise ListingUnreadable(f"{kind} page {page}: no rows")
-    return grid
+    rows = []
+    for number, cells in enumerate(grid.rows, 1):
+        where = f"{kind} page {page}, row {number}"
+        if len(cells) != CELLS:
+            raise ListingUnreadable(f"{where}: {len(cells)} cells, not {CELLS}")
+        name = cells[NAME_CELL].text
+        rows.append((name, _checked_link(cells[0].href, name, where)))
+    return rows, grid, seconds
 
 
-def _last_page(first: "_Grid", kind: str) -> int:
-    """The last page, as page 1's pager names it; 1 when there is no pager."""
-    if not first.pager:
-        return 1
-    if first.last_href is None:
-        raise ListingUnreadable(f"{kind} page 1: the pager names no last page")
-    pages = urllib.parse.parse_qs(urllib.parse.urlsplit(first.last_href).query).get("page", [])
+def _in_order(names: list[str], before: PageRead | None, page: int) -> bool:
+    """Whether every name sorts at or after the one before it and, when the page read just before was the one numbered
+    one less, the first at or after that page's last (a name repeated across the boundary is in order). Pages read out
+    of number order are not compared with each other."""
+    if not all(earlier <= later for earlier, later in itertools.pairwise(names)):
+        return False
+    return before is None or before.page != page - 1 or before.last <= names[0]
+
+
+def _named_last_page(grid: "_Grid", kind: str, page: int) -> int | None:
+    """The last page `grid`'s pager names; None when it has no pager (on page 1: a list of one page). Page 1's pager
+    sets how far the listing reads and is read strictly (ListingUnreadable when it names no readable last page); a
+    later page's is only recorded, None when it names none."""
+    if not grid.pager:
+        return None
+    try:
+        return _last_page(grid, kind, page)
+    except ListingUnreadable:
+        if page == 1:
+            raise
+        return None
+
+
+def _last_page(grid: "_Grid", kind: str, page: int) -> int:
+    """The last page `grid`'s pager names; ListingUnreadable when it names no readable one."""
+    if grid.last_href is None:
+        raise ListingUnreadable(f"{kind} page {page}: the pager names no last page")
+    pages = urllib.parse.parse_qs(urllib.parse.urlsplit(grid.last_href).query).get("page", [])
     if len(pages) != 1 or not pages[0].isdecimal():
-        raise ListingUnreadable(f"{kind} page 1: the pager's last-page link does not name one page number"
+        raise ListingUnreadable(f"{kind} page {page}: the pager's last-page link does not name one page number"
                                 f" (page={','.join(pages)})")
     return int(pages[0])
 
