@@ -3,13 +3,16 @@ time, checked, stored write-once, and recorded in a manifest whatever happens.
 
 Most tests drive collect_chain with FakeSource, an adapter in place of a real portal, and a
 MemoryStore, which keeps S3Store's rules. Bodies are whole gzips holding the fixtures' XML (or the
-fixtures' UTF-16 XML), since check_payload unzips each one in full. One test runs the real Shufersal
-adapter over test_shufersal's fake network, where a listed name and its link's last segment differ.
+fixtures' UTF-16 XML), since check_payload unzips each one in full. FakePagedSource is FakeSource as a
+paged adapter (Shufersal's), reporting the pages it reads. Two tests run the real Shufersal adapter over
+test_shufersal's fake network, where a listed name and its link's last segment differ.
 """
 import dataclasses
+import functools
 import gzip
 import hashlib
 import json
+import logging
 import re
 import urllib.request
 from datetime import date, datetime, timedelta, timezone
@@ -22,10 +25,11 @@ from botocore.exceptions import ClientError
 from collector.chains import CHAINS
 from collector.http import Blocked, Http, HttpError, build_opener
 from collector.names import KINDS, parse_file_name
-from collector.sources import Listed, ListingUnreadable, OutOfTime, never_short
+from collector.sources import Listed, ListingUnreadable, OutOfTime, PagedSource, PageRead, Start, never_short
 from collector.sources.shufersal import ShufersalSource
 from collector.store import MemoryStore, manifest_key, raw_key
 from collector.run import RunResult, collect_chain, manifest_bytes, new_run_id, stored_name
+from test_pages import A, A_STORED, ALL_STORED, B, DAY as PAGES_DAY, gz, name, run as earlier_run
 
 FIXTURES = Path(__file__).parent / "fixtures"
 UA = "il-grocery-prices/0.1 (+https://github.com/example/il-grocery-prices; owner@example.org)"
@@ -798,3 +802,217 @@ def test_new_run_id_refuses_a_naive_time():
     with pytest.raises(ValueError, match="time zone"):
         new_run_id(datetime(2026, 10, 31, 6, 30), "main")
 
+
+# ---- a paged listing: where each kind starts, and the pages read (ruling R37) ----
+
+class FakePagedSource(FakeSource, PagedSource):
+    """FakeSource as a paged adapter (Shufersal's): a PageRead entry is reported to `on_page` where it stands in the
+    listing, and the `starts` the run hands over are kept in `starts`."""
+
+    def __init__(self, entries, answers=None):
+        super().__init__(entries, answers)
+        self.starts = None
+
+    def listing(self, http, kinds, short_of_time=never_short, starts=None, on_page=None):
+        self.starts = starts
+        self.entries = [functools.partial(on_page, entry) if isinstance(entry, PageRead) else entry
+                        for entry in self.entries]
+        return super().listing(http, kinds, short_of_time)
+
+
+def stored_day(day, manifests=(), stored=()):
+    """A store holding the chain's earlier manifests of `day` (as JSON, under each one's run id) and the files the
+    day stored (`<name>.gz`)."""
+    store = MemoryStore()
+    for record in manifests:
+        store.put_record(manifest_key(day, SLUG, record["run_id"]), json.dumps(record).encode(), NOW)
+    for file in stored:
+        store.put_raw(raw_key(SLUG, day, file), b"stored", NOW)
+    return store
+
+
+def row(store, day=20261031, ends_page=False):
+    """A PriceFull row of `store` (a number) as Shufersal lists it: the name without .gz, the link to `<name>.gz`
+    (ruling R16)."""
+    raw = f"PriceFull7290027600007-001-{store:03d}-{day}-030000"
+    return Listed(parse_file_name(raw), f"{PORTAL}/{raw}.gz", ends_page)
+
+
+def report(page, first, last, *, rows=20, last_page=None, kind="PriceFull", seconds=41.2):
+    """A page as the adapter reports it: in order, holding `rows` rows from `first` to `last`."""
+    return PageRead(kind, page, rows, first, last, last_page, seconds, True)
+
+
+def given(page, stores, last_page=None):
+    """Page `page` as a paged listing goes through it, holding the rows of `stores`: its report, then its rows, the
+    last one ending the page."""
+    rows = [row(store) for store in stores]
+    rows[-1] = dataclasses.replace(rows[-1], ends_page=True)
+    return [report(page, rows[0].name.raw, rows[-1].name.raw, rows=len(rows), last_page=last_page), *rows]
+
+
+def taken(read, through):
+    """`read`'s record in the manifest, taken through `through`."""
+    return dataclasses.asdict(read) | {"taken_through": through}
+
+
+# A with its page 7 out of order
+OUT_OF_ORDER = A | {"pages": [record | {"in_order": record["page"] != 7} for record in A["pages"]]}
+
+
+@pytest.mark.parametrize("earlier, stored, start", [
+    pytest.param([A], A_STORED, Start(page=12, furthest=name(221)), id="not yet read in full"),
+    pytest.param([A], A_STORED - set(gz([85])), Start(page=12, furthest=name(221), detours=(5,)),
+                 id="a failed file earlier on the list"),
+    pytest.param([A, B], ALL_STORED, Start(), id="read in full"),
+    pytest.param([OUT_OF_ORDER], A_STORED - set(gz([85])), Start(), id="no usable record"),
+])
+def test_a_paged_source_is_handed_a_start_per_kind(earlier, stored, start):
+    """Design, section 2: the run reads the chain's earlier manifests of the day and hands the adapter a start per
+    kind (collector.pages.start_for), the names the day stored included."""
+    source = FakePagedSource([])
+    collect(source, store=stored_day(PAGES_DAY, earlier, stored), kinds=("PriceFull",), day=PAGES_DAY)
+    assert source.starts == {"PriceFull": start}
+
+
+@pytest.mark.parametrize("key", [
+    pytest.param(manifest_key(PAGES_DAY, "ramilevy", "043000Z-main-a000"), id="another chain"),
+    pytest.param(manifest_key(PAGES_DAY - timedelta(days=1), SLUG, "043000Z-main-a000"), id="another day"),
+])
+def test_earlier_manifests_are_the_chains_own_for_the_day(key):
+    """A clean manifest without page records reads the kind in full (as ruling R36 reads it): read here, it would turn
+    the resume into a fresh pass."""
+    store = stored_day(PAGES_DAY, [A], A_STORED)
+    store.put_record(key, json.dumps(earlier_run("043000Z-main-a000")).encode(), NOW)
+    source = FakePagedSource([])
+    collect(source, store=store, kinds=("PriceFull",), day=PAGES_DAY)
+    assert source.starts == {"PriceFull": Start(page=12, furthest=name(221))}
+
+
+def test_a_source_that_does_not_page_reads_no_manifests_and_records_no_pages():
+    """NCR's and Carrefour's listings are called as before page records: no manifest read, no start, no page."""
+    class CountingStore(MemoryStore):
+        reads = 0
+
+        def read_records(self, prefix):
+            CountingStore.reads += 1
+            return super().read_records(prefix)
+
+    result, store = collect(FakeSource([item(PRICE)]), store=CountingStore())
+    assert CountingStore.reads == 0
+    assert result.pages == [] and manifest(store)["pages"] == []
+    assert set(result.files) == {PRICE}
+
+
+def test_each_page_is_recorded_with_how_far_the_run_took_it():
+    """The run can stop between any two rows, so a page is recorded taken through the last row the run took from it;
+    the rows after it were never listed."""
+    clock = Clock()
+    page_1, page_2 = given(1, range(100, 120), last_page=2), given(2, range(120, 140), last_page=2)
+    third = row(122)
+    answers = {stored_name(third): lambda: (clock.set(30)(), body(stored_name(third)))[1]}  # the clock runs short
+    source = FakePagedSource([*page_1, *page_2], answers)
+    result, store = collect(source, kinds=("PriceFull",), clock=clock)
+    assert result.error == "stopped: under 90 s left"
+    assert result.pages == [taken(page_1[0], page_1[0].last), taken(page_2[0], third.name.raw)]
+    assert manifest(store)["pages"] == result.pages
+
+
+def test_a_row_of_another_day_counts_as_taken():
+    """The run took the row, though it keeps only the day's: it was listed, so the page is taken this far."""
+    clock = Clock()
+    yesterday = row(101, day=20261030)
+    entries = [report(1, row(100).name.raw, row(119).name.raw, last_page=1), row(100), clock.set(30), yesterday,
+               *(row(store) for store in range(102, 119)), row(119, ends_page=True)]
+    result, _ = collect(FakePagedSource(entries), kinds=("PriceFull",), clock=clock)
+    assert result.pages[0]["taken_through"] == yesterday.name.raw
+    assert result.listed == [stored_name(row(100))] and result.error == "stopped: under 90 s left"
+
+
+def test_a_row_stopped_before_its_download_counts_as_taken():
+    """Listed and recorded in `not_attempted`: the retry run finds it there, so the page is taken this far."""
+    clock = Clock()
+    entries = [report(1, row(100).name.raw, row(119).name.raw, last_page=1), row(100), clock.set(30), row(101),
+               *(row(store) for store in range(102, 119)), row(119, ends_page=True)]
+    result, _ = collect(FakePagedSource(entries), kinds=("PriceFull",), clock=clock)
+    assert result.not_attempted == [stored_name(row(101))]
+    assert result.pages[0]["taken_through"] == row(101).name.raw
+
+
+def test_the_last_row_given_takes_the_page_to_its_end():
+    """Review focus 2: the page's last rows did not parse (the adapter gives none of them), so the last row given is
+    not the page's last; taking it takes the page to its last row, and the reading's end stays open."""
+    entries = [report(1, row(100).name.raw, "PriceFull7290027600007-001-119", last_page=1),
+               *(row(store) for store in range(100, 118)), row(118, ends_page=True)]
+    result, _ = collect(FakePagedSource(entries), kinds=("PriceFull",))
+    assert result.pages[0]["taken_through"] == "PriceFull7290027600007-001-119"
+    assert result.error is None
+
+
+def test_a_page_read_and_left_has_nothing_taken():
+    """A step back: page 12 is read, its first name after the furthest an earlier run took, and left for page 11,
+    whose rows are given. Page 12 keeps nothing taken."""
+    left = report(12, row(140).name.raw, row(159).name.raw, last_page=21)
+    page_11 = given(11, range(120, 140), last_page=21)
+    result, _ = collect(FakePagedSource([left, *page_11]), kinds=("PriceFull",))
+    assert result.pages == [taken(left, None), taken(page_11[0], page_11[0].last)]
+
+
+@pytest.mark.parametrize("end, error, blocked", [
+    pytest.param(ListingUnreadable("PriceFull page 2: no rows"), "listing unreadable: PriceFull page 2: no rows", None,
+                 id="unreadable"),
+    pytest.param(OutOfTime("before page 2 of the PriceFull listing"), "stopped: under 90 s left", None, id="time"),
+    pytest.param(Blocked(429, "https://prices.shufersal.co.il/FileObject/UpdateCategory?catID=2&page=2", "HTTP 429"),
+                 None, "HTTP 429: https://prices.shufersal.co.il/FileObject/UpdateCategory", id="blocked"),
+])
+def test_page_records_are_in_the_manifest_whatever_the_run_ends_with(end, error, blocked):
+    """The manifest is written whatever happens, so it holds the pages read before the run stopped."""
+    page_1 = given(1, range(100, 120), last_page=2)
+    result, store = collect(FakePagedSource([*page_1, end]), kinds=("PriceFull",))
+    assert (result.error, result.blocked) == (error, blocked)
+    assert manifest(store)["pages"] == [taken(page_1[0], page_1[0].last)]
+
+
+def test_each_page_gets_a_log_line(caplog):
+    """The page count is this run's page 1 of the kind (a list of one page has no pager: one page), `?` before it is
+    read (a detour)."""
+    def promo(store):
+        return row(store).name.raw.replace("PriceFull", "PromoFull")
+
+    reads = [report(5, row(180).name.raw, row(199).name.raw),
+             report(1, row(100).name.raw, row(119).name.raw, last_page=21),
+             report(7, row(220).name.raw, row(239).name.raw),
+             report(3, promo(160), promo(179), kind="PromoFull", last_page=21, seconds=38.0),
+             report(1, "Stores7290027600007-000-20261031-020", "Stores7290027600007-000-20261031-020", rows=1,
+                    kind="Stores", seconds=0.6)]
+    with caplog.at_level(logging.INFO, logger="collector.run"):
+        collect(FakePagedSource(reads), kinds=("PriceFull", "PromoFull", "Stores"))
+    assert [record.getMessage() for record in caplog.records if record.name == "collector.run"] == [
+        "shufersal PriceFull page 5 of ?: 20 rows in 41.2 s",
+        "shufersal PriceFull page 1 of 21: 20 rows in 41.2 s",
+        "shufersal PriceFull page 7 of 21: 20 rows in 41.2 s",
+        "shufersal PromoFull page 3 of ?: 20 rows in 38.0 s",
+        "shufersal Stores page 1 of 1: 1 rows in 0.6 s",
+    ]
+    assert all(record.levelno == logging.INFO for record in caplog.records if record.name == "collector.run")
+
+
+def test_the_real_shufersal_adapter_resumes_where_the_last_run_stopped():
+    """2026-11-05's shape on a 4-page list: the morning's first run read pages 1 to 3 and stopped after page 3's 4th
+    row, its files stored. The next run reads page 1, then page 3 again and on (a fresh pass would read page 2), and
+    records each page it read taken to its last row."""
+    from test_shufersal import connect, gz as files, listing_pages, listing_url, names, page, served, ticks
+    http, portal = connect({listing_url(2, p): served(page(2, names(p), last=4)) for p in range(1, 5)}, files=files())
+
+    def record(p, rows_taken=20):
+        return taken(PageRead("PriceFull", p, 20, names(p)[0], names(p)[-1], 4, 30.0, True), names(p)[rows_taken - 1])
+
+    took = [listed + ".gz" for listed in names(1) + names(2) + names(3)[:4]]
+    first = RunResult(SLUG, "033000Z-main-a001", "main", DAY, ["PriceFull"], listed=took,
+                      error="stopped: under 90 s left", pages=[record(1), record(2), record(3, rows_taken=4)])
+    store = stored_day(DAY, [json.loads(manifest_bytes(first, CODE_SHA))], took)
+    result, store = collect(ShufersalSource(timer=ticks(30.0)), store=store, kinds=("PriceFull",), http=http)
+    assert listing_pages(portal) == [1, 3, 4]
+    assert manifest(store)["pages"] == [record(1), record(3), record(4)]
+    assert set(result.files) == {listed + ".gz" for listed in names(3)[4:] + names(4)}
+    assert result.error is None and result.blocked is None

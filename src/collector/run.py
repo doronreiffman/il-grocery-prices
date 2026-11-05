@@ -19,15 +19,23 @@ what happened, written whatever happened (docs/collector.md, "How a morning runs
   same check for the requests they make on their own (Shufersal's re-read of a category for a
   fresh link, NCR's listing answers) and raise OutOfTime when it says so: the run stops the
   same way, and a file whose download stopped so is failed with where it stopped.
+- A paged listing (Shufersal's, a PagedSource; ruling R37) is told where to start each kind, from the
+  chain's earlier manifests of the day (collector.pages.start_for), and reports each page it reads
+  before giving its rows. The run records each page and logs it; each row given then sets how far the
+  run took the latest page (`taken_through`), before anything else is done with the row: the page's
+  last name when the row ends the page, else the row's name. Any other listing is called as before
+  page records: no manifest is read and no page recorded.
 
 In the result, `listed` holds that day's names as the listing gave them; `files` those stored or
 found stored by this run; `failed` those tried and not stored, with why; `not_attempted` those
 listed, not stored before, and never tried because the run stopped first. Names the listing had not
-yet given when the run stopped are in none of them: the retry run lists them.
+yet given when the run stopped are in none of them: the retry run lists them. `pages` holds the
+pages a paged listing read, in the order read (empty for any other listing).
 """
 import dataclasses
 import hashlib
 import json
+import logging
 import secrets
 import urllib.parse
 from collections.abc import Callable, Iterator
@@ -38,13 +46,16 @@ from typing import NoReturn
 from collector.chains import Chain
 from collector.http import Blocked, Http, HttpError
 from collector.payload import BadPayload, check_payload, looks_like_html
-from collector.sources import Listed, ListingUnreadable, OutOfTime, Source
+from collector.pages import start_for
+from collector.sources import Listed, ListingUnreadable, OutOfTime, PagedSource, PageRead, Source
 from collector.store import manifest_key, raw_key
 
 MIN_TIME_LEFT = 90.0  # seconds (ruling R32); with less, the run stops and writes its manifest
 ATTEMPTS = 2  # a file is tried once, and once again after an HTTP error or a bad body
 OUT_OF_TIME = "stopped: under 90 s left"
 STOPPED_EARLIER = "stopped earlier"
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -131,18 +142,37 @@ class _Run:
         self.result = result
         self.stored = store.stored_names(slug, day)  # read once: a name is handled once per run
         self.seen: set[str] = set()
+        self.page_counts: dict[str, int] = {}  # each kind's last page, as this run's page 1 of it names it
 
     def collect(self) -> None:
         try:
             self._check_time()
             self.result.listing_read_at = _utc(self.now()).isoformat()
-            listing = iter(self.source.listing(self.http, self.kinds, self._short_of_time))
+            listing = iter(self.source.listing(self.http, self.kinds, self._short_of_time, **self._paged()))
             while (item := self._next(listing)) is not None:
                 self._take(item)
                 self._check_time()
             self.result.unparsed = self.source.unparsed  # final only now: it resets on the first next()
         except _Stop:
             pass
+
+    def _paged(self) -> dict:
+        """What a paged listing is handed beyond any listing's arguments: where each kind starts, from the chain's
+        earlier manifests of the day, and the callback that records each page it reads."""
+        if not isinstance(self.source, PagedSource):
+            return {}
+        prefix = manifest_key(self.day, self.slug, "").removesuffix(".json")  # this chain's runs of the day
+        earlier = [json.loads(record) for record in self.store.read_records(prefix)]
+        starts = {kind: start_for(earlier, kind, self.stored) for kind in self.kinds}
+        return {"starts": starts, "on_page": self._page}
+
+    def _page(self, read: PageRead) -> None:
+        """Record and log a page the listing read; nothing is taken from it until one of its rows is given."""
+        self.result.pages.append(dataclasses.asdict(read) | {"taken_through": None})
+        if read.page == 1:
+            self.page_counts[read.kind] = read.last_page or 1  # no pager: a list of one page
+        log.info("%s %s page %d of %s: %d rows in %.1f s", self.slug, read.kind, read.page,
+                 self.page_counts.get(read.kind, "?"), read.rows, read.seconds)
 
     def _next(self, listing: Iterator[Listed]) -> Listed | None:
         try:
@@ -159,6 +189,9 @@ class _Run:
             self._stop(f"listing failed: {exc}")
 
     def _take(self, item: Listed) -> None:
+        if self.result.pages:  # first: a row of another day, a repeat or one never downloaded was still listed
+            page = self.result.pages[-1]
+            page["taken_through"] = page["last"] if item.ends_page else item.name.raw
         if item.name.day != self.day or item.name.kind not in self.kinds:
             return
         name = stored_name(item)

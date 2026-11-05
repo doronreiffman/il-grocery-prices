@@ -98,6 +98,23 @@ BASKET_HANDLER = ("src/basket/handler.py", ["tests/test_basket_handler.py"])
 MUTATION_CHECK = ("scripts/mutation_check.py", ["tests/test_mutation_check.py"])  # this file: the run has loaded it
 CANDIDATES_MAIN = ("src/basket/candidates.py", ["tests/test_candidates.py::test_main_counts_only_the_included_stores_and_writes_the_day_s_table"])
 
+# The run loop's take of a row, in three parts, for the mutations that move how far a page counts as taken (q21 run).
+_RUN_TAKEN = ('        if self.result.pages:  # first: a row of another day, a repeat or one never downloaded was still listed\n'
+              '            page = self.result.pages[-1]\n'
+              '            page["taken_through"] = page["last"] if item.ends_page else item.name.raw\n')
+_RUN_DAY_FILTER = ("        if item.name.day != self.day or item.name.kind not in self.kinds:\n"
+                   "            return\n")
+_RUN_TO_DOWNLOAD = ("        name = stored_name(item)\n"
+                    "        if name in self.seen:\n"
+                    "            return  # listed again while the listing was read: the first counts\n"
+                    "        self.seen.add(name)\n"
+                    "        self.result.listed.append(name)\n"
+                    "        if name in self.stored:\n"
+                    "            return\n"
+                    "        body = self._fetch(item, name)\n")
+_RUN_READ_EARLIER = ('        prefix = manifest_key(self.day, self.slug, "").removesuffix(".json")  # this chain\'s runs of the day\n'
+                     "        earlier = [json.loads(record) for record in self.store.read_records(prefix)]\n")
+
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
 MUTATIONS = {
     # names
@@ -442,9 +459,9 @@ MUTATIONS = {
                                  "        if name in self.stored:\n            return\n        self.result.listed.append(name)\n"),
     "a name listed twice fetched again": (RUN, "        if name in self.seen:\n            return  #", "        if False:\n            return  #"),
     # run: the listing
-    "listing read before the files are fetched (R16)": (RUN, "            listing = iter(self.source.listing(self.http, self.kinds, self._short_of_time))", "            listing = iter(list(self.source.listing(self.http, self.kinds, self._short_of_time)))"),
-    "listing read twice": (RUN, "            listing = iter(self.source.listing(self.http, self.kinds, self._short_of_time))",
-                           "            listing = iter(self.source.listing(self.http, self.kinds, self._short_of_time)) if list(self.source.listing(self.http, self.kinds, self._short_of_time)) or True else None"),
+    "listing read before the files are fetched (R16)": (RUN, "            listing = iter(self.source.listing(self.http, self.kinds, self._short_of_time, **self._paged()))", "            listing = iter(list(self.source.listing(self.http, self.kinds, self._short_of_time, **self._paged())))"),
+    "listing read twice": (RUN, "            listing = iter(self.source.listing(self.http, self.kinds, self._short_of_time, **self._paged()))",
+                           "            listing = iter(self.source.listing(self.http, self.kinds, self._short_of_time, **self._paged())) if list(self.source.listing(self.http, self.kinds, self._short_of_time, **self._paged())) or True else None"),
     "listing_read_at in local time": (RUN, "self.result.listing_read_at = _utc(self.now()).isoformat()", "self.result.listing_read_at = self.now().isoformat()"),
     "unparsed not recorded (R13)": (RUN, "            self.result.unparsed = self.source.unparsed  #", "            pass  #"),
     "unparsed read before the listing is used up (R13)": (RUN, "                self._take(item)\n                self._check_time()\n            self.result.unparsed = self.source.unparsed  # final only now: it resets on the first next()\n",
@@ -455,6 +472,26 @@ MUTATIONS = {
     "unreadable listing not recorded as an error (R23)": (RUN, '            self._stop(f"listing unreadable: {exc}")\n        except OutOfTime:', "            raise _Stop\n        except OutOfTime:"),
     "listing HTTP error escapes": (RUN, "        except HttpError as exc:  # not read again", "        except ZeroDivisionError as exc:  # not read again"),
     "listing HTTP error not recorded as an error": (RUN, '            self._stop(f"listing failed: {exc}")', "            raise _Stop"),
+    # run: a paged listing, where each kind starts and the pages it reads (ruling R37)
+    "earlier manifests not read (q21 run)": (RUN, "        starts = {kind: start_for(earlier, kind, self.stored) for kind in self.kinds}\n", "        starts = {}\n"),
+    "starts read for a source that does not page (q21 run)": (RUN, "        if not isinstance(self.source, PagedSource):\n            return {}\n" + _RUN_READ_EARLIER,
+                                                              _RUN_READ_EARLIER + "        if not isinstance(self.source, PagedSource):\n            return {}\n"),
+    "another chain's manifests read (q21 run)": (RUN, 'prefix = manifest_key(self.day, self.slug, "").removesuffix(".json")', 'prefix = manifest_key(self.day, "", "").removesuffix("-.json")'),
+    "another day's manifests read (q21 run)": (RUN, "        earlier = [json.loads(record) for record in self.store.read_records(prefix)]\n",
+                                               "        earlier = [json.loads(record) for day in (date.fromordinal(self.day.toordinal() - 1), self.day)"
+                                               " for record in self.store.read_records(manifest_key(day, self.slug, \"\").removesuffix(\".json\"))]\n"),
+    "taken through not recorded (q21 run)": (RUN, '            page["taken_through"] = page["last"] if item.ends_page else item.name.raw\n', ""),
+    "taken through recorded after the day filter (q21 run)": (RUN, _RUN_TAKEN + _RUN_DAY_FILTER, _RUN_DAY_FILTER + _RUN_TAKEN),
+    "taken through recorded after the download (q21 run)": (RUN, _RUN_TAKEN + _RUN_DAY_FILTER + _RUN_TO_DOWNLOAD,
+                                                            _RUN_DAY_FILTER + _RUN_TO_DOWNLOAD + _RUN_TAKEN),
+    "taken through set on a page before the latest (q21 run)": (RUN, "            page = self.result.pages[-1]\n", "            page = self.result.pages[0]\n"),
+    "ends_page ignored (q21 run)": (RUN, 'page["taken_through"] = page["last"] if item.ends_page else item.name.raw', 'page["taken_through"] = item.name.raw'),
+    "a page recorded taken before a row is given (q21 run)": (RUN, '| {"taken_through": None})', '| {"taken_through": read.last})'),
+    "pages left out of the manifest (q21 run)": (RUN, '| {"day": result.day.isoformat(), "code_sha": code_sha}', '| {"day": result.day.isoformat(), "code_sha": code_sha, "pages": []}'),
+    "page logged below INFO (q21 run)": (RUN, '        log.info("%s %s page %d of %s:', '        log.debug("%s %s page %d of %s:'),
+    "page count read from any page (q21 run)": (RUN, "        if read.page == 1:\n            self.page_counts", "        if True:\n            self.page_counts"),
+    "page count not per kind (q21 run)": (RUN, 'self.page_counts.get(read.kind, "?")', 'next(iter(self.page_counts.values()), "?")'),
+    "a one-page list's count not 1 (q21 run)": (RUN, "read.last_page or 1  #", "read.last_page  #"),
     # run: blocks and the latch
     "stopped chain collected": (RUN, '        if store.read_state(chain.slug).get("stopped"):', "        if False:"),
     "any state read as stopped": (RUN, 'if store.read_state(chain.slug).get("stopped"):', "if store.read_state(chain.slug):"),
@@ -488,7 +525,7 @@ MUTATIONS = {
     "NCR first read not given the time check": (NCR, "    length = _page_size(file_page)\n    fnames, repeat = _read_through(http, length, token, username, short_of_time)", "    length = _page_size(file_page)\n    fnames, repeat = _read_through(http, length, token, username, never_short)"),
     "NCR second read not given the time check": (NCR, "    try:\n        fnames, repeat = _read_through(http, length, token, username, short_of_time)", "    try:\n        fnames, repeat = _read_through(http, length, token, username, never_short)"),
     "NCR second read's time stop not saying so": (NCR, '    except OutOfTime as stop:\n        raise OutOfTime(f"{stop}, on the second read") from None\n', ""),
-    "run lends the listing no time check": (RUN, "self.source.listing(self.http, self.kinds, self._short_of_time)", "self.source.listing(self.http, self.kinds)"),
+    "run lends the listing no time check": (RUN, "self.source.listing(self.http, self.kinds, self._short_of_time, **self._paged())", "self.source.listing(self.http, self.kinds, **self._paged())"),
     "run lends the download no time check": (RUN, "self.source.download(self.http, item, self._short_of_time)", "self.source.download(self.http, item)"),
     "run an adapter's time stop in the listing escapes": (RUN, "        except OutOfTime:  # an adapter's own request, short of time\n", "        except ZeroDivisionError:  # an adapter's own request, short of time\n"),
     "run an adapter's time stop in the listing not recorded": (RUN, "            self._stop(OUT_OF_TIME)\n        except HttpError", "            raise _Stop\n        except HttpError"),
