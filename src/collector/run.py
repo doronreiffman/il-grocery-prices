@@ -147,8 +147,9 @@ class _Run:
     def collect(self) -> None:
         try:
             self._check_time()
+            paged = self._paged()  # first: a failed read of the earlier manifests leaves no listing time
             self.result.listing_read_at = _utc(self.now()).isoformat()
-            listing = iter(self.source.listing(self.http, self.kinds, self._short_of_time, **self._paged()))
+            listing = iter(self.source.listing(self.http, self.kinds, self._short_of_time, **paged))
             while (item := self._next(listing)) is not None:
                 self._take(item)
                 self._check_time()

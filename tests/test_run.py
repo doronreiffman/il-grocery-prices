@@ -908,7 +908,7 @@ def test_a_source_that_does_not_page_reads_no_manifests_and_records_no_pages():
 def test_a_failed_read_of_the_earlier_manifests_fails_the_run():
     """A failed read of the day's earlier manifests fails the run as an unexpected error, as a failed read of the latch
     does, with no fall-back to a fresh pass: the manifest is still written, the error raised, and no listing asked
-    for."""
+    for, so the manifest holds no listing time."""
     class BrokenRecords(MemoryStore):
         def read_records(self, prefix):
             raise ClientError({"Error": {"Code": "InternalError", "Message": "We encountered an internal error"}},
@@ -918,7 +918,9 @@ def test_a_failed_read_of_the_earlier_manifests_fails_the_run():
     source = FakePagedSource([row(100, ends_page=True)])
     with pytest.raises(ClientError):
         collect(source, store=store, kinds=("PriceFull",))
-    assert manifest(store)["error"].startswith("unexpected error: ClientError: ")
+    record = manifest(store)
+    assert record["error"].startswith("unexpected error: ClientError: ")
+    assert record["listing_read_at"] is None
     assert source.listing_calls == [] and source.downloads == []
 
 
