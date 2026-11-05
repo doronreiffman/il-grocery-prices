@@ -601,7 +601,8 @@ MUTATIONS = {
     # pages: the day's readings of a kind joined across runs (R37)
     "a blocked run counted (R37 join)": (PAGES, 'if kind in manifest["kinds"] and not manifest["blocked"]]', 'if kind in manifest["kinds"]]'),
     "a legacy run with an error read in full (R37 join)": (PAGES, 'if not manifest.get("pages") and not manifest["error"]}', 'if not manifest.get("pages")}'),
-    "pages not split into blocks at a jump (R37 join)": (PAGES, '        if blocks and record["page"] == blocks[-1][-1]["page"] + 1:', "        if blocks:"),
+    "pages not split into blocks at a jump (R37 join)": (PAGES, ' and record["page"] == before["page"] + 1 and', " and"),
+    "a page taken part-way mid-run joined (R37 join)": (PAGES, ' and before["taken_through"] == before["last"]:', ":"),
     "a block from page 1 not open at the front (R37 join)": (PAGES, '    return BEFORE if record["page"] == 1 else (1, record["first"])', '    return 1, record["first"]'),
     "the last page open without every row taken (R37 join)": (PAGES, ' and record["taken_through"] == record["last"]:\n        return AFTER', ":\n        return AFTER"),
     "the end read from the highest page, not the run's own pager (R37 join)": (PAGES, 'own_last = next((record["last_page"] or 1 for record in records if record["page"] == 1), None)',

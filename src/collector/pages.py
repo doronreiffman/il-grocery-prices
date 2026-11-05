@@ -9,8 +9,8 @@ the day's runs read join up from page 1 to the last page:
 - A counted run whose manifest holds no page records (other chains' runs, and Shufersal's before this ruling) and that
   ended with no error reads the kind in full on its own, as ruling R36 reads it.
 - A run's pages of the kind that it took rows from, in the order it read them, form blocks: a new block starts
-  wherever a page number is not one more than the one before. A page it took no row from (one it stepped back over)
-  is left out.
+  wherever a page number is not one more than the one before, and after a page the run did not take to its last row.
+  A page it took no row from (one it stepped back over) is left out.
 - A block covers the names from its first page's first name to the last name the run took from its last page. A block
   that starts at page 1 also covers everything before it. A block also covers everything after it when it ends at the
   last page the run's own page 1 named (page 1 when that page names none; a run that did not read page 1 has no such
@@ -100,9 +100,10 @@ def _blocks(manifest: dict, kind: str) -> list[tuple[Bound, Bound]]:
     for record in records:
         if record["taken_through"] is None:
             continue  # read and left (a step back) or nothing given: no name of it was taken
-        if blocks and record["page"] == blocks[-1][-1]["page"] + 1:
+        before = blocks[-1][-1] if blocks else None  # the page taken from just before, in the order read
+        if before and record["page"] == before["page"] + 1 and before["taken_through"] == before["last"]:
             blocks[-1].append(record)
-        else:
+        else:  # a jump in page numbers, or the run left the page before part-way: its later rows were never listed
             blocks.append([record])
     return [(_start(block[0]), _end(block[-1], own_last)) for block in blocks]
 

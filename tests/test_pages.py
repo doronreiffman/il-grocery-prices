@@ -141,6 +141,14 @@ def test_a_page_with_nothing_taken_is_left_out():
     assert read_in_full([A, stepped], "PriceFull") == [A_ID, B_ID]
 
 
+def test_a_page_taken_part_way_ends_its_block():
+    """The rows after the one taken were never listed, wherever in the run the page stands: the next page starts a
+    block of its own, though its number is the next one."""
+    part_way = run(A_ID, *pages(1, 10), rec(11, taken=3), *pages(12, 21))
+    assert read_in_full([part_way], "PriceFull") is None
+    assert unread([part_way], "PriceFull") == "page 11 read in part"
+
+
 def test_a_detour_page_alone_is_a_block_of_its_own():
     """A detour to page 25 after the list shrank: the portal serves the last page's rows under that number. The page
     is not the run's own last page, so it never opens the reading's end, even where it covers rows another run did
