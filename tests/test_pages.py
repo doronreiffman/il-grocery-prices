@@ -1,18 +1,19 @@
-"""Ruling R37: whether the pages the day's runs read of a kind join up into one full reading, and what of the list no
-run read (collector.pages).
+"""Ruling R37: whether the pages the day's runs read of a kind join up into one full reading, what of the list no run
+read, and where the next run starts reading it (collector.pages).
 
 Manifests are built as the run loop writes them (manifest_bytes over a RunResult), each page record as
 `asdict(PageRead)` with `taken_through`. The list is Shufersal's PriceFull list on 2026-11-05's scale: 21 pages of 20
 rows, page p holding rows 20(p-1)+1 to 20p, named in file-name order. A is that morning's first run (pages 1 to 11,
-then page 12's first row, stopped on time); B the second, resumed (page 1, then pages 12 to 21).
+then page 12's first row, stopped on time before its download); B the second, resumed (page 1, then pages 12 to 21).
+A run's `listed` holds the stored names (`<name>.gz`, ruling R16) of the rows it took.
 """
 import json
 from dataclasses import asdict
 from datetime import date
 
-from collector.pages import has_pages, read_in_full, unread
+from collector.pages import has_pages, read_in_full, start_for, unread
 from collector.run import RunResult, manifest_bytes
-from collector.sources import PageRead
+from collector.sources import PageRead, Start
 
 DAY = date(2026, 11, 5)
 CODE_SHA = "0123456789abcdef0123456789abcdef01234567"
@@ -48,9 +49,22 @@ def pages(first, last, **kwargs):
     return [rec(page, **kwargs) for page in range(first, last + 1)]
 
 
+def gz(rows, kind="PriceFull"):
+    """The stored names (`<name>.gz`) of the rows, in their order."""
+    return [name(i, kind) + ".gz" for i in rows]
+
+
+def late(i):
+    """A file of the i-th name's store published at 06:00, after the morning's first run read that part of the list:
+    it sorts just after the i-th name."""
+    return name(i).replace("-030000", "-060000")
+
+
 A_ID, B_ID = "044522Z-main-a001", "050002Z-main-a002"
-A = run(A_ID, *pages(1, 11), rec(12, taken=1), error=STOPPED)
-B = run(B_ID, rec(1), *pages(12, 21))
+A = run(A_ID, *pages(1, 11), rec(12, taken=1), error=STOPPED, listed=gz(range(1, 222)))
+B = run(B_ID, rec(1), *pages(12, 21), listed=gz(range(1, 21)) + gz(range(221, 421)))
+A_STORED = set(gz(range(1, 221)))  # A stopped before downloading page 12's first file
+ALL_STORED = set(gz(range(1, 421)))
 
 
 def test_one_run_from_page_1_to_the_last_reads_in_full():
@@ -212,3 +226,118 @@ def test_has_pages():
     del absent["pages"]
     assert not has_pages([absent, run(B_ID)], "PriceFull")
     assert not has_pages([A], "PromoFull")
+
+
+def test_no_earlier_run_starts_at_page_1():
+    assert start_for([], "PriceFull", set()) == Start()
+
+
+def test_earlier_runs_without_pages_that_ended_with_an_error_start_at_page_1():
+    """Manifests from before page records: one that ended with an error says nothing of how far it read, and a file
+    it did not store is on no page it recorded."""
+    absent = run("043000Z-main-a000", error=TIMED_OUT, listed=gz(range(1, 41)))
+    del absent["pages"]
+    empty = run(A_ID, error=STOPPED, listed=gz(range(1, 41)))
+    assert start_for([absent, empty], "PriceFull", set(gz(range(1, 21)))) == Start()
+
+
+def test_an_out_of_order_page_that_day_starts_at_page_1():
+    """Out of order, the day's records of the kind place no name: no resume, and no detour either."""
+    stored = A_STORED - set(gz([85]))
+    out_of_order = run(A_ID, *(rec(page, in_order=page != 7) for page in range(1, 12)), rec(12, taken=1),
+                       error=STOPPED, listed=gz(range(1, 222)))
+    assert start_for([out_of_order], "PriceFull", stored) == Start()
+    blocked = run(B_ID, rec(1), rec(12, in_order=False), blocked=BLOCKED)
+    assert start_for([A, blocked], "PriceFull", stored) == Start()
+
+
+def test_the_2026_11_05_shape_resumes_at_page_12():
+    """The resume reads page 12 again, so the file A stopped before is no detour."""
+    assert start_for([A], "PriceFull", A_STORED) == Start(page=12, furthest=name(221))
+
+
+def test_the_furthest_name_across_runs():
+    """The furthest name any run took, wherever the run stands in the day, with its page; when two records hold it
+    (the list grew by a page between the runs, moving it from page 12 to page 13), the larger page."""
+    further = run(B_ID, rec(1), *pages(12, 15), rec(16, taken=3), error=STOPPED)
+    retry = run("074536Z-retry-2933", rec(1), error=TIMED_OUT)
+    assert start_for([A, further, retry], "PriceFull", ALL_STORED) == Start(page=16, furthest=name(303))
+    to_page_12 = run(A_ID, *pages(1, 12), error=STOPPED)
+    grown = run(B_ID, rec(1), rec(11) | {"page": 12}, rec(12) | {"page": 13}, error=STOPPED)
+    assert start_for([to_page_12, grown], "PriceFull", set()) == Start(page=13, furthest=name(240))
+
+
+def test_a_blocked_run_is_not_resumed_from():
+    """The check leaves a blocked run out, so the start does too: this one took page 12 to its end."""
+    blocked = run(B_ID, rec(1), rec(12), blocked=BLOCKED)
+    assert start_for([A, blocked], "PriceFull", A_STORED) == Start(page=12, furthest=name(221))
+
+
+def test_read_in_full_starts_a_fresh_pass():
+    assert start_for([A, B], "PriceFull", ALL_STORED) == Start()
+
+
+def test_a_failed_file_earlier_on_the_list_gets_a_detour():
+    stored = A_STORED - set(gz([85]))
+    assert start_for([A], "PriceFull", stored) == Start(page=12, furthest=name(221), detours=(5,))
+
+
+def test_a_fresh_pass_detours_to_a_failed_files_page_first():
+    assert start_for([A, B], "PriceFull", ALL_STORED - set(gz([85]))) == Start(detours=(5,))
+
+
+def test_no_detour_for_page_1_or_the_resume_page_or_after():
+    """Page 1 is read first anyway, and a resume reads on from the resume page (A's page 12 holds the file A stopped
+    before). A failed name sits on a page after the resume page only when the list moved between runs: here it grew
+    by four pages, and a later run, resumed at page 12, failed on page 15 a file published since A read that part."""
+    grown = run("074536Z-retry-2933", rec(1), *(rec(page - 4) | {"page": page} for page in range(12, 16)),
+                error=TIMED_OUT,
+                listed=gz(range(1, 21)) + gz(range(141, 206)) + [late(205) + ".gz"] + gz(range(206, 221)))
+    stored = A_STORED - set(gz([3]))
+    assert start_for([A, grown], "PriceFull", stored) == Start(page=12, furthest=name(221))
+
+
+def test_a_failed_name_is_found_without_its_gz():
+    """The stored name ends in `.gz` and the page's names do not: the last name taken from page 5 is on page 5."""
+    stored = A_STORED - set(gz([100]))
+    assert start_for([A], "PriceFull", stored) == Start(page=12, furthest=name(221), detours=(5,))
+
+
+def test_detours_are_sorted_and_each_once():
+    """A retry's fresh pass that began with a detour to page 7 listed that page's names first. The file there failed
+    again, and three records of page 7 hold it (the first run's, the retry's detour and its pass); a file published on
+    page 5 since the first run read it failed too. Found in the order 7, 7, 7, 5, the detours are 5 and 7."""
+    first = run(A_ID, *pages(1, 21), listed=gz(range(1, 421)))
+    retry = run("074536Z-retry-2933", rec(7), *pages(1, 9), rec(10, taken=4), error=STOPPED,
+                listed=gz(range(121, 141)) + gz(range(1, 86)) + [late(85) + ".gz"] + gz(range(86, 121))
+                + gz(range(141, 185)))
+    assert start_for([first, retry], "PriceFull", ALL_STORED - set(gz([130]))) == Start(detours=(5, 7))
+
+
+def test_other_kinds_runs_are_ignored():
+    """Each kind starts from its own runs and records: a run of another kind with no page records and no error, and
+    another kind's pages in a run that covers both, change nothing for PriceFull."""
+    promo_only = run("043000Z-main-a000", kinds=("PromoFull",))
+    both = run(B_ID, *pages(1, 21, kind="PromoFull"), kinds=("PriceFull", "PromoFull"), error=STOPPED,
+               listed=gz(range(1, 421), "PromoFull"))
+    day = [promo_only, A, both]
+    stored = A_STORED | (set(gz(range(1, 421), "PromoFull")) - set(gz([45], "PromoFull")))
+    assert start_for(day, "PriceFull", stored) == Start(page=12, furthest=name(221))
+    assert start_for(day, "PromoFull", stored) == Start(detours=(3,))
+
+
+def test_a_mix_of_old_and_new_manifests_uses_the_records_there_are():
+    """Deploy day: the morning's first run wrote no page records. Ended with an error, it leaves A's records to set the
+    start; ended clean, it read the kind in full as R36 reads it, and the next run makes a fresh pass."""
+    old = run("043000Z-main-a000", error=TIMED_OUT, listed=gz(range(1, 41)))
+    del old["pages"]
+    assert start_for([old, A], "PriceFull", A_STORED) == Start(page=12, furthest=name(221))
+    clean = run("043000Z-main-a000", listed=gz(range(1, 421)))
+    del clean["pages"]
+    assert start_for([clean, A], "PriceFull", ALL_STORED) == Start()
+
+
+def test_a_resume_at_page_1_is_a_fresh_pass():
+    """A run that read page 1 and then timed out took its furthest name from page 1."""
+    retry = run("074536Z-retry-2933", rec(1), error=TIMED_OUT, listed=gz(range(1, 21)))
+    assert start_for([retry], "PriceFull", set(gz(range(1, 21)))) == Start()

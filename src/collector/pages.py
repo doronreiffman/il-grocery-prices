@@ -1,4 +1,5 @@
-"""Ruling R37: whether the day's runs read a kind's whole file list between them, and what of it no run read.
+"""Ruling R37: whether the day's runs read a kind's whole file list between them, what of it no run read, and where
+the next run starts reading it.
 
 Shufersal lists each full kind on about 21 pages, and on a slow morning no one run reads them all, so a later run picks
 up where an earlier one stopped (docs/shufersal-resume.md). A kind counts as read in full for the day when the pages
@@ -24,9 +25,21 @@ the day's runs read join up from page 1 to the last page:
 The kind is read by the runs that read it in full on their own, and by the runs whose blocks joined up; when there are
 none, it is not read in full.
 
+Where a run starts reading a kind follows from the same records (docs/shufersal-resume.md, section 2):
+
+- No usable record: when a page of the kind recorded that day is out of order (blocked runs' pages included), or no
+  counted run took a name of the kind and it is not read in full, a fresh pass from page 1, as before page records.
+- A failed file: a name a counted run listed that the day has not stored sits on that run's page whose first name and
+  last name taken it falls between (the stored name without its `.gz`). Each such page but page 1, which is read
+  anyway, is a detour, read once before page 1.
+- Read in full: a fresh pass, after a detour to each failed file's page.
+- Not read in full: a resume at the page of the furthest name the counted runs took (the larger page when two records
+  hold that name), after a detour to each failed file's page before it. A resume at page 1 is a fresh pass.
+
 A manifest's page record is `dataclasses.asdict` of a `collector.sources.PageRead` with `taken_through`: the last name
 the run took from the page, as listed (without `.gz`), or None. Names compare as plain strings.
 """
+from collector.sources import Start
 
 BEFORE = (0, "")  # before every name: where a block from page 1 starts, and where a reading starts
 AFTER = (2, "")  # after every name: where a block that reaches past the last name ends
@@ -67,6 +80,27 @@ def unread(manifests: list[dict], kind: str) -> str:
     return text
 
 
+def start_for(manifests: list[dict], kind: str, stored: set[str]) -> Start:
+    """Where a run starts reading `kind`, from the day's earlier manifests and the names stored that day (`<name>.gz`,
+    ruling R16)."""
+    if _out_of_order(manifests, kind) is not None:
+        return Start()  # the day's records of the kind place no name
+    earlier = _counted(manifests, kind)  # blocked runs are left out, as the check leaves them out
+    found = [page for manifest in earlier for page in _failed_pages(manifest, kind, stored) if page != 1]
+    detours = tuple(sorted(set(found)))
+    if read_in_full(manifests, kind) is not None:
+        return Start(detours=detours)  # a fresh pass, for the files published since the list was read
+    taken = [record for manifest in earlier for record in _records(manifest, kind)
+             if record["taken_through"] is not None]
+    if not taken:
+        return Start()
+    furthest = max(taken, key=lambda record: (record["taken_through"], record["page"]))
+    if furthest["page"] == 1:
+        return Start(detours=detours)  # a resume at page 1 is a fresh pass
+    before = tuple(page for page in detours if page < furthest["page"])
+    return Start(furthest["page"], furthest["taken_through"], before)
+
+
 def has_pages(manifests: list[dict], kind: str) -> bool:
     """Whether any manifest of the day recorded a page of `kind`."""
     return any(_records(manifest, kind) for manifest in manifests)
@@ -80,6 +114,15 @@ def _counted(manifests: list[dict], kind: str) -> list[dict]:
 def _records(manifest: dict, kind: str) -> list[dict]:
     """The manifest's page records of `kind`, in the order read; none for a manifest written before page records."""
     return [record for record in manifest.get("pages", []) if record["kind"] == kind]
+
+
+def _failed_pages(manifest: dict, kind: str, stored: set[str]) -> list[int]:
+    """The run's pages of `kind` that hold a name it listed and the day has not stored: a page for each name and record
+    that holds it, in the order listed."""
+    records = [record for record in _records(manifest, kind) if record["taken_through"] is not None]
+    failed = [listed.removesuffix(".gz") for listed in manifest["listed"] if listed not in stored]
+    return [record["page"] for name in failed for record in records
+            if record["first"] <= name <= record["taken_through"]]
 
 
 def _out_of_order(manifests: list[dict], kind: str) -> tuple[int, str] | None:
