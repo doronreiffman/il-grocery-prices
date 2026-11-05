@@ -98,7 +98,7 @@ def start_for(manifests: list[dict], kind: str, stored: set[str]) -> Start:
     if furthest["page"] == 1:
         return Start(detours=detours)  # a resume at page 1 is a fresh pass
     before = tuple(page for page in detours if page < furthest["page"])
-    return Start(furthest["page"], furthest["taken_through"], before)
+    return Start(page=furthest["page"], furthest=furthest["taken_through"], detours=before)
 
 
 def has_pages(manifests: list[dict], kind: str) -> bool:

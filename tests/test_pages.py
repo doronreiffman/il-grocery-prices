@@ -341,3 +341,21 @@ def test_a_resume_at_page_1_is_a_fresh_pass():
     """A run that read page 1 and then timed out took its furthest name from page 1."""
     retry = run("074536Z-retry-2933", rec(1), error=TIMED_OUT, listed=gz(range(1, 21)))
     assert start_for([retry], "PriceFull", set(gz(range(1, 21)))) == Start()
+
+
+def test_a_resume_at_page_1_keeps_its_detours():
+    """A fresh pass carries every failed file's detour, wherever it comes from. Here the list shrank: an earlier run
+    read pages 1 to 5 and stopped on page 5 with a file there failed; a later run's page 1 held rows 101 to 120, so its
+    page 1 took the furthest name."""
+    earlier = run(A_ID, *pages(1, 4), rec(5, taken=10), error=STOPPED, listed=gz(range(1, 91)))
+    shrunk = run("074536Z-retry-2933", rec(6, last_page=16) | {"page": 1}, error=TIMED_OUT, listed=gz(range(101, 121)))
+    stored = set(gz(range(1, 121))) - set(gz([85]))
+    assert start_for([earlier, shrunk], "PriceFull", stored) == Start(detours=(5,))
+
+
+def test_a_gap_between_blocks_still_resumes_at_the_furthest_page():
+    """A run that left page 11 part-way and read on is not read in full (the rest of page 11 was never listed), yet
+    the next run resumes at the furthest name taken, not where the joined reading ends."""
+    gap = run(A_ID, *pages(1, 10), rec(11, taken=3), *pages(12, 15), error=STOPPED)
+    assert read_in_full([gap], "PriceFull") is None
+    assert start_for([gap], "PriceFull", set()) == Start(page=15, furthest=name(300))
