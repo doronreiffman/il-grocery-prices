@@ -1,7 +1,7 @@
 # Shufersal: reading the file list across runs (design)
 
 Grade: production. The collector is live and its files feed the public basket page every morning.
-Status: draft of 2026-11-05. The owner chose this fix (resume plus per-page timing) and skipped the design questions; every choice the owner did not make is marked "Call" and listed at the end.
+Status: draft of 2026-11-05. The owner chose this fix (resume plus per-page timing) and skipped the design questions; every choice the owner did not make is marked "Call" and listed at the end. Built the same day; what the build decided where this draft left room is in "Changed during the build", at the end.
 
 ## Why
 
@@ -48,7 +48,7 @@ A page whose names are out of order, or whose first name sorts before the last n
 
 Before reading a kind, a Shufersal run reads the day's earlier Shufersal manifests (one listing of `manifests/date=<day>/shufersal-*` and a read of each).
 
-- **Not yet read in full** (rule in section 3): the run reads page 1 first (Call: it is the only page whose pager is known to name the last page, and it costs one page), then goes to the furthest page an earlier run read and reads it again (one page of overlap, so a file whose download the earlier run never reached gets a fresh link). If that page's first name sorts after the furthest name the earlier runs took, the list has shifted forward: the run steps back one page at a time until the first name does not, or it reaches page 2. From there it reads on to the last page. If the last page the pager now names is before the resume page, it starts at the last page.
+- **Not yet read in full** (rule in section 3): the run reads page 1 first (Call: it is the only page whose pager is known to name the last page, and it costs one page), then goes to the furthest page an earlier run read and reads it again (one page of overlap, so a file whose download the earlier run never reached gets a fresh link). The list is in name order, so files newly listed before the furthest name the earlier runs took push it to a later page, and reading on from that page covers them with no step back. Files before it that left the list move it to an earlier page instead: the resume page's first name then sorts after the furthest name, and the run steps back one page at a time until the first name does not, or it reaches page 2. From there it reads on to the last page. If the last page the pager now names is before the resume page, it starts at the last page.
 - **A failed file earlier on the list:** if a name an earlier run listed is not stored and sits on an earlier page than where the run would start (from the earlier run's `pages`), the run reads that page first, once, so the file is tried again as it would be today, then goes on to its start page. Call (builder check): a detour, not a restart there, so a file that fails every time cannot pull every later run back to its page. This holds for a fresh pass too: the detour comes before page 1.
 - **Already read in full:** the run starts a fresh pass at page 1, as every run does today. This is the retry's job: files published after the first pass.
 - **No usable record:** no earlier run of the kind that day, earlier manifests without `pages` (before this change), or any earlier page of the kind that day recorded `in_order: false`: the run starts at page 1, as today.
@@ -60,7 +60,7 @@ Call: the run loop reads the manifests and hands the adapter a start point per k
 A full kind of a chain counts as read in full for the day when the pages the day's runs read join up from page 1 to the last page:
 
 - Take every run of the chain that day, main or retry, that covers the kind and was not blocked; a run that stopped on time or on an error still counts for the pages it read before it stopped.
-- Each run's pages split into blocks of consecutive page numbers. A block covers the names from its first page's first name to its last page's taken-through name; a block that starts at page 1 covers everything before too; a block that ends at the last page its own pager reading named, with every row of that page taken, covers everything after too. Call (builder check): a page counts only up to the last row the run took; without this, a run that stopped five rows into the last page would make the day read in full while those rows were never listed, and R36 would then excuse the retry with no email.
+- Each run's pages split into blocks of consecutive page numbers. A block also ends after a page the run took only part-way, since the rows after the last one taken were never listed (added during the build). A block covers the names from its first page's first name to its last page's taken-through name; a block that starts at page 1 covers everything before too; a block that ends at the last page its own pager reading named, with every row of that page taken, covers everything after too. Call (builder check): a page counts only up to the last row the run took; without this, a run that stopped five rows into the last page would make the day read in full while those rows were never listed, and R36 would then excuse the retry with no email.
 - The kind is read in full when those blocks, taken together, leave no gap: sorted by their first name, each block starts at or before the end of the blocks before it.
 - Joining needs every page of the kind that day to be `in_order`. If one is not, only a single run that read page 1 to the last page in one go counts.
 - A manifest with no `pages` (other chains, and Shufersal before this change) and no error counts as reading its kinds in full, exactly as R36 reads it today.
@@ -100,3 +100,17 @@ Test-first, as every collector change (`docs/collector.md`, "Testing and shippin
 ## Left to the builder
 
 Field names and the exact log line, how the start point is passed, and the test layout, within the rules above.
+
+## Changed during the build
+
+This draft stays the record of what was intended. Where it left room, or a case came up that it did not cover, the build decided as below; ruling R37 in [collector-plan.md](collector-plan.md), "Rulings made during the build", states the rule as built.
+
+- The order check compares a page only with the page whose number is one less, read just before it.
+- A blocked earlier run is not resumed from, as the check leaves it out; a page out of order in a blocked run still turns resuming and joining off.
+- A fresh pass detours to every failed file's page except page 1; a resume detours only to pages before the resume page; a resume whose furthest name is on page 1 is a fresh pass and keeps its detours.
+- A page taken only part-way ends its block, even in the middle of a run. A page that gives no row (every name on it unreadable) keeps nothing taken, so its block ends there and the day reads as not in full.
+- With joining off, a run counts when one of its blocks runs from page 1 to an open end, so a whole pass after a detour still counts.
+- A day not read in full only because of a gap between blocks still resumes at the furthest page: the gap is not read again that day, and the alert names it.
+- The stopped retry's excuse: its names must have been listed by a run whose pages join up into a full reading without the retry's own, or by a run that read the kind in full on its own; a run vouches only for names of a kind it read, and the retry never vouches for itself.
+- A failed read of the day's earlier manifests fails the run as an unexpected error, with no fall-back to a fresh pass.
+- The failed alert names pages a run read only in part apart from pages never read.

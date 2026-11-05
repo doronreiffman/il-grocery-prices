@@ -890,7 +890,8 @@ def test_earlier_manifests_are_the_chains_own_for_the_day(key):
 
 
 def test_a_source_that_does_not_page_reads_no_manifests_and_records_no_pages():
-    """NCR's and Carrefour's listings are called as before page records: no manifest read, no start, no page."""
+    """NCR's and Carrefour's listings are called as they were before page records existed: no manifest read, no start,
+    no page."""
     class CountingStore(MemoryStore):
         reads = 0
 

@@ -145,8 +145,10 @@ def _reads(read: "_PageReader", start: Start) -> Iterator[tuple[PageRead, list[R
     2. page 1, whose pager names the last page;
     3. on a resume (`start.page` past 1, on a list of more than one page): the resume page again (one page of overlap,
        for fresh links to the files an earlier run never reached), or the last page when the list now ends before it;
-       then, while the page read is past page 2 and its first name sorts after `start.furthest` (the list shifted: the
-       names earlier runs took moved on to later pages), the page before it. A page stepped back from gives no rows;
+       then, while the page read is past page 2 and its first name sorts after `start.furthest`, the page before it:
+       files that sorted before the furthest name left the list since, so that name now sits on an earlier page. (Files
+       newly listed before it push it to a later page instead, which reading on from the resume page covers with no
+       step back.) A page stepped back from gives no rows;
     4. every page after the one whose rows were given last, to the last page; a page stepped back over is read again
        when reached, so its links are fresh and one page at a time stays the rule."""
     for page in start.detours:

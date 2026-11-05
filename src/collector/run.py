@@ -23,8 +23,8 @@ what happened, written whatever happened (docs/collector.md, "How a morning runs
   chain's earlier manifests of the day (collector.pages.start_for), and reports each page it reads
   before giving its rows. The run records each page and logs it; each row given then sets how far the
   run took the latest page (`taken_through`), before anything else is done with the row: the page's
-  last name when the row ends the page, else the row's name. Any other listing is called as before
-  page records: no manifest is read and no page recorded.
+  last name when the row ends the page, else the row's name. Any other listing is called as it was
+  before page records existed: no manifest is read and no page recorded.
 
 In the result, `listed` holds that day's names as the listing gave them; `files` those stored or
 found stored by this run; `failed` those tried and not stored, with why; `not_attempted` those

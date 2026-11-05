@@ -28,7 +28,8 @@ none, it is not read in full.
 Where a run starts reading a kind follows from the same records (docs/shufersal-resume.md, section 2):
 
 - No usable record: when a page of the kind recorded that day is out of order (blocked runs' pages included), or no
-  counted run took a name of the kind and it is not read in full, a fresh pass from page 1, as before page records.
+  counted run took a name of the kind and it is not read in full, a fresh pass from page 1, as every run made before
+  page records existed.
 - A failed file: a name a counted run listed that the day has not stored sits on that run's page whose first name and
   last name taken it falls between (the stored name without its `.gz`). Each such page but page 1, which is read
   anyway, is a detour, read once before page 1.

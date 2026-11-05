@@ -21,29 +21,39 @@ For each chain, from that day's manifests (every run's, main and retry alike) an
   retry, is a failed run too, unless one of its retry runs was blocked (as R31): R31's union over
   the retry runs stayed silent on a day Shufersal listed no PriceFull while its Stores run listed
   something. Ruling R36, as ruling R37 amends it: a retry run whose error is the run's own time stop
-  (OUT_OF_TIME, matched exactly) is not a failed run when each kind it covers was read in full that
-  day (collector.pages.read_in_full: the pages the day's runs read join up from page 1 to the last
-  page; a run whose manifest holds no page records, as other chains' and Shufersal's before page
-  records, reads its kinds in full when it ended with no error and was not blocked), every name the
-  retry listed was listed by another run that read the name's kind, and the chain has nothing
-  missing. A run read the kind when it is among the runs whose readings join up into a full reading
-  with the retry's pages left out, or when it read the whole list on its own; a run that read only
-  part of the list vouches for no name, and the retry never vouches for its own. The check record
-  names each such run under `short_of_time`; it raises no alert. Shufersal's slow listing pages stop
-  its PromoFull retry short most mornings, and "nothing missing" alone proves nothing: a run that
-  stops while reading the listing never lists the rest. A run proves only the list that was up when
-  it read it: one made before the day's files were up lists nothing, and one made early lists only
-  the stores published by then. So a name only the retry listed shows the list changed after the
-  other runs read it, and the part past where the retry stopped may hold names no run listed. The
-  joined reading names only the runs that moved it on: it leaves out a second whole pass, and a run
-  whose reading the retry's own went further than, though each listed what it saw. Hence the reading
-  without the retry's pages, and a whole pass vouching on its own. A retry whose listing failed for
-  any other reason is still a failed run, read in full or not (R4). Ruling R37 also: a full kind the
-  chain collects whose pages, recorded that day, do not join up into a full reading is a failed run
-  too, the alert naming what of the list no run read (collector.pages.unread), unless a retry run
-  was blocked (as R35); a chain or day with no page records gets no such reason. The check record
-  holds, per chain, `read_in_full`: for each full kind it collects, the ids of the runs whose
-  readings joined up, or null.
+  (OUT_OF_TIME, matched exactly) is not a failed run when three things hold. First, each kind it covers
+  was read in full that day (collector.pages.read_in_full): the pages the day's runs read, the retry's
+  own included, join up from page 1 to the last page. A run whose manifest holds no page records (other
+  chains' runs, and Shufersal's before page records existed) reads its kinds in full when it ended with
+  no error and was not blocked. Second, every name the retry listed was listed by another run that read
+  the name's kind. Third, the chain has nothing missing. The check record names each such retry under
+  `short_of_time`, and it raises no alert.
+
+  A run vouches for the retry's names when it is among the runs whose pages join up into a full reading
+  once the retry's own pages are left out, or when it read the whole list on its own. It vouches only
+  for names of a kind it read. A run that read only part of the list vouches for no name, and the retry
+  never vouches for its own.
+
+  Why these conditions. Shufersal's slow listing pages stop its PromoFull retry short most mornings, so
+  without R36 a complete morning would alert. Nothing missing proves nothing on its own: a run that stops
+  while reading the listing never lists the rest. A run that read the whole list proves only the list
+  that was up when it read it: one made before the day's files were up lists nothing, and one made early
+  lists only the stores published by then. So a name only the retry listed shows the list changed after the other
+  runs read it, and the part past where the retry stopped may hold names no run listed.
+
+  Why the retry's pages are left out, and why a whole pass vouches on its own. The joined reading names
+  only the runs that moved its end on. A second whole pass moves nothing on, since the first already
+  reached the end. A retry whose fresh pass read further than an earlier run before it stopped would
+  push that run out of the reading. Either way, names such a run listed would go unvouched, and a
+  complete morning would alert.
+
+  A retry whose listing failed for any other reason is still a failed run, read in full or not (R4).
+  Ruling R37 also adds a reason of its own: a full kind the chain collects whose pages, recorded that
+  day, do not join up into a full reading is a failed run too, and the alert names what of the list no
+  run read (collector.pages.unread). The reason is left out when a retry run was blocked (as R35), and a
+  chain or day with no page records gets none. The check record holds, per chain, `read_in_full`: for
+  each full kind the chain collects, the ids of the runs that read it in full (on their own, or with
+  their pages joined up), or null.
 - coverage, recorded and never alerted: the stores with a stored PriceFull that day, read from the
   file names, against the store ids in that day's latest stored Stores file, or when that day has
   none the latest stored in the seven days before. Store numbers are compared as numbers

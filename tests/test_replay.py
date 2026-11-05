@@ -62,7 +62,9 @@ def run(store, run_id, kind):
         return gz()(req)
 
     routes = {listing_url(CATEGORY[kind], p): listing_page(p) for p in range(1, PAGES + 1)}
-    http, portal = connect(routes, files=download, limit=PAGES + PAGES * ROWS)  # each page and file once, at most
+    # `limit` caps the run's requests at 21 pages and 420 files; a page read twice shows in the page lists and the
+    # seconds left asserted below.
+    http, portal = connect(routes, files=download, limit=PAGES + PAGES * ROWS)
     at = datetime(2026, 11, 5, int(run_id[:2]), int(run_id[2:4]), int(run_id[4:6]), tzinfo=timezone.utc)
     source = ShufersalSource(now=lambda: at, timer=lambda: -clock.left)
     result = collect_chain(CHAIN, source, http, store, DAY, run_id, mode, (kind,), clock, lambda: at, CODE_SHA)

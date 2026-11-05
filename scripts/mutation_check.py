@@ -35,7 +35,7 @@ HTTP = ("src/collector/http.py", ["tests/test_http.py"])
 CHAINS = ("src/collector/chains.py", ["tests/test_chains.py"])
 SOURCES = ("src/collector/sources/__init__.py", ["tests/test_chains.py"])
 SHUFERSAL = ("src/collector/sources/shufersal.py", ["tests/test_shufersal.py"])
-# The start rules 2026-11-05 turned on: the morning replayed (tests/test_replay.py) must catch them too.
+# The start rules the 2026-11-05 replay rests on: the morning replayed (tests/test_replay.py) must catch them too.
 SHUFERSAL_REPLAYED = ("src/collector/sources/shufersal.py", ["tests/test_shufersal.py", "tests/test_replay.py"])
 NAME_CHECK = ("src/collector/sources/__init__.py", ["tests/test_chains.py"])
 NCR = ("src/collector/sources/ncr.py", ["tests/test_ncr.py"])

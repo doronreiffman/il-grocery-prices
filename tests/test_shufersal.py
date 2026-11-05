@@ -518,10 +518,10 @@ def test_a_fresh_pass_with_a_detour_reads_it_before_page_1():
 
 
 def test_a_shifted_list_steps_back_until_the_first_name_is_not_after_the_furthest():
-    """Files listed since the earlier run push the names it took onto later pages: the resume page now begins past the
-    furthest name taken, and the names between are on the pages before it. The run steps back a page at a time,
-    reporting each page it steps back over without giving its rows, and gives them when the reading reaches the page
-    again, with fresh links."""
+    """Files that sorted before the furthest name taken left the list since the earlier run, so that name now sits on an
+    earlier page: the resume page begins past it, and the names between are on the pages before it. The run steps back
+    a page at a time, reporting each page it steps back over without giving its rows, and gives them when the reading
+    reaches the page again, with fresh links."""
     given, reads, portal = started(Start(page=12, furthest=names(10)[5]))
     assert listing_pages(portal) == [1, 12, 11, 10, *range(11, 22)]
     assert given[:60] == names(1) + names(10) + names(11)
