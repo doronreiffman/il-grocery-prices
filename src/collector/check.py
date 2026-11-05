@@ -20,15 +20,30 @@ For each chain, from that day's manifests (every run's, main and retry alike) an
   q7): a full kind the chain collects (PriceFull, PromoFull) that no run that day listed, main or
   retry, is a failed run too, unless one of its retry runs was blocked (as R31): R31's union over
   the retry runs stayed silent on a day Shufersal listed no PriceFull while its Stores run listed
-  something. Ruling R36: a retry run whose error is the run's own time stop (OUT_OF_TIME, matched
-  exactly) is not a failed run when, for each kind it covers, some run of the day, main or retry,
-  covering that kind ended with no error and was not blocked (it read that kind's listing in full),
-  every name the retry listed was listed by such a run too (it saw all the retry saw), and the chain
-  has nothing missing. The check record names each such run under `short_of_time`; it raises no
-  alert. Shufersal's slow listing pages stop its PromoFull retry short most mornings, and "nothing
-  missing" alone proves nothing: a run that stops while reading the listing never lists the rest. A
-  run with no error proves only the listing that was up when it ran: one made before the day's files
-  were up lists nothing, and one made early lists only the stores published by then.
+  something. Ruling R36, as ruling R37 amends it: a retry run whose error is the run's own time stop
+  (OUT_OF_TIME, matched exactly) is not a failed run when each kind it covers was read in full that
+  day (collector.pages.read_in_full: the pages the day's runs read join up from page 1 to the last
+  page; a run whose manifest holds no page records, as other chains' and Shufersal's before page
+  records, reads its kinds in full when it ended with no error and was not blocked), every name the
+  retry listed was listed by another run that read the name's kind, and the chain has nothing
+  missing. A run read the kind when it is among the runs whose readings join up into a full reading
+  with the retry's pages left out, or when it read the whole list on its own; a run that read only
+  part of the list vouches for no name, and the retry never vouches for its own. The check record
+  names each such run under `short_of_time`; it raises no alert. Shufersal's slow listing pages stop
+  its PromoFull retry short most mornings, and "nothing missing" alone proves nothing: a run that
+  stops while reading the listing never lists the rest. A run proves only the list that was up when
+  it read it: one made before the day's files were up lists nothing, and one made early lists only
+  the stores published by then. So a name only the retry listed shows the list changed after the
+  other runs read it, and the part past where the retry stopped may hold names no run listed. The
+  joined reading names only the runs that moved it on: it leaves out a second whole pass, and a run
+  whose reading the retry's own went further than, though each listed what it saw. Hence the reading
+  without the retry's pages, and a whole pass vouching on its own. A retry whose listing failed for
+  any other reason is still a failed run, read in full or not (R4). Ruling R37 also: a full kind the
+  chain collects whose pages, recorded that day, do not join up into a full reading is a failed run
+  too, the alert naming what of the list no run read (collector.pages.unread), unless a retry run
+  was blocked (as R35); a chain or day with no page records gets no such reason. The check record
+  holds, per chain, `read_in_full`: for each full kind it collects, the ids of the runs whose
+  readings joined up, or null.
 - coverage, recorded and never alerted: the stores with a stored PriceFull that day, read from the
   file names, against the store ids in that day's latest stored Stores file, or when that day has
   none the latest stored in the seven days before. Store numbers are compared as numbers
@@ -42,6 +57,7 @@ from datetime import date, timedelta
 from typing import Literal
 
 from collector.names import KINDS, parse_file_name
+from collector.pages import has_pages, read_in_full, unread
 from collector.run import OUT_OF_TIME
 from collector.store import manifest_key, raw_key
 from collector.storelist import store_ids
@@ -63,8 +79,9 @@ def check_day(store, slugs: list[str], day: date,
               kinds: Mapping[str, tuple[str, ...]] | None = None) -> tuple[list[Alert], dict]:
     """The alerts for `day` and the check record: per chain, the listed and stored counts, the
     missing names, whether it is stopped, why its runs failed, the retry runs short of time that are
-    not failed runs (ruling R36), and its coverage. `kinds` gives the kinds a chain collects; a chain
-    it leaves out is held to all five. Reads only."""
+    not failed runs (rulings R36 and R37), the runs that read each full kind in full (ruling R37), and
+    its coverage. `kinds` gives the kinds a chain collects; a chain it leaves out is held to all five.
+    Reads only."""
     manifests = _manifests(store, day)
     alerts: list[Alert] = []
     chains = {}
@@ -121,6 +138,7 @@ def _check_chain(store, slug: str, day: date, manifests: list[dict],
         "stopped": {"since": state.get("since"), "reason": state.get("reason")} if state.get("stopped") else None,
         "failed": failure,
         "short_of_time": [f"{manifest['run_id']} ({', '.join(manifest['kinds'])})" for manifest in excused],
+        "read_in_full": {kind: read_in_full(manifests, kind) for kind in FULL_KINDS if kind in kinds},
         "coverage": _coverage(store, slug, day, stored),
     }
     return alerts, record
@@ -134,22 +152,40 @@ def _missing_text(slug: str, day: date, missing: list[str]) -> str:
 
 
 def _short_of_time(manifests: list[dict], missing: list[str]) -> list[dict]:
-    """The retry runs whose error is the run's time stop, on a day each of their kinds was listed in
-    full by a run that ended with no error and was not blocked, such runs listed every name the retry
-    listed, and nothing is missing (ruling R36). A run lists only names of the kinds it covers, so the
-    names such runs listed are taken together."""
+    """The retry runs whose error is the run's time stop, on a day with nothing missing, each of their
+    kinds read in full and every name they listed seen by other runs (rulings R36 and R37)."""
     if missing:
         return []
-    complete = [manifest for manifest in manifests if not manifest["error"] and not manifest["blocked"]]
-    complete_kinds = {kind for manifest in complete for kind in manifest["kinds"]}
-    complete_names = {name for manifest in complete for name in manifest["listed"]}
     return [manifest for manifest in manifests if manifest["mode"] == "retry" and manifest["error"] == OUT_OF_TIME
-            and set(manifest["kinds"]) <= complete_kinds and set(manifest["listed"]) <= complete_names]
+            and _seen_by_others(manifests, manifest)]
+
+
+def _seen_by_others(manifests: list[dict], retry: dict) -> bool:
+    """Whether each kind `retry` covers was read in full that day and every name it listed was listed by
+    another run that read the name's kind: one among the runs whose readings join up into a full
+    reading with the retry's pages left out, or one that read the whole list on its own (ruling R37).
+    Neither a run that read only part of the list nor the retry itself vouches for a name."""
+    if not all(read_in_full(manifests, kind) is not None for kind in retry["kinds"]):
+        return False
+    others = [manifest for manifest in manifests if manifest["run_id"] != retry["run_id"]]
+    seen = set()
+    for kind in retry["kinds"]:
+        readers = read_in_full(others, kind) or []
+        vouching = [manifest for manifest in others
+                    if manifest["run_id"] in readers or read_in_full([manifest], kind) is not None]
+        seen |= {name for manifest in vouching for name in _of_kind(manifest["listed"], kind)}
+    return set(retry["listed"]) <= seen
+
+
+def _of_kind(names: list[str], kind: str) -> set[str]:
+    """The names of `kind`, the kind read from each name."""
+    return {name for name in names if (parsed := parse_file_name(name)) and parsed.kind == kind}
 
 
 def _failure(manifests: list[dict], kinds: tuple[str, ...], excused: list[dict]) -> str | None:
     """Why the chain's retry runs fall short of `kinds` (ruling R4), the `excused` ones' time stops left
-    out (ruling R36), or why the day lacks a full kind (ruling R35), or None when neither does."""
+    out (rulings R36 and R37), why the day lacks a full kind (ruling R35) or a full reading of one
+    (ruling R37), or None when none of these holds."""
     retries = [manifest for manifest in manifests if manifest["mode"] == "retry"]
     covered = {kind for manifest in retries for kind in manifest["kinds"]}
     problems = []
@@ -162,7 +198,8 @@ def _failure(manifests: list[dict], kinds: tuple[str, ...], excused: list[dict])
     if retries and not listed and not any(manifest["blocked"] for manifest in retries):
         unparsed = sum(manifest["unparsed"] for manifest in retries)
         problems.append(f"the retry runs listed nothing for the day (unparsed names: {unparsed})")
-    return "; ".join(problems + _unlisted(manifests, retries, kinds)) or None
+    reasons = problems + _unlisted(manifests, retries, kinds) + _not_read_in_full(manifests, retries, kinds)
+    return "; ".join(reasons) or None
 
 
 def _unlisted(manifests: list[dict], retries: list[dict], kinds: tuple[str, ...]) -> list[str]:
@@ -172,6 +209,17 @@ def _unlisted(manifests: list[dict], retries: list[dict], kinds: tuple[str, ...]
         return []
     listed = {parsed.kind for manifest in manifests for name in manifest["listed"] if (parsed := parse_file_name(name))}
     return [f"no run listed a {kind} for the day" for kind in FULL_KINDS if kind in kinds and kind not in listed]
+
+
+def _not_read_in_full(manifests: list[dict], retries: list[dict], kinds: tuple[str, ...]) -> list[str]:
+    """The full kinds the chain collects whose pages, recorded that day, do not join up into one full
+    reading, with what of the list no run read (ruling R37). None for a kind no manifest of the day
+    recorded pages of (other chains, and a deploy day's runs before page records), and none when a
+    retry run was blocked, which the stopped alert covers (as R35)."""
+    if any(retry["blocked"] for retry in retries):
+        return []
+    return [f"the {kind} list was not read in full: {unread(manifests, kind)}" for kind in FULL_KINDS
+            if kind in kinds and has_pages(manifests, kind) and read_in_full(manifests, kind) is None]
 
 
 def _coverage(store, slug: str, day: date, stored: set[str]) -> dict:

@@ -14,6 +14,8 @@ from collector.check import Alert, check_day, mark_alerted
 from collector.names import KINDS
 from collector.run import RunResult, manifest_bytes
 from collector.store import MemoryStore, manifest_key, raw_key
+from test_pages import (A, A_ID, ALL_STORED, B, B_ID, BLOCKED, DAY as NOV_5, TIMED_OUT, gz, late, name as list_name,
+                        pages, rec)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 DAY = date(2026, 10, 31)
@@ -720,6 +722,322 @@ def test_a_retry_short_of_time_leaves_the_chains_other_failures():
     assert kinds_of(alerts) == [("shufersal", "failed")]
     assert record["chains"]["shufersal"]["failed"] == "no retry run covered Stores"
     assert record["chains"]["shufersal"]["short_of_time"] == ["081551Z-retry-9b10 (PromoFull)"]
+
+
+# ---- the day's pages joined across runs (ruling R37) ----
+
+SHUFERSAL_FULL = {"shufersal": ("PriceFull", "PromoFull")}
+RETRY_ID, PROMO_RETRY_ID = "074536Z-retry-2933", "081551Z-retry-9283"  # 2026-11-05's PriceFull and PromoFull retries
+
+
+def paged(store, run_id, kind, records, listed=(), error=None, blocked=None, kinds=None):
+    """Write a Shufersal manifest of `kind` (or of `kinds`) with its page records, as the run loop writes it, its mode
+    read from the run id."""
+    result = RunResult("shufersal", run_id, run_id.split("-")[1], NOV_5, list(kinds or [kind]), listed=list(listed),
+                       error=error, blocked=blocked, pages=list(records))
+    store.put_record(manifest_key(NOV_5, "shufersal", run_id), manifest_bytes(result, "0123456789ab"), NOW)
+
+
+def legacy(store, run_id, kinds, listed, error=None):
+    """Write a Shufersal manifest as the run loop wrote it before page records: no `pages` key."""
+    result = RunResult("shufersal", run_id, run_id.split("-")[1], NOV_5, list(kinds), listed=list(listed), error=error)
+    record = json.loads(manifest_bytes(result, "0123456789ab"))
+    del record["pages"]
+    store.put_record(manifest_key(NOV_5, "shufersal", run_id), json.dumps(record).encode(), NOW)
+
+
+def whole(store, run_id, kind):
+    """A run that read `kind`'s whole list in one go and ended clean, every name it listed stored."""
+    paged(store, run_id, kind, pages(1, 21, kind=kind), gz(range(1, 421), kind))
+    stored(store, "shufersal", *gz(range(1, 421), kind), day=NOV_5)
+
+
+def nov_5(store):
+    """2026-11-05's PriceFull morning as resumed (tests/test_pages.py): A read pages 1 to 11 and page 12's first row
+    and stopped on time, B read page 1 and pages 12 to 21, and every name is stored; PromoFull's retry read its whole
+    list."""
+    paged(store, A_ID, "PriceFull", A["pages"], A["listed"], error=STOPPED)
+    paged(store, B_ID, "PriceFull", B["pages"], B["listed"])
+    stored(store, "shufersal", *ALL_STORED, day=NOV_5)
+    whole(store, PROMO_RETRY_ID, "PromoFull")
+
+
+def check_nov_5(store, kinds=SHUFERSAL_FULL):
+    return check_day(store, ["shufersal"], NOV_5, kinds=kinds)
+
+
+def time_stop(run_id=RETRY_ID, kinds="PriceFull"):
+    return f"retry run {run_id} ({kinds}) ended with: {STOPPED}"
+
+
+def test_read_in_full_is_recorded_per_full_kind():
+    """For each full kind a chain collects, the runs whose readings joined up: on 2026-11-05's PriceFull shape A and B,
+    not the retry whose page 1 added nothing. A chain whose runs carry no page records reads by R36's rule: its clean
+    retry read every kind in full."""
+    store = MemoryStore()
+    nov_5(store)
+    paged(store, RETRY_ID, "PriceFull", [rec(1)], gz(range(1, 21)), error=TIMED_OUT)
+    names = [price("001", day=NOV_5), price("001", kind="PromoFull", day=NOV_5)]
+    manifest(store, "ramilevy", "retry", listed=names, day=NOV_5, run_id="093000Z-retry-0a0a")
+    stored(store, "ramilevy", *names, day=NOV_5)
+    _, record = check_day(store, ["shufersal", "ramilevy"], NOV_5, kinds=SHUFERSAL_FULL)
+    assert record["chains"]["shufersal"]["read_in_full"] == {"PriceFull": [A_ID, B_ID], "PromoFull": [PROMO_RETRY_ID]}
+    assert record["chains"]["ramilevy"]["read_in_full"] == {"PriceFull": ["093000Z-retry-0a0a"],
+                                                            "PromoFull": ["093000Z-retry-0a0a"]}
+
+
+def test_a_full_kind_the_chain_does_not_collect_is_neither_recorded_nor_judged():
+    """A chain that no longer collects PromoFull (its kinds narrowed that day) has PromoFull pages not read in full:
+    they are not its business."""
+    store = MemoryStore()
+    whole(store, RETRY_ID, "PriceFull")
+    paged(store, "051514Z-main-b001", "PromoFull", pages(1, 5, kind="PromoFull"), gz(range(1, 101), "PromoFull"),
+          error=STOPPED)
+    stored(store, "shufersal", *gz(range(1, 101), "PromoFull"), day=NOV_5)
+    alerts, record = check_nov_5(store, kinds={"shufersal": ("PriceFull",)})
+    assert alerts == []
+    assert record["chains"]["shufersal"]["read_in_full"] == {"PriceFull": [RETRY_ID]}
+
+
+def test_a_stopped_retry_on_a_day_read_in_full_across_runs_is_quiet():
+    """Ruling R37 amends R36: A and B read the PriceFull list in full between them; the retry's fresh pass stopped on
+    time on page 2, after listing only names A or B listed. Nothing is missing: no alert, and the record names the
+    retry."""
+    store = MemoryStore()
+    nov_5(store)
+    paged(store, RETRY_ID, "PriceFull", [rec(1), rec(2, taken=5)], gz(range(1, 26)), error=STOPPED)
+    alerts, record = check_nov_5(store)
+    assert alerts == []
+    chain = record["chains"]["shufersal"]
+    assert chain["failed"] is None and chain["missing"] == []
+    assert chain["short_of_time"] == ["074536Z-retry-2933 (PriceFull)"]
+
+
+def test_a_retry_that_read_further_than_a_run_before_it_is_still_vouched_for():
+    """The retry's fresh pass downloads nothing (every file is stored), so it reads on past where A stopped, to page
+    16, before it stops on time. Joined with the retry's pages, the reading names the retry and B and leaves A out;
+    without them, A and B. A listed what the retry listed before page 12, so the vouching runs are those whose
+    readings join up without the retry's."""
+    store = MemoryStore()
+    nov_5(store)
+    paged(store, RETRY_ID, "PriceFull", pages(1, 16), gz(range(1, 321)), error=STOPPED)
+    alerts, record = check_nov_5(store)
+    assert alerts == []
+    assert record["chains"]["shufersal"]["read_in_full"]["PriceFull"] == [B_ID, RETRY_ID]
+    assert record["chains"]["shufersal"]["short_of_time"] == ["074536Z-retry-2933 (PriceFull)"]
+
+
+def test_a_stopped_retry_whose_names_only_it_listed_still_fails():
+    """A file published on page 2 after A read it: the retry listed it, A and B did not, so the list changed after they
+    read it, and the part past where the retry stopped may hold files no run listed."""
+    store = MemoryStore()
+    nov_5(store)
+    paged(store, RETRY_ID, "PriceFull", [rec(1), rec(2, taken=5) | {"taken_through": late(25)}],
+          gz(range(1, 26)) + [late(25) + ".gz"], error=STOPPED)
+    stored(store, "shufersal", late(25) + ".gz", day=NOV_5)
+    alerts, record = check_nov_5(store)
+    assert kinds_of(alerts) == [("shufersal", "failed")]
+    assert alerts[0].text == f"shufersal: the day's runs fell short: {time_stop()}."
+    assert record["chains"]["shufersal"]["missing"] == []
+    assert record["chains"]["shufersal"]["short_of_time"] == []
+
+
+def test_a_retry_never_vouches_for_its_own_names():
+    """The retry resumed where A stopped, took the list to its last row, then met the time check before the listing
+    said it had ended. Its pages complete the day's reading, but the names after page 12's first only it listed, and a
+    run never vouches for itself."""
+    store = MemoryStore()
+    paged(store, A_ID, "PriceFull", A["pages"], A["listed"], error=STOPPED)
+    paged(store, RETRY_ID, "PriceFull", B["pages"], B["listed"], error=STOPPED)
+    stored(store, "shufersal", *ALL_STORED, day=NOV_5)
+    whole(store, PROMO_RETRY_ID, "PromoFull")
+    alerts, record = check_nov_5(store)
+    assert alerts[0].text == f"shufersal: the day's runs fell short: {time_stop()}."
+    assert record["chains"]["shufersal"]["read_in_full"]["PriceFull"] == [A_ID, RETRY_ID]
+    assert record["chains"]["shufersal"]["short_of_time"] == []
+
+
+def test_a_second_whole_pass_vouches_for_a_file_published_between_the_passes():
+    """A fast morning: both main runs read the whole list, and a file was published on page 5 between them. The joined
+    reading names only the first pass; the second read the whole list on its own, so it vouches for the file it and
+    the stopped retry listed. Nothing is missing: quiet (controller ruling on R37's excuse, 2026-11-05)."""
+    store = MemoryStore()
+    published = late(85) + ".gz"
+    paged(store, A_ID, "PriceFull", pages(1, 21), gz(range(1, 421)))
+    paged(store, B_ID, "PriceFull", pages(1, 21), gz(range(1, 86)) + [published] + gz(range(86, 421)))
+    paged(store, RETRY_ID, "PriceFull", [*pages(1, 4), rec(5, taken=5) | {"taken_through": late(85)}],
+          gz(range(1, 86)) + [published], error=STOPPED)
+    stored(store, "shufersal", *ALL_STORED, published, day=NOV_5)
+    whole(store, PROMO_RETRY_ID, "PromoFull")
+    alerts, record = check_nov_5(store)
+    assert alerts == []
+    assert record["chains"]["shufersal"]["read_in_full"]["PriceFull"] == [A_ID]
+    assert record["chains"]["shufersal"]["short_of_time"] == ["074536Z-retry-2933 (PriceFull)"]
+
+
+def test_a_run_that_read_part_of_the_list_does_not_vouch():
+    """The first main run read the whole list; the second made a fresh pass and stopped on time on page 5, after
+    listing a file published there since; the stopped retry listed it too. A run that read part of the list proves
+    nothing of the part it did not read: the retry's time stop still fails the morning."""
+    store = MemoryStore()
+    published = late(85) + ".gz"
+    to_page_5 = [*pages(1, 4), rec(5, taken=5) | {"taken_through": late(85)}]
+    paged(store, A_ID, "PriceFull", pages(1, 21), gz(range(1, 421)))
+    paged(store, B_ID, "PriceFull", to_page_5, gz(range(1, 86)) + [published], error=STOPPED)
+    paged(store, RETRY_ID, "PriceFull", to_page_5, gz(range(1, 86)) + [published], error=STOPPED)
+    stored(store, "shufersal", *ALL_STORED, published, day=NOV_5)
+    whole(store, PROMO_RETRY_ID, "PromoFull")
+    alerts, record = check_nov_5(store)
+    assert alerts[0].text == f"shufersal: the day's runs fell short: {time_stop()}."
+    assert record["chains"]["shufersal"]["short_of_time"] == []
+
+
+def test_a_run_vouches_only_for_the_kinds_it_read():
+    """A main run over both full kinds read PriceFull's whole list, then stopped on PromoFull's page 5 after listing a
+    PromoFull file published there since PromoFull's own run read the whole list; the retry over both did the same.
+    The main run vouches for the retry's PriceFull names, not for its PromoFull ones."""
+    store = MemoryStore()
+    published = list_name(85, "PromoFull").replace("-030000", "-060000")
+    promo_to_page_5 = [*pages(1, 4, kind="PromoFull"), rec(5, taken=5, kind="PromoFull") | {"taken_through": published}]
+    both = dict(kinds=("PriceFull", "PromoFull"), error=STOPPED)
+    listed = gz(range(1, 421)) + gz(range(1, 86), "PromoFull") + [published + ".gz"]
+    whole(store, "051514Z-main-b001", "PromoFull")
+    paged(store, "053014Z-main-b002", "PriceFull", [*pages(1, 21), *promo_to_page_5], listed, **both)
+    paged(store, RETRY_ID, "PriceFull", [*pages(1, 21), *promo_to_page_5], listed, **both)
+    stored(store, "shufersal", *ALL_STORED, published + ".gz", day=NOV_5)
+    alerts, record = check_nov_5(store)
+    assert alerts[0].text == f"shufersal: the day's runs fell short: {time_stop(kinds='PriceFull, PromoFull')}."
+    assert record["chains"]["shufersal"]["short_of_time"] == []
+
+
+def test_a_full_kind_not_read_in_full_names_the_pages_never_read():
+    """Design, Call 4: PromoFull's main runs read pages 1 to 16 between them and its retry stopped on time; the failed
+    alert says what of the list no run read."""
+    store = MemoryStore()
+    whole(store, RETRY_ID, "PriceFull")
+    first = [*pages(1, 11, kind="PromoFull"), rec(12, taken=1, kind="PromoFull")]
+    paged(store, "051514Z-main-b001", "PromoFull", first, gz(range(1, 222), "PromoFull"), error=STOPPED)
+    paged(store, "053014Z-main-b002", "PromoFull", [rec(1, kind="PromoFull"), *pages(12, 16, kind="PromoFull")],
+          gz(range(1, 21), "PromoFull") + gz(range(221, 321), "PromoFull"), error=STOPPED)
+    paged(store, PROMO_RETRY_ID, "PromoFull", [rec(1, kind="PromoFull")], gz(range(1, 21), "PromoFull"), error=STOPPED)
+    stored(store, "shufersal", *gz(range(1, 321), "PromoFull"), day=NOV_5)
+    alerts, record = check_nov_5(store)
+    assert kinds_of(alerts) == [("shufersal", "failed")]
+    assert alerts[0].text == ("shufersal: the day's runs fell short: retry run 081551Z-retry-9283 (PromoFull) ended "
+                              "with: stopped: under 90 s left; the PromoFull list was not read in full: pages 17 to 21 "
+                              "never read.")
+    assert record["chains"]["shufersal"]["read_in_full"]["PromoFull"] is None
+
+
+def test_not_read_in_full_alerts_on_its_own():
+    """Every retry run ended clean, yet the readings leave a gap: the list moved between A and the retry, whose page 12
+    starts after the last name A took (a main run's time stop is left to the retry). The sentence alone fails the
+    morning."""
+    store = MemoryStore()
+    paged(store, A_ID, "PriceFull", A["pages"], A["listed"], error=STOPPED)
+    paged(store, RETRY_ID, "PriceFull", [rec(1), rec(12) | {"first": list_name(225)}, *pages(13, 21)],
+          gz(range(1, 21)) + gz(range(225, 421)))
+    stored(store, "shufersal", *ALL_STORED, day=NOV_5)
+    whole(store, PROMO_RETRY_ID, "PromoFull")
+    alerts, record = check_nov_5(store)
+    assert kinds_of(alerts) == [("shufersal", "failed")]
+    assert alerts[0].text == ("shufersal: the day's runs fell short: the PriceFull list was not read in full: every "
+                              "page was read, but the pages read do not join up.")
+
+
+def test_a_retry_that_listed_nothing_needs_its_kind_read_in_full_from_the_pages():
+    """A run that ended with no error no longer proves the list read in full: B ended clean on a list that moved under
+    it, leaving a gap after A's last name. The retry stopped on time before it listed anything, so no name of its needs
+    vouching; its kind still needs the pages joined up."""
+    store = MemoryStore()
+    paged(store, A_ID, "PriceFull", A["pages"], A["listed"], error=STOPPED)
+    paged(store, B_ID, "PriceFull", [rec(1), rec(12) | {"first": list_name(225)}, *pages(13, 21)],
+          gz(range(1, 21)) + gz(range(225, 421)))
+    paged(store, RETRY_ID, "PriceFull", [], error=STOPPED)
+    stored(store, "shufersal", *ALL_STORED, day=NOV_5)
+    whole(store, PROMO_RETRY_ID, "PromoFull")
+    alerts, record = check_nov_5(store)
+    assert alerts[0].text == (f"shufersal: the day's runs fell short: {time_stop()}; the PriceFull list was not read "
+                              "in full: every page was read, but the pages read do not join up.")
+    assert record["chains"]["shufersal"]["short_of_time"] == []
+
+
+def test_a_blocked_run_does_not_join_in_the_check():
+    """B was blocked downloading its last file (the owner cleared the latch before the retries): its pages do not
+    count, so the list was not read in full."""
+    store = MemoryStore()
+    paged(store, A_ID, "PriceFull", A["pages"], A["listed"], error=STOPPED)
+    paged(store, B_ID, "PriceFull", B["pages"], B["listed"], blocked=BLOCKED)
+    paged(store, RETRY_ID, "PriceFull", [rec(1)], gz(range(1, 21)), error=STOPPED)
+    stored(store, "shufersal", *ALL_STORED, day=NOV_5)
+    whole(store, PROMO_RETRY_ID, "PromoFull")
+    alerts, record = check_nov_5(store)
+    assert kinds_of(alerts) == [("shufersal", "failed")]
+    assert alerts[0].text == (f"shufersal: the day's runs fell short: {time_stop()}; the PriceFull list was not read "
+                              "in full: pages 13 to 21 never read, page 12 read in part.")
+    assert record["chains"]["shufersal"]["read_in_full"]["PriceFull"] is None
+
+
+def test_an_out_of_order_page_turns_joining_off_in_the_check():
+    store = MemoryStore()
+    out_of_order = [*(rec(page, in_order=page != 7) for page in range(1, 12)), rec(12, taken=1)]
+    paged(store, A_ID, "PriceFull", out_of_order, A["listed"], error=STOPPED)
+    paged(store, B_ID, "PriceFull", B["pages"], B["listed"])
+    paged(store, RETRY_ID, "PriceFull", [rec(1)], gz(range(1, 21)), error=STOPPED)
+    stored(store, "shufersal", *ALL_STORED, day=NOV_5)
+    whole(store, PROMO_RETRY_ID, "PromoFull")
+    alerts, record = check_nov_5(store)
+    assert kinds_of(alerts) == [("shufersal", "failed")]
+    assert alerts[0].text == (f"shufersal: the day's runs fell short: {time_stop()}; the PriceFull list was not read "
+                              "in full: every page was read, but the pages read do not join up (page 7 of run "
+                              "044522Z-main-a001 was out of order, so only a run that read every page in one go "
+                              "counts).")
+    assert record["chains"]["shufersal"]["read_in_full"]["PriceFull"] is None
+
+
+def test_no_sentence_when_a_retry_was_blocked():
+    """As R35: B's block latched the chain, so the retry did nothing, and the stopped alert covers the morning."""
+    store = MemoryStore()
+    paged(store, A_ID, "PriceFull", A["pages"], A["listed"], error=STOPPED)
+    paged(store, B_ID, "PriceFull", [rec(1), *pages(12, 14)], gz(range(1, 21)) + gz(range(221, 281)), blocked=BLOCKED)
+    paged(store, RETRY_ID, "PriceFull", [], blocked="stopped earlier")
+    stored(store, "shufersal", *gz(range(1, 281)), day=NOV_5)
+    whole(store, PROMO_RETRY_ID, "PromoFull")
+    store.write_state("shufersal", latch())
+    alerts, record = check_nov_5(store)
+    assert kinds_of(alerts) == [("shufersal", "stopped")]
+    assert record["chains"]["shufersal"]["failed"] is None
+    assert record["chains"]["shufersal"]["read_in_full"]["PriceFull"] is None
+
+
+def test_no_sentence_without_page_records():
+    """A chain whose manifests carry no page records (every chain but Shufersal) gets R4's reasons only, though no run
+    of it read its full kinds in full."""
+    store = MemoryStore()
+    names = [price("001"), price("001", kind="PromoFull")]
+    manifest(store, "ramilevy", "main", listed=names, error=STOPPED, run_id="043000Z-main-0a0a")
+    manifest(store, "ramilevy", "retry", listed=names, error=STOPPED, run_id="073000Z-retry-0b0b")
+    stored(store, "ramilevy", *names)
+    alerts, record = check_day(store, ["ramilevy"], DAY)
+    assert kinds_of(alerts) == [("ramilevy", "failed")]
+    assert alerts[0].text == ("ramilevy: the day's runs fell short: retry run 073000Z-retry-0b0b (Stores, PriceFull, "
+                              "PromoFull, Price, Promo) ended with: stopped: under 90 s left.")
+    assert record["chains"]["ramilevy"]["read_in_full"] == {"PriceFull": None, "PromoFull": None}
+
+
+def test_a_pre_change_manifest_ended_clean_reads_in_full():
+    """Deploy day (review focus 3): the morning's first runs wrote no page records and ended clean, so they read their
+    kinds in full as R36 reads them; the retry, with page records, stopped on time after names they listed."""
+    store = MemoryStore()
+    legacy(store, A_ID, ["PriceFull"], gz(range(1, 421)))
+    legacy(store, "051514Z-main-b001", ["PromoFull"], gz(range(1, 421), "PromoFull"))
+    paged(store, RETRY_ID, "PriceFull", [rec(1), rec(2, taken=5)], gz(range(1, 26)), error=STOPPED)
+    stored(store, "shufersal", *ALL_STORED, day=NOV_5)
+    whole(store, PROMO_RETRY_ID, "PromoFull")
+    alerts, record = check_nov_5(store)
+    assert alerts == []
+    assert record["chains"]["shufersal"]["read_in_full"]["PriceFull"] == [A_ID]
+    assert record["chains"]["shufersal"]["short_of_time"] == ["074536Z-retry-2933 (PriceFull)"]
 
 
 # ---- coverage: recorded, never alerted ----
