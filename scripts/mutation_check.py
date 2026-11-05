@@ -35,6 +35,8 @@ HTTP = ("src/collector/http.py", ["tests/test_http.py"])
 CHAINS = ("src/collector/chains.py", ["tests/test_chains.py"])
 SOURCES = ("src/collector/sources/__init__.py", ["tests/test_chains.py"])
 SHUFERSAL = ("src/collector/sources/shufersal.py", ["tests/test_shufersal.py"])
+# The start rules 2026-11-05 turned on: the morning replayed (tests/test_replay.py) must catch them too.
+SHUFERSAL_REPLAYED = ("src/collector/sources/shufersal.py", ["tests/test_shufersal.py", "tests/test_replay.py"])
 NAME_CHECK = ("src/collector/sources/__init__.py", ["tests/test_chains.py"])
 NCR = ("src/collector/sources/ncr.py", ["tests/test_ncr.py"])
 NEVER_SHORT = ("src/collector/sources/__init__.py", ["tests/test_chains.py"])
@@ -271,8 +273,8 @@ MUTATIONS = {
     "seconds not timed (q21 pages)": (SHUFERSAL, "    seconds = timer() - started", "    seconds = 0.0"),
     "a later page's pager read strictly (q21 pages)": (SHUFERSAL, "        if page == 1:\n            raise\n        return None", "        raise"),
     # shufersal: where each kind starts (q21)
-    "no overlap: the resume reads the page after the furthest (q21 start)": (SHUFERSAL, "at = min(start.page, last)", "at = min(start.page + 1, last)"),
-    "page 1 skipped on a resume (q21 start)": (SHUFERSAL, "    yield first, rows, True\n", "    yield first, rows, start.page == 1\n"),
+    "no overlap: the resume reads the page after the furthest (q21 start)": (SHUFERSAL_REPLAYED, "at = min(start.page, last)", "at = min(start.page + 1, last)"),
+    "page 1 skipped on a resume (q21 start)": (SHUFERSAL_REPLAYED, "    yield first, rows, True\n", "    yield first, rows, start.page == 1\n"),
     "detours after page 1 (q21 start)": (SHUFERSAL, "    for page in start.detours:\n        record, rows = read(page)\n        yield record, rows, True\n    first, rows = read(1)\n    yield first, rows, True\n",
                                          "    first, rows = read(1)\n    yield first, rows, True\n    for page in start.detours:\n        record, rows = read(page)\n        yield record, rows, True\n"),
     "no step back (q21 start)": (SHUFERSAL, "        while at > 2 and record.first > start.furthest:", "        while False:"),
