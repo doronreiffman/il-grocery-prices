@@ -905,6 +905,23 @@ def test_a_source_that_does_not_page_reads_no_manifests_and_records_no_pages():
     assert set(result.files) == {PRICE}
 
 
+def test_a_failed_read_of_the_earlier_manifests_fails_the_run():
+    """A failed read of the day's earlier manifests fails the run as an unexpected error, as a failed read of the latch
+    does, with no fall-back to a fresh pass: the manifest is still written, the error raised, and no listing asked
+    for."""
+    class BrokenRecords(MemoryStore):
+        def read_records(self, prefix):
+            raise ClientError({"Error": {"Code": "InternalError", "Message": "We encountered an internal error"}},
+                              "ListObjectsV2")
+
+    store = BrokenRecords()
+    source = FakePagedSource([row(100, ends_page=True)])
+    with pytest.raises(ClientError):
+        collect(source, store=store, kinds=("PriceFull",))
+    assert manifest(store)["error"].startswith("unexpected error: ClientError: ")
+    assert source.listing_calls == [] and source.downloads == []
+
+
 def test_each_page_is_recorded_with_how_far_the_run_took_it():
     """The run can stop between any two rows, so a page is recorded taken through the last row the run took from it;
     the rows after it were never listed."""

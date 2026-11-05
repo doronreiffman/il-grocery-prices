@@ -494,6 +494,10 @@ MUTATIONS = {
     "page count read from any page (q21 run)": (RUN, "        if read.page == 1:\n            self.page_counts", "        if True:\n            self.page_counts"),
     "page count not per kind (q21 run)": (RUN, 'self.page_counts.get(read.kind, "?")', 'next(iter(self.page_counts.values()), "?")'),
     "a one-page list's count not 1 (q21 run)": (RUN, "read.last_page or 1  #", "read.last_page  #"),
+    "a failed read of the earlier manifests falls back to a fresh pass (q21 run)": (RUN,
+        "            listing = iter(self.source.listing(self.http, self.kinds, self._short_of_time, **self._paged()))\n",
+        "            try:\n                paged = self._paged()\n            except Exception:\n                paged = {}\n"
+        "            listing = iter(self.source.listing(self.http, self.kinds, self._short_of_time, **paged))\n"),
     # run: blocks and the latch
     "stopped chain collected": (RUN, '        if store.read_state(chain.slug).get("stopped"):', "        if False:"),
     "any state read as stopped": (RUN, 'if store.read_state(chain.slug).get("stopped"):', "if store.read_state(chain.slug):"),
