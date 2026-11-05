@@ -25,6 +25,10 @@ What the portal does (docs/portals.md, "Shufersal", seen 2026-10-31):
   row is given: its rows, first and last name, the last page its pager names, the seconds its request took and
   whether its names are in order. Only page 1's pager sets how far the listing reads, and only page 1's has been seen:
   a later page's is read leniently and recorded, never a stop. The last row given from each page carries `ends_page`.
+- The run loop says where each kind starts (Start; docs/shufersal-resume.md, section 2): any detour pages first, once
+  each; page 1; on a resume, the resume page again (the last page, when the list now ends before it), stepping back a
+  page at a time, no further than page 2, while the page's first name sorts after the furthest name earlier runs took;
+  then on to the last page.
 """
 import itertools
 import time
@@ -125,18 +129,43 @@ def _fresh_link(http: Http, item: Listed, short_of_time: Callable[[], bool], tim
 def _pages(http: Http, kind: str, short_of_time: Callable[[], bool], start: Start,
            on_page: Callable[[PageRead], None] | None,
            timer: Callable[[], float]) -> Iterator[tuple[PageRead, list[Row]]]:
-    """`kind`'s pages from `start`, each read when the caller asks for it, once `short_of_time` says there is time
-    (OutOfTime otherwise), and reported to `on_page` before its rows are given. Only a fresh pass so far, whatever
-    `start` says: page 1, then pages 2 to the last page 1's pager names."""
-    read = _PageReader(http, kind, short_of_time, timer)
+    """`kind`'s pages whose rows are given, in the order `start` sets (`_reads`), each read when the caller asks for
+    it, once `short_of_time` says there is time (OutOfTime otherwise). Every page read is reported to `on_page` before
+    its rows are given; a page read while stepping back is reported, and its rows are not given."""
     report = on_page or _unreported
-    first, rows = read(1)
-    report(first)
-    yield first, rows
-    for page in range(2, (first.last_page or 1) + 1):
-        record, rows = read(page)
+    for record, rows, given in _reads(_PageReader(http, kind, short_of_time, timer), start):
         report(record)
-        yield record, rows
+        if given:
+            yield record, rows
+
+
+def _reads(read: "_PageReader", start: Start) -> Iterator[tuple[PageRead, list[Row], bool]]:
+    """Each page `read` reads, in the order `start` sets, with whether its rows are given:
+    1. each detour page, once, in the order given (a file that failed there is tried again: a detour, not a restart);
+    2. page 1, whose pager names the last page;
+    3. on a resume (`start.page` past 1, on a list of more than one page): the resume page again (one page of overlap,
+       for fresh links to the files an earlier run never reached), or the last page when the list now ends before it;
+       then, while the page read is past page 2 and its first name sorts after `start.furthest` (the list shifted: the
+       names earlier runs took moved on to later pages), the page before it. A page stepped back from gives no rows;
+    4. every page after the one whose rows were given last, to the last page; a page stepped back over is read again
+       when reached, so its links are fresh and one page at a time stays the rule."""
+    for page in start.detours:
+        record, rows = read(page)
+        yield record, rows, True
+    first, rows = read(1)
+    yield first, rows, True
+    last = first.last_page or 1
+    at = min(start.page, last)  # the page the reading goes on from: the resume page, 1 on a fresh pass
+    if at > 1:
+        record, rows = read(at)
+        while at > 2 and record.first > start.furthest:
+            yield record, rows, False
+            at -= 1
+            record, rows = read(at)
+        yield record, rows, True
+    for page in range(at + 1, last + 1):
+        record, rows = read(page)
+        yield record, rows, True
 
 
 def _unreported(read: PageRead) -> None:

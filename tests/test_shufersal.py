@@ -22,7 +22,7 @@ import pytest
 from collector.chains import CHAINS
 from collector.http import Blocked, Http, HttpError, build_opener
 from collector.names import parse_file_name
-from collector.sources import Listed, ListingUnreadable, OutOfTime, PageRead, Source
+from collector.sources import Listed, ListingUnreadable, OutOfTime, PageRead, Source, Start
 from collector.sources import shufersal
 from collector.sources.shufersal import CATEGORY, ShufersalSource
 
@@ -452,6 +452,144 @@ def test_a_listing_with_no_callback_reads_as_before():
     without = [item.name.raw for item in ShufersalSource().listing(http, ("PriceFull",))]
     with_one, _ = recorded(routes)
     assert without == [item.name.raw for item in with_one] == names(1) + names(2) + names(3)
+
+
+# ---- where each kind starts ----
+
+def listing_pages(portal):
+    """The `page=` numbers of the listing requests `portal` answered, in order."""
+    return [int(urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)["page"][0])
+            for url in portal.requested if url.startswith(LISTING)]
+
+
+def twenty_one_pages(cat=2, named=names):
+    """Category `cat`'s 21 pages, each of its own 20 names (`named(p)`), every pager naming page 21."""
+    return {listing_url(cat, p): served(page(cat, named(p), last=21)) for p in range(1, 22)}
+
+
+def promo_names(page_number):
+    return [name.replace("PriceFull", "PromoFull") for name in names(page_number)]
+
+
+def pages_of(*numbers):
+    """The names of `numbers`' pages, in that order."""
+    return [name for number in numbers for name in names(number)]
+
+
+def started(start, routes=None):
+    """A PriceFull listing from `start` over `routes` (the 21 pages by default), read to its end: the names it gives,
+    the pages it reports and the portal."""
+    http, portal = connect(routes or twenty_one_pages())
+    reads = []
+    listed = ShufersalSource(timer=ticks(41.2)).listing(http, ("PriceFull",), starts={"PriceFull": start},
+                                                        on_page=reads.append)
+    return [item.name.raw for item in listed], reads, portal
+
+
+def test_a_fresh_pass_reads_page_1_to_the_last():
+    given, reads, portal = started(Start())
+    assert listing_pages(portal) == list(range(1, 22))
+    assert [read.page for read in reads] == list(range(1, 22))
+    assert given == pages_of(*range(1, 22))
+
+
+def test_a_resumed_kind_reads_page_1_then_the_resume_page_again_and_on():
+    """Page 1 first, since only its pager is known to name the last page; then the furthest page an earlier run read,
+    again: one page of overlap, so a file whose download that run never reached gets a fresh link
+    (docs/shufersal-resume.md, section 2)."""
+    given, reads, portal = started(Start(page=12, furthest=names(12)[0]))
+    assert listing_pages(portal) == [1, *range(12, 22)]
+    assert [read.page for read in reads] == [1, *range(12, 22)]
+    assert given == names(1) + pages_of(*range(12, 22))
+
+
+def test_detours_come_first_once_each():
+    """A file that failed on an earlier page is tried again by reading its page once, before page 1: a detour, not a
+    restart there, so a file that fails every time cannot pull every later run back to its page."""
+    given, _, portal = started(Start(page=12, furthest=names(12)[0], detours=(5, 7)))
+    assert listing_pages(portal) == [5, 7, 1, *range(12, 22)]
+    assert given == names(5) + names(7) + names(1) + pages_of(*range(12, 22))
+
+
+def test_a_fresh_pass_with_a_detour_reads_it_before_page_1():
+    given, _, portal = started(Start(detours=(5,)))
+    assert listing_pages(portal) == [5, *range(1, 22)]
+    assert given == names(5) + pages_of(*range(1, 22))
+
+
+def test_a_shifted_list_steps_back_until_the_first_name_is_not_after_the_furthest():
+    """Files listed since the earlier run push the names it took onto later pages: the resume page now begins past the
+    furthest name taken, and the names between are on the pages before it. The run steps back a page at a time,
+    reporting each page it steps back over without giving its rows, and gives them when the reading reaches the page
+    again, with fresh links."""
+    given, reads, portal = started(Start(page=12, furthest=names(10)[5]))
+    assert listing_pages(portal) == [1, 12, 11, 10, *range(11, 22)]
+    assert given[:60] == names(1) + names(10) + names(11)
+    assert given == names(1) + pages_of(*range(10, 22))
+    assert [r.page for r in reads][:4] == [1, 12, 11, 10]
+    assert [r.page for r in reads] == [1, 12, 11, 10, *range(11, 22)]
+
+
+def test_no_step_back_when_the_first_name_is_the_furthest():
+    _, _, portal = started(Start(page=12, furthest=names(12)[0]))
+    assert 11 not in listing_pages(portal)
+
+
+def test_the_step_back_stops_at_page_2():
+    """Page 1 is read first anyway, so the step back never reads it again."""
+    given, _, portal = started(Start(page=4, furthest=names(1)[5]))
+    assert listing_pages(portal) == [1, 4, 3, 2, *range(3, 22)]
+    assert given == pages_of(*range(1, 22))
+
+
+def test_a_resume_page_past_the_last_starts_at_the_last():
+    """The list shrank since the earlier run: page 1's pager names 21, and page 22 would serve page 21 again
+    (docs/portals.md), so the run starts at page 21 and never asks for page 22."""
+    routes = twenty_one_pages() | {listing_url(2, 22): served(page(2, names(21), last=21))}
+    given, _, portal = started(Start(page=22, furthest=names(21)[3]), routes)
+    assert listing_pages(portal) == [1, 21]
+    assert given == names(1) + names(21)
+
+
+def test_a_resume_on_a_one_page_list_reads_page_1_only():
+    """A page past the last serves the last page again: on a list of one page, page 12 is page 1 again."""
+    one_page = served(page(2, names(1), last=None))
+    given, reads, portal = started(Start(page=12, furthest=names(12)[0]),
+                                   {listing_url(2, 1): one_page, listing_url(2, 12): one_page})
+    assert listing_pages(portal) == [1]
+    assert [read.page for read in reads] == [1]
+    assert given == names(1)
+
+
+def test_pages_read_out_of_number_order_are_not_compared():
+    """A page's first name is compared with the last of the page read just before it only when that page is numbered
+    one less: a detour, page 1 after it and a step back read pages out of number order, which says nothing about the
+    list's order."""
+    _, reads, _ = started(Start(page=12, furthest=names(10)[5], detours=(5,)))
+    assert [read.page for read in reads] == [5, 1, 12, 11, 10, *range(11, 22)]
+    assert all(read.in_order for read in reads)
+
+
+def test_each_kind_starts_at_its_own_point():
+    http, portal = connect(twenty_one_pages() | twenty_one_pages(cat=4, named=promo_names))
+    starts = {"PromoFull": Start(page=12, furthest=promo_names(12)[0])}
+    listed = list(ShufersalSource().listing(http, ("PriceFull", "PromoFull"), starts=starts))
+    assert portal.requested == [listing_url(2, p) for p in range(1, 22)] + [listing_url(4, p) for p in (1, *range(12, 22))]
+    assert [item.name.raw for item in listed] == pages_of(*range(1, 22)) + [
+        name for p in (1, *range(12, 22)) for name in promo_names(p)]
+
+
+@pytest.mark.parametrize("start, short_from, stopped, requested", [
+    pytest.param(Start(page=12, furthest=names(10)[5]), 3, 11, [1, 12], id="a step back"),
+    pytest.param(Start(page=12, furthest=names(12)[0], detours=(5,)), 1, 5, [], id="a detour"),
+])
+def test_the_time_is_asked_before_detours_and_steps_back(start, short_from, stopped, requested):
+    """Every page read asks the run's time check first, wherever the reading order puts it."""
+    http, portal = connect(twenty_one_pages())
+    listing = ShufersalSource().listing(http, ("PriceFull",), ShortFrom(short_from), starts={"PriceFull": start})
+    with pytest.raises(OutOfTime, match=rf"^before page {stopped} of the PriceFull listing$"):
+        list(listing)
+    assert listing_pages(portal) == requested
 
 
 # ---- links checked before anything is fetched ----
