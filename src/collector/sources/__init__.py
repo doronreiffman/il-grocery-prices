@@ -71,7 +71,7 @@ class PageRead:
     first: str  # the first row's file name as listed (any date, parsed or not)
     last: str  # the last row's
     last_page: int | None  # the last page this page's pager names; None when it names none
-    seconds: float  # the request's time, rounded to 0.1 s (Http's 0.5 s pause included)
+    seconds: float  # the request's time, rounded to 0.1 s (Http's 0.5 s pause included; none on the run's first)
     in_order: bool  # every name at or after the one before it, and the first at or after the last of the page before
 
 

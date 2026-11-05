@@ -195,7 +195,7 @@ def _read_page(http: Http, kind: str, page: int, short_of_time: Callable[[], boo
                timer: Callable[[], float]) -> tuple[list[Row], "_Grid", float]:
     """Page `page` of `kind`'s listing, read once `short_of_time` says there is time (OutOfTime otherwise): its rows,
     every one checked before any is returned; the page as read, for its pager; and the seconds its request took,
-    Http's pause before it included."""
+    Http's pause before it included (the run's first request has none)."""
     if short_of_time():
         raise OutOfTime(f"before page {page} of the {kind} listing")
     url = f"{BASE_URL}/FileObject/UpdateCategory?catID={CATEGORY[kind]}&storeId=0&page={page}"

@@ -20,10 +20,12 @@ the day's runs read join up from page 1 to the last page:
   one reaching furthest first), join up while each starts at or before the end of the reading so far. The kind is read
   in full when the reading reaches past the last name. The runs named are those with a block that moved the end on.
 - Joining needs every page of the kind recorded that day to be in order, blocked runs' pages included. When one is
-  not, only a run that read page 1 to the last page in one go counts.
+  not, joining is off: beside the runs without page records above, only a run that read page 1 to the last page in
+  one go counts.
 
-The kind is read by the runs that read it in full on their own, and by the runs whose blocks joined up; when there are
-none, it is not read in full.
+The kind is read by the runs without page records that read it in full on their own, and by the runs named in the
+joining (with joining off, each run that read page 1 to the last page in one go); when there are none, it is not read
+in full.
 
 Where a run starts reading a kind follows from the same records (docs/shufersal-resume.md, section 2):
 

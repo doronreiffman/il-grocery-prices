@@ -31,8 +31,8 @@ For each chain, from that day's manifests (every run's, main and retry alike) an
 
   A run vouches for the retry's names when it is among the runs whose pages join up into a full reading
   once the retry's own pages are left out, or when it read the whole list on its own. It vouches only
-  for names of a kind it read. A run that read only part of the list vouches for no name, and the retry
-  never vouches for its own.
+  for names of a kind it read. A run that read only part of the list, and whose part does not join with
+  others' into a full reading, vouches for no name. The retry never vouches for its own.
 
   Why these conditions. Shufersal's slow listing pages stop its PromoFull retry short most mornings, so
   without R36 a complete morning would alert. Nothing missing proves nothing on its own: a run that stops
@@ -52,8 +52,9 @@ For each chain, from that day's manifests (every run's, main and retry alike) an
   day, do not join up into a full reading is a failed run too, and the alert names what of the list no
   run read (collector.pages.unread). The reason is left out when a retry run was blocked (as R35), and a
   chain or day with no page records gets none. The check record holds, per chain, `read_in_full`: for
-  each full kind the chain collects, the ids of the runs that read it in full (on their own, or with
-  their pages joined up), or null.
+  each full kind the chain collects, the ids of the runs that read it in full, or null. Those are the
+  clean runs without page records, and the runs whose pages make up the joined full reading (a second
+  whole pass adds nothing and is not named), or, with joining off, every whole pass.
 - coverage, recorded and never alerted: the stores with a stored PriceFull that day, read from the
   file names, against the store ids in that day's latest stored Stores file, or when that day has
   none the latest stored in the seven days before. Store numbers are compared as numbers
@@ -174,7 +175,8 @@ def _seen_by_others(manifests: list[dict], retry: dict) -> bool:
     """Whether each kind `retry` covers was read in full that day and every name it listed was listed by
     another run that read the name's kind: one among the runs whose readings join up into a full
     reading with the retry's pages left out, or one that read the whole list on its own (ruling R37).
-    Neither a run that read only part of the list nor the retry itself vouches for a name."""
+    A run that read only part of the list, and whose part does not join with others' into a full reading,
+    vouches for no name, and the retry never vouches for its own."""
     if not all(read_in_full(manifests, kind) is not None for kind in retry["kinds"]):
         return False
     others = [manifest for manifest in manifests if manifest["run_id"] != retry["run_id"]]
