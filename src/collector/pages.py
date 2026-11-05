@@ -51,8 +51,10 @@ Bound = tuple[int, str]  # BEFORE, (1, a name) or AFTER: tuples order as the nam
 
 
 def read_in_full(manifests: list[dict], kind: str) -> list[str] | None:
-    """The run ids whose readings of `kind` join up from page 1 to the last page (ruling R37), in the
-    manifests' order; None when they do not."""
+    """The ids of the runs that read `kind` in full (ruling R37), in the manifests' order: the counted runs without page
+    records that ended with no error, and beside them the runs with a block that moved the joined reading's end on,
+    when the blocks join up past the last name, or, with joining off, every run that read page 1 to the last page in
+    one go. None when there are none: the kind is not read in full."""
     counted = _counted(manifests, kind)
     readers = {manifest["run_id"] for manifest in counted if not manifest.get("pages") and not manifest["error"]}
     if _out_of_order(manifests, kind) is None:

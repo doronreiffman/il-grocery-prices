@@ -57,9 +57,10 @@ For each chain, from that day's manifests (every run's, main and retry alike) an
   day, do not join up into a full reading is a failed run too, and the alert names what of the list no
   run read (collector.pages.unread). The reason is left out when a retry run was blocked (as R35), and a
   chain or day with no page records gets none. The check record holds, per chain, `read_in_full`: for
-  each full kind the chain collects, the ids of the runs that read it in full, or null. Those are the
-  clean runs without page records, and the runs whose pages make up the joined full reading (a second
-  whole pass adds nothing and is not named), or, with joining off, every whole pass.
+  each full kind the chain collects, the ids of the runs that read it in full, or null. Those are always
+  the runs without page records that ended with no error and were not blocked (one that listed nothing
+  included); beside them, the runs whose pages make up the joined full reading (a second whole pass adds
+  nothing and is not named), or, with joining off, every whole pass in the joined reading's place.
 - coverage, recorded and never alerted: the stores with a stored PriceFull that day, read from the
   file names, against the store ids in that day's latest stored Stores file, or when that day has
   none the latest stored in the seven days before. Store numbers are compared as numbers
