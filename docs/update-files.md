@@ -1,7 +1,7 @@
 # The update files, through the day (design)
 
 Grade: production. The collector is live, and every file it stores is locked for ten years.
-Status: draft of 2026-11-06, revised the same day after a builder check (Opus), for the owner's approval before any code. The owner decided on 2026-11-05 that the collector will also collect and keep, write-once, the chains' update files (`Price`, `Promo`) published through the day, for all five chains, Shufersal included. Every choice the owner has not made is marked "Call" and listed at the end. Built and deployed only on the owner's go.
+Status: draft of 2026-11-06, revised the same day after a builder check (Opus); the owner answered its ten questions the same day, each as the draft recommended (calls 1 to 4, 6, 7, 9 and 13 below), and the draft waits for the owner's approval before any code. The owner decided on 2026-11-05 that the collector will also collect and keep, write-once, the chains' update files (`Price`, `Promo`) published through the day, for all five chains, Shufersal included. Every choice the owner has not made is marked "Call" and listed at the end. Built and deployed only on the owner's go.
 
 ## Why
 
@@ -208,21 +208,21 @@ Test-first; test data never reads the clock (fixed `listing_read_at` values and 
 
 Field and section names (`polled`, `other_days`, `update_day`, `polls`, `passes`, `not_tried`, `by_hour`, the switch's variable), the exact alert sentences, where the pass-cutting lives (`collector.pages` is the natural place, as a function beside `read_in_full`), how the handler distinguishes a poll's immediate stopped email from the check's, the test layout and the replay's fixtures, within the rules above. The builder may place a rule in another module if the tests read the same.
 
-## Calls made in this draft (the owner can overturn any)
+## Calls (those marked "owner" the owner decided on 2026-11-06; the rest are the draft's, and the owner can overturn any)
 
-1. Polls take `Price` and `Promo` only; the full files Rami Levy republishes through the day are a question of their own.
-2. Shufersal's first pass starts at 10:30, after its last full-kind retry can have ended, and none runs before the morning: a poll's block can never stop the morning's runs; the batch before the morning is not collected.
-3. Three Shufersal passes a day per kind (10:30, 15:10, 20:10), two runs each, as the starting cadence; the first week decides.
-4. No time-sorted Shufersal read now; a probe only if the week shows replacement faster than the passes.
+1. (Owner.) Polls take `Price` and `Promo` only; the full files Rami Levy republishes through the day are a question of their own.
+2. (Owner.) Shufersal's first pass starts at 10:30, after its last full-kind retry can have ended, and none runs before the morning: a poll's block can never stop the morning's runs; the batch before the morning is not collected.
+3. (Owner.) Three Shufersal passes a day per kind (10:30, 15:10, 20:10), two runs each, as the starting cadence; the first week decides.
+4. (Owner.) No time-sorted Shufersal read now; a probe only if the week shows replacement faster than the passes.
 5. The four quick chains poll every two hours from 12:20 and once more at 23:20.
-6. No previous-day sweep in the first build; `other_days` and `not_tried` measure what it would recover.
-7. The update day is judged by the next morning's 11:48 check, for chains with `polled` set and while the poll switch is on (an environment variable the template sets from it), and written into that day's check record; two emails only: a name a poll tried and failed, still unstored and not the morning's, and a kind no poll read all day; `not_attempted` names are counted, not emailed.
+6. (Owner.) No previous-day sweep in the first build; `other_days` and `not_tried` measure what it would recover.
+7. (Owner.) The update day is judged by the next morning's 11:48 check, for chains with `polled` set and while the poll switch is on (an environment variable the template sets from it), and written into that day's check record; two emails only: a name a poll tried and failed, still unstored and not the morning's, and a kind no poll read all day; `not_attempted` names are counted, not emailed.
 8. The morning judgement reads `main` and `retry` manifests only; polls of the same day are left out of it.
-9. A poll run that latches a chain emails at once (the one collecting run that emails), under R26's marking.
+9. (Owner.) A poll run that latches a chain emails at once (the one collecting run that emails), under R26's marking.
 10. Passes are cut by completed readings and by a page out of order, for update kinds only, in a function of its own; `read_in_full` and full kinds' start rule do not change.
 11. `Chain.polled` names a chain's update kinds; a poll run asks only for those; `Chain.kinds` stays the morning's set.
 12. A `PollScheduleState` switch of the polls' own.
-13. Every hourly file is kept, Rami Levy's near-full-size afternoon `Price` files included, pending the week's measurement.
+13. (Owner.) Every hourly file is kept, Rami Levy's near-full-size afternoon `Price` files included, pending the week's measurement.
 
 ## Risks kept
 
