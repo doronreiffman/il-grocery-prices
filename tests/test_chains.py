@@ -11,8 +11,8 @@ from collector import chains
 from collector.chains import CHAINS, Chain, source_for
 from collector.http import Blocked, Http, HttpError
 from collector.names import KINDS, parse_file_name
-from collector.sources import (Listed, ListingUnreadable, PagedSource, PageRead, Source, Start, checked_name,
-                               never_short)
+from collector.sources import (Listed, ListingUnreadable, PagedSource, PageRead, PageTimeout, Source, Start,
+                               checked_name, never_short)
 from collector.sources.carrefour import CarrefourSource
 from collector.sources.ncr import NcrSource
 from collector.sources.shufersal import ShufersalSource
@@ -140,18 +140,20 @@ def test_source_interface():
 
 
 def test_paged_source_interface():
-    """A paged listing takes Source's parameters, then where each kind starts and the callback each page read is
-    reported to; neither is needed, so a caller that keeps no page records calls it as any other listing."""
+    """A paged listing takes Source's parameters, then where each kind starts, the callback each page read is reported
+    to and the one each timed-out try of a page is reported to; none is needed, so a caller that keeps no page records
+    calls it as any other listing."""
     assert Source in PagedSource.__mro__
     parameters = inspect.signature(PagedSource.listing).parameters
-    assert list(parameters) == ["self", "http", "kinds", "short_of_time", "starts", "on_page"]
+    assert list(parameters) == ["self", "http", "kinds", "short_of_time", "starts", "on_page", "on_timeout"]
     assert parameters["short_of_time"].default is never_short
     assert parameters["starts"].default is None
     assert parameters["on_page"].default is None
+    assert parameters["on_timeout"].default is None
     assert get_type_hints(PagedSource.listing) == {
         "http": Http, "kinds": tuple[str, ...], "short_of_time": Callable[[], bool],
         "starts": Mapping[str, Start] | None, "on_page": Callable[[PageRead], None] | None,
-        "return": Iterator[Listed]}
+        "on_timeout": Callable[[PageTimeout], None] | None, "return": Iterator[Listed]}
 
 
 def test_a_start_by_default_is_a_fresh_pass():
@@ -161,9 +163,14 @@ def test_a_start_by_default_is_a_fresh_pass():
 def test_page_records_and_start_points_are_frozen():
     read = PageRead("PriceFull", 1, 20, "PriceFull-a", "PriceFull-b", 21, 41.2, True)
     assert [f.name for f in fields(PageRead)] == ["kind", "page", "rows", "first", "last", "last_page", "seconds",
-                                                  "in_order"]
+                                                  "in_order", "tries"]
+    assert read.tries == 1  # a page read on its first request, as every page was before q24
     with pytest.raises(FrozenInstanceError):
         read.page = 2
+    timeout = PageTimeout("PriceFull", 7, 1, 60.5)
+    assert [f.name for f in fields(PageTimeout)] == ["kind", "page", "attempt", "seconds"]
+    with pytest.raises(FrozenInstanceError):
+        timeout.attempt = 2
     with pytest.raises(FrozenInstanceError):
         Start().page = 2
 

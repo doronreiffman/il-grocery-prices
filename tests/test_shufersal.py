@@ -7,9 +7,13 @@ is production's. Listing pages are the fixtures (docs/portals.md, "Shufersal"), 
 their rows renamed and their pager rewritten in the same markup.
 """
 import http.client
+import inspect
 import io
 import itertools
+import logging
 import re
+import time
+import types
 import urllib.parse
 import urllib.request
 import urllib.response
@@ -20,9 +24,9 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from collector.chains import CHAINS
-from collector.http import Blocked, Http, HttpError, build_opener
+from collector.http import Blocked, Http, HttpError, HttpTimeout, build_opener
 from collector.names import parse_file_name
-from collector.sources import Listed, ListingUnreadable, OutOfTime, PageRead, Source, Start
+from collector.sources import Listed, ListingUnreadable, OutOfTime, PageRead, PageTimeout, Source, Start
 from collector.sources import shufersal
 from collector.sources.shufersal import CATEGORY, ShufersalSource
 
@@ -863,3 +867,262 @@ def test_default_clock_is_the_utc_now(se, refreshes):
         with pytest.raises(Blocked):
             source.download(http, Listed(parse_file_name(NAME), link))
     assert len(portal.requested) == (3 if refreshes else 1)
+
+
+# ---- a listing page that times out is asked again (q24) ----
+
+SERVER_ERROR = b"<html><body><h1>500 - Internal server error.</h1></body></html>"
+WARNINGS = "collector.sources.shufersal"  # the logger each failed try is logged on
+
+
+def timed_out(req):
+    """A request for a listing page whose answer passes the socket wait, as the ssl module raises it."""
+    raise TimeoutError("The read operation timed out")
+
+
+def readings(*values):
+    """The adapter's timer in a test: `values`, one a call, in turn; a reading past the last fails the test."""
+    left = list(values)
+
+    def read():
+        assert left, "the timer was read more often than the test expects"
+        return left.pop(0)
+    return read
+
+
+def tried(routes, timer, kinds=("PriceFull",), start=None, report_timeouts=True):
+    """A listing over `routes` read to its end, its pauses recorded (`sleep=sleeps.append`): the names it gives, the
+    pages (`on_page`) and the timed-out tries (`on_timeout`, unless `report_timeouts` is False) it reports, the pauses
+    and the portal."""
+    http, portal = connect(routes)
+    reads, timeouts, sleeps = [], [], []
+    source = ShufersalSource(timer=timer, sleep=sleeps.append)
+    callbacks = {"on_page": reads.append} | ({"on_timeout": timeouts.append} if report_timeouts else {})
+    listing = source.listing(http, kinds, starts=None if start is None else {kinds[0]: start}, **callbacks)
+    given = [item.name.raw for item in listing]
+    return types.SimpleNamespace(given=given, reads=reads, timeouts=timeouts, sleeps=sleeps, portal=portal)
+
+
+def warnings_logged(caplog):
+    return [(record.getMessage(), record.levelno) for record in caplog.records if record.name == WARNINGS]
+
+
+def test_a_timed_out_page_is_asked_again_and_its_rows_given():
+    """The page's record holds the successful request's seconds alone (70.5 to 112.0), not the failed try's or the
+    pause's, and says it took two requests."""
+    run = tried({listing_url(2, 1): [timed_out, served(page(2, names(1), last=None))]},
+                readings(0.0, 60.5, 70.5, 112.0))
+    assert run.given == names(1)
+    assert run.reads == [PageRead("PriceFull", 1, 20, names(1)[0], names(1)[-1], None, 41.5, True, tries=2)]
+    assert run.timeouts == [PageTimeout("PriceFull", 1, 1, 60.5)]
+    assert run.sleeps == [10.0]
+    assert run.portal.requested == [listing_url(2, 1)] * 2
+
+
+def test_page_1_read_on_a_later_try_still_sets_the_last_page():
+    """Page 1's pager names the last page; when page 1 times out the listing does not know it yet, and the try that is
+    served still sets how far the listing reads."""
+    routes = {listing_url(2, 1): [timed_out, served(page(2, names(1), last=3))]}
+    routes |= {listing_url(2, p): served(page(2, names(p), last=3)) for p in (2, 3)}
+    run = tried(routes, ticks(41.2))
+    assert listing_pages(run.portal) == [1, 1, 2, 3]
+    assert run.given == names(1) + names(2) + names(3)
+    assert [read.tries for read in run.reads] == [2, 1, 1]
+
+
+def test_a_page_read_on_its_third_try():
+    run = tried({listing_url(2, 1): [timed_out, timed_out, served(page(2, names(1), last=None))]},
+                readings(0.0, 60.5, 70.5, 131.0, 141.0, 175.2))
+    assert [(read.tries, read.seconds) for read in run.reads] == [(3, 34.2)]
+    assert run.timeouts == [PageTimeout("PriceFull", 1, 1, 60.5), PageTimeout("PriceFull", 1, 2, 60.5)]
+    assert run.sleeps == [10.0, 10.0]
+    assert run.portal.requested == [listing_url(2, 1)] * 3
+
+
+def test_a_page_read_on_its_first_try_records_one_try():
+    run = tried({listing_url(2, 1): served(page(2, names(1), last=None))}, readings(0.0, 41.2))
+    assert [(read.tries, read.seconds) for read in run.reads] == [(1, 41.2)]
+    assert (run.timeouts, run.sleeps) == ([], [])
+
+
+def test_three_timeouts_raise_an_http_error_naming_the_page_and_the_tries():
+    """A slow spell: every try of page 2 times out. Three requests 10 s apart, no fourth and no pause after the last,
+    no record for page 2, and an HttpError that names the page and the tries, chained from the last try's timeout."""
+    routes = {listing_url(2, 1): served(page(2, names(1), last=3)), listing_url(2, 2): [timed_out],
+              listing_url(2, 3): served(page(2, names(3), last=3))}
+    http, portal = connect(routes)
+    reads, timeouts, sleeps = [], [], []
+    listing = ShufersalSource(timer=ticks(60.5), sleep=sleeps.append).listing(
+        http, ("PriceFull",), on_page=reads.append, on_timeout=timeouts.append)
+    assert [item.name.raw for item in take(listing, 20)] == names(1)
+    with pytest.raises(HttpError) as caught:
+        next(listing)
+    assert str(caught.value) == f"PriceFull page 2 timed out on 3 tries: GET {LISTING} failed: The read operation timed out"
+    assert isinstance(caught.value.__cause__, HttpTimeout)
+    assert [read.page for read in reads] == [1]
+    assert [(timeout.page, timeout.attempt) for timeout in timeouts] == [(2, 1), (2, 2), (2, 3)]
+    assert sleeps == [10.0, 10.0]
+    assert listing_pages(portal) == [1, 2, 2, 2]
+
+
+def test_the_pause_comes_before_the_time_check_and_the_check_before_each_try():
+    """Every request still starts with the run's time check passed, the pause included: sleep, then check, then send."""
+    events = []
+
+    def answered(route):
+        def respond(req):
+            events.append("request")
+            return route(req)
+        return respond
+
+    def check():
+        events.append("check")
+        return False
+
+    http, _ = connect({listing_url(5, 1): [answered(timed_out), answered(timed_out), answered(served(fixture(5)))]})
+    source = ShufersalSource(timer=ticks(1.0), sleep=lambda seconds: events.append(("sleep", seconds)))
+    assert len(list(source.listing(http, ("Stores",), check))) == 1
+    assert events == ["check", "request", ("sleep", 10.0), "check", "request", ("sleep", 10.0), "check", "request"]
+
+
+@pytest.mark.parametrize("n", [2, 3])
+def test_out_of_time_after_the_pause_sends_no_further_try(n):
+    """The pause can leave the run short of time: the check after it stops the listing before try `n`, with OutOfTime
+    naming the page and the try, and the try that timed out before it is still reported."""
+    left, pauses, timeouts = [95.0], [], []
+
+    def sleep(seconds):
+        pauses.append(seconds)
+        if len(pauses) == n - 1:
+            left[0] = 85.0
+
+    http, portal = connect({listing_url(2, 1): [timed_out]})
+    listing = ShufersalSource(timer=ticks(60.5), sleep=sleep).listing(http, ("PriceFull",), lambda: left[0] < 90.0,
+                                                                      on_timeout=timeouts.append)
+    with pytest.raises(OutOfTime) as caught:
+        list(listing)
+    assert str(caught.value) == f"before try {n} of page 1 of the PriceFull listing"
+    assert len(portal.requested) == n - 1
+    assert len(timeouts) == n - 1
+    assert pauses == [10.0] * (n - 1)
+
+
+def dropped(req):
+    raise ConnectionResetError(54, "Connection reset by peer")
+
+
+@pytest.mark.parametrize("answer", [
+    pytest.param(reply(500, SERVER_ERROR), id="a server error"),
+    pytest.param(dropped, id="a dropped connection"),
+    pytest.param(reply(body=fixture(2).encode("utf-8"), headers=[("Content-Length", "100000")]), id="a cut-short body"),
+])
+def test_other_failures_are_not_asked_again(answer):
+    """Timeouts only (design, Call 1): any other failure says something new about the portal and shows plainly."""
+    http, portal = connect({listing_url(2, 1): answer})
+    sleeps, timeouts = [], []
+    listing = ShufersalSource(timer=ticks(1.0), sleep=sleeps.append).listing(http, ("PriceFull",),
+                                                                             on_timeout=timeouts.append)
+    with pytest.raises(HttpError) as caught:
+        list(listing)
+    assert not isinstance(caught.value, HttpTimeout)
+    assert portal.requested == [listing_url(2, 1)]
+    assert (sleeps, timeouts) == ([], [])
+
+
+def test_a_server_error_on_the_second_try_is_raised_at_once():
+    http, portal = connect({listing_url(2, 1): [timed_out, reply(500, SERVER_ERROR)]})
+    sleeps, timeouts = [], []
+    listing = ShufersalSource(timer=ticks(1.0), sleep=sleeps.append).listing(http, ("PriceFull",),
+                                                                             on_timeout=timeouts.append)
+    with pytest.raises(HttpError, match="HTTP 500 from"):
+        list(listing)
+    assert portal.requested == [listing_url(2, 1)] * 2
+    assert len(timeouts) == 1
+    assert sleeps == [10.0]
+
+
+def test_a_block_on_the_second_try_stops_the_listing():
+    """A block is never asked again, whatever try it comes on."""
+    http, portal = connect({listing_url(2, 1): [timed_out, refused(403)]})
+    with pytest.raises(Blocked) as caught:
+        list(ShufersalSource(timer=ticks(1.0), sleep=lambda seconds: None).listing(http, ("PriceFull",)))
+    assert (caught.value.status, caught.value.url) == (403, listing_url(2, 1))
+    assert portal.requested == [listing_url(2, 1)] * 2
+
+
+def test_a_page_served_unreadable_after_a_timeout_is_not_asked_again():
+    http, portal = connect({listing_url(2, 1): [timed_out, served(page(2, names=[]))]})
+    with pytest.raises(ListingUnreadable, match="PriceFull page 1: no rows"):
+        list(ShufersalSource(timer=ticks(1.0), sleep=lambda seconds: None).listing(http, ("PriceFull",)))
+    assert portal.requested == [listing_url(2, 1)] * 2
+
+
+@pytest.mark.parametrize("kind, start, slow, requested", [
+    pytest.param("Stores", None, 1, [1, 1], id="a Stores page"),
+    pytest.param("PriceFull", Start(page=12, furthest=names(12)[0], detours=(5,)), 5, [5, 5, 1, *range(12, 22)],
+                 id="a detour"),
+    pytest.param("PriceFull", Start(page=12, furthest=names(10)[5]), 11, [1, 12, 11, 11, 10, *range(11, 22)],
+                 id="a step back"),
+    pytest.param("PriceFull", Start(page=12, furthest=names(12)[0]), 12, [1, 12, 12, *range(13, 22)],
+                 id="the resume page"),
+])
+def test_every_page_read_gets_the_tries(kind, start, slow, requested):
+    """Every listing page request goes through the one page read, wherever the reading order puts it: page `slow`
+    times out on its first request only."""
+    cat = CATEGORY[kind]
+    routes = {listing_url(5, 1): served(fixture(5))} if kind == "Stores" else twenty_one_pages()
+    routes[listing_url(cat, slow)] = [timed_out, routes[listing_url(cat, slow)]]
+    run = tried(routes, ticks(41.2), kinds=(kind,), start=start)
+    assert listing_pages(run.portal) == requested
+    assert next(read for read in run.reads if read.page == slow).tries == 2
+    assert len(run.timeouts) == 1
+
+
+def test_a_refresh_page_that_times_out_is_asked_again(caplog):
+    """An expired link's refresh reads its pages through the same page read: the same tries and pause, reported to no
+    one (a refresh reports no page) and logged all the same."""
+    routes = {OLD_LINK: refused(), FRESH_LINK: gz(),
+              listing_url(2, 1): [timed_out, served(fixture(2).replace(OLD_SIGNATURE, FRESH_SIGNATURE))]}
+    http, portal = connect(routes)
+    sleeps = []
+    source = ShufersalSource(now=lambda: SE, timer=readings(0.0, 60.5, 70.5, 100.0), sleep=sleeps.append)
+    assert source.download(http, item_030()) == GZ
+    assert portal.requested == [OLD_LINK, listing_url(2, 1), listing_url(2, 1), FRESH_LINK]
+    assert sleeps == [10.0]
+    assert ("shufersal PriceFull page 1: try 1 of 3 timed out after 60.5 s; again in 10 s",
+            logging.WARNING) in warnings_logged(caplog)
+
+
+def test_a_refresh_page_that_times_out_on_every_try_fails_the_file():
+    http, portal = connect({OLD_LINK: refused(), listing_url(2, 1): [timed_out]})
+    with pytest.raises(HttpError) as caught:
+        ShufersalSource(now=lambda: SE, timer=ticks(60.5), sleep=lambda seconds: None).download(http, item_030())
+    assert str(caught.value) == f"PriceFull page 1 timed out on 3 tries: GET {LISTING} failed: The read operation timed out"
+    assert portal.requested == [OLD_LINK, *[listing_url(2, 1)] * 3]
+
+
+def test_each_failed_try_is_logged_at_warning(caplog):
+    tried({listing_url(2, 1): [timed_out, timed_out, served(page(2, names(1), last=None))]},
+          readings(0.0, 60.5, 70.5, 131.0, 141.0, 175.2))
+    assert warnings_logged(caplog) == [
+        ("shufersal PriceFull page 1: try 1 of 3 timed out after 60.5 s; again in 10 s", logging.WARNING),
+        ("shufersal PriceFull page 1: try 2 of 3 timed out after 60.5 s; again in 10 s", logging.WARNING),
+    ]
+    caplog.clear()
+    with pytest.raises(HttpError):
+        tried({listing_url(2, 1): [timed_out]}, ticks(60.5))
+    assert warnings_logged(caplog)[-1] == ("shufersal PriceFull page 1: try 3 of 3 timed out after 60.5 s",
+                                           logging.WARNING)
+
+
+def test_a_listing_without_on_timeout_still_asks_again():
+    def routes():
+        return {listing_url(2, 1): [timed_out, served(page(2, names(1), last=None))]}
+    without = tried(routes(), ticks(41.2), report_timeouts=False)
+    assert without.given == tried(routes(), ticks(41.2)).given == names(1)
+    assert without.portal.requested == [listing_url(2, 1)] * 2
+
+
+def test_three_tries_ten_seconds_apart_and_time_sleep_by_default():
+    assert (shufersal.PAGE_TRIES, shufersal.RETRY_PAUSE) == (3, 10.0)
+    assert inspect.signature(ShufersalSource).parameters["sleep"].default is time.sleep

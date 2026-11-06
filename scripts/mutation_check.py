@@ -37,6 +37,12 @@ SOURCES = ("src/collector/sources/__init__.py", ["tests/test_chains.py"])
 SHUFERSAL = ("src/collector/sources/shufersal.py", ["tests/test_shufersal.py"])
 # The start rules the 2026-11-05 replay rests on: the morning replayed (tests/test_replay.py) must catch them too.
 SHUFERSAL_REPLAYED = ("src/collector/sources/shufersal.py", ["tests/test_shufersal.py", "tests/test_replay.py"])
+# Two q24 breaks that pause where the rule has no pause. The older tests in test_shufersal.py build their sources with
+# the default sleep, time.sleep, so under these breaks they would wait for real (10 s a page) before -x reached the q24
+# tests near the end of the file: each names the one test that must catch it by itself.
+_S = "tests/test_shufersal.py::"
+PAUSE_ON_FIRST_TRY = ("src/collector/sources/shufersal.py", [_S + "test_a_page_read_on_its_first_try_records_one_try"])
+BLOCK_TRIED_AGAIN = ("src/collector/sources/shufersal.py", [_S + "test_a_block_on_the_second_try_stops_the_listing"])
 NAME_CHECK = ("src/collector/sources/__init__.py", ["tests/test_chains.py"])
 NCR = ("src/collector/sources/ncr.py", ["tests/test_ncr.py"])
 NEVER_SHORT = ("src/collector/sources/__init__.py", ["tests/test_chains.py"])
@@ -247,10 +253,10 @@ MUTATIONS = {
     "last-page link naming two pages read as its first": (SHUFERSAL, "    if len(pages) != 1 or not pages[0].isdecimal():", "    if not pages or not pages[0].isdecimal():"),
     "last page that is no number escapes as ValueError": (SHUFERSAL, " or not pages[0].isdecimal():", ":"),
     "zero rows read as empty day": (SHUFERSAL, "    if not grid.rows:", "    if False:"),
-    "all pages read before the first row": (SHUFERSAL, "in _reads(_PageReader(http, kind, short_of_time, timer), start):",
-                                            "in list(_reads(_PageReader(http, kind, short_of_time, timer), start)):"),
-    "a page's rows given before all are checked": (SHUFERSAL, "        rows.append((name, _checked_link(cells[0].href, name, where)))\n    return rows, grid, seconds\n",
-                                                   "        rows.append((name, _checked_link(cells[0].href, name, where)))\n        return rows, grid, seconds\n"),
+    "all pages read before the first row": (SHUFERSAL, "    for record, rows, given in _reads(reader, start):",
+                                            "    for record, rows, given in list(_reads(reader, start)):"),
+    "a page's rows given before all are checked": (SHUFERSAL, "        rows.append((name, _checked_link(cells[0].href, name, where)))\n    return rows, grid, seconds, tries\n",
+                                                   "        rows.append((name, _checked_link(cells[0].href, name, where)))\n        return rows, grid, seconds, tries\n"),
     "listing URL without storeId=0": (SHUFERSAL, "&storeId=0&page={page}", "&page={page}"),
     "categories swapped": (SHUFERSAL, '"Promo": 3, "PromoFull": 4', '"Promo": 4, "PromoFull": 3'),
     # shufersal: rows and links (ruling R15)
@@ -308,6 +314,26 @@ MUTATIONS = {
     "refreshed link not used": (SHUFERSAL, "        return http.get(link).body", "        return http.get(item.url).body"),
     "refreshed more than once": (SHUFERSAL, "        return http.get(link).body", "        return self.download(http, Listed(item.name, link), short_of_time)"),
     "file gone after expiry read as unreadable": (SHUFERSAL, '    raise HttpError(f"{item.name.raw}: its link expired', '    raise ListingUnreadable(f"{item.name.raw}: its link expired'),
+    # shufersal: a listing page that times out is asked again (q24)
+    "a timed-out page not asked again (q24 tries)": (SHUFERSAL_REPLAYED, "PAGE_TRIES = 3  #", "PAGE_TRIES = 1  #"),
+    "a fourth try (q24 tries)": (SHUFERSAL, "PAGE_TRIES = 3  #", "PAGE_TRIES = 4  #"),
+    "no pause (q24 tries)": (SHUFERSAL, "            sleep(RETRY_PAUSE)\n", "            pass\n"),
+    "a pause before the first try (q24 tries)": (PAUSE_ON_FIRST_TRY, "        if attempt > 1:\n            sleep(RETRY_PAUSE)\n", "        sleep(RETRY_PAUSE)\n"),
+    "a pause of another length (q24 tries)": (SHUFERSAL, "RETRY_PAUSE = 10.0", "RETRY_PAUSE = 1.0"),
+    "the pause after the time check (q24 tries)": (SHUFERSAL, "        if attempt > 1:\n            sleep(RETRY_PAUSE)\n        if short_of_time():\n            raise OutOfTime(f\"before page {page} of the {kind} listing\" if attempt == 1\n                            else f\"before try {attempt} of page {page} of the {kind} listing\")\n",
+                                                   "        if short_of_time():\n            raise OutOfTime(f\"before page {page} of the {kind} listing\" if attempt == 1\n                            else f\"before try {attempt} of page {page} of the {kind} listing\")\n        if attempt > 1:\n            sleep(RETRY_PAUSE)\n"),
+    "the time not checked before a later try (q24 tries)": (SHUFERSAL, '        if short_of_time():\n            raise OutOfTime(f"before page {page}', '        if attempt == 1 and short_of_time():\n            raise OutOfTime(f"before page {page}'),
+    "any HttpError asked again (q24 tries)": (SHUFERSAL, "        except HttpTimeout as timeout:", "        except HttpError as timeout:"),
+    "a block asked again (q24 tries)": (BLOCK_TRIED_AGAIN, "        except HttpTimeout as timeout:", "        except (HttpTimeout, Blocked) as timeout:"),
+    "tries not recorded (q24 tries)": (SHUFERSAL, "_in_order(names, self.before, page), tries)", "_in_order(names, self.before, page))"),
+    "the failed tries' seconds kept (q24 tries)": (SHUFERSAL, "    last = None\n    for attempt in range(1, PAGE_TRIES + 1):\n        if attempt > 1:\n            sleep(RETRY_PAUSE)\n        if short_of_time():\n            raise OutOfTime(f\"before page {page} of the {kind} listing\" if attempt == 1\n                            else f\"before try {attempt} of page {page} of the {kind} listing\")\n        started = timer()\n",
+                                                   "    last = None\n    started = timer()\n    for attempt in range(1, PAGE_TRIES + 1):\n        if attempt > 1:\n            sleep(RETRY_PAUSE)\n        if short_of_time():\n            raise OutOfTime(f\"before page {page} of the {kind} listing\" if attempt == 1\n                            else f\"before try {attempt} of page {page} of the {kind} listing\")\n"),
+    "the error not naming the page and the tries (q24 tries)": (SHUFERSAL, '    raise HttpError(f"{kind} page {page} timed out on {PAGE_TRIES} tries: {last}") from last', "    raise last"),
+    "a timed-out try not reported (q24 tries)": (SHUFERSAL, "            on_timeout(PageTimeout(kind, page, attempt, waited))", "            pass"),
+    "a failed try not logged at WARNING (q24 tries)": (SHUFERSAL, "            log.warning(", "            log.info("),
+    "a time stop before a later try not naming it (q24 tries)": (SHUFERSAL, '                            else f"before try {attempt} of page {page} of the {kind} listing")',
+                                                                 '                            else f"before page {page} of the {kind} listing")'),
+    "the refresh not given the pause (q24 tries)": (SHUFERSAL, "link = _fresh_link(http, item, short_of_time, self._timer, self._sleep)", "link = _fresh_link(http, item, short_of_time, self._timer, lambda seconds: None)"),
     # names a link is built from (ruling R19)
     "slash in a linked name accepted": (NAME_CHECK, 'UNSAFE = ("/", ', "UNSAFE = ("),
     "backslash in a linked name accepted": (NAME_CHECK, r'"\\", "..", ', '"..", '),
@@ -527,9 +553,9 @@ MUTATIONS = {
     "failed file not recorded": (RUN, "        self.result.failed[name] = problem\n", ""),
     "unreadable listing from a download escapes (R23)": (RUN, "            except ListingUnreadable as exc:  # Shufersal's", "            except ZeroDivisionError as exc:  # Shufersal's"),
     # the run's time check, lent to the adapters for the requests they make on their own
-    "Shufersal page read short of time": (SHUFERSAL, '    if short_of_time():\n        raise OutOfTime(f"before page {page}', '    if False:\n        raise OutOfTime(f"before page {page}'),
-    "Shufersal listing not given the time check": (SHUFERSAL, "for _, rows in _pages(http, kind, short_of_time, start, on_page, self._timer):", "for _, rows in _pages(http, kind, never_short, start, on_page, self._timer):"),
-    "Shufersal refresh not given the time check": (SHUFERSAL, "link = _fresh_link(http, item, short_of_time, self._timer)", "link = _fresh_link(http, item, never_short, self._timer)"),
+    "Shufersal page read short of time": (SHUFERSAL, '        if short_of_time():\n            raise OutOfTime(f"before page {page}', '        if False:\n            raise OutOfTime(f"before page {page}'),
+    "Shufersal listing not given the time check": (SHUFERSAL, "for _, rows in _pages(http, kind, short_of_time, start, on_page, on_timeout, self._timer, self._sleep):", "for _, rows in _pages(http, kind, never_short, start, on_page, on_timeout, self._timer, self._sleep):"),
+    "Shufersal refresh not given the time check": (SHUFERSAL, "link = _fresh_link(http, item, short_of_time, self._timer, self._sleep)", "link = _fresh_link(http, item, never_short, self._timer, self._sleep)"),
     "Shufersal fresh link fetched short of time": (SHUFERSAL, "        if short_of_time():\n            raise OutOfTime(f\"{item.name.raw}: its link expired; stopped before the fresh", "        if False:\n            raise OutOfTime(f\"{item.name.raw}: its link expired; stopped before the fresh"),
     "Shufersal refresh stop not naming the file": (SHUFERSAL, '            raise OutOfTime(f"{item.name.raw}: its link expired; stopped {stop}") from None', "            raise"),
     "NCR listing answer asked for short of time": (NCR, "        if short_of_time():\n            raise OutOfTime(f\"before the NCR listing's answer", "        if False:\n            raise OutOfTime(f\"before the NCR listing's answer"),
