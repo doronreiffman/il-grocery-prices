@@ -254,3 +254,6 @@ Tests only: no product code changes in this task.
 ## Deviations
 
 (Append here when reality forces a change from this plan: what changed, why, and when.)
+
+- 2026-11-06, Task 2: the mutations "a pause before the first try (q24 tries)" and "a block asked again (q24 tries)" each name one test (`test_a_page_read_on_its_first_try_records_one_try` and `test_a_block_on_the_second_try_stops_the_listing`) instead of all of `tests/test_shufersal.py`. Under those breaks the older tests, which build `ShufersalSource` with the default sleep (the real `time.sleep`), would wait 10 s for real at every pause the break adds, and the mutation run would stall before it reached the q24 tests near the end of the file. Each break is still caught by its one test (the comment at `scripts/mutation_check.py` lines 40-45).
+- 2026-11-06, Task 3: `test_a_page_record_carries_its_tries` passed from the start, so it could not fail first: `run.py` writes each page record with `dataclasses.asdict`, so `tries` reached the manifest as soon as Task 2 added the field to `PageRead`. The test is kept to pin the value (2 on a page read on its second try, 1 by default), and Task 2's mutation "tries not recorded (q24 tries)" covers the field.

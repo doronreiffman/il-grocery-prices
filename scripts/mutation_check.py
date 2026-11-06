@@ -530,6 +530,17 @@ MUTATIONS = {
     "a failed read of the earlier manifests falls back to a fresh pass (q21 run)": (RUN,
         "            paged = self._paged()  # first: a failed read of the earlier manifests leaves no listing time\n",
         "            try:\n                paged = self._paged()\n            except Exception:\n                paged = {}\n"),
+    # run: a listing page that timed out, its tries kept and logged (q24)
+    "the log line without the try (q24 run)": (RUN, 'f" (try {read.tries})" if read.tries > 1 else ""', '""'),
+    "the try shown on a page read on its first try (q24 run)": (RUN, 'if read.tries > 1 else ""', 'if read.tries >= 1 else ""'),
+    "a failed try not listed (q24 run)": (RUN, "        self.result.timeouts.append(dataclasses.asdict(timeout))\n", "        pass\n"),
+    "the failed tries not handed to the listing (q24 run)": (RUN, ', "on_timeout": self._timeout}', "}"),
+    "the failed tries dropped when the run stops on time (q24 run)": (RUN,
+        "        except OutOfTime:  # an adapter's own request, short of time\n            self._stop(OUT_OF_TIME)\n",
+        "        except OutOfTime:  # an adapter's own request, short of time\n            self.result.timeouts.clear()\n"
+        "            self._stop(OUT_OF_TIME)\n"),
+    "the failed tries left out of the manifest (q24 run)": (RUN, '| {"day": result.day.isoformat(), "code_sha": code_sha}',
+                                                            '| {"day": result.day.isoformat(), "code_sha": code_sha, "timeouts": []}'),
     # run: blocks and the latch
     "stopped chain collected": (RUN, '        if store.read_state(chain.slug).get("stopped"):', "        if False:"),
     "any state read as stopped": (RUN, 'if store.read_state(chain.slug).get("stopped"):', "if store.read_state(chain.slug):"),
