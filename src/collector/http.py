@@ -9,9 +9,11 @@
   body is read for those words: they can turn up by chance in a gzip or in data, and NCR's
   Content-Security-Policy header names reCAPTCHA on every answer.
 - Anything else that goes wrong raises HttpError: a timeout or dropped connection, any other status
-  outside 2xx, a body shorter than its Content-Length, a redirect to another scheme, host or port.
-- Http never retries; the run loop decides (at most one retry per file). It never works around a block
-  and never goes through a proxy, even one the environment names.
+  outside 2xx, a body shorter than its Content-Length, a redirect to another scheme, host or port. A
+  timeout raises HttpTimeout, an HttpError.
+- Http never retries; the run loop decides (at most one retry per file), and the Shufersal adapter asks
+  a timed-out listing page again. It never works around a block and never goes through a proxy, even
+  one the environment names.
 """
 import http.client
 import http.cookiejar
@@ -46,6 +48,12 @@ class Blocked(Exception):
 class HttpError(Exception):
     """A request failed in a way that is not a block: timeout, dropped connection, a status outside 2xx
     other than 401, 403 and 429, a cut-short body, or a redirect off the host. Worth one retry."""
+
+
+class HttpTimeout(HttpError):
+    """A request whose socket wait passed: connecting, the TLS handshake, waiting for the answer or reading
+    it. An HttpError, so every `except HttpError` still catches it. Http never retries it; the Shufersal
+    adapter asks a timed-out listing page again (docs/shufersal-page-retry.md)."""
 
 
 @dataclass
@@ -121,8 +129,18 @@ class Http:
             except urllib.error.HTTPError as err:  # a status outside 2xx: judged below like any answer
                 answer = Response(err.geturl(), err.code, _read_quietly(err), _headers(err.headers))
         except (urllib.error.URLError, OSError, http.client.HTTPException) as exc:  # timeouts, resets, DNS, TLS, cut short
-            raise HttpError(f"{req.get_method()} {_without_query(req.full_url)} failed: {exc}") from exc
+            error_type = HttpTimeout if _timed_out(exc) else HttpError
+            raise error_type(f"{req.get_method()} {_without_query(req.full_url)} failed: {exc}") from exc
         return _judge(answer)
+
+
+def _timed_out(exc: BaseException) -> bool:
+    """Whether a request failed because its socket wait passed. A socket or TLS read that passed it,
+    waiting for the answer or reading it, arrives as a bare TimeoutError (urllib does not wrap those);
+    connecting or the TLS handshake, as a URLError whose reason is a TimeoutError."""
+    if isinstance(exc, urllib.error.URLError):
+        return isinstance(exc.reason, TimeoutError)
+    return isinstance(exc, TimeoutError)
 
 
 def _judge(answer: Response) -> Response:

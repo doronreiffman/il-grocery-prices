@@ -193,6 +193,13 @@ MUTATIONS = {
     "signed query in the block message": (HTTP, 'super().__init__(f"{reason}: {_without_query(url)}")', 'super().__init__(f"{reason}: {url}")'),
     "first URL reported, not where redirects landed": (HTTP, "answer = Response(resp.geturl(), resp.status", "answer = Response(req.full_url, resp.status"),
     "form not url-encoded": (HTTP, "        data = urllib.parse.urlencode(form).encode()", "        data = str(form).encode()"),
+    # http: a timeout told apart (q24)
+    "a timeout raised as a plain HttpError (q24 timeout)": (HTTP, "error_type = HttpTimeout if _timed_out(exc) else HttpError", "error_type = HttpError"),
+    "every network failure raised as a timeout (q24 timeout)": (HTTP, "error_type = HttpTimeout if _timed_out(exc) else HttpError", "error_type = HttpTimeout"),
+    "a URLError's timeout not read as one (q24 timeout)": (HTTP, "        return isinstance(exc.reason, TimeoutError)", "        return False"),
+    "a bare timeout not read as one (q24 timeout)": (HTTP, "    return isinstance(exc, TimeoutError)", "    return False"),
+    "a timeout not an HttpError (q24 timeout)": (HTTP, "class HttpTimeout(HttpError):", "class HttpTimeout(Exception):"),
+    "a timeout not chained from its cause (q24 timeout)": (HTTP, 'failed: {exc}") from exc', 'failed: {exc}")'),
     # chains
     "a sixth chain added": (CHAINS, '    Chain("yochananof", "Yochananof", "ncr", NCR_URL, username="yohananof"),\n', '    Chain("yochananof", "Yochananof", "ncr", NCR_URL, username="yohananof"),\n    Chain("extra", "Extra", "carrefour", "https://example.org"),\n'),
     "a chain dropped": (CHAINS, '    Chain("carrefour", "Carrefour", "carrefour", "https://prices.carrefour.co.il"),\n', ""),
