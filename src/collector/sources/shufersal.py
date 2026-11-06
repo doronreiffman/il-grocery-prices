@@ -242,19 +242,17 @@ def _page_body(http: Http, url: str, kind: str, page: int, short_of_time: Callab
                timer: Callable[[], float], sleep: Callable[[float], None],
                on_timeout: Callable[[PageTimeout], None]) -> tuple[bytes, float, int]:
     """The body of page `page` of `kind`'s listing, at `url`; the seconds the request that got it took; and the
-    requests it took. The first try asks `short_of_time`, then sends its request; a try after the first asks it, pauses
-    RETRY_PAUSE, asks it again, then sends, so a pause is never taken without time to spare. Each request reads `timer`
-    at its start and end only. Short of time: OutOfTime (naming the try when it is not the first), and nothing more is
-    paused or sent. A try whose request passes the socket wait (HttpTimeout) is reported to `on_timeout`, logged at
-    WARNING and followed by the next, up to PAGE_TRIES in all; after the last, an HttpError naming the page and the
-    tries, chained from its timeout. Any other failure, a block included, is raised at once, whatever the try."""
+    requests it took. Each try asks `short_of_time`, then sends its request. A try whose request passes the socket wait
+    (HttpTimeout) is reported to `on_timeout`; unless it was the last of PAGE_TRIES, `short_of_time` is asked before the
+    try is logged at WARNING, so the line ends "again in 10 s" only when another try follows; then RETRY_PAUSE, and the
+    next try asks again before its request. A pause is never taken without time to spare. Each request reads `timer` at
+    its start and end only. Short of time: OutOfTime (naming the try when it is not the first), and nothing more is
+    paused or sent. After the last try, no time check: an HttpError naming the page and the tries, chained from its
+    timeout. Any other failure, a block included, is raised at once, whatever the try."""
     last = None
     for attempt in range(1, PAGE_TRIES + 1):
-        stop = (f"before page {page} of the {kind} listing" if attempt == 1
-                else f"before try {attempt} of page {page} of the {kind} listing")
+        stop = _time_stop(kind, page, attempt)
         if attempt > 1:
-            if short_of_time():  # a timed-out try can leave too little time for the pause and the manifest
-                raise OutOfTime(stop)
             sleep(RETRY_PAUSE)
         if short_of_time():
             raise OutOfTime(stop)
@@ -265,13 +263,24 @@ def _page_body(http: Http, url: str, kind: str, page: int, short_of_time: Callab
             last = timeout
             waited = round(timer() - started, 1)
             on_timeout(PageTimeout(kind, page, attempt, waited))
-            again = f"; again in {RETRY_PAUSE:g} s" if attempt < PAGE_TRIES else ""
+            # the check before the pause: a timed-out try can leave too little time for the pause and the manifest
+            stopped = attempt < PAGE_TRIES and short_of_time()
+            again = "" if attempt == PAGE_TRIES or stopped else f"; again in {RETRY_PAUSE:g} s"
             log.warning("shufersal %s page %d: try %d of %d timed out after %.1f s%s", kind, page, attempt, PAGE_TRIES,
                         waited, again)
+            if stopped:
+                raise OutOfTime(_time_stop(kind, page, attempt + 1))
             continue
         seconds = timer() - started
         return body, seconds, attempt
     raise HttpError(f"{kind} page {page} timed out on {PAGE_TRIES} tries: {last}") from last
+
+
+def _time_stop(kind: str, page: int, attempt: int) -> str:
+    """What OutOfTime says when the run is short of time before try `attempt` of page `page` of `kind`'s listing: the
+    page alone before the first try, the try too before a later one."""
+    return (f"before page {page} of the {kind} listing" if attempt == 1
+            else f"before try {attempt} of page {page} of the {kind} listing")
 
 
 def _in_order(names: list[str], before: PageRead | None, page: int) -> bool:

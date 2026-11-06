@@ -1009,11 +1009,11 @@ def test_out_of_time_after_the_pause_sends_no_further_try(n):
     assert pauses == [10.0] * (n - 1)
 
 
-def test_a_run_short_of_time_after_a_timed_out_try_takes_no_pause():
+def test_a_run_short_of_time_after_a_timed_out_try_takes_no_pause(caplog):
     """A timed-out try can itself leave the run short of time (urllib's 60 s wait is per socket step, so a slow connect
     and a passed read wait can take more than 60 s together): the check before the pause stops the listing there, with
     OutOfTime naming the next try, so no pause eats into the time the manifest needs. The try that timed out is still
-    reported."""
+    reported, and its warning promises no further try: the check comes before the line is written."""
     left, sleeps, timeouts = [95.0], [], []
 
     def slow(req):
@@ -1029,6 +1029,27 @@ def test_a_run_short_of_time_after_a_timed_out_try_takes_no_pause():
     assert portal.requested == [listing_url(2, 1)]
     assert len(timeouts) == 1
     assert sleeps == []
+    assert warnings_logged(caplog) == [("shufersal PriceFull page 1: try 1 of 3 timed out after 60.5 s", logging.WARNING)]
+
+
+def test_no_time_check_follows_the_last_try():
+    """No pause follows the third try, so no time check does either: a run that the third timeout leaves short of time
+    still ends on the error naming the page and the tries, not on a time stop before a fourth try."""
+    left, served_requests = [95.0], []
+
+    def slow_at_last(req):
+        served_requests.append(req)
+        if len(served_requests) == 3:
+            left[0] = 85.0
+        timed_out(req)
+
+    http, portal = connect({listing_url(2, 1): [slow_at_last]})
+    listing = ShufersalSource(timer=ticks(60.5), sleep=lambda seconds: None).listing(http, ("PriceFull",),
+                                                                                     lambda: left[0] < 90.0)
+    with pytest.raises(HttpError) as caught:
+        list(listing)
+    assert str(caught.value) == f"PriceFull page 1 timed out on 3 tries: GET {LISTING} failed: The read operation timed out"
+    assert portal.requested == [listing_url(2, 1)] * 3
 
 
 def dropped(req):

@@ -123,3 +123,9 @@ Deploy on the owner's go after the 11:48 Israel-time check and before the next 0
 ## Left to the builder
 
 The names (`HttpTimeout`, `PAGE_TRIES`, `RETRY_PAUSE`, `tries`), the exact log and error texts, how the adapter gets its `sleep` (a constructor argument with `time.sleep` as the default, as `Http` has one), whether the replay joins `tests/test_replay.py` or gets a file of its own, and the test layout, within the rules above.
+
+## Changed during the build
+
+This draft, as approved, stays the record of what was intended. Where the build changed it, the change is below; ruling R38 in [collector-plan.md](collector-plan.md), "Rulings made during the build", states the rule as built.
+
+- The time is checked before the pause as well as after it (section 2 and Call 2 above had the pause first and one time check after it). On 2026-11-06 the final review found that a pause could be taken without time to spare: a timed-out try can itself leave the run under 90 s, and the pause still followed. With the check before the pause, a pause is never taken without time to spare, and the manifest is written with at least about 30 s left, as before the retries, not about 20 s. This tightens Call 2 and waits for the owner's confirmation.
