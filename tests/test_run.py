@@ -1080,6 +1080,20 @@ def test_each_timed_out_try_is_in_the_manifest(then, error):
     assert result.timeouts == expected
 
 
+def test_a_block_on_a_later_try_latches_and_keeps_the_timed_out_try():
+    """Review focus 4: page 2's first try timed out and its second was refused. The block latches the chain as a block
+    anywhere in the listing does, and the try that timed out before it stays in the manifest."""
+    refusal = Blocked(403, "https://prices.shufersal.co.il/FileObject/UpdateCategory?catID=2&storeId=0&page=2",
+                      "HTTP 403")
+    entries = [*given(1, range(100, 120), last_page=2), PAGE_2_TIMED_OUT, refusal]
+    result, store = collect(FakePagedSource(entries), kinds=("PriceFull",))
+    reason = "HTTP 403: https://prices.shufersal.co.il/FileObject/UpdateCategory"
+    assert (result.blocked, result.error) == (reason, None)
+    assert store.read_state(SLUG) == latch(reason)
+    assert manifest(store)["blocked"] == reason
+    assert manifest(store)["timeouts"] == [{"kind": "PriceFull", "page": 2, "attempt": 1, "seconds": 60.5}]
+
+
 def test_no_timeouts_on_a_run_without_one():
     """An empty list, on a paged run with none and on a source that does not page."""
     _, paged = collect(FakePagedSource(given(1, range(100, 120), last_page=1)), kinds=("PriceFull",))

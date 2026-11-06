@@ -37,6 +37,8 @@ SOURCES = ("src/collector/sources/__init__.py", ["tests/test_chains.py"])
 SHUFERSAL = ("src/collector/sources/shufersal.py", ["tests/test_shufersal.py"])
 # The start rules the 2026-11-05 replay rests on: the morning replayed (tests/test_replay.py) must catch them too.
 SHUFERSAL_REPLAYED = ("src/collector/sources/shufersal.py", ["tests/test_shufersal.py", "tests/test_replay.py"])
+# The 2026-11-06 replay, which must catch a timed-out page not asked again by itself.
+NOV_6_REPLAY = ("src/collector/sources/shufersal.py", ["tests/test_replay.py::test_the_2026_11_06_pricefull_run_replayed"])
 # Two q24 breaks that pause where the rule has no pause. The older tests in test_shufersal.py build their sources with
 # the default sleep, time.sleep, so under these breaks they would wait for real (10 s a page) before -x reached the q24
 # tests near the end of the file: each names the one test that must catch it by itself.
@@ -316,6 +318,7 @@ MUTATIONS = {
     "file gone after expiry read as unreadable": (SHUFERSAL, '    raise HttpError(f"{item.name.raw}: its link expired', '    raise ListingUnreadable(f"{item.name.raw}: its link expired'),
     # shufersal: a listing page that times out is asked again (q24)
     "a timed-out page not asked again (q24 tries)": (SHUFERSAL_REPLAYED, "PAGE_TRIES = 3  #", "PAGE_TRIES = 1  #"),
+    "a timed-out page not asked again, the 2026-11-06 replay alone (q24 replay)": (NOV_6_REPLAY, "PAGE_TRIES = 3  #", "PAGE_TRIES = 1  #"),
     "a fourth try (q24 tries)": (SHUFERSAL, "PAGE_TRIES = 3  #", "PAGE_TRIES = 4  #"),
     "no pause (q24 tries)": (SHUFERSAL, "            sleep(RETRY_PAUSE)\n", "            pass\n"),
     "a pause before the first try (q24 tries)": (PAUSE_ON_FIRST_TRY, "        if attempt > 1:\n            sleep(RETRY_PAUSE)\n", "        sleep(RETRY_PAUSE)\n"),
