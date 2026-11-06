@@ -1,7 +1,7 @@
 # Shufersal: a listing page that times out is asked again (design)
 
 Grade: production. The collector is live and its files feed the public basket page every morning.
-Status: draft of 2026-11-06, after a builder check (Opus) whose three questions are settled below as marked calls. The owner chose this fix (a timed-out listing page asked again, up to two more tries, on top of the resume of [shufersal-resume.md](shufersal-resume.md)) and skipped one question, which failures the tries cover; that choice and every other the owner did not make is marked "Call" and listed at the end. Not chosen, 2026-11-06: a longer socket wait (120 s) alone, a longer wait and a retry together, and watching more mornings first.
+Status: approved by the owner on 2026-11-06, after a builder check (Opus) whose three questions are settled below as marked calls. The owner chose this fix (a timed-out listing page asked again, up to two more tries, on top of the resume of [shufersal-resume.md](shufersal-resume.md)) and skipped one question, which failures the tries cover; that choice and every other the owner did not make is marked "Call" and listed at the end. Not chosen, 2026-11-06: a longer socket wait (120 s) alone, a longer wait and a retry together, and watching more mornings first.
 
 ## Why
 
