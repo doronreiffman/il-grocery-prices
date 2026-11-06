@@ -1,7 +1,7 @@
 # The update files, through the day (design)
 
 Grade: production. The collector is live, and every file it stores is locked for ten years.
-Status: draft of 2026-11-06, revised the same day after a builder check (Opus); the owner answered its ten questions the same day, each as the draft recommended (calls 1 to 4, 6, 7, 9 and 13 below), and the draft waits for the owner's approval before any code. The owner decided on 2026-11-05 that the collector will also collect and keep, write-once, the chains' update files (`Price`, `Promo`) published through the day, for all five chains, Shufersal included. Every choice the owner has not made is marked "Call" and listed at the end. Built and deployed only on the owner's go.
+Status: draft of 2026-11-06, revised the same day after a builder check (Opus); the owner answered its ten questions the same day, each as the draft recommended (calls 1 to 4, 6, 7, 9 and 13 below), and approved the design the same day. The owner decided on 2026-11-05 that the collector will also collect and keep, write-once, the chains' update files (`Price`, `Promo`) published through the day, for all five chains, Shufersal included. Every choice the owner has not made is marked "Call" and listed at the end. Built and deployed only on the owner's go.
 
 ## Why
 
