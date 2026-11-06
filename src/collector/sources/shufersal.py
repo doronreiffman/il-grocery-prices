@@ -22,9 +22,10 @@ What the portal does (docs/portals.md, "Shufersal", seen 2026-10-31):
   each page, and the refresh again before the fresh link's download: OutOfTime, naming the file and
   where it stopped.
 - Each page the listing reads is reported (`on_page`, a PageRead) once every row on it is checked, before its first
-  row is given: its rows, first and last name, the last page its pager names, the seconds its request took and
-  whether its names are in order. Only page 1's pager sets how far the listing reads, and only page 1's has been seen:
-  a later page's is read leniently and recorded, never a stop. The last row given from each page carries `ends_page`.
+  row is given: its rows, first and last name, the last page its pager names, the seconds its successful request took
+  and whether its names are in order. Only page 1's pager sets how far the listing reads, and only page 1's has been
+  seen: a later page's is read leniently and recorded, never a stop. The last row given from each page carries
+  `ends_page`.
 - The run loop says where each kind starts (Start; docs/shufersal-resume.md, section 2): any detour pages first, once
   each; page 1; on a resume, the resume page again (the last page, when the list now ends before it), stepping back a
   page at a time, no further than page 2, while the page's first name sorts after the furthest name earlier runs took;
