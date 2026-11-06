@@ -965,8 +965,9 @@ def test_three_timeouts_raise_an_http_error_naming_the_page_and_the_tries():
     assert listing_pages(portal) == [1, 2, 2, 2]
 
 
-def test_the_pause_comes_before_the_time_check_and_the_check_before_each_try():
-    """Every request still starts with the run's time check passed, the pause included: sleep, then check, then send."""
+def test_a_later_try_checks_the_time_before_its_pause_and_again_before_its_request():
+    """No pause is taken without time to spare, and every request still starts with the run's time check passed: the
+    first try checks, then sends; a later try checks, pauses, checks again, then sends."""
     events = []
 
     def answered(route):
@@ -982,7 +983,8 @@ def test_the_pause_comes_before_the_time_check_and_the_check_before_each_try():
     http, _ = connect({listing_url(5, 1): [answered(timed_out), answered(timed_out), answered(served(fixture(5)))]})
     source = ShufersalSource(timer=ticks(1.0), sleep=lambda seconds: events.append(("sleep", seconds)))
     assert len(list(source.listing(http, ("Stores",), check))) == 1
-    assert events == ["check", "request", ("sleep", 10.0), "check", "request", ("sleep", 10.0), "check", "request"]
+    assert events == ["check", "request", "check", ("sleep", 10.0), "check", "request",
+                      "check", ("sleep", 10.0), "check", "request"]
 
 
 @pytest.mark.parametrize("n", [2, 3])
@@ -1005,6 +1007,28 @@ def test_out_of_time_after_the_pause_sends_no_further_try(n):
     assert len(portal.requested) == n - 1
     assert len(timeouts) == n - 1
     assert pauses == [10.0] * (n - 1)
+
+
+def test_a_run_short_of_time_after_a_timed_out_try_takes_no_pause():
+    """A timed-out try can itself leave the run short of time (urllib's 60 s wait is per socket step, so a slow connect
+    and a passed read wait can take more than 60 s together): the check before the pause stops the listing there, with
+    OutOfTime naming the next try, so no pause eats into the time the manifest needs. The try that timed out is still
+    reported."""
+    left, sleeps, timeouts = [95.0], [], []
+
+    def slow(req):
+        left[0] = 85.0
+        timed_out(req)
+
+    http, portal = connect({listing_url(2, 1): [slow]})
+    source = ShufersalSource(timer=ticks(60.5), sleep=sleeps.append)
+    listing = source.listing(http, ("PriceFull",), lambda: left[0] < 90.0, on_timeout=timeouts.append)
+    with pytest.raises(OutOfTime) as caught:
+        list(listing)
+    assert str(caught.value) == "before try 2 of page 1 of the PriceFull listing"
+    assert portal.requested == [listing_url(2, 1)]
+    assert len(timeouts) == 1
+    assert sleeps == []
 
 
 def dropped(req):

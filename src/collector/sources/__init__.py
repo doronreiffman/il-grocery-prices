@@ -85,7 +85,7 @@ class PageTimeout:
     kind: str
     page: int
     attempt: int  # the try's number, from 1
-    seconds: float  # how long the try waited, rounded to 0.1 s (Http's 0.5 s pause included)
+    seconds: float  # how long the try waited, rounded to 0.1 s (Http's 0.5 s pause included; none on the run's first)
 
 
 @dataclass(frozen=True)

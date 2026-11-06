@@ -1086,24 +1086,30 @@ def page_1_timed_out_day(store):
 
 
 @pytest.mark.parametrize("tries", [1, 3, None])
-@pytest.mark.parametrize("day, alerts, short_of_time, read_in_full", [
-    pytest.param(stopped_retry_day, [], ["074536Z-retry-2933 (PriceFull)"],
+@pytest.mark.parametrize("day, timeouts, alerts, short_of_time, read_in_full", [
+    pytest.param(stopped_retry_day, {}, [], ["074536Z-retry-2933 (PriceFull)"],
                  {"PriceFull": [A_ID, B_ID], "PromoFull": [PROMO_RETRY_ID]}, id="quiet"),
-    pytest.param(page_1_timed_out_day, [Alert("shufersal", "failed", (
+    pytest.param(page_1_timed_out_day, PAGE_1_TRIES, [Alert("shufersal", "failed", (
         "shufersal: the day's runs fell short: retry run 074536Z-retry-2933 (PriceFull) ended with: listing failed: "
         "PriceFull page 1 timed out on 3 tries: GET https://prices.shufersal.co.il/FileObject/UpdateCategory failed: "
         "The read operation timed out; the PriceFull list was not read in full: pages 13 to 21 never read, page 12 "
         "read in part."))], [], {"PriceFull": None, "PromoFull": [PROMO_RETRY_ID]}, id="alerting"),
 ])
-def test_tries_do_not_change_the_check(tries, day, alerts, short_of_time, read_in_full):
+def test_tries_do_not_change_the_check(tries, day, timeouts, alerts, short_of_time, read_in_full):
     """Design, section 4: the check reads nothing new. The same day alerts, stays quiet and records alike whether its
     pages took one request each, three, or were written before tries were recorded; a retry whose page 1 timed out on
-    every try fails the morning with the run's own error, and the check record gains no field."""
-    store = Tried(tries, PAGE_1_TRIES)
+    every try fails the morning with the run's own error, and the check record gains no field. Each manifest's
+    `timeouts` agrees with its pages: the ones `tried` gives, and on the alerting day the retry's three tries of page 1
+    (`timeouts`), which recorded no page."""
+    store = Tried(tries, timeouts)
     day(store)
     manifests = [json.loads(body) for body in store.read_records("manifests/")]
     assert {record.get("tries") for manifest in manifests for record in manifest["pages"]} == {tries}
     assert all(("timeouts" in manifest) == (tries is not None) for manifest in manifests)
+    for manifest in manifests:  # the data agrees with itself: a timed-out try comes before the try that read its page
+        read_on = {(page["kind"], page["page"]): page.get("tries", 1) for page in manifest["pages"]}
+        assert all(timeout["attempt"] < read_on.get((timeout["kind"], timeout["page"]), float("inf"))  # inf: never read
+                   for timeout in manifest.get("timeouts", []))
     got, record = check_nov_5(store)
     chain = record["chains"]["shufersal"]
     assert got == alerts

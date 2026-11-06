@@ -31,10 +31,11 @@ What the portal does (docs/portals.md, "Shufersal", seen 2026-10-31):
   page at a time, no further than page 2, while the page's first name sorts after the furthest name earlier runs took;
   then on to the last page.
 - A request for a listing page, the listing's or the refresh's, that passes the socket wait (HttpTimeout) is made again,
-  up to PAGE_TRIES requests in all, each later try after a pause of RETRY_PAUSE and then the run's time check; any other
-  failure, a block and a page that does not read are raised at once (docs/shufersal-page-retry.md). Each timed-out try
-  is logged at WARNING and reported (`on_timeout`, a PageTimeout; the refresh reports none), a page read records the
-  requests it took (`tries`), and a page whose every try timed out raises an HttpError naming the page and the tries.
+  up to PAGE_TRIES requests in all, each later try after the run's time check, a pause of RETRY_PAUSE and the time
+  check again, so a pause is never taken without time to spare; any other failure, a block and a page that does not
+  read are raised at once (docs/shufersal-page-retry.md). Each timed-out try is logged at WARNING and reported
+  (`on_timeout`, a PageTimeout; the refresh reports none), a page read records the requests it took (`tries`), and a
+  page whose every try timed out raises an HttpError naming the page and the tries.
 """
 import itertools
 import logging
@@ -59,7 +60,7 @@ LAST_PAGE = ">>"  # the pager's link to the last page
 EXPIRY = "%Y-%m-%dT%H:%M:%SZ"  # se=, as the links carry it
 EXPIRY_SLACK = timedelta(seconds=120)  # a 403 this long before se= is already expiry (ruling R17)
 PAGE_TRIES = 3  # requests for one listing page: the first and up to two more, each after one that timed out
-RETRY_PAUSE = 10.0  # seconds before a second or third try, then the time check
+RETRY_PAUSE = 10.0  # seconds before a second or third try, with the time checked before and after it
 
 Row = tuple[str, str]  # a listing row's file name, as listed (without .gz), and its download link
 
@@ -110,7 +111,7 @@ class ShufersalSource(PagedSource):
         """The body of `item`. On its link expiring, the item's category is read again from page 1 to
         the page that lists the file, and the fresh link is fetched once; HttpError if the file is no
         longer listed, ListingUnreadable if the listing no longer reads, OutOfTime if `short_of_time`
-        says so before a page or the fresh link's download."""
+        says so before a page, before a later try of a page, or before the fresh link's download."""
         try:
             return http.get(item.url).body
         except Blocked as block:
@@ -241,18 +242,22 @@ def _page_body(http: Http, url: str, kind: str, page: int, short_of_time: Callab
                timer: Callable[[], float], sleep: Callable[[float], None],
                on_timeout: Callable[[PageTimeout], None]) -> tuple[bytes, float, int]:
     """The body of page `page` of `kind`'s listing, at `url`; the seconds the request that got it took; and the
-    requests it took. A try after the first begins with a pause of RETRY_PAUSE; every try then asks `short_of_time`
-    (OutOfTime otherwise, naming the try after the first) and sends its request, reading `timer` at the request's start
-    and end only. A try whose request passes the socket wait (HttpTimeout) is reported to `on_timeout`, logged at
+    requests it took. The first try asks `short_of_time`, then sends its request; a try after the first asks it, pauses
+    RETRY_PAUSE, asks it again, then sends, so a pause is never taken without time to spare. Each request reads `timer`
+    at its start and end only. Short of time: OutOfTime (naming the try when it is not the first), and nothing more is
+    paused or sent. A try whose request passes the socket wait (HttpTimeout) is reported to `on_timeout`, logged at
     WARNING and followed by the next, up to PAGE_TRIES in all; after the last, an HttpError naming the page and the
     tries, chained from its timeout. Any other failure, a block included, is raised at once, whatever the try."""
     last = None
     for attempt in range(1, PAGE_TRIES + 1):
+        stop = (f"before page {page} of the {kind} listing" if attempt == 1
+                else f"before try {attempt} of page {page} of the {kind} listing")
         if attempt > 1:
+            if short_of_time():  # a timed-out try can leave too little time for the pause and the manifest
+                raise OutOfTime(stop)
             sleep(RETRY_PAUSE)
         if short_of_time():
-            raise OutOfTime(f"before page {page} of the {kind} listing" if attempt == 1
-                            else f"before try {attempt} of page {page} of the {kind} listing")
+            raise OutOfTime(stop)
         started = timer()
         try:
             body = http.get(url).body
