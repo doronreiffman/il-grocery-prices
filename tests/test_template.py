@@ -213,6 +213,7 @@ def test_environment_is_what_the_handler_reads(function, resources):
         "ALERT_TOPIC_ARN": {"Ref": "AlertTopic"},
         "HEALTHCHECK_URL": {"Ref": "HealthcheckUrl"},
         "RETENTION_DAYS": "3650",
+        "POLL_SCHEDULE_STATE": {"Ref": "PollScheduleState"},
     }
     assert variables["RETENTION_DAYS"] == str(store.RETENTION_DAYS)
 
@@ -281,20 +282,28 @@ def test_alerts_go_to_one_email_subscription(resources):
 # --- the parameters ---
 
 
-def test_parameters_are_the_eight_and_only_the_two_switches_have_defaults(template):
+def test_parameters_are_the_nine_and_only_the_three_switches_have_defaults(template):
     """The User-Agent, the email, the two ping URLs and the site's bucket and distribution are given at deploy;
     none of them is in the repo."""
     parameters = template["Parameters"]
-    assert set(parameters) == {"UserAgent", "AlertEmail", "HealthcheckUrl", "ScheduleState",
+    assert set(parameters) == {"UserAgent", "AlertEmail", "HealthcheckUrl", "ScheduleState", "PollScheduleState",
                                "SiteBucketName", "SiteDistributionId", "BasketHealthcheckUrl", "BasketScheduleState"}
     assert sorted(name for name, parameter in parameters.items() if "Default" in parameter) == [
-        "BasketScheduleState", "ScheduleState"]
+        "BasketScheduleState", "PollScheduleState", "ScheduleState"]
 
 
 def test_schedules_start_switched_off(template):
     parameter = template["Parameters"]["ScheduleState"]
     assert parameter["Default"] == "DISABLED"
     assert sorted(parameter["AllowedValues"]) == ["DISABLED", "ENABLED"]
+
+
+def test_polls_start_switched_off(template):
+    """The polls have a switch of their own (docs/update-files.md, section 7): the morning keeps running while the
+    polls are tested, and the owner can pause them alone. Its values are the ones the handler reads."""
+    parameter = template["Parameters"]["PollScheduleState"]
+    assert parameter["Default"] == "DISABLED"
+    assert sorted(parameter["AllowedValues"]) == ["DISABLED", "ENABLED"] == sorted(handler.POLL_STATES)
 
 
 def test_user_agent_needs_the_project_url_and_an_email(template):

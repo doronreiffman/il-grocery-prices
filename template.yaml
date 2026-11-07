@@ -25,6 +25,11 @@ Parameters:
     Default: DISABLED
     AllowedValues: [ENABLED, DISABLED]
     Description: Start DISABLED to test the stack with manual runs; redeploy with ENABLED to go live.
+  PollScheduleState:
+    Type: String
+    Default: DISABLED
+    AllowedValues: [ENABLED, DISABLED]
+    Description: The update-file polls through the day, and the next morning's check of them, on or off apart from the morning's runs; start DISABLED and run each chain's poll by hand first.
   SiteBucketName:
     Type: String
     Description: The site stack's bucket (its output SiteBucketName), where the basket run puts the pages and day files.
@@ -97,6 +102,7 @@ Resources:
           ALERT_TOPIC_ARN: !Ref AlertTopic
           HEALTHCHECK_URL: !Ref HealthcheckUrl
           RETENTION_DAYS: "3650"
+          POLL_SCHEDULE_STATE: !Ref PollScheduleState
       Policies:
         - Statement:
             # Raw files, manifests and check records: written once and locked. Each put sets its

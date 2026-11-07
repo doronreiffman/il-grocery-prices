@@ -26,8 +26,9 @@ from botocore.stub import Stubber
 import collector
 from collector import handler as handler_module
 from collector.chains import CHAINS
-from collector.check import Alert
-from collector.handler import CODE_SHA, Config, Deps, code_sha, deps_for, message, ping, ping_user_agent, run
+from collector.check import Alert, stopped_alert
+from collector.handler import (CODE_SHA, Config, Deps, code_sha, deps_for, message, ping, ping_user_agent, poll_message,
+                               run)
 from collector.http import Blocked, Http, HttpError, build_opener
 from collector.names import KINDS, parse_file_name
 from collector.run import RunResult, manifest_bytes
@@ -45,7 +46,8 @@ DAY = date(2026, 10, 31)
 HEALTHCHECK = "https://hc-ping.example/0000-test"
 TOPIC = "arn:aws:sns:il-central-1:000000000000:alerts"
 CFG = Config(bucket="bucket", user_agent=UA, alert_topic_arn=TOPIC, healthcheck_url=HEALTHCHECK, retention_days=3650)
-ENV = {"BUCKET": "bucket", "USER_AGENT": UA, "ALERT_TOPIC_ARN": TOPIC, "HEALTHCHECK_URL": HEALTHCHECK}
+ENV = {"BUCKET": "bucket", "USER_AGENT": UA, "ALERT_TOPIC_ARN": TOPIC, "HEALTHCHECK_URL": HEALTHCHECK,
+       "POLL_SCHEDULE_STATE": "DISABLED"}
 SHA = "0123456789ab"
 
 PRICE_XML = (FIXTURES / "shufersal" / "PriceFull7290027600007-001-030-20261031-030000.gz").read_bytes()
@@ -130,14 +132,17 @@ def collect(monkeypatch):
 
 
 class FakeSource:
-    """Lists `names`; download gives the fixture's gzip, or raises what `answers[name]` holds."""
+    """Lists `names`, or raises `listing_raises` when asked for the first; download gives the fixture's gzip, or
+    raises what `answers[name]` holds."""
 
     unparsed = 0
 
-    def __init__(self, names, answers=None):
-        self.names, self.answers = names, answers or {}
+    def __init__(self, names, answers=None, listing_raises=None):
+        self.names, self.answers, self.listing_raises = names, answers or {}, listing_raises
 
     def listing(self, http, kinds, short_of_time=None):
+        if self.listing_raises is not None:
+            raise self.listing_raises
         for name in self.names:
             yield Listed(parse_file_name(name), f"https://portal.example/{name}")
 
@@ -296,9 +301,149 @@ def test_an_unknown_chain_is_refused(collect, event):
                                    {"chain": "shufersal"}, None, "check"])
 def test_an_unknown_mode_is_refused(collect, event):
     deps = make_deps()
-    with pytest.raises(ValueError, match="mode"):
+    with pytest.raises(ValueError, match="the event's mode must be main, retry, poll, check or unblock, not "):
         run(CFG, event, deps, NOW)
     assert collect.calls == [] and deps.store.objects == {} and deps.events == []
+
+
+# ---- poll ----
+
+POLLING = ["ramilevy", "osherad", "carrefour", "yochananof"]  # the chains whose `polled` is set, in CHAINS order
+EVENING = datetime(2026, 10, 31, 20, 20, tzinfo=ISRAEL)  # an evening poll: 18:20 UTC
+NEXT_MORNING = datetime(2026, 11, 1, 6, 30, tzinfo=ISRAEL)
+NEXT_CHECK = datetime(2026, 11, 1, 11, 48, tzinfo=ISRAEL)
+BLOCK = Blocked(403, "https://portal.example/x", "HTTP 403")
+POLL = {"mode": "poll", "chain": "ramilevy", "kinds": ["Price", "Promo"]}
+
+
+def test_a_poll_runs_the_events_kinds(collect):
+    deps = make_deps()
+    summary = run(CFG, {"mode": "poll", "chain": "ramilevy", "kinds": ["Price"]}, deps, NOW)
+    [call] = collect.calls
+    assert call["chain"] is CHAINS["ramilevy"] and isinstance(call["source"], NcrSource)
+    assert call["mode"] == "poll"
+    assert call["kinds"] == ("Price",)
+    assert re.fullmatch(r"[0-9]{6}Z-poll-[0-9a-f]{4}", call["run_id"])
+    assert summary["mode"] == "poll" and summary["run_id"] == call["run_id"]
+
+
+def test_a_poll_without_kinds_is_refused(collect):
+    """Every poll event names its kinds: a default of the chain's `polled` would hand Shufersal both update kinds in
+    one run."""
+    deps = make_deps()
+    with pytest.raises(ValueError, match="names its kinds"):
+        run(CFG, {"mode": "poll", "chain": "ramilevy"}, deps, NOW)
+    assert collect.calls == [] and deps.events == []
+
+
+@pytest.mark.parametrize("slug, kinds", [("shufersal", ["Promo"]), ("ramilevy", ["PriceFull"])])
+def test_a_poll_of_kinds_the_chain_does_not_poll_is_refused(monkeypatch, slug, kinds):
+    """Shufersal polls nothing until its passes are scheduled (its `polled` is empty); no chain polls a full kind."""
+    monkeypatch.setattr(handler_module, "source_for", lambda chain: FakeSource([PRICE]))
+    deps = make_deps()
+    with pytest.raises(ValueError, match="polls"):
+        run(CFG, {"mode": "poll", "chain": slug, "kinds": kinds}, deps, NOW)
+    assert deps.store.objects == {} and deps.events == []
+
+
+def test_a_poll_that_stops_a_chain_emails_at_once(monkeypatch):
+    """Review focus 4: an evening poll stops a chain. The next check is at 11:48 the next day, after that morning's
+    runs have done nothing, so the poll sends the stopped alert at once and marks the chain alerted once it has gone
+    (ruling R26). The next morning's main run does nothing, and the check sends no second stopped alert and leaves the
+    update day's failed alert to the one sent."""
+    monkeypatch.setattr(handler_module, "source_for", lambda chain: FakeSource([], listing_raises=BLOCK))
+    deps = make_deps()
+    summary = run(CFG, POLL, deps, EVENING)
+    assert re.fullmatch(r"182000Z-poll-[0-9a-f]{4}", summary["run_id"])
+    key = manifest_key(DAY, "ramilevy", summary["run_id"])
+    assert deps.events == [("state", "ramilevy"), ("record", key), "publish", ("state", "ramilevy")]
+    state = deps.store.read_state("ramilevy")
+    assert state == {"stopped": True, "since": "2026-10-31T18:20:00+00:00",
+                     "reason": "HTTP 403: https://portal.example/x", "alerted": True}
+    [(subject, body)] = deps.publish.calls
+    assert subject == "il-grocery-prices 2026-10-31: ramilevy stopped by a poll run"
+    assert body.splitlines() == ["A poll run of 2026-10-31 (Israel date) stopped a chain:", "",
+                                 f"- {stopped_alert('ramilevy', state).text}", "", f"The run's manifest: {key}"]
+
+    main = run(CFG, {"mode": "main", "chain": "ramilevy"}, deps, NEXT_MORNING)
+    manifest = json.loads(deps.store.read_raw(manifest_key(date(2026, 11, 1), "ramilevy", main["run_id"])))
+    assert manifest["blocked"] == "stopped earlier"
+    assert len(deps.publish.calls) == 1
+
+    check = run(dataclasses.replace(CFG, polls_on=True), {"mode": "check"}, deps, NEXT_CHECK)
+    record = json.loads(deps.store.read_raw(check["record"]))
+    assert not [alert for alert in record["alerts"] if alert["chain"] == "ramilevy" and alert["kind"] == "stopped"]
+    assert record["update_day"]["day"] == "2026-10-31" and record["update_day"]["chains"]["ramilevy"]["failed"] is None
+    assert len(deps.publish.calls) == 2 and "ramilevy is stopped" not in deps.publish.calls[1][1]
+    assert deps.store.read_state("ramilevy") == state
+
+
+def test_a_poll_whose_email_fails_leaves_the_stopped_chain_to_the_check(monkeypatch, caplog):
+    """Ruling R26: a failed publish fails the invocation and marks nothing. The manifest is written and the email
+    logged first, and the next check sends the stopped alert."""
+    monkeypatch.setattr(handler_module, "source_for", lambda chain: FakeSource([], listing_raises=BLOCK))
+    deps = make_deps(publish_raises=RuntimeError("SNS is down"))
+    with caplog.at_level(logging.WARNING, logger="collector.handler"), pytest.raises(RuntimeError, match="SNS is down"):
+        run(CFG, POLL, deps, EVENING)
+    assert [event if isinstance(event, str) else event[0] for event in deps.events] == ["state", "record", "publish"]
+    assert json.loads(deps.store.read_raw(deps.events[1][1]))["blocked"] == "HTTP 403: https://portal.example/x"
+    assert deps.store.read_state("ramilevy")["alerted"] is False
+    logged = [r.getMessage() for r in caplog.records if r.name == "collector.handler" and r.levelno == logging.WARNING]
+    assert any(m.startswith("il-grocery-prices 2026-10-31: ramilevy stopped by a poll run\n") for m in logged)
+
+    deps.publish.raises = None
+    run(CFG, {"mode": "check"}, deps, NEXT_CHECK)
+    state = deps.store.read_state("ramilevy")
+    assert f"- {stopped_alert('ramilevy', state).text}" in deps.publish.calls[-1][1].splitlines()
+    assert state["alerted"] is True
+
+
+def test_a_poll_of_a_chain_stopped_earlier_sends_no_email(monkeypatch):
+    """A chain stopped before the poll (by a main or retry run, say) is the check's to alert: the poll sends nothing."""
+    monkeypatch.setattr(handler_module, "source_for", lambda chain: FakeSource([PRICE]))
+    deps = make_deps()
+    deps.store.write_state("ramilevy", LATCH)
+    summary = run(CFG, POLL, deps, EVENING)
+    assert summary["blocked"] == "stopped earlier"
+    assert deps.publish.calls == [] and deps.store.read_state("ramilevy") == LATCH
+
+
+@pytest.mark.parametrize("found", [{}, {"stopped": True, "since": "x", "reason": "HTTP 403", "alerted": True}])
+def test_a_poll_sends_no_email_for_a_latch_cleared_or_alerted_before_it_reads_it(monkeypatch, found):
+    """The poll's email reads the state after its latch: an unblock run or a check may have written it since. A
+    cleared latch has nothing to alert, and an alerted one has had its email."""
+    class Raced(EventStore):
+        def read_state(self, slug):
+            state = super().read_state(slug)
+            return found if state.get("stopped") else state  # what the email finds after the latch
+
+    monkeypatch.setattr(handler_module, "source_for", lambda chain: FakeSource([], listing_raises=BLOCK))
+    deps = make_deps()
+    deps.store = Raced(deps.events)
+    summary = run(CFG, POLL, deps, EVENING)
+    assert summary["blocked"] == "HTTP 403: https://portal.example/x"
+    assert deps.events == [("state", "ramilevy"), ("record", manifest_key(DAY, "ramilevy", summary["run_id"]))]
+    assert deps.publish.calls == []
+
+
+@pytest.mark.parametrize("mode", ["main", "retry"])
+def test_main_and_retry_runs_that_stop_a_chain_never_email(monkeypatch, mode):
+    """Only a poll emails its block at once: a morning run's block is the same morning's check's to email."""
+    monkeypatch.setattr(handler_module, "source_for", lambda chain: FakeSource([], listing_raises=BLOCK))
+    deps = make_deps()
+    summary = run(CFG, {"mode": mode, "chain": "ramilevy"}, deps, NOW)
+    assert summary["blocked"] == "HTTP 403: https://portal.example/x"
+    assert deps.publish.calls == [] and deps.store.read_state("ramilevy")["alerted"] is False
+
+
+def test_poll_message_names_the_chain_and_the_runs_manifest():
+    alert = Alert("osherad", "stopped", "osherad is stopped since x: HTTP 403.")
+    subject, body = poll_message(DAY, alert, "manifests/date=2026-10-31/osherad-182000Z-poll-ab12.json")
+    assert subject == "il-grocery-prices 2026-10-31: osherad stopped by a poll run"
+    assert body == ("A poll run of 2026-10-31 (Israel date) stopped a chain:\n\n"
+                    "- osherad is stopped since x: HTTP 403.\n\n"
+                    "The run's manifest: manifests/date=2026-10-31/osherad-182000Z-poll-ab12.json")
+    assert all(len(poll_message(DAY, Alert(slug, "stopped", "x"), "k")[0]) < 100 for slug in CHAINS)  # SNS's limit
 
 
 # ---- the check ----
@@ -385,6 +530,37 @@ def test_a_failed_email_leaves_the_stopped_chain_to_alert_again():
     run(CFG, {"mode": "check"}, deps, NOW)
     assert len(deps.publish.calls) == 2 and "HTTP 429" in deps.publish.calls[1][1]
     assert deps.store.read_state("carrefour") == LATCH | {"alerted": True}
+
+
+def test_the_check_judges_the_update_day_only_while_the_polls_are_on():
+    """Ruling R39: the check of a day judges the day before's update files, for the chains whose `polled` is set, only
+    while the poll switch is on, so a pause emails nothing."""
+    deps = make_deps()
+    clean_day(deps.store)
+    off = run(CFG, {"mode": "check"}, deps, NOW)
+    assert json.loads(deps.store.read_raw(off["record"]))["update_day"] is None
+    assert off["alerts"] == 0 and deps.publish.calls == []
+    on = run(dataclasses.replace(CFG, polls_on=True), {"mode": "check"}, deps, NOW)
+    record = json.loads(deps.store.read_raw(on["record"]))
+    assert record["update_day"]["day"] == "2026-10-30"
+    assert sorted(record["update_day"]["chains"]) == sorted(POLLING)  # the record's keys are sorted
+    assert [(alert["chain"], alert["kind"]) for alert in record["alerts"]] == [(slug, "failed") for slug in POLLING]
+    [(subject, body)] = deps.publish.calls  # no polls that day: one failed alert a polled chain
+    assert [line for line in body.splitlines() if line.startswith("- ")] == [
+        f"- {slug}: no poll run read the Price and Promo lists in full on 2026-10-30." for slug in POLLING]
+
+
+def test_a_manual_check_can_ask_for_the_update_day():
+    """Rollout step 2 reads the update day before the switch goes on: a check event with "update_day": true judges it
+    whatever the switch says; any other value does not ask."""
+    deps = make_deps()
+    clean_day(deps.store)
+    asked = run(CFG, {"mode": "check", "update_day": True}, deps, NOW)
+    assert json.loads(deps.store.read_raw(asked["record"]))["update_day"]["day"] == "2026-10-30"
+    assert asked["alerts"] == len(POLLING)
+    not_asked = run(CFG, {"mode": "check", "update_day": "yes"}, deps, NOW)
+    assert json.loads(deps.store.read_raw(not_asked["record"]))["update_day"] is None
+    assert not_asked["alerts"] == 0
 
 
 def test_check_ignores_a_chain_in_its_event():
@@ -512,7 +688,7 @@ def test_config_from_env():
     assert Config.from_env(ENV | {"RETENTION_DAYS": "30"}).retention_days == 30
 
 
-@pytest.mark.parametrize("name", ["BUCKET", "USER_AGENT", "ALERT_TOPIC_ARN", "HEALTHCHECK_URL"])
+@pytest.mark.parametrize("name", ["BUCKET", "USER_AGENT", "ALERT_TOPIC_ARN", "HEALTHCHECK_URL", "POLL_SCHEDULE_STATE"])
 def test_config_requires_each_variable(name):
     with pytest.raises(ValueError, match=name):
         Config.from_env({k: v for k, v in ENV.items() if k != name})
@@ -526,6 +702,18 @@ def test_config_requires_each_variable(name):
 def test_config_refuses_a_user_agent_without_the_url_and_an_email(user_agent):
     with pytest.raises(ValueError, match="User-Agent"):
         Config.from_env(ENV | {"USER_AGENT": user_agent})
+
+
+@pytest.mark.parametrize("value, on", [("ENABLED", True), ("DISABLED", False)])
+def test_config_reads_the_poll_switch(value, on):
+    assert Config.from_env(ENV | {"POLL_SCHEDULE_STATE": value}).polls_on is on
+
+
+@pytest.mark.parametrize("value", ["enabled", "ON", "true"])
+def test_config_refuses_a_poll_switch_that_is_neither(value):
+    """The template allows ENABLED and DISABLED only; anything else is a deploy gone wrong, not a switch."""
+    with pytest.raises(ValueError, match="POLL_SCHEDULE_STATE"):
+        Config.from_env(ENV | {"POLL_SCHEDULE_STATE": value})
 
 
 def test_config_refuses_a_retention_that_is_not_a_number():
