@@ -5,15 +5,18 @@ Manifests are built as the run loop writes them (manifest_bytes over a RunResult
 `asdict(PageRead)` with `taken_through`. The list is Shufersal's PriceFull list on 2026-11-05's scale: 21 pages of 20
 rows, page p holding rows 20(p-1)+1 to 20p, named in file-name order. A is that morning's first run (pages 1 to 11,
 then page 12's first row, stopped on time before its download); B the second, resumed (page 1, then pages 12 to 21).
-A run's `listed` holds the stored names (`<name>.gz`, ruling R16) of the rows it took.
+A run's `listed` holds the stored names (`<name>.gz`, ruling R16) of the rows it took. The last section (q23, ruling
+R39) builds poll runs of the update kinds the same way, each with the time its listing was read.
 """
 import json
 from dataclasses import asdict
-from datetime import date
+from datetime import date, datetime, time, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 
-from collector.pages import has_pages, read_in_full, start_for, unread
+from collector.names import KINDS
+from collector.pages import has_pages, pass_start, passes, read_in_full, start_for, unread
 from collector.run import RunResult, manifest_bytes
 from collector.sources import PageRead, PageTimeout, Start
 
@@ -391,3 +394,137 @@ def test_tries_do_not_change_the_reading(tries):
     assert start_for([a], "PriceFull", A_STORED) == Start(page=12, furthest=name(221))
     assert unread([a], "PriceFull") == "pages 13 to 21 never read, page 12 read in part"
     assert has_pages([a], "PriceFull")
+
+
+# ---- update kinds: passes (q23, ruling R39) ----
+#
+# Poll runs of Shufersal's Promo list, on the scale above. P1 and P2 are the 10:30 pass in 2026-11-05's shape (P1 as
+# A, P2 as B); P3 is the 15:10 pass's first run, stopped as P1 stopped. Q1 to Q3 are a quick chain's polls of both
+# update kinds, which record no pages.
+
+def at(clock):
+    """The Israel time `clock` ("HH:MM") on DAY, as the run loop writes `listing_read_at`: aware, in UTC."""
+    moment = datetime.combine(DAY, time.fromisoformat(clock), ZoneInfo("Asia/Jerusalem"))
+    return moment.astimezone(timezone.utc).isoformat()
+
+
+def poll(run_id, clock, *records, kinds=("Promo",), error=None, blocked=None, listed=(), read=True):
+    """A poll run's manifest as stored, its listing read at `clock` (never read, with `read` false)."""
+    manifest = run(run_id, *records, kinds=kinds, error=error, blocked=blocked, listed=listed)
+    return manifest | {"mode": "poll", "listing_read_at": at(clock) if read else None}
+
+
+def outline(cut):
+    """Each pass as (its runs' ids, read_by, out_of_order, open)."""
+    return [([manifest["run_id"] for manifest in one.runs], one.read_by, one.out_of_order, one.open) for one in cut]
+
+
+P1_ID, P2_ID, P3_ID = "083000Z-poll-c001", "084500Z-poll-c002", "131000Z-poll-c003"
+P1 = poll(P1_ID, "10:30", *pages(1, 11, kind="Promo"), rec(12, taken=1, kind="Promo"), error=STOPPED,
+          listed=gz(range(1, 222), "Promo"))
+P2 = poll(P2_ID, "10:45", rec(1, kind="Promo"), *pages(12, 21, kind="Promo"),
+          listed=gz(range(1, 21), "Promo") + gz(range(221, 421), "Promo"))
+P3 = poll(P3_ID, "15:10", *pages(1, 11, kind="Promo"), rec(12, taken=1, kind="Promo"), error=STOPPED,
+          listed=gz(range(1, 222), "Promo"))
+PROMO_STORED = set(gz(range(1, 421), "Promo"))
+
+HTTP_500 = "listing failed: HTTP 500 from https://url.publishedprices.co.il/file/json/dir"
+Q1_ID, Q2_ID, Q3_ID = "102000Z-poll-q001", "122000Z-poll-q002", "142000Z-poll-q003"
+Q1 = poll(Q1_ID, "12:20", kinds=("Price", "Promo"), error=HTTP_500)
+Q2 = poll(Q2_ID, "14:20", kinds=("Price", "Promo"))
+Q3 = poll(Q3_ID, "16:20", kinds=("Price", "Promo"), error=HTTP_500)
+
+
+def test_runs_that_join_up_make_one_pass_and_the_next_run_opens_another():
+    """P2 completes the 10:30 pass, so P3 begins the next one, open."""
+    assert outline(passes([P1, P2, P3], "Promo")) == [([P1_ID, P2_ID], [P1_ID, P2_ID], False, False),
+                                                      ([P3_ID], None, False, True)]
+
+
+def test_the_second_run_of_a_later_pass_resumes_it():
+    """The 15:25 run resumes the 15:10 pass where P3 stopped. R37 alone reads the day as one reading: the 10:30 pass
+    read the list in full, so it would start that run at page 1."""
+    assert pass_start([P1, P2, P3], "Promo", PROMO_STORED) == Start(page=12, furthest=name(221, "Promo"))
+    assert start_for([P1, P2, P3], "Promo", PROMO_STORED) == Start()
+
+
+def test_after_a_pass_read_in_full_the_next_run_starts_a_fresh_pass():
+    """With no detour, though a file on page 5 of the complete pass failed: the new pass reads page 5 in its turn."""
+    assert pass_start([P1, P2], "Promo", PROMO_STORED) == Start()
+    assert pass_start([], "Promo", set()) == Start()
+    assert pass_start([P1, P2], "Promo", PROMO_STORED - set(gz([85], "Promo"))) == Start()
+
+
+def test_passes_follow_when_the_listing_was_read_not_the_run_id():
+    """00:20 Israel time on DAY is 22:20Z the day before, so that run's id sorts after every daytime run's."""
+    early_id, late_id = "222000Z-poll-c000", "083000Z-poll-c001"
+    early = poll(early_id, "00:20", *pages(1, 21, kind="Promo"))
+    late = poll(late_id, "10:30", *pages(1, 10, kind="Promo"), error=STOPPED)
+    assert outline(passes([late, early], "Promo")) == [([early_id], [early_id], False, False),
+                                                       ([late_id], None, False, True)]
+    assert pass_start([late, early], "Promo", PROMO_STORED) == Start(page=10, furthest=name(200, "Promo"))
+
+
+def test_a_page_out_of_order_ends_its_pass_and_not_the_day():
+    """D1's page 5 is out of order: its pass ends with it, unread, and D2 begins a fresh one, which D3 completes. R37
+    over the whole day would keep joining off for the rest of it."""
+    d1_id, d2_id, d3_id = "083000Z-poll-d001", "084500Z-poll-d002", "131000Z-poll-d003"
+    d1 = poll(d1_id, "10:30", *(rec(page, in_order=page != 5, kind="Promo") for page in range(1, 12)),
+              rec(12, taken=1, kind="Promo"), error=STOPPED)
+    d2 = poll(d2_id, "10:45", *pages(1, 11, kind="Promo"), rec(12, taken=1, kind="Promo"), error=STOPPED)
+    d3 = poll(d3_id, "15:10", rec(1, kind="Promo"), *pages(12, 21, kind="Promo"))
+    assert outline(passes([d1, d2], "Promo")) == [([d1_id], None, True, False), ([d2_id], None, False, True)]
+    assert pass_start([d1, d2], "Promo", PROMO_STORED) == Start(page=12, furthest=name(221, "Promo"))
+    assert passes([d1, d2, d3], "Promo")[-1].read_by == [d2_id, d3_id]
+    assert read_in_full([d1, d2, d3], "Promo") is None
+
+
+def test_a_blocked_run_and_a_run_that_never_read_the_listing_are_left_out():
+    """R37 leaves a blocked run out; a run stopped before its listing read nothing and has no time to be placed by."""
+    blocked = poll("084000Z-poll-c005", "10:40", rec(1, kind="Promo"), blocked=BLOCKED)
+    never_read = poll("084200Z-poll-c006", "10:42", error=STOPPED, read=False)
+    assert passes([P1, blocked, never_read, P2], "Promo") == passes([P1, P2], "Promo")
+
+
+def test_a_run_that_read_no_page_leaves_its_pass_open():
+    """Review focus 3: page 1 failed on every try, so the run took nothing; the pass stays open, the next run still
+    resumes it, and a run after that can complete it."""
+    failed_id = "084500Z-poll-c009"
+    failed = poll(failed_id, "10:45", error="listing failed: Promo page 1 timed out on 3 tries: GET "
+                  "https://prices.shufersal.co.il/FileObject/UpdateCategory failed: timed out")
+    assert outline(passes([P1, failed], "Promo")) == [([P1_ID, failed_id], None, False, True)]
+    assert pass_start([P1, failed], "Promo", PROMO_STORED) == Start(page=12, furthest=name(221, "Promo"))
+    later = P2 | {"listing_read_at": at("11:00")}
+    assert passes([P1, failed, later], "Promo")[0].read_by == [P1_ID, P2_ID]
+
+
+def test_runs_without_page_records_each_read_in_full_when_they_end_clean():
+    """The quick chains: a poll that records no pages and ended with no error read the kind in full on its own, as
+    R36 reads it, and ends its pass; one whose listing failed does not."""
+    assert [([manifest["run_id"] for manifest in one.runs], one.read_by) for one in passes([Q1, Q2, Q3], "Price")] == [
+        ([Q1_ID, Q2_ID], [Q2_ID]), ([Q3_ID], None)]
+
+
+def test_only_poll_runs_of_the_kind_make_its_passes():
+    """A quick chain's clean main run of every kind read its listing, so only its mode keeps it out; a Shufersal poll
+    of Price, with its pages, changes nothing in Promo's passes."""
+    main = run("043300Z-main-d001", kinds=KINDS) | {"listing_read_at": at("06:33")}
+    assert outline(passes([main, Q1], "Price")) == [([Q1_ID], None, False, True)]
+    price = poll("090000Z-poll-c004", "11:00", *pages(1, 21, kind="Price"), kinds=("Price",))
+    assert passes([P1, P2, price], "Promo") == passes([P1, P2], "Promo")
+
+
+def test_an_open_pass_detours_to_its_failed_files_pages():
+    """P3 listed the 85th name, on page 5, and its file is not stored."""
+    stored = PROMO_STORED - set(gz([85], "Promo"))
+    assert pass_start([P1, P2, P3], "Promo", stored) == Start(page=12, furthest=name(221, "Promo"), detours=(5,))
+
+
+def test_full_kinds_read_as_before_with_polls_beside():
+    """Design, section 8: R37's functions filter by kind, so the morning reads PriceFull as before with the day's
+    Promo polls beside it: after a full reading, a fresh pass with detours, as today."""
+    assert read_in_full([A, B, P1, P2, P3], "PriceFull") == [A_ID, B_ID]
+    assert start_for([A, B, P1, P2, P3], "PriceFull", ALL_STORED - set(gz([85]))) == Start(detours=(5,))
+    assert start_for([A, P1, P2, P3], "PriceFull", A_STORED) == start_for([A], "PriceFull", A_STORED)
+    assert unread([A, P3], "PriceFull") == unread([A], "PriceFull")
+    assert has_pages([P1], "PriceFull") is False
