@@ -1,6 +1,6 @@
 # The collector: design
 
-**Status:** design, 2026-10-31: builder check done and folded in; the owner's two decisions recorded. Since then: built from this design and live since 1 November 2026; what changed during the build is in [collector-plan.md](collector-plan.md), "Deviations" and "Rulings made during the build", and the collector as it runs today is in [operations.md](operations.md). Since 2026-11-05 the update files are collected through the day as well (the owner's decision), designed in [update-files.md](update-files.md): it supersedes this design's polling non-goal and decision 1 for update files.
+**Status:** design, 2026-10-31: builder check done and folded in; the owner's two decisions recorded. Since then: built from this design and live since 1 November 2026; what changed during the build is in [collector-plan.md](collector-plan.md), "Deviations" and "Rulings made during the build", and the collector as it runs today is in [operations.md](operations.md). The owner decided on 2026-11-05 that the update files are also collected through the day, on a switch of their own, designed in [update-files.md](update-files.md): it supersedes this design's polling non-goal and decision 1 for update files.
 **Grade:** a portfolio project, but the collector is the one part held to production grade: a morning it misses cannot be recovered.
 
 ## What the project is
