@@ -39,6 +39,8 @@ SHUFERSAL = ("src/collector/sources/shufersal.py", ["tests/test_shufersal.py"])
 SHUFERSAL_REPLAYED = ("src/collector/sources/shufersal.py", ["tests/test_shufersal.py", "tests/test_replay.py"])
 # The 2026-11-06 replay, which must catch a timed-out page not asked again by itself.
 NOV_6_REPLAY = ("src/collector/sources/shufersal.py", ["tests/test_replay.py::test_the_2026_11_06_pricefull_run_replayed"])
+# The 2026-11-06 Promo polls (q23), which must catch a poll started by R37's rule by themselves.
+PROMO_REPLAY = ("src/collector/run.py", ["tests/test_replay.py::test_a_day_of_shufersal_promo_passes_replayed"])
 # Two q24 breaks that pause where the rule has no pause. The older tests in test_shufersal.py build their sources with
 # the default sleep, time.sleep, so under these breaks they would wait for real (10 s a page) before -x reached the q24
 # tests near the end of the file: each names the one test that must catch it by itself.
@@ -573,6 +575,7 @@ MUTATIONS = {
     "other_days left out of the manifest (q23 run)": (RUN, '| {"day": result.day.isoformat(), "code_sha": code_sha}',
                                                       '| {"day": result.day.isoformat(), "code_sha": code_sha, "other_days": {}}'),
     "a poll started by R37's rule (q23 run)": (RUN, '        rule = pass_start if self.result.mode == "poll" else start_for\n', "        rule = start_for\n"),
+    "a poll started by R37's rule, the Promo replay alone (q23 replay)": (PROMO_REPLAY, '        rule = pass_start if self.result.mode == "poll" else start_for\n', "        rule = start_for\n"),
     "a full kind started by the passes rule (q23 run)": (RUN, '        rule = pass_start if self.result.mode == "poll" else start_for\n', "        rule = pass_start\n"),
     # run: blocks and the latch
     "stopped chain collected": (RUN, '        if store.read_state(chain.slug).get("stopped"):', "        if False:"),
