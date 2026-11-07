@@ -112,8 +112,13 @@ CANDIDATES_MAIN = ("src/basket/candidates.py", ["tests/test_candidates.py::test_
 _RUN_TAKEN = ('        if self.result.pages:  # first: a row of another day, a repeat or one never downloaded was still listed\n'
               '            page = self.result.pages[-1]\n'
               '            page["taken_through"] = page["last"] if item.ends_page else item.name.raw\n')
-_RUN_DAY_FILTER = ("        if item.name.day != self.day or item.name.kind not in self.kinds:\n"
-                   "            return\n")
+# The day filter is the kind filter, then the other-day count (q23): `_RUN_KIND_FILTER + _RUN_OTHER_DAY`.
+_RUN_KIND_FILTER = ("        if item.name.kind not in self.kinds:\n"
+                    "            return\n")
+_RUN_OTHER_DAY = ("        if item.name.day != self.day:\n"
+                  "            self._other_day(item)\n"
+                  "            return\n")
+_RUN_DAY_FILTER = _RUN_KIND_FILTER + _RUN_OTHER_DAY
 _RUN_TO_DOWNLOAD = ("        name = stored_name(item)\n"
                     "        if name in self.seen:\n"
                     "            return  # listed again while the listing was read: the first counts\n"
@@ -209,8 +214,8 @@ MUTATIONS = {
     "a timeout not an HttpError (q24 timeout)": (HTTP, "class HttpTimeout(HttpError):", "class HttpTimeout(Exception):"),
     "a timeout not chained from its cause (q24 timeout)": (HTTP, 'failed: {exc}") from exc', 'failed: {exc}")'),
     # chains
-    "a sixth chain added": (CHAINS, '    Chain("yochananof", "Yochananof", "ncr", NCR_URL, username="yohananof"),\n', '    Chain("yochananof", "Yochananof", "ncr", NCR_URL, username="yohananof"),\n    Chain("extra", "Extra", "carrefour", "https://example.org"),\n'),
-    "a chain dropped": (CHAINS, '    Chain("carrefour", "Carrefour", "carrefour", "https://prices.carrefour.co.il"),\n', ""),
+    "a sixth chain added": (CHAINS, '    Chain("yochananof", "Yochananof", "ncr", NCR_URL, username="yohananof", polled=("Price", "Promo")),\n', '    Chain("yochananof", "Yochananof", "ncr", NCR_URL, username="yohananof", polled=("Price", "Promo")),\n    Chain("extra", "Extra", "carrefour", "https://example.org"),\n'),
+    "a chain dropped": (CHAINS, '    Chain("carrefour", "Carrefour", "carrefour", "https://prices.carrefour.co.il", polled=("Price", "Promo")),\n', ""),
     "a chain filed under its name, not its slug": (CHAINS, "{chain.slug: chain for chain in (", "{chain.name: chain for chain in ("),
     "a chain's name changed": (CHAINS, '"Osher Ad"', '"osherad"'),
     "a chain on the wrong portal": (CHAINS, 'Chain("osherad", "Osher Ad", "ncr"', 'Chain("osherad", "Osher Ad", "shufersal"'),
@@ -225,9 +230,14 @@ MUTATIONS = {
     "the NCR portal over http": (CHAINS, 'NCR_URL = "https://url.publishedprices.co.il"', 'NCR_URL = "http://url.publishedprices.co.il"'),
     "Rami Levy's username in the wrong case": (CHAINS, 'username="RamiLevi"', 'username="ramilevi"'),
     "Yochananof's username spelled as its slug": (CHAINS, 'username="yohananof"', 'username="yochananof"'),
-    "Osher Ad without a username": (CHAINS, 'NCR_URL, username="osherad"),', "NCR_URL),"),
-    "a username on a portal with no login": (CHAINS, '"https://prices.carrefour.co.il"),', '"https://prices.carrefour.co.il", username="carrefour"),'),
+    "Osher Ad without a username": (CHAINS, 'NCR_URL, username="osherad", polled=', "NCR_URL, polled="),
+    "a username on a portal with no login": (CHAINS, '"https://prices.carrefour.co.il", polled=', '"https://prices.carrefour.co.il", username="carrefour", polled='),
     "Chain not frozen": (CHAINS, "@dataclass(frozen=True)\nclass Chain:", "@dataclass\nclass Chain:"),
+    # chains: the update kinds each chain's poll runs read (q23)
+    "a quick chain that does not poll (q23 chains)": (CHAINS, 'username="RamiLevi", polled=("Price", "Promo")),', 'username="RamiLevi"),'),
+    "a full kind among the polled (q23 chains)": (CHAINS, '"https://prices.carrefour.co.il", polled=("Price", "Promo")),',
+                                                  '"https://prices.carrefour.co.il", polled=("PriceFull", "Price", "Promo")),'),
+    "chains poll their update files by default (q23 chains)": (CHAINS, "    polled: tuple[str, ...] = ()\n", '    polled: tuple[str, ...] = ("Price", "Promo")\n'),
     "gov.il citation dropped": (CHAINS, "https://www.gov.il/he/pages/cpfta_prices_regulations", "the gov.il page"),
     "citation without its update date": (CHAINS, "(updated 12.08.2026)", "()"),
     # chains: the adapter each chain gets (ruling R1)
@@ -482,19 +492,20 @@ MUTATIONS = {
     "check key without check-": (STORE, '/check-{run_id}.json"', '/{run_id}.json"'),
     "state key outside state/": (STORE, 'f"state/{slug}.json"', 'f"{slug}.json"'),
     # run: the brief's five
-    "clock date instead of file date": (RUN, "        if item.name.day != self.day or", "        if _utc(self.now()).date() != self.day or"),
+    "clock date instead of file date": (RUN, "        if item.name.day != self.day:", "        if _utc(self.now()).date() != self.day:"),
     "stored files fetched again": (RUN, "        if name in self.stored:\n            return\n", ""),
     "no latch on block": (RUN, '            self.store.write_state(self.slug, {"stopped": True,', '            (self.slug, {"stopped": True,'),
     "timeout guard removed": (RUN, "            if self._short_of_time():\n                if problem is None:", "            if False:\n                if problem is None:"),
     "manifest skipped on error": (RUN, "        store.put_record(manifest_key(", "        result.error is None and store.put_record(manifest_key("),
     # run: choosing that day's files
-    "older files selected": (RUN, "        if item.name.day != self.day or", "        if item.name.day > self.day or"),
-    "kinds not filtered again": (RUN, " or item.name.kind not in self.kinds:", ":"),
-    "unknown kinds accepted": (RUN, "    if not kinds or not set(kinds) <= set(chain.kinds):", "    if not kinds:"),
-    "no kinds accepted": (RUN, "    if not kinds or not set(kinds) <= set(chain.kinds):", "    if not set(kinds) <= set(chain.kinds):"),
-    "kinds the chain does not collect accepted": (RUN, "set(kinds) <= set(chain.kinds)", "set(kinds) <= {'Stores', 'PriceFull', 'PromoFull', 'Price', 'Promo'}"),
+    "older files selected": (RUN, "        if item.name.day != self.day:", "        if item.name.day > self.day:"),
+    "kinds not filtered again": (RUN, _RUN_KIND_FILTER, ""),
+    "unknown kinds accepted": (RUN, "    if not kinds or not set(kinds) <= set(allowed):", "    if not kinds:"),
+    "no kinds accepted": (RUN, "    if not kinds or not set(kinds) <= set(allowed):", "    if not set(kinds) <= set(allowed):"),
+    "kinds the chain does not collect accepted": (RUN, "set(kinds) <= set(allowed)", "set(kinds) <= {'Stores', 'PriceFull', 'PromoFull', 'Price', 'Promo'}"),
     "kinds not recorded (R4)": (RUN, "RunResult(chain.slug, run_id, mode, day, list(kinds))", "RunResult(chain.slug, run_id, mode, day, [])"),
-    "stored name taken from the listing, not the link (R16)": (RUN, "        name = stored_name(item)\n", "        name = item.name.raw\n"),
+    "stored name taken from the listing, not the link (R16)": (RUN, "        name = stored_name(item)\n        if name in self.seen:\n",
+                                                               "        name = item.name.raw\n        if name in self.seen:\n"),
     "stored name keeps the link's query (R16)": (RUN, '    return urllib.parse.urlsplit(item.url).path.rsplit("/", 1)[-1]', '    return item.url.rsplit("/", 1)[-1]'),
     "skipped names not listed": (RUN, "        self.result.listed.append(name)\n        if name in self.stored:\n            return\n",
                                  "        if name in self.stored:\n            return\n        self.result.listed.append(name)\n"),
@@ -514,7 +525,7 @@ MUTATIONS = {
     "listing HTTP error escapes": (RUN, "        except HttpError as exc:  # not read again", "        except ZeroDivisionError as exc:  # not read again"),
     "listing HTTP error not recorded as an error": (RUN, '            self._stop(f"listing failed: {exc}")', "            raise _Stop"),
     # run: a paged listing, where each kind starts and the pages it reads (ruling R37)
-    "earlier manifests not read (q21 run)": (RUN, "        starts = {kind: start_for(earlier, kind, self.stored) for kind in self.kinds}\n", "        starts = {}\n"),
+    "earlier manifests not read (q21 run)": (RUN, "        starts = {kind: rule(earlier, kind, self.stored) for kind in self.kinds}\n", "        starts = {}\n"),
     "starts read for a source that does not page (q21 run)": (RUN, "        if not isinstance(self.source, PagedSource):\n            return {}\n" + _RUN_READ_EARLIER,
                                                               _RUN_READ_EARLIER + "        if not isinstance(self.source, PagedSource):\n            return {}\n"),
     "another chain's manifests read (q21 run)": (RUN, 'prefix = manifest_key(self.day, self.slug, "").removesuffix(".json")', 'prefix = manifest_key(self.day, "", "").removesuffix("-.json")'),
@@ -547,6 +558,18 @@ MUTATIONS = {
         "            self._stop(OUT_OF_TIME)\n"),
     "the failed tries left out of the manifest (q24 run)": (RUN, '| {"day": result.day.isoformat(), "code_sha": code_sha}',
                                                             '| {"day": result.day.isoformat(), "code_sha": code_sha, "timeouts": []}'),
+    # run: a poll run held to the chain's polled kinds, other days' names counted, a paged poll's start (q23)
+    "a poll held to the morning's kinds (q23 run)": (RUN, '    allowed = chain.polled if mode == "poll" else chain.kinds\n', "    allowed = chain.kinds\n"),
+    "a main or retry run held to the polled kinds (q23 run)": (RUN, '    allowed = chain.polled if mode == "poll" else chain.kinds\n', "    allowed = chain.polled\n"),
+    "a refused poll's kinds named as the kinds the chain collects (q23 run)": (RUN, "{'polls' if mode == 'poll' else 'collects'}", "collects"),
+    "the run's own day counted in other_days (q23 run)": (RUN, _RUN_OTHER_DAY, "        self._other_day(item)\n        if item.name.day != self.day:\n            return\n"),
+    "other_days left empty (q23 run)": (RUN, "        self.result.other_days[day] = self.result.other_days.get(day, 0) + 1\n", ""),
+    "a name listed twice counted twice in other_days (q23 run)": (RUN, "        if name in self.others:\n            return  # listed again: counted once\n", ""),
+    "kinds not asked for counted in other_days (q23 run)": (RUN, _RUN_KIND_FILTER + _RUN_OTHER_DAY, _RUN_OTHER_DAY + _RUN_KIND_FILTER),
+    "other_days left out of the manifest (q23 run)": (RUN, '| {"day": result.day.isoformat(), "code_sha": code_sha}',
+                                                      '| {"day": result.day.isoformat(), "code_sha": code_sha, "other_days": {}}'),
+    "a poll started by R37's rule (q23 run)": (RUN, '        rule = pass_start if self.result.mode == "poll" else start_for\n', "        rule = start_for\n"),
+    "a full kind started by the passes rule (q23 run)": (RUN, '        rule = pass_start if self.result.mode == "poll" else start_for\n', "        rule = pass_start\n"),
     # run: blocks and the latch
     "stopped chain collected": (RUN, '        if store.read_state(chain.slug).get("stopped"):', "        if False:"),
     "any state read as stopped": (RUN, 'if store.read_state(chain.slug).get("stopped"):', "if store.read_state(chain.slug):"),

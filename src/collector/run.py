@@ -1,6 +1,9 @@
 """The run loop: one chain's files for one day, fetched, checked, stored write-once, and a manifest of
 what happened, written whatever happened (docs/collector.md, "How a morning runs", step 3).
 
+- A run of mode `poll` may ask only for kinds in the chain's `polled`, the update kinds it polls
+  through the day (docs/update-files.md, section 1); a run of any other mode (`main`, `retry`) only
+  for kinds in its `kinds`. Any other ask is refused before anything is read or written.
 - A chain whose state says `stopped` does nothing: no listing, no download; its manifest says
   `blocked: "stopped earlier"`.
 - The listing is read once, as the files are fetched: each file is downloaded before the listing is
@@ -8,7 +11,8 @@ what happened, written whatever happened (docs/collector.md, "How a morning runs
 - A listed file counts when the date in its name is the run's day and its kind was asked for; the
   clock never decides. It is filed under its link's last path segment (ruling R16: Shufersal lists a
   name without `.gz` and links `<name>.gz`). A name already stored that day is listed but not
-  fetched; a name listed a second time in one run is ignored (the first counts).
+  fetched; a name listed a second time in one run is ignored (the first counts). A name of a kind
+  asked for and another day is counted under the date in it (`other_days`), once a name.
 - A file is tried once, and once more after an HTTP error or a body that is not a price file; then
   it is failed and the run goes on. A put that S3 refuses fails that file only (ruling R23).
 - A block (Blocked, or HTML where a file belongs) writes the chain's latch and stops the run; the
@@ -20,7 +24,8 @@ what happened, written whatever happened (docs/collector.md, "How a morning runs
   fresh link, NCR's listing answers) and raise OutOfTime when it says so: the run stops the
   same way, and a file whose download stopped so is failed with where it stopped.
 - A paged listing (Shufersal's, a PagedSource; ruling R37) is told where to start each kind, from the
-  chain's earlier manifests of the day (collector.pages.start_for), and reports each page it reads
+  chain's earlier manifests of the day (collector.pages.start_for; a poll run's from the kind's
+  current pass, collector.pages.pass_start, ruling R39), and reports each page it reads
   before giving its rows. The run records each page and logs it; each row given then sets how far the
   run took the latest page (`taken_through`), before anything else is done with the row: the page's
   last name when the row ends the page, else the row's name. The run also keeps each request for a
@@ -33,7 +38,9 @@ found stored by this run; `failed` those tried and not stored, with why; `not_at
 listed, not stored before, and never tried because the run stopped first. Names the listing had not
 yet given when the run stopped are in none of them: the retry run lists them. `pages` holds the
 pages a paged listing read, in the order read, and `timeouts` the page requests it reported as timed
-out, in the order reported (both empty for any other listing).
+out, in the order reported (both empty for any other listing). `other_days` holds, for each date in a
+name other than the run's day (`YYYY-MM-DD`), how many distinct names of the kinds asked for the
+listing gave with that date; it is empty when there were none.
 """
 import dataclasses
 import hashlib
@@ -49,7 +56,7 @@ from typing import NoReturn
 from collector.chains import Chain
 from collector.http import Blocked, Http, HttpError
 from collector.payload import BadPayload, check_payload, looks_like_html
-from collector.pages import start_for
+from collector.pages import pass_start, start_for
 from collector.sources import Listed, ListingUnreadable, OutOfTime, PagedSource, PageRead, PageTimeout, Source
 from collector.store import manifest_key, raw_key
 
@@ -83,6 +90,7 @@ class RunResult:
     error: str | None = None
     pages: list[dict] = field(default_factory=list)  # each listing page read: asdict(PageRead) | {"taken_through": ...}
     timeouts: list[dict] = field(default_factory=list)  # each listing page request that timed out: asdict(PageTimeout)
+    other_days: dict[str, int] = field(default_factory=dict)  # each other date: its names of the kinds asked for
 
 
 def collect_chain(chain: Chain, source: Source, http: Http, store, day: date, run_id: str, mode: str,
@@ -90,11 +98,14 @@ def collect_chain(chain: Chain, source: Source, http: Http, store, day: date, ru
                   code_sha: str) -> RunResult:
     """Collect `chain`'s `kinds` for `day` through `source` and `http` into `store`, and write the
     manifest under manifest_key(day, slug, run_id). `time_left` gives the invocation's seconds left;
-    `now` must give aware datetimes. Anything unexpected is recorded in the manifest's `error`, then
-    raised."""
+    `now` must give aware datetimes. A poll run is held to the chain's `polled`, any other to its
+    `kinds`: ValueError, before anything is read or written. Anything unexpected is recorded in the
+    manifest's `error`, then raised."""
     _utc(now())
-    if not kinds or not set(kinds) <= set(chain.kinds):
-        raise ValueError(f"kinds must be some of {chain.kinds}, the kinds {chain.slug} collects, not {kinds!r}")
+    allowed = chain.polled if mode == "poll" else chain.kinds
+    if not kinds or not set(kinds) <= set(allowed):
+        raise ValueError(f"kinds must be some of {allowed}, the kinds {chain.slug} "
+                         f"{'polls' if mode == 'poll' else 'collects'}, not {kinds!r}")
     result = RunResult(chain.slug, run_id, mode, day, list(kinds))
     try:
         if store.read_state(chain.slug).get("stopped"):
@@ -146,6 +157,7 @@ class _Run:
         self.result = result
         self.stored = store.stored_names(slug, day)  # read once: a name is handled once per run
         self.seen: set[str] = set()
+        self.others: set[str] = set()  # names of another day counted in `other_days`, each once
         self.page_counts: dict[str, int] = {}  # each kind's last page, as this run's page 1 of it names it
 
     def collect(self) -> None:
@@ -163,13 +175,14 @@ class _Run:
 
     def _paged(self) -> dict:
         """What a paged listing is handed beyond any listing's arguments: where each kind starts, from the chain's
-        earlier manifests of the day, the callback that records each page it reads and the one that records each
-        page request that timed out."""
+        earlier manifests of the day (a poll's from the kind's current pass, ruling R39), the callback that records
+        each page it reads and the one that records each page request that timed out."""
         if not isinstance(self.source, PagedSource):
             return {}
         prefix = manifest_key(self.day, self.slug, "").removesuffix(".json")  # this chain's runs of the day
         earlier = [json.loads(record) for record in self.store.read_records(prefix)]
-        starts = {kind: start_for(earlier, kind, self.stored) for kind in self.kinds}
+        rule = pass_start if self.result.mode == "poll" else start_for
+        starts = {kind: rule(earlier, kind, self.stored) for kind in self.kinds}
         return {"starts": starts, "on_page": self._page, "on_timeout": self._timeout}
 
     def _page(self, read: PageRead) -> None:
@@ -203,7 +216,10 @@ class _Run:
         if self.result.pages:  # first: a row of another day, a repeat or one never downloaded was still listed
             page = self.result.pages[-1]
             page["taken_through"] = page["last"] if item.ends_page else item.name.raw
-        if item.name.day != self.day or item.name.kind not in self.kinds:
+        if item.name.kind not in self.kinds:
+            return
+        if item.name.day != self.day:
+            self._other_day(item)
             return
         name = stored_name(item)
         if name in self.seen:
@@ -215,6 +231,15 @@ class _Run:
         body = self._fetch(item, name)
         if body is not None:
             self._store(name, body)
+
+    def _other_day(self, item: Listed) -> None:
+        """Count a name of a kind asked for that is dated another day, under that day, once a name."""
+        name = stored_name(item)
+        if name in self.others:
+            return  # listed again: counted once
+        self.others.add(name)
+        day = item.name.day.isoformat()
+        self.result.other_days[day] = self.result.other_days.get(day, 0) + 1
 
     def _fetch(self, item: Listed, name: str) -> bytes | None:
         """`item`'s body once it reads as a price file; None after recording why not in `failed`."""
