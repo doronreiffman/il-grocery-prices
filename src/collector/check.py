@@ -35,9 +35,9 @@ For each chain, from that day's manifests (every run's, main and retry alike) an
   names those runs; blocks are joined from the front of the list, the furthest-reaching first among
   those that start together). It vouches only for names of a kind it read. So a run that read only part
   of the list vouches only when its pages carry the joined reading further than the pages joined before
-  them. A part that other runs' pages already cover vouches for no name, nor does any part when the
-  other runs' pages do not join up into a full reading without the retry's. The retry never vouches for
-  its own.
+  them. A part that the pages joined before it already cover vouches for no name, nor does any part
+  when the other runs' pages do not join up into a full reading without the retry's. The retry never
+  vouches for its own.
 
   Why these conditions. Shufersal's slow listing pages stop its PromoFull retry short most mornings, so
   without R36 a complete morning would alert. Nothing missing proves nothing on its own: a run that stops
@@ -182,9 +182,9 @@ def _seen_by_others(manifests: list[dict], retry: dict) -> bool:
     another run that read the name's kind (ruling R37): one that read the whole list on its own, or one
     that `read_in_full` names over the other runs, the retry left out, for a block that carried that
     joined reading's end further than the blocks joined before it. A run that read only part of the list
-    vouches only in the second way: a part that other runs' pages already cover vouches for no name, nor
-    does any part when the other runs' pages do not join up without the retry's. The retry never vouches
-    for its own."""
+    vouches only in the second way: a part that the pages joined before it already cover vouches for no
+    name, nor does any part when the other runs' pages do not join up without the retry's. The retry
+    never vouches for its own."""
     if not all(read_in_full(manifests, kind) is not None for kind in retry["kinds"]):
         return False
     others = [manifest for manifest in manifests if manifest["run_id"] != retry["run_id"]]

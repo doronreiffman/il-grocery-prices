@@ -11,7 +11,9 @@ says so; the default, for a caller with no time limit, is never short.
 
 A paged adapter (PagedSource: Shufersal's) also reports each listing page it reads (PageRead) and marks the last row
 it gives from each page (`Listed.ends_page`), so the run loop can record how far into the list a run got; the run
-loop tells it where to start each kind (Start).
+loop tells it where to start each kind (Start). It reports to `on_timeout` each request for a listing page that passed
+the socket wait (PageTimeout), before any further try of that page, so the run loop can record every try used; the
+re-read of a category for a fresh link reports none, as it reports no page.
 """
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
@@ -71,8 +73,19 @@ class PageRead:
     first: str  # the first row's file name as listed (any date, parsed or not)
     last: str  # the last row's
     last_page: int | None  # the last page this page's pager names; None when it names none
-    seconds: float  # the request's time, rounded to 0.1 s (Http's 0.5 s pause included; none on the run's first)
+    seconds: float  # the successful request's time, to 0.1 s (Http's 0.5 s pause included; none on the run's first)
     in_order: bool  # every name at or after the one before it, and the first at or after the last of the page before
+    tries: int = 1  # the requests it took to read the page: 1, or 2 or 3 when earlier tries timed out
+
+
+@dataclass(frozen=True)
+class PageTimeout:
+    """One request for a listing page that passed the socket wait, as a paged adapter reports it."""
+
+    kind: str
+    page: int
+    attempt: int  # the try's number, from 1
+    seconds: float  # how long the try waited, rounded to 0.1 s (Http's 0.5 s pause included; none on the run's first)
 
 
 @dataclass(frozen=True)
@@ -90,10 +103,13 @@ class PagedSource(Source):
 
     def listing(self, http: Http, kinds: tuple[str, ...], short_of_time: Callable[[], bool] = never_short,
                 starts: Mapping[str, Start] | None = None,
-                on_page: Callable[[PageRead], None] | None = None) -> Iterator[Listed]:
+                on_page: Callable[[PageRead], None] | None = None,
+                on_timeout: Callable[[PageTimeout], None] | None = None) -> Iterator[Listed]:
         """As Source.listing, each kind read from `starts[kind]` (Start(), a fresh pass from page 1, when it has none).
         `on_page` is called with each page read, once every row on it is checked and before its first row is given; a
-        page that fails a check raises and is not reported. The last row given from each page has `ends_page`."""
+        page that fails a check raises and is not reported. The last row given from each page has `ends_page`.
+        `on_timeout` is called with each request for a listing page that passed the socket wait, before any further
+        try of that page."""
 
 
 UNSAFE = ("/", "\\", "..", "?", "#")  # could leave the folder or end the path

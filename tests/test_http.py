@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from collector import http as http_module
-from collector.http import Blocked, Http, HttpError, Response, build_opener
+from collector.http import Blocked, Http, HttpError, HttpTimeout, Response, build_opener
 
 UA = "il-grocery-prices/0.1 (+https://github.com/example/il-grocery-prices; owner@example.org)"
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -227,6 +227,49 @@ def test_network_failures_are_http_errors_and_not_retried(reply):
     with pytest.raises(HttpError):
         h.get(BLOB_LINK)
     assert len(net.requests) == 1
+
+
+@pytest.mark.parametrize("in_the_body, error", [
+    pytest.param(True, TimeoutError("The read operation timed out"), id="reading the answer"),
+    pytest.param(False, TimeoutError("The read operation timed out"), id="waiting for the answer"),
+    pytest.param(False, urllib.error.URLError(TimeoutError("timed out")), id="connecting"),
+    pytest.param(False, urllib.error.URLError(TimeoutError("_ssl.c:1011: The handshake operation timed out")),
+                 id="the TLS handshake"),
+])
+def test_a_timeout_is_an_http_timeout_and_not_retried(in_the_body, error):
+    """urllib wraps a timeout while connecting or in the TLS handshake in a URLError; one while waiting
+    for the answer or reading it arrives bare (docs/shufersal-page-retry.md, "Why")."""
+    h, net, _ = client(answer(fp=FailingBody(error)) if in_the_body else error)
+    with pytest.raises(HttpTimeout) as caught:
+        h.get(BLOB_LINK)
+    assert isinstance(caught.value, HttpError)
+    assert caught.value.__cause__ is error
+    assert str(caught.value) == f"GET {BLOB_LINK.split('?')[0]} failed: {error}"
+    assert len(net.requests) == 1
+
+
+@pytest.mark.parametrize("reply", [
+    pytest.param(ConnectionResetError(54, "Connection reset by peer"), id="a dropped connection"),
+    pytest.param(answer(fp=FailingBody(ConnectionResetError(54, "Connection reset by peer"))), id="dropped while reading"),
+    pytest.param(urllib.error.URLError("[Errno 8] nodename nor servname provided"), id="a DNS failure"),
+    pytest.param(urllib.error.URLError(ConnectionRefusedError(61, "Connection refused")), id="a refused connection"),
+    pytest.param(answer(fp=FailingBody(http.client.IncompleteRead(b"abc", 7))), id="cut short"),
+    pytest.param(answer(200, b"\x1f\x8b\x08\x00short", [("Content-Type", "application/x-gzip"), ("Content-Length", "100")]),
+                 id="shorter than its length"),
+    pytest.param(answer(500, b"", [("Content-Type", "text/plain")]), id="a 500"),
+])
+def test_other_failures_are_plain_http_errors(reply):
+    h, net, _ = client(reply)
+    with pytest.raises(HttpError) as caught:
+        h.get(BLOB_LINK)
+    assert type(caught.value) is HttpError
+    assert len(net.requests) == 1
+
+
+def test_a_timeout_is_an_http_error_and_not_a_block():
+    """Every `except HttpError` catches a timeout; a timeout never latches a chain."""
+    assert issubclass(HttpTimeout, HttpError)
+    assert not issubclass(HttpTimeout, Blocked)
 
 
 def test_error_body_that_fails_to_read_still_blocks():
