@@ -23,14 +23,17 @@ what happened, written whatever happened (docs/collector.md, "How a morning runs
   chain's earlier manifests of the day (collector.pages.start_for), and reports each page it reads
   before giving its rows. The run records each page and logs it; each row given then sets how far the
   run took the latest page (`taken_through`), before anything else is done with the row: the page's
-  last name when the row ends the page, else the row's name. Any other listing is called as it was
-  before page records existed: no manifest is read and no page recorded.
+  last name when the row ends the page, else the row's name. The run also keeps each request for a
+  listing page that the listing reports as timed out (`timeouts`), whatever the run then ends with;
+  the adapter logs them. Any other listing is called as it was before page records existed: no
+  manifest is read, no page recorded and no timed-out request kept.
 
 In the result, `listed` holds that day's names as the listing gave them; `files` those stored or
 found stored by this run; `failed` those tried and not stored, with why; `not_attempted` those
 listed, not stored before, and never tried because the run stopped first. Names the listing had not
 yet given when the run stopped are in none of them: the retry run lists them. `pages` holds the
-pages a paged listing read, in the order read (empty for any other listing).
+pages a paged listing read, in the order read, and `timeouts` the page requests it reported as timed
+out, in the order reported (both empty for any other listing).
 """
 import dataclasses
 import hashlib
@@ -47,7 +50,7 @@ from collector.chains import Chain
 from collector.http import Blocked, Http, HttpError
 from collector.payload import BadPayload, check_payload, looks_like_html
 from collector.pages import start_for
-from collector.sources import Listed, ListingUnreadable, OutOfTime, PagedSource, PageRead, Source
+from collector.sources import Listed, ListingUnreadable, OutOfTime, PagedSource, PageRead, PageTimeout, Source
 from collector.store import manifest_key, raw_key
 
 MIN_TIME_LEFT = 90.0  # seconds (ruling R32); with less, the run stops and writes its manifest
@@ -79,6 +82,7 @@ class RunResult:
     blocked: str | None = None
     error: str | None = None
     pages: list[dict] = field(default_factory=list)  # each listing page read: asdict(PageRead) | {"taken_through": ...}
+    timeouts: list[dict] = field(default_factory=list)  # each listing page request that timed out: asdict(PageTimeout)
 
 
 def collect_chain(chain: Chain, source: Source, http: Http, store, day: date, run_id: str, mode: str,
@@ -159,21 +163,27 @@ class _Run:
 
     def _paged(self) -> dict:
         """What a paged listing is handed beyond any listing's arguments: where each kind starts, from the chain's
-        earlier manifests of the day, and the callback that records each page it reads."""
+        earlier manifests of the day, the callback that records each page it reads and the one that records each
+        page request that timed out."""
         if not isinstance(self.source, PagedSource):
             return {}
         prefix = manifest_key(self.day, self.slug, "").removesuffix(".json")  # this chain's runs of the day
         earlier = [json.loads(record) for record in self.store.read_records(prefix)]
         starts = {kind: start_for(earlier, kind, self.stored) for kind in self.kinds}
-        return {"starts": starts, "on_page": self._page}
+        return {"starts": starts, "on_page": self._page, "on_timeout": self._timeout}
 
     def _page(self, read: PageRead) -> None:
         """Record and log a page the listing read; nothing is taken from it until one of its rows is given."""
         self.result.pages.append(dataclasses.asdict(read) | {"taken_through": None})
         if read.page == 1:
             self.page_counts[read.kind] = read.last_page or 1  # no pager: a list of one page
-        log.info("%s %s page %d of %s: %d rows in %.1f s", self.slug, read.kind, read.page,
-                 self.page_counts.get(read.kind, "?"), read.rows, read.seconds)
+        log.info("%s %s page %d of %s: %d rows in %.1f s%s", self.slug, read.kind, read.page,
+                 self.page_counts.get(read.kind, "?"), read.rows, read.seconds,
+                 f" (try {read.tries})" if read.tries > 1 else "")
+
+    def _timeout(self, timeout: PageTimeout) -> None:
+        """Record a page request the listing reports as timed out; the adapter logs it, not the run."""
+        self.result.timeouts.append(dataclasses.asdict(timeout))
 
     def _next(self, listing: Iterator[Listed]) -> Listed | None:
         try:

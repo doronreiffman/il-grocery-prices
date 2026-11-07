@@ -5,6 +5,7 @@ MemoryStore, which keeps S3Store's rules; raw files go in through put_raw.
 """
 import gzip
 import json
+from dataclasses import asdict
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -13,9 +14,11 @@ import pytest
 from collector.check import Alert, check_day, mark_alerted
 from collector.names import KINDS
 from collector.run import RunResult, manifest_bytes
+from collector.sources import PageTimeout
 from collector.store import MemoryStore, manifest_key, raw_key
 from test_pages import (A, A_ID, ALL_STORED, B, B_ID, BLOCKED, DAY as NOV_5, TIMED_OUT, gz, late, name as list_name,
-                        pages, rec)
+                        pages, rec, tried)
+from test_shufersal import LISTING
 
 FIXTURES = Path(__file__).parent / "fixtures"
 DAY = date(2026, 10, 31)
@@ -1038,6 +1041,81 @@ def test_a_pre_change_manifest_ended_clean_reads_in_full():
     assert alerts == []
     assert record["chains"]["shufersal"]["read_in_full"]["PriceFull"] == [A_ID]
     assert record["chains"]["shufersal"]["short_of_time"] == ["074536Z-retry-2933 (PriceFull)"]
+
+
+# ---- a page read on a later try (q24) ----
+
+class Tried(MemoryStore):
+    """A MemoryStore that stores each manifest as test_pages' `tried` gives it: every page record read in `tries`
+    requests, or, with None, as written before tries were recorded. `timeouts[run_id]` is that run's list in place of
+    the one `tried` gives (left out with None)."""
+
+    def __init__(self, tries, timeouts=None):
+        super().__init__()
+        self.tries, self.timeouts = tries, timeouts or {}
+
+    def put_record(self, key, body, now):
+        record = tried(json.loads(body), self.tries)
+        if self.tries is not None and record["run_id"] in self.timeouts:
+            record["timeouts"] = self.timeouts[record["run_id"]]
+        super().put_record(key, json.dumps(record).encode(), now)
+
+
+PAGE_1_TIMED_OUT = (f"listing failed: PriceFull page 1 timed out on 3 tries: GET {LISTING} failed: The read operation "
+                    "timed out")
+PAGE_1_TRIES = {RETRY_ID: [asdict(PageTimeout("PriceFull", 1, attempt, 60.5)) for attempt in (1, 2, 3)]}
+CHECK_RECORD_KEYS = {"manifests", "listed", "stored", "missing", "stopped", "failed", "short_of_time", "read_in_full",
+                     "coverage"}
+
+
+def stopped_retry_day(store):
+    """test_a_stopped_retry_on_a_day_read_in_full_across_runs_is_quiet's day: 2026-11-05 as resumed, and the retry's
+    fresh pass stopped on time on page 2."""
+    nov_5(store)
+    paged(store, RETRY_ID, "PriceFull", [rec(1), rec(2, taken=5)], gz(range(1, 26)), error=STOPPED)
+
+
+def page_1_timed_out_day(store):
+    """2026-11-06's shape (docs/shufersal-page-retry.md, section 4): A stopped on time on page 12 with every name it
+    listed stored, PromoFull's retry read its whole list, and the PriceFull retry's page 1 timed out on every try, so
+    it recorded no page."""
+    paged(store, A_ID, "PriceFull", A["pages"], A["listed"], error=STOPPED)
+    stored(store, "shufersal", *gz(range(1, 222)), day=NOV_5)
+    whole(store, PROMO_RETRY_ID, "PromoFull")
+    paged(store, RETRY_ID, "PriceFull", [], error=PAGE_1_TIMED_OUT)
+
+
+@pytest.mark.parametrize("tries", [1, 3, None])
+@pytest.mark.parametrize("day, timeouts, alerts, short_of_time, read_in_full", [
+    pytest.param(stopped_retry_day, {}, [], ["074536Z-retry-2933 (PriceFull)"],
+                 {"PriceFull": [A_ID, B_ID], "PromoFull": [PROMO_RETRY_ID]}, id="quiet"),
+    pytest.param(page_1_timed_out_day, PAGE_1_TRIES, [Alert("shufersal", "failed", (
+        "shufersal: the day's runs fell short: retry run 074536Z-retry-2933 (PriceFull) ended with: listing failed: "
+        "PriceFull page 1 timed out on 3 tries: GET https://prices.shufersal.co.il/FileObject/UpdateCategory failed: "
+        "The read operation timed out; the PriceFull list was not read in full: pages 13 to 21 never read, page 12 "
+        "read in part."))], [], {"PriceFull": None, "PromoFull": [PROMO_RETRY_ID]}, id="alerting"),
+])
+def test_tries_do_not_change_the_check(tries, day, timeouts, alerts, short_of_time, read_in_full):
+    """Design, section 4: the check reads nothing new. The same day alerts, stays quiet and records alike whether its
+    pages took one request each, three, or were written before tries were recorded; a retry whose page 1 timed out on
+    every try fails the morning with the run's own error, and the check record gains no field. Each manifest's
+    `timeouts` agrees with its pages: the ones `tried` gives, and on the alerting day the retry's three tries of page 1
+    (`timeouts`), which recorded no page."""
+    store = Tried(tries, timeouts)
+    day(store)
+    manifests = [json.loads(body) for body in store.read_records("manifests/")]
+    assert {record.get("tries") for manifest in manifests for record in manifest["pages"]} == {tries}
+    assert all(("timeouts" in manifest) == (tries is not None) for manifest in manifests)
+    for manifest in manifests:  # the data agrees with itself: a timed-out try comes before the try that read its page
+        read_on = {(page["kind"], page["page"]): page.get("tries", 1) for page in manifest["pages"]}
+        assert all(timeout["attempt"] < read_on.get((timeout["kind"], timeout["page"]), float("inf"))  # inf: never read
+                   for timeout in manifest.get("timeouts", []))
+    got, record = check_nov_5(store)
+    chain = record["chains"]["shufersal"]
+    assert got == alerts
+    assert chain["short_of_time"] == short_of_time
+    assert chain["read_in_full"] == read_in_full
+    assert set(chain) == CHECK_RECORD_KEYS
 
 
 # ---- coverage: recorded, never alerted ----

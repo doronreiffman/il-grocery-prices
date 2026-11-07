@@ -22,15 +22,23 @@ What the portal does (docs/portals.md, "Shufersal", seen 2026-10-31):
   each page, and the refresh again before the fresh link's download: OutOfTime, naming the file and
   where it stopped.
 - Each page the listing reads is reported (`on_page`, a PageRead) once every row on it is checked, before its first
-  row is given: its rows, first and last name, the last page its pager names, the seconds its request took and
-  whether its names are in order. Only page 1's pager sets how far the listing reads, and only page 1's has been seen:
-  a later page's is read leniently and recorded, never a stop. The last row given from each page carries `ends_page`.
+  row is given: its rows, first and last name, the last page its pager names, the seconds its successful request took
+  and whether its names are in order. Only page 1's pager sets how far the listing reads, and only page 1's has been
+  seen: a later page's is read leniently and recorded, never a stop. The last row given from each page carries
+  `ends_page`.
 - The run loop says where each kind starts (Start; docs/shufersal-resume.md, section 2): any detour pages first, once
   each; page 1; on a resume, the resume page again (the last page, when the list now ends before it), stepping back a
   page at a time, no further than page 2, while the page's first name sorts after the furthest name earlier runs took;
   then on to the last page.
+- A request for a listing page, the listing's or the refresh's, that passes the socket wait (HttpTimeout) is made again,
+  up to PAGE_TRIES requests in all, each later try after the run's time check, a pause of RETRY_PAUSE and the time
+  check again, so a pause is never taken without time to spare; any other failure, a block and a page that does not
+  read are raised at once (docs/shufersal-page-retry.md). Each timed-out try is logged at WARNING and reported
+  (`on_timeout`, a PageTimeout; the refresh reports none), a page read records the requests it took (`tries`), and a
+  page whose every try timed out raises an HttpError naming the page and the tries.
 """
 import itertools
+import logging
 import time
 import urllib.parse
 from collections.abc import Callable, Iterator, Mapping
@@ -38,9 +46,10 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
 
-from collector.http import Blocked, Http, HttpError
+from collector.http import Blocked, Http, HttpError, HttpTimeout
 from collector.names import parse_file_name
-from collector.sources import Listed, ListingUnreadable, OutOfTime, PagedSource, PageRead, Start, never_short
+from collector.sources import (Listed, ListingUnreadable, OutOfTime, PagedSource, PageRead, PageTimeout, Start,
+                               never_short)
 
 BASE_URL = "https://prices.shufersal.co.il"
 FILE_HOST = "pricesprodpublic.blob.core.windows.net"
@@ -50,8 +59,12 @@ NAME_CELL = 6
 LAST_PAGE = ">>"  # the pager's link to the last page
 EXPIRY = "%Y-%m-%dT%H:%M:%SZ"  # se=, as the links carry it
 EXPIRY_SLACK = timedelta(seconds=120)  # a 403 this long before se= is already expiry (ruling R17)
+PAGE_TRIES = 3  # requests for one listing page: the first and up to two more, each after one that timed out
+RETRY_PAUSE = 10.0  # seconds before a second or third try, with the time checked before and after it
 
 Row = tuple[str, str]  # a listing row's file name, as listed (without .gz), and its download link
+
+log = logging.getLogger(__name__)
 
 
 def _utc_now() -> datetime:
@@ -60,20 +73,24 @@ def _utc_now() -> datetime:
 
 class ShufersalSource(PagedSource):
     """`now` is the clock a link's `se=` is compared with; it must give aware datetimes. `timer` times each listing
-    page's request, in seconds; only differences between its readings count (a monotonic clock)."""
+    page's request, in seconds; only differences between its readings count (a monotonic clock). `sleep` takes the
+    pause before a timed-out page's next try."""
 
-    def __init__(self, now: Callable[[], datetime] = _utc_now, timer: Callable[[], float] = time.monotonic):
+    def __init__(self, now: Callable[[], datetime] = _utc_now, timer: Callable[[], float] = time.monotonic,
+                 sleep: Callable[[float], None] = time.sleep):
         self._now = now
         self._timer = timer
+        self._sleep = sleep
         self.unparsed = 0
 
     def listing(self, http: Http, kinds: tuple[str, ...], short_of_time: Callable[[], bool] = never_short,
                 starts: Mapping[str, Start] | None = None,
-                on_page: Callable[[PageRead], None] | None = None) -> Iterator[Listed]:
+                on_page: Callable[[PageRead], None] | None = None,
+                on_timeout: Callable[[PageTimeout], None] | None = None) -> Iterator[Listed]:
         self.unparsed = 0
         for kind in kinds:
             start = (starts or {}).get(kind, Start())
-            for _, rows in _pages(http, kind, short_of_time, start, on_page, self._timer):
+            for _, rows in _pages(http, kind, short_of_time, start, on_page, on_timeout, self._timer, self._sleep):
                 yield from self._given(rows, kinds)
 
     def _given(self, rows: list[Row], kinds: tuple[str, ...]) -> list[Listed]:
@@ -94,14 +111,14 @@ class ShufersalSource(PagedSource):
         """The body of `item`. On its link expiring, the item's category is read again from page 1 to
         the page that lists the file, and the fresh link is fetched once; HttpError if the file is no
         longer listed, ListingUnreadable if the listing no longer reads, OutOfTime if `short_of_time`
-        says so before a page or the fresh link's download."""
+        says so before a page, before a later try of a page, or before the fresh link's download."""
         try:
             return http.get(item.url).body
         except Blocked as block:
             if not self._expired(block):
                 raise
         try:
-            link = _fresh_link(http, item, short_of_time, self._timer)
+            link = _fresh_link(http, item, short_of_time, self._timer, self._sleep)
         except OutOfTime as stop:
             raise OutOfTime(f"{item.name.raw}: its link expired; stopped {stop}") from None
         if short_of_time():
@@ -116,10 +133,11 @@ class ShufersalSource(PagedSource):
         return expires is not None and expires - EXPIRY_SLACK <= self._now()
 
 
-def _fresh_link(http: Http, item: Listed, short_of_time: Callable[[], bool], timer: Callable[[], float]) -> str:
-    """The fresh link to `item`, read from its category from page 1 on (a fresh pass, reported to no one: it serves one
-    download, not the listing) to the page that lists it."""
-    for _, rows in _pages(http, item.name.kind, short_of_time, Start(), None, timer):
+def _fresh_link(http: Http, item: Listed, short_of_time: Callable[[], bool], timer: Callable[[], float],
+                sleep: Callable[[float], None]) -> str:
+    """The fresh link to `item`, read from its category from page 1 on (a fresh pass, its pages and timed-out tries
+    reported to no one: it serves one download, not the listing) to the page that lists it."""
+    for _, rows in _pages(http, item.name.kind, short_of_time, Start(), None, None, timer, sleep):
         for name_cell, link in rows:
             if name_cell == item.name.raw:
                 return link
@@ -127,13 +145,15 @@ def _fresh_link(http: Http, item: Listed, short_of_time: Callable[[], bool], tim
 
 
 def _pages(http: Http, kind: str, short_of_time: Callable[[], bool], start: Start,
-           on_page: Callable[[PageRead], None] | None,
-           timer: Callable[[], float]) -> Iterator[tuple[PageRead, list[Row]]]:
+           on_page: Callable[[PageRead], None] | None, on_timeout: Callable[[PageTimeout], None] | None,
+           timer: Callable[[], float], sleep: Callable[[float], None]) -> Iterator[tuple[PageRead, list[Row]]]:
     """`kind`'s pages whose rows are given, in the order `start` sets (`_reads`), each read when the caller asks for
     it, once `short_of_time` says there is time (OutOfTime otherwise). Every page read is reported to `on_page` before
-    its rows are given; a page read while stepping back is reported, and its rows are not given."""
+    its rows are given; a page read while stepping back is reported, and its rows are not given. Each timed-out try of
+    a page is reported to `on_timeout` (`_page_body`)."""
     report = on_page or _unreported
-    for record, rows, given in _reads(_PageReader(http, kind, short_of_time, timer), start):
+    reader = _PageReader(http, kind, short_of_time, timer, sleep, on_timeout or _unreported)
+    for record, rows, given in _reads(reader, start):
         report(record)
         if given:
             yield record, rows
@@ -170,38 +190,39 @@ def _reads(read: "_PageReader", start: Start) -> Iterator[tuple[PageRead, list[R
         yield record, rows, True
 
 
-def _unreported(read: PageRead) -> None:
-    """The report of a caller that keeps no page records."""
+def _unreported(record: PageRead | PageTimeout) -> None:
+    """The report of a caller that keeps no record of pages or of timed-out tries."""
 
 
 class _PageReader:
     """One kind's pages for one pass: each page read, checked and recorded, its order checked against the page read
     just before it."""
 
-    def __init__(self, http: Http, kind: str, short_of_time: Callable[[], bool], timer: Callable[[], float]):
+    def __init__(self, http: Http, kind: str, short_of_time: Callable[[], bool], timer: Callable[[], float],
+                 sleep: Callable[[float], None], on_timeout: Callable[[PageTimeout], None]):
         self.http, self.kind, self.short_of_time, self.timer = http, kind, short_of_time, timer
+        self.sleep, self.on_timeout = sleep, on_timeout
         self.before: PageRead | None = None  # the page read just before
 
     def __call__(self, page: int) -> tuple[PageRead, list[Row]]:
-        rows, grid, seconds = _read_page(self.http, self.kind, page, self.short_of_time, self.timer)
+        rows, grid, seconds, tries = _read_page(self.http, self.kind, page, self.short_of_time, self.timer, self.sleep,
+                                                self.on_timeout)
         names = [name for name, _ in rows]
         record = PageRead(self.kind, page, len(rows), names[0], names[-1], _named_last_page(grid, self.kind, page),
-                          round(seconds, 1), _in_order(names, self.before, page))
+                          round(seconds, 1), _in_order(names, self.before, page), tries)
         self.before = record
         return record, rows
 
 
-def _read_page(http: Http, kind: str, page: int, short_of_time: Callable[[], bool],
-               timer: Callable[[], float]) -> tuple[list[Row], "_Grid", float]:
-    """Page `page` of `kind`'s listing, read once `short_of_time` says there is time (OutOfTime otherwise): its rows,
-    every one checked before any is returned; the page as read, for its pager; and the seconds its request took,
-    Http's pause before it included (the run's first request has none)."""
-    if short_of_time():
-        raise OutOfTime(f"before page {page} of the {kind} listing")
+def _read_page(http: Http, kind: str, page: int, short_of_time: Callable[[], bool], timer: Callable[[], float],
+               sleep: Callable[[float], None],
+               on_timeout: Callable[[PageTimeout], None]) -> tuple[list[Row], "_Grid", float, int]:
+    """Page `page` of `kind`'s listing, requested once `short_of_time` says there is time and again on a timeout
+    (`_page_body`): its rows, every one checked before any is returned; the page as read, for its pager; the seconds
+    the successful try's request took, Http's pause before it included (the run's first request has none), the failed
+    tries and the pauses between them left out; and the requests it took."""
     url = f"{BASE_URL}/FileObject/UpdateCategory?catID={CATEGORY[kind]}&storeId=0&page={page}"
-    started = timer()
-    body = http.get(url).body
-    seconds = timer() - started
+    body, seconds, tries = _page_body(http, url, kind, page, short_of_time, timer, sleep, on_timeout)
     grid = _Grid()
     grid.feed(body.decode("utf-8", "replace"))
     grid.close()
@@ -214,7 +235,52 @@ def _read_page(http: Http, kind: str, page: int, short_of_time: Callable[[], boo
             raise ListingUnreadable(f"{where}: {len(cells)} cells, not {CELLS}")
         name = cells[NAME_CELL].text
         rows.append((name, _checked_link(cells[0].href, name, where)))
-    return rows, grid, seconds
+    return rows, grid, seconds, tries
+
+
+def _page_body(http: Http, url: str, kind: str, page: int, short_of_time: Callable[[], bool],
+               timer: Callable[[], float], sleep: Callable[[float], None],
+               on_timeout: Callable[[PageTimeout], None]) -> tuple[bytes, float, int]:
+    """The body of page `page` of `kind`'s listing, at `url`; the seconds the request that got it took; and the
+    requests it took. Each try asks `short_of_time`, then sends its request. A try whose request passes the socket wait
+    (HttpTimeout) is reported to `on_timeout`; unless it was the last of PAGE_TRIES, `short_of_time` is asked before the
+    try is logged at WARNING, so the line ends "again in 10 s" only when another try follows; then RETRY_PAUSE, and the
+    next try asks again before its request. A pause is never taken without time to spare. Each request reads `timer` at
+    its start and end only. Short of time: OutOfTime (naming the try when it is not the first), and nothing more is
+    paused or sent. After the last try, no time check: an HttpError naming the page and the tries, chained from its
+    timeout. Any other failure, a block included, is raised at once, whatever the try."""
+    last = None
+    for attempt in range(1, PAGE_TRIES + 1):
+        stop = _time_stop(kind, page, attempt)
+        if attempt > 1:
+            sleep(RETRY_PAUSE)
+        if short_of_time():
+            raise OutOfTime(stop)
+        started = timer()
+        try:
+            body = http.get(url).body
+        except HttpTimeout as timeout:
+            last = timeout
+            waited = round(timer() - started, 1)
+            on_timeout(PageTimeout(kind, page, attempt, waited))
+            # the check before the pause: a timed-out try can leave too little time for the pause and the manifest
+            stopped = attempt < PAGE_TRIES and short_of_time()
+            again = "" if attempt == PAGE_TRIES or stopped else f"; again in {RETRY_PAUSE:g} s"
+            log.warning("shufersal %s page %d: try %d of %d timed out after %.1f s%s", kind, page, attempt, PAGE_TRIES,
+                        waited, again)
+            if stopped:
+                raise OutOfTime(_time_stop(kind, page, attempt + 1))
+            continue
+        seconds = timer() - started
+        return body, seconds, attempt
+    raise HttpError(f"{kind} page {page} timed out on {PAGE_TRIES} tries: {last}") from last
+
+
+def _time_stop(kind: str, page: int, attempt: int) -> str:
+    """What OutOfTime says when the run is short of time before try `attempt` of page `page` of `kind`'s listing: the
+    page alone before the first try, the try too before a later one."""
+    return (f"before page {page} of the {kind} listing" if attempt == 1
+            else f"before try {attempt} of page {page} of the {kind} listing")
 
 
 def _in_order(names: list[str], before: PageRead | None, page: int) -> bool:

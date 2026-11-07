@@ -28,7 +28,7 @@ The list's order makes a fix possible: in every Shufersal run from 2026-11-03 to
 ## Non-goals
 
 - No schedule change, no new runs, no change to other chains, no change to the 60 s socket timeout or the 90 s time rule.
-- No retry of a single slow page (considered and not chosen by the owner on 2026-11-05: at 60 s a page it would not have saved that morning).
+- No retry of a single slow page (considered and not chosen by the owner on 2026-11-05: at 60 s a page it would not have saved that morning). Decided next, on 2026-11-06: the owner chose a retry on top of the resume, a listing page that times out asked for again, up to two more times ([shufersal-page-retry.md](shufersal-page-retry.md), ruling R38 in [collector-plan.md](collector-plan.md)).
 - No sort parameter added to Shufersal's request: the request stays as it is, and the order is checked instead.
 
 ## Anti-goals
@@ -109,8 +109,8 @@ This draft stays the record of what was intended. Where it left room, or a case 
 - A blocked earlier run is not resumed from, as the check leaves it out; a page out of order in a blocked run still turns resuming and joining off.
 - A fresh pass detours to every failed file's page except page 1; a resume detours only to pages before the resume page; a resume whose furthest name is on page 1 is a fresh pass and keeps its detours.
 - A page taken only part-way ends its block, even in the middle of a run. A page that gives no row (every name on it unreadable) keeps nothing taken, so its block ends there and the day reads as not in full.
-- With joining off, a run with page records counts when one of its blocks runs from page 1 to an open end, so a whole pass after a detour still counts; a clean run without page records counts as before.
+- With joining off, a run with page records counts when one of its blocks runs from page 1 to an open end, so a whole pass after a detour still counts; a run without page records that ended with no error and was not blocked counts as before.
 - A day not read in full only because of a gap between blocks still resumes at the furthest page: the gap is not read again that day, and the alert names it.
-- The stopped retry's excuse: its names must have been listed by a run that read the kind in full on its own, or, when the other runs' pages join up into a full reading without the retry's own, by a run whose pages carry that reading further than the pages joined before them (the reading is joined from the front of the list; among pages that start at the same place, the furthest-reaching are joined first). A run that read only part of the list, where other runs' pages already cover that part, vouches for no name; a run vouches only for names of a kind it read, and the retry never vouches for itself.
+- The stopped retry's excuse: its names must have been listed by a run that read the kind in full on its own, or, when the other runs' pages join up into a full reading without the retry's own, by a run whose pages carry that reading further than the pages joined before them (the reading is joined from the front of the list; among pages that start at the same place, the furthest-reaching are joined first). A run that read only part of the list, where the pages joined before it already cover that part, vouches for no name; a run vouches only for names of a kind it read, and the retry never vouches for itself.
 - A failed read of the day's earlier manifests fails the run as an unexpected error, with no fall-back to a fresh pass.
 - The failed alert names pages a run read only in part apart from pages never read.

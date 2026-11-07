@@ -4,8 +4,9 @@ time, checked, stored write-once, and recorded in a manifest whatever happens.
 Most tests drive collect_chain with FakeSource, an adapter in place of a real portal, and a
 MemoryStore, which keeps S3Store's rules. Bodies are whole gzips holding the fixtures' XML (or the
 fixtures' UTF-16 XML), since check_payload unzips each one in full. FakePagedSource is FakeSource as a
-paged adapter (Shufersal's), reporting the pages it reads. Two tests run the real Shufersal adapter over
-test_shufersal's fake network, where a listed name and its link's last segment differ.
+paged adapter (Shufersal's), reporting the pages it reads and the page requests that timed out. Three tests run
+the real Shufersal adapter over test_shufersal's fake network, where a listed name and its link's last segment
+differ.
 """
 import dataclasses
 import functools
@@ -25,7 +26,8 @@ from botocore.exceptions import ClientError
 from collector.chains import CHAINS
 from collector.http import Blocked, Http, HttpError, build_opener
 from collector.names import KINDS, parse_file_name
-from collector.sources import Listed, ListingUnreadable, OutOfTime, PagedSource, PageRead, Start, never_short
+from collector.sources import (Listed, ListingUnreadable, OutOfTime, PagedSource, PageRead, PageTimeout, Start,
+                               never_short)
 from collector.sources.shufersal import ShufersalSource
 from collector.store import MemoryStore, manifest_key, raw_key
 from collector.run import RunResult, collect_chain, manifest_bytes, new_run_id, stored_name
@@ -749,7 +751,7 @@ def test_manifest_bytes():
         "listing_read_at": NOW_UTC, "listed": [PROMO, PRICE],
         "files": {PROMO: {"outcome": "stored", "size": 3, "sha256": "ab"}},
         "failed": {PRICE: "timed out"}, "not_attempted": [], "unparsed": 2, "blocked": None, "error": None,
-        "pages": [], "code_sha": CODE_SHA,
+        "pages": [], "timeouts": [], "code_sha": CODE_SHA,
     }
     assert list(record) == sorted(record)
     assert list(record["files"][PROMO]) == sorted(record["files"][PROMO])
@@ -806,16 +808,17 @@ def test_new_run_id_refuses_a_naive_time():
 # ---- a paged listing: where each kind starts, and the pages read (ruling R37) ----
 
 class FakePagedSource(FakeSource, PagedSource):
-    """FakeSource as a paged adapter (Shufersal's): a PageRead entry is reported to `on_page` where it stands in the
-    listing, and the `starts` the run hands over are kept in `starts`."""
+    """FakeSource as a paged adapter (Shufersal's): a PageRead entry is reported to `on_page` and a PageTimeout entry
+    to `on_timeout`, each where it stands in the listing, and the `starts` the run hands over are kept in `starts`."""
 
     def __init__(self, entries, answers=None):
         super().__init__(entries, answers)
         self.starts = None
 
-    def listing(self, http, kinds, short_of_time=never_short, starts=None, on_page=None):
+    def listing(self, http, kinds, short_of_time=never_short, starts=None, on_page=None, on_timeout=None):
         self.starts = starts
-        self.entries = [functools.partial(on_page, entry) if isinstance(entry, PageRead) else entry
+        reported = {PageRead: on_page, PageTimeout: on_timeout}
+        self.entries = [functools.partial(reported[type(entry)], entry) if type(entry) in reported else entry
                         for entry in self.entries]
         return super().listing(http, kinds, short_of_time)
 
@@ -838,9 +841,10 @@ def row(store, day=20261031, ends_page=False):
     return Listed(parse_file_name(raw), f"{PORTAL}/{raw}.gz", ends_page)
 
 
-def report(page, first, last, *, rows=20, last_page=None, kind="PriceFull", seconds=41.2):
-    """A page as the adapter reports it: in order, holding `rows` rows from `first` to `last`."""
-    return PageRead(kind, page, rows, first, last, last_page, seconds, True)
+def report(page, first, last, *, rows=20, last_page=None, kind="PriceFull", seconds=41.2, tries=1):
+    """A page as the adapter reports it: in order, holding `rows` rows from `first` to `last`, read in `tries`
+    requests."""
+    return PageRead(kind, page, rows, first, last, last_page, seconds, True, tries)
 
 
 def given(page, stores, last_page=None):
@@ -1036,3 +1040,96 @@ def test_the_real_shufersal_adapter_resumes_where_the_last_run_stopped():
     assert manifest(store)["pages"] == [record(1), record(3), record(4)]
     assert set(result.files) == {listed + ".gz" for listed in names(3)[4:] + names(4)}
     assert result.error is None and result.blocked is None
+
+
+# ---- a listing page that timed out (q24) ----
+
+def test_a_page_record_carries_its_tries():
+    """Design, section 3: a page read on a later try is one page record, with the requests it took; a page read on its
+    first try records 1."""
+    reads = [report(1, row(100).name.raw, row(119).name.raw, last_page=2, tries=2),
+             report(2, row(120).name.raw, row(139).name.raw, last_page=2)]
+    result, store = collect(FakePagedSource(reads), kinds=("PriceFull",))
+    assert manifest(store)["pages"][0]["tries"] == 2
+    assert manifest(store)["pages"][1]["tries"] == 1
+    assert result.error is None
+
+
+PAGE_2_TIMED_OUT = PageTimeout("PriceFull", 2, 1, 60.5)
+PAGE_2_ON_ITS_SECOND_TRY = [report(2, row(120).name.raw, row(139).name.raw, last_page=2, tries=2),
+                            *(row(store) for store in range(120, 139)), row(139, ends_page=True)]
+
+
+@pytest.mark.parametrize("then, error", [
+    pytest.param(PAGE_2_ON_ITS_SECOND_TRY, None, id="read on the second try"),
+    pytest.param([OutOfTime("before try 2 of page 2 of the PriceFull listing")], "stopped: under 90 s left",
+                 id="time stop before the second try"),
+    pytest.param([HttpError("HTTP 500 from https://prices.shufersal.co.il/FileObject/UpdateCategory")],
+                 "listing failed: HTTP 500 from https://prices.shufersal.co.il/FileObject/UpdateCategory",
+                 id="a 500 on the second try"),
+])
+def test_each_timed_out_try_is_in_the_manifest(then, error):
+    """Review focus 3 and 4: a try that timed out is kept, in the order the listing reports it, whatever follows it: the
+    page read on its next try, a time stop before that try (the run's error stays exactly the time stop's, which ruling
+    R36 matches), or another failure raised at once."""
+    entries = [*given(1, range(100, 120), last_page=2), PAGE_2_TIMED_OUT, *then]
+    result, store = collect(FakePagedSource(entries), kinds=("PriceFull",))
+    assert result.error == error
+    expected = [{"kind": "PriceFull", "page": 2, "attempt": 1, "seconds": 60.5}]
+    assert manifest(store)["timeouts"] == expected
+    assert result.timeouts == expected
+
+
+def test_a_block_on_a_later_try_latches_and_keeps_the_timed_out_try():
+    """Review focus 4: page 2's first try timed out and its second was refused. The block latches the chain as a block
+    anywhere in the listing does, and the try that timed out before it stays in the manifest."""
+    refusal = Blocked(403, "https://prices.shufersal.co.il/FileObject/UpdateCategory?catID=2&storeId=0&page=2",
+                      "HTTP 403")
+    entries = [*given(1, range(100, 120), last_page=2), PAGE_2_TIMED_OUT, refusal]
+    result, store = collect(FakePagedSource(entries), kinds=("PriceFull",))
+    reason = "HTTP 403: https://prices.shufersal.co.il/FileObject/UpdateCategory"
+    assert (result.blocked, result.error) == (reason, None)
+    assert store.read_state(SLUG) == latch(reason)
+    assert manifest(store)["blocked"] == reason
+    assert manifest(store)["timeouts"] == [{"kind": "PriceFull", "page": 2, "attempt": 1, "seconds": 60.5}]
+
+
+def test_no_timeouts_on_a_run_without_one():
+    """An empty list, on a paged run with none and on a source that does not page."""
+    _, paged = collect(FakePagedSource(given(1, range(100, 120), last_page=1)), kinds=("PriceFull",))
+    _, plain = collect(FakeSource([item(PRICE)]))
+    assert manifest(paged)["timeouts"] == []
+    assert manifest(plain)["timeouts"] == []
+
+
+def test_a_page_read_on_a_later_try_says_so_in_its_log_line(caplog):
+    """Design, section 3: the page's INFO line ends with the try that read it, when that is not the first."""
+    reads = [report(1, row(100).name.raw, row(119).name.raw, last_page=21),
+             report(7, row(220).name.raw, row(239).name.raw, tries=2),
+             report(8, row(240).name.raw, row(259).name.raw, tries=3)]
+    with caplog.at_level(logging.INFO, logger="collector.run"):
+        collect(FakePagedSource(reads), kinds=("PriceFull",))
+    assert [record.getMessage() for record in caplog.records if record.name == "collector.run"] == [
+        "shufersal PriceFull page 1 of 21: 20 rows in 41.2 s",
+        "shufersal PriceFull page 7 of 21: 20 rows in 41.2 s (try 2)",
+        "shufersal PriceFull page 8 of 21: 20 rows in 41.2 s (try 3)",
+    ]
+
+
+def test_the_real_shufersal_adapter_records_the_tries():
+    """A 3-page list: page 2 times out once and is read on its second try, page 3 times out on every try. The run ends
+    with the adapter's error, pages 1 and 2 recorded with their tries and their files stored, and each of the four
+    timed-out tries listed, ten seconds' pause before each later try."""
+    from test_shufersal import LISTING, connect, gz as files, listing_url, names, page, served, ticks, timed_out
+    http, _ = connect({listing_url(2, 1): served(page(2, names(1), last=3)),
+                       listing_url(2, 2): [timed_out, served(page(2, names(2), last=3))],
+                       listing_url(2, 3): [timed_out]}, files=files())
+    sleeps = []
+    result, store = collect(ShufersalSource(timer=ticks(30.0), sleep=sleeps.append), kinds=("PriceFull",), http=http)
+    assert result.error == f"listing failed: PriceFull page 3 timed out on 3 tries: GET {LISTING} failed: The read operation timed out"
+    assert [(record["page"], record["tries"]) for record in manifest(store)["pages"]] == [(1, 1), (2, 2)]
+    tries = [(timeout["page"], timeout["attempt"]) for timeout in manifest(store)["timeouts"]]
+    assert tries == [(2, 1), (3, 1), (3, 2), (3, 3)]
+    assert set(stored_bodies(store)) == {listed + ".gz" for listed in names(1) + names(2)}
+    assert sleeps == [10.0] * 3
+    assert result.blocked is None

@@ -3,8 +3,12 @@
 
 The morning is synthetic, shaped like the real one: each full kind listed on 21 pages of 20 rows, read at the pace the
 design works out from that morning's run times (40 to 45 s a page, 1 to 2 s a download), two main runs of each kind,
-then one retry each whose second page passes the 60 s socket timeout. Every count asserted here is what that pace and
-the 90 s rule give: expected, not measured.
+then one retry each whose second page passes the 60 s socket timeout on every try, 10 s apart (a slow spell: the
+adapter asks a timed-out page again, docs/shufersal-page-retry.md, "Testing"). Every count asserted here is what that
+pace and the 90 s rule give: expected, not measured.
+
+2026-11-06's 05:00Z PriceFull run is replayed the same way (docs/shufersal-page-retry.md, "2026-11-06 replayed"): 22
+pages, page 7 timing out once and then served, at the pace that design works out; its counts are expected too.
 """
 import itertools
 from datetime import date, datetime, timezone
@@ -22,7 +26,8 @@ CHAIN = CHAINS["shufersal"]
 PAGES = 21
 ROWS = 20  # a page
 PACE = {"PriceFull": (42.0, 1.5), "PromoFull": (45.0, 2.0)}  # seconds a listing page, seconds a download
-TIMED_OUT = f"listing failed: GET {LISTING} failed: timed out"
+TIMED_OUT = {"PriceFull": f"listing failed: PriceFull page 2 timed out on 3 tries: GET {LISTING} failed: timed out",
+             "PromoFull": f"listing failed: PromoFull page 19 timed out on 3 tries: GET {LISTING} failed: timed out"}
 PRICE_1, PRICE_2, PRICE_RETRY = "044522Z-main-a001", "050002Z-main-a002", "074536Z-retry-2933"
 PROMO_1, PROMO_2, PROMO_RETRY = "051514Z-main-b001", "053014Z-main-b002", "081551Z-retry-9283"
 
@@ -39,8 +44,8 @@ def stored(kind, rows):
 
 def run(store, run_id, kind):
     """One run of `kind` into `store`, from 900 s left at the morning's pace, every pager naming page 21; a retry's
-    second listing page passes the socket timeout. The run's result, the listing pages it asked for, its seconds left
-    at the end."""
+    second listing page passes the socket timeout on every try, and each pause before a try takes its seconds off the
+    clock. The run's result, the listing pages it asked for, its seconds left at the end."""
     clock = Clock(900.0)
     per_page, per_download = PACE[kind]
     mode = run_id.split("-")[1]
@@ -50,7 +55,7 @@ def run(store, run_id, kind):
         text = page(CATEGORY[kind], [name(kind, i) for i in range(ROWS * (p - 1) + 1, ROWS * p + 1)], last=PAGES)
 
         def respond(req):
-            if next(reads) == 2 and mode == "retry":
+            if next(reads) in (2, 3, 4) and mode == "retry":
                 clock.left -= CHAIN.timeout
                 raise TimeoutError("timed out")
             clock.left -= per_page
@@ -66,7 +71,11 @@ def run(store, run_id, kind):
     # seconds left asserted below.
     http, portal = connect(routes, files=download, limit=PAGES + PAGES * ROWS)
     at = datetime(2026, 11, 5, int(run_id[:2]), int(run_id[2:4]), int(run_id[4:6]), tzinfo=timezone.utc)
-    source = ShufersalSource(now=lambda: at, timer=lambda: -clock.left)
+
+    def pause(seconds):
+        clock.left -= seconds
+
+    source = ShufersalSource(now=lambda: at, timer=lambda: -clock.left, sleep=pause)
     result = collect_chain(CHAIN, source, http, store, DAY, run_id, mode, (kind,), clock, lambda: at, CODE_SHA)
     return result, listing_pages(portal), clock.left
 
@@ -92,8 +101,8 @@ def test_the_2026_11_05_morning_replayed():
     price_2, price_2_pages, price_2_left = run(store, PRICE_2, "PriceFull")
     promo_1, promo_1_pages, promo_1_left = run(store, PROMO_1, "PromoFull")
     promo_2, promo_2_pages, promo_2_left = run(store, PROMO_2, "PromoFull")
-    price_retry, price_retry_pages, _ = run(store, PRICE_RETRY, "PriceFull")
-    promo_retry, promo_retry_pages, _ = run(store, PROMO_RETRY, "PromoFull")
+    price_retry, price_retry_pages, price_retry_left = run(store, PRICE_RETRY, "PriceFull")
+    promo_retry, promo_retry_pages, promo_retry_left = run(store, PROMO_RETRY, "PromoFull")
 
     # PriceFull main 1: pages 1 to 12, 72 s each; page 12 leaves 66 s, under 90, before row 221's download.
     assert price_1_pages == list(range(1, 13))
@@ -124,14 +133,21 @@ def test_the_2026_11_05_morning_replayed():
     assert promo_2.not_attempted == [name("PromoFull", 361) + ".gz"]
     assert set(promo_2.files) == stored("PromoFull", range(182, 361))
 
-    # The retries: PriceFull was read in full, so a fresh pass; PromoFull resumes at page 19. Each times out on its
-    # second page, so only page 1 is recorded, its files stored already.
-    assert price_retry_pages == [1, 2]
-    assert promo_retry_pages == [1, 19]
+    # The retries: PriceFull was read in full, so a fresh pass; PromoFull resumes at page 19. Each times out on every
+    # try of its second page (three tries of 60 s, 10 s apart), so only page 1 is recorded, its files stored already.
+    assert price_retry_pages == [1, 2, 2, 2]
+    assert promo_retry_pages == [1, 19, 19, 19]
+    # 900 s less page 1 (42 s, PromoFull's 45 s), three tries of 60 s and the two pauses between them, 10 s each
+    assert (price_retry_left, promo_retry_left) == (658.0, 655.0)
     for retry, kind in ((price_retry, "PriceFull"), (promo_retry, "PromoFull")):
-        assert retry.error == TIMED_OUT
+        assert retry.error == TIMED_OUT[kind]
         assert taken(retry) == whole(1)
         assert retry.listed == sorted(stored(kind, range(1, 21))) and retry.files == {}
+    # Each try that timed out is in the retry's manifest: the three of its second page, 60 s each. No main run had one.
+    for retry, kind, second in ((price_retry, "PriceFull", 2), (promo_retry, "PromoFull", 19)):
+        assert retry.timeouts == [{"kind": kind, "page": second, "attempt": attempt, "seconds": 60.0}
+                                  for attempt in (1, 2, 3)]
+    assert [main.timeouts for main in (price_1, price_2, promo_1, promo_2)] == [[]] * 4
 
     every_record = [record for result in (price_1, price_2, promo_1, promo_2, price_retry, promo_retry)
                     for record in result.pages]
@@ -147,7 +163,88 @@ def test_the_2026_11_05_morning_replayed():
         Alert("shufersal", "missing", f"shufersal: 1 file listed for 2026-11-05 and not stored: {missing}."),
         Alert("shufersal", "failed",
               "shufersal: the day's runs fell short: "
-              f"retry run {PRICE_RETRY} (PriceFull) ended with: {TIMED_OUT}; "
-              f"retry run {PROMO_RETRY} (PromoFull) ended with: {TIMED_OUT}; "
+              f"retry run {PRICE_RETRY} (PriceFull) ended with: {TIMED_OUT['PriceFull']}; "
+              f"retry run {PROMO_RETRY} (PromoFull) ended with: {TIMED_OUT['PromoFull']}; "
               "the PromoFull list was not read in full: pages 20 to 21 never read, page 19 read in part."),
+    ]
+
+
+# ---- 2026-11-06's 05:00Z PriceFull run (q24) ----
+
+NOV_6, NOV_6_RUN, NOV_6_PAGES = date(2026, 11, 6), "050003Z-main-c001", 22
+
+
+def nov_6_name(i):
+    """The i-th name on 2026-11-06's PriceFull list, as listed: in name order, page p holding rows 20(p-1)+1 to 20p."""
+    return f"PriceFull7290027600007-001-{i:03d}-20261106-030000"
+
+
+def nov_6_run(store):
+    """2026-11-06's 05:00Z PriceFull run into `store`, from 900 s left, every pager naming page 22: pages 1 to 6 take
+    35 s each (the measured median, 34.7 s, rounded); page 7's first request passes the socket timeout, and every
+    listing request after it takes 45 s (the design's "about 45 s"); each download takes 1.25 s (about 1.2 s a file);
+    the pause before page 7's second try takes its 10 s off the clock too. The run's result, the listing pages it asked
+    for, its seconds left at the end."""
+    clock = Clock(900.0)
+    cat = CATEGORY["PriceFull"]
+
+    def listing_page(p, seconds):
+        text = page(cat, [nov_6_name(i) for i in range(ROWS * (p - 1) + 1, ROWS * p + 1)], last=NOV_6_PAGES)
+
+        def respond(req):
+            clock.left -= seconds
+            return served(text)(req)
+        return respond
+
+    def timed_out(req):
+        clock.left -= CHAIN.timeout
+        raise TimeoutError("timed out")
+
+    def download(req):
+        clock.left -= 1.25
+        return gz()(req)
+
+    def pause(seconds):
+        clock.left -= seconds
+
+    routes = {listing_url(cat, p): listing_page(p, 35.0 if p <= 6 else 45.0) for p in range(1, NOV_6_PAGES + 1)}
+    routes[listing_url(cat, 7)] = [timed_out, listing_page(7, 45.0)]  # served in turn: the first try, then the second
+    http, portal = connect(routes, files=download, limit=NOV_6_PAGES + 1 + NOV_6_PAGES * ROWS)
+    at = datetime(2026, 11, 6, 5, 0, 3, tzinfo=timezone.utc)
+    source = ShufersalSource(now=lambda: at, timer=lambda: -clock.left, sleep=pause)
+    result = collect_chain(CHAIN, source, http, store, NOV_6, NOV_6_RUN, "main", ("PriceFull",), clock, lambda: at,
+                           CODE_SHA)
+    return result, listing_pages(portal), clock.left
+
+
+def test_the_2026_11_06_pricefull_run_replayed():
+    """2026-11-06's 05:00Z PriceFull run (docs/shufersal-page-retry.md, "2026-11-06 replayed"). On the day its page 7
+    timed out and the run ended there, with 117 files stored. Asked again after the pause, page 7 is read on its second
+    try, and the run reads on to page 12, where the 90 s rule stops it before row 221's download; the check names that
+    file missing and the pages never read. The list and its pace are synthetic, shaped like that morning: every count
+    here is expected, not measured.
+
+    The arithmetic: six pages at 60 s with their files leave 540 s; page 7's first try 480, the pause 470, its second
+    try 425, its files 400; pages 8 to 11 at 70 s leave 120; page 12 leaves 75, under 90 before row 221's download."""
+    store = MemoryStore()
+    result, asked, left = nov_6_run(store)
+    assert asked == [1, 2, 3, 4, 5, 6, 7, 7, 8, 9, 10, 11, 12]
+    assert (result.error, result.blocked, left) == (OUT_OF_TIME, None, 75.0)
+    assert taken(result) == whole(*range(1, 12)) + [(12, 221)]
+    assert result.not_attempted == [nov_6_name(221) + ".gz"]
+    assert [(record["page"], record["tries"], record["seconds"]) for record in result.pages] == (
+        [(p, 1, 35.0) for p in range(1, 7)] + [(7, 2, 45.0)] + [(p, 1, 45.0) for p in range(8, 13)])
+    assert all(record["in_order"] and record["last_page"] == NOV_6_PAGES for record in result.pages)
+    assert result.timeouts == [{"kind": "PriceFull", "page": 7, "attempt": 1, "seconds": 60.0}]
+    assert set(result.files) == {nov_6_name(i) + ".gz" for i in range(1, 221)}
+
+    alerts, record = check_day(store, ["shufersal"], NOV_6, kinds={"shufersal": ("PriceFull",)})
+    chain = record["chains"]["shufersal"]
+    missing = "PriceFull7290027600007-001-221-20261106-030000.gz"
+    assert chain["read_in_full"] == {"PriceFull": None}
+    assert (chain["listed"], chain["stored"], chain["missing"]) == (221, 220, [missing])
+    assert alerts == [
+        Alert("shufersal", "missing", f"shufersal: 1 file listed for 2026-11-06 and not stored: {missing}."),
+        Alert("shufersal", "failed", "shufersal: the day's runs fell short: no retry run covered PriceFull; the "
+              "PriceFull list was not read in full: pages 13 to 22 never read, page 12 read in part."),
     ]

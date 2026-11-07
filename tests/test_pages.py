@@ -11,9 +11,11 @@ import json
 from dataclasses import asdict
 from datetime import date
 
+import pytest
+
 from collector.pages import has_pages, read_in_full, start_for, unread
 from collector.run import RunResult, manifest_bytes
-from collector.sources import PageRead, Start
+from collector.sources import PageRead, PageTimeout, Start
 
 DAY = date(2026, 11, 5)
 CODE_SHA = "0123456789abcdef0123456789abcdef01234567"
@@ -359,3 +361,33 @@ def test_a_gap_between_blocks_still_resumes_at_the_furthest_page():
     gap = run(A_ID, *pages(1, 10), rec(11, taken=3), *pages(12, 15), error=STOPPED)
     assert read_in_full([gap], "PriceFull") is None
     assert start_for([gap], "PriceFull", set()) == Start(page=15, furthest=name(300))
+
+
+# ---- a page read on a later try (q24) ----
+
+def tried(manifest, tries):
+    """`manifest` as the run loop writes it when every page took `tries` requests: each page record's `tries` set, and
+    `timeouts` holding each page's tries before the one that read it (attempts 1 to `tries - 1`, 60.5 s each). With
+    None, as a manifest written before tries were recorded: no `tries` on any record and no `timeouts` key."""
+    records = manifest.get("pages", [])
+    if tries is None:
+        old = {key: value for key, value in manifest.items() if key != "timeouts"}
+        return old | {"pages": [{key: value for key, value in record.items() if key != "tries"} for record in records]}
+    timeouts = [asdict(PageTimeout(record["kind"], record["page"], attempt, 60.5))
+                for record in records for attempt in range(1, tries)]
+    return manifest | {"pages": [record | {"tries": tries} for record in records], "timeouts": timeouts}
+
+
+@pytest.mark.parametrize("tries", [1, 3, None])
+def test_tries_do_not_change_the_reading(tries):
+    """Design, section 3: the reading never reads `tries` or `timeouts`, so 2026-11-05's shape joins, stops short,
+    resumes and names what was never read alike with every page read on its first try, on its third, and in manifests
+    written before tries were recorded."""
+    a, b = tried(A, tries), tried(B, tries)
+    assert {record.get("tries") for record in a["pages"] + b["pages"]} == {tries}
+    assert ("timeouts" in a) == (tries is not None)
+    assert read_in_full([a, b], "PriceFull") == [A_ID, B_ID]
+    assert read_in_full([a], "PriceFull") is None
+    assert start_for([a], "PriceFull", A_STORED) == Start(page=12, furthest=name(221))
+    assert unread([a], "PriceFull") == "pages 13 to 21 never read, page 12 read in part"
+    assert has_pages([a], "PriceFull")
