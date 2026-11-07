@@ -1,6 +1,6 @@
 # The shopper site, step one: implementation plan
 
-Grade: production. The site is public, built every morning from a live archive with nobody watching, and keeps a forecast record that can never be corrected quietly: test-first, a named mutation for every rule, the coverage floor, a fresh reviewer on every task and on the whole branch. (The design's own grade line says "portfolio grade, not production"; this plan is held to the production standard as asked, which is what the design's "Testing" section requires anyway.)
+Grade: portfolio grade, as the approved design states (`docs/shopper-site.md`, "Grade"): tested, reproducible, honest in its words; not production. The forecast record is held to the design's record standard: frozen forecasts and their scores write-once, the ledger only grows. The build practice is the design's "Testing" section and the project's rules: test-first, a named mutation for every rule, the coverage floor, a fresh reviewer on every task and on the whole branch.
 
 Monthly cost of step one: about $4 to $6 in year one, worst case about $10.30 (the design's figures, checked in "Cost" below).
 
@@ -98,7 +98,7 @@ From "Left to the builder", each settled here:
 - Raw files are never published; only derived numbers, credited to the chains' files. The site's words: Task 15's lists, verbatim from the design.
 - Nothing in the code deletes: no `delete_object`, no `s3:Delete*` in the role, no `--delete` in the scripts (question H). Archive writes of `forecasts/` and `scores/` are write-once and locked (`If-None-Match: *`, ten-year governance lock), as manifests are.
 - Docs (this plan included) in plain words; no "we"; public docs never point at the owner's private notes.
-- Implementers on the newest Opus (`opus`); every task review and the whole-branch review on Fable (`fable`), or the newest Opus while Fable is at its usage limit, the report naming the swap. Subagents never run `gh` or push.
+- Implementers on the newest Opus (`opus`); every task review, re-review and the whole-branch review on the newest Opus too (the owner's model rule of 2026-11-06: Fable for designs only). Subagents never run `gh` or push.
 - Every AWS command in `docs/operations.md` names `--profile flights-sam --region il-central-1` (`tests/test_template.py` pins it).
 - The design's values, copied, never re-derived: 30 and 90 days; 20 of 30 and 60 of 90; half the stores; the deal between ₪0.01 and twice the listed price; d + 1 to d + 14; t ≤ d − 14; more than 4 holes unscored; the 30th day of records; midnight ending day d, Israel time; 14-day blocks, 10,000 draws, a fixed seed; ten bins of width 0.1; the gate's 90 days, 95% intervals, calibration error 0.03, 1% and 0.10; 60 KB a product page; 150 KB an index piece; 30 days for noncurrent pages.
 
@@ -906,7 +906,7 @@ def put_files(self, site_dir: Path, keys: Sequence[str]) -> list[str]   # every 
 
 ### Task 28: The whole-branch review
 
-- [ ] **Step 1:** a reviewer that has not seen the build, on Fable (`model: "fable"`), or the newest Opus (`opus`) while Fable is at its usage limit, the report naming the swap. Give it `git diff main...q22-shopper-site`, `docs/shopper-site.md`, this plan, `docs/headline-basket.md` and `docs/operations.md`. Ask for findings by severity against the design's anti-goals (a claim the files cannot back; a forbidden word; odds before the gate; a record that changes quietly; a page that looks current and is not; raw files published; a page needing a script for a fact), its rules P1 to P10 and F1 to F11, its calls, and this plan's Review Focus. The reviewer reads only: no commits, no `gh`, no push, no AWS, no network.
+- [ ] **Step 1:** a reviewer that has not seen the build, on the newest Opus (`model: "opus"`; the owner's model rule of 2026-11-06). Give it `git diff main...q22-shopper-site`, `docs/shopper-site.md`, this plan, `docs/headline-basket.md` and `docs/operations.md`. Ask for findings by severity against the design's anti-goals (a claim the files cannot back; a forbidden word; odds before the gate; a record that changes quietly; a page that looks current and is not; raw files published; a page needing a script for a fact), its rules P1 to P10 and F1 to F11, its calls, and this plan's Review Focus. The reviewer reads only: no commits, no `gh`, no push, no AWS, no network.
 - [ ] **Step 2:** check each finding against its source before acting (a finding is a claim); fix what holds, test-first, each fix with its mutation; log every change from this plan in "Deviations"; rerun Task 27's Steps 1 and 2.
 - [ ] **Step 3:** stop. Merge, push, the deploys, the budget, the first upload, the backfill and the schedules are the owner's go ("Where step one lands in AWS").
 
