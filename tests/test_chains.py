@@ -55,9 +55,10 @@ def test_shufersal_waits_60_s_for_an_answer_and_the_others_30():
 
 
 def test_shufersal_collects_its_store_list_and_full_files_and_the_others_every_kind():
-    """Owner, 2026-11-01: Shufersal's update files come out every hour and its listing pages take about
-    25 s each, so its morning runs take the store list and the full files only; the update files wait
-    for a polling run (docs/operations.md, "What runs when")."""
+    """Owner, 2026-11-01: Shufersal's listing pages take about 25 s each, so its morning runs take the
+    store list and the full files only; its update files wait for poll runs (docs/update-files.md). How
+    often it publishes them is not known: the one record, 2026-11-01, shows batches stamped across stores
+    at about 03:00 and about 10:00 (docs/operations.md, "What runs when")."""
     assert {slug: c.kinds for slug, c in CHAINS.items()} == {
         "shufersal": ("Stores", "PriceFull", "PromoFull"), "ramilevy": KINDS, "osherad": KINDS,
         "carrefour": KINDS, "yochananof": KINDS}

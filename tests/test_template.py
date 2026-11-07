@@ -482,10 +482,10 @@ def test_one_check_after_the_last_retry_run_can_have_finished(schedules, functio
 def test_no_poll_is_in_flight_while_the_extractions_run(schedules, basket_schedules, function, resources):
     """docs/update-files.md, "Anti-goals" and section 6: the basket's five extractions start together at 12:03 and
     can run to 12:18, and no poll is in flight meanwhile: each poll ends before they start or starts once they can
-    have ended. The basket run at 12:33 is not held to it: beside Rami Levy's 12:20 poll it is an overlap the design
-    accepts (section 2), two runs of different functions on different hosts. The spacing is the design's, written
-    when the account's Lambda quota in il-central-1 read 5, and kept as approved though it read 400 on 2026-11-07
-    (`aws lambda get-account-settings`)."""
+    have ended. The basket run at 12:33 is not held to it: it can overlap Rami Levy's 12:20 poll, which the design
+    accepts (section 2), and, with the basket function's 900 s, Yochananof's 12:35 poll: two runs of different
+    functions on different hosts each time. The spacing is the design's, written when the account's Lambda quota in
+    il-central-1 read 5, and kept as approved though it read 400 on 2026-11-07 (`aws lambda get-account-settings`)."""
     poll_longest = function["Timeout"] / 60
     extract_longest = resources["BasketFunction"]["Properties"]["Timeout"] / 60
     extractions = {start for start, event in basket_schedules.values() if event["mode"] == "extract"}

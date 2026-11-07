@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: Collects, every morning, the price files five Israeli supermarket chains publish under the food-competition law, into a write-once S3 bucket.
+Description: Collects, every morning, the price files five Israeli supermarket chains publish under the food-competition law, and, while its polls are switched on, four of the chains' update files through the day, into a write-once S3 bucket.
 
 Parameters:
   UserAgent:

@@ -46,7 +46,8 @@ Ruling R39: an update kind (`Price`, `Promo`) is read several times a day, by po
 3), so its day is cut into passes, each a reading of its own:
 
 - The runs that make a kind's passes are its poll runs that were not blocked and read the listing, in the order they
-  read it (`listing_read_at`, never the run id, whose time is UTC).
+  read it (`listing_read_at`, never the run id, whose time is UTC); a blocked run's pages, in order or not, are not
+  seen.
 - Each run joins the current pass. After it joins, the pass ends when the pass's own runs read the kind in full, as
   R37 reads them (a run without page records that ended with no error reads it on its own), or when this run recorded
   a page of the kind out of order; the next run begins a new pass. The runs left at the end make the last pass, open.

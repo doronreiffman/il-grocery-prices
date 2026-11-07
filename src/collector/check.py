@@ -154,8 +154,8 @@ def judge_update_day(store, polled: Mapping[str, tuple[str, ...]], day: date) ->
     """The update day `day` judged (ruling R39), for each chain in `polled` with the update kinds its polls read, from
     that day's manifests (every mode) and stored names: the alerts, chains in `polled`'s order, and the record's
     `update_day`, `{"day": "YYYY-MM-DD", "chains": {slug: section}}`. Reads only. It judges every chain it is handed,
-    so the caller (collector.handler) hands only the chains whose `polled` is set, and only while the poll switch is
-    on or the check event asks for the update day."""
+    so check_day's caller (collector.handler) hands only the chains whose `polled` is set, and only while the poll
+    switch is on or the check event asks for the update day."""
     manifests = _manifests(store, day)
     alerts: list[Alert] = []
     chains = {}

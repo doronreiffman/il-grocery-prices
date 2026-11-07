@@ -300,8 +300,9 @@ class _Run:
         self._latch(reason)
 
     def _latch(self, reason: str) -> NoReturn:
-        """Stop the chain until the owner clears it; the check sends one alert for it. If the latch
-        cannot be written, the manifest still records the block and says so, and the invocation fails."""
+        """Stop the chain until the owner clears it; the check sends one alert for it, or, when a poll run
+        latched it, the handler emails that alert at once (collector.handler). If the latch cannot be
+        written, the manifest still records the block and says so, and the invocation fails."""
         self.result.blocked = reason  # first: the manifest may be the only record of what the portal did
         try:
             self.store.write_state(self.slug, {"stopped": True, "since": _utc(self.now()).isoformat(),

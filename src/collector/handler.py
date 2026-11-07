@@ -14,10 +14,11 @@ five). A poll event must name its kinds, some of the chain's `polled` (a default
 both update kinds in one run). The day is the Israel calendar date when the invocation starts. main
 and retry never email: their errors are logged and the check judges what they left. A poll run that
 stops a chain (it latched it: blocked, and not "stopped earlier") emails the chain's stopped alert at
-once, since the next check is the next day's, after that morning's runs have done nothing; the chain
-is marked alerted once that email has gone (ruling R26), so the check does not send it again. If the
-email fails, the invocation fails and nothing is marked, and the check sends it. No other collecting
-run emails, and a poll of a chain stopped earlier sends nothing: that stop is the check's to alert.
+once, since after an afternoon or evening poll the next check is the next day's, after that morning's
+runs have done nothing; the chain is marked alerted once that email has gone (ruling R26), so the
+check does not send it again. If the email fails, the invocation fails and nothing is marked, and the
+check sends it. No other collecting run emails, and a poll of a chain stopped earlier sends nothing:
+that stop is the check's to alert.
 
 The check writes its record whatever it finds, sends one email only when there are alerts, marks the
 stopped chains it named as alerted once that email has gone (ruling R26), then pings healthchecks.io;
@@ -164,9 +165,9 @@ def _collect(chain: Chain, event: dict, mode: str, deps: Deps, day: date, now: d
 
 
 def _stopped_by_poll(slug: str, deps: Deps, day: date, run_id: str) -> None:
-    """Email the stopped alert of a chain a poll run just latched, at once: the next check is the next day's. The chain
-    is marked alerted only once the email has gone (ruling R26); a failed email is raised and marks nothing, so the
-    check sends it. A latch cleared since, or already alerted, sends nothing."""
+    """Email the stopped alert of a chain a poll run just latched, at once: after an afternoon or evening poll the next
+    check is the next day's. The chain is marked alerted only once the email has gone (ruling R26); a failed email is
+    raised and marks nothing, so the check sends it. A latch cleared since, or already alerted, sends nothing."""
     state = deps.store.read_state(slug)
     if not state.get("stopped") or state.get("alerted"):
         return
