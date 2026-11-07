@@ -35,6 +35,40 @@ Where things land in the bucket:
 
 The date is an Israel date: for a raw file the one in its name, for a manifest or check record the day the run was for. A run id is `<HHMMSS>Z-<mode>-<4 hex>`, the start time in UTC. Logs go to the log group `/il-grocery-prices/collector`, kept 30 days.
 
+### Through the day: the update-file polls
+
+These 27 schedules follow a switch of their own, `PollScheduleState`, not `ScheduleState`:
+
+| Israel time | Run | Event |
+|---|---|---|
+| 12:20 | Rami Levy, update files | `{"mode": "poll", "chain": "ramilevy", "kinds": ["Price", "Promo"]}` |
+| 12:35 | Yochananof, update files | `{"mode": "poll", "chain": "yochananof", "kinds": ["Price", "Promo"]}` |
+| 12:50 | Osher Ad, update files | `{"mode": "poll", "chain": "osherad", "kinds": ["Price", "Promo"]}` |
+| 13:05 | Carrefour, update files | `{"mode": "poll", "chain": "carrefour", "kinds": ["Price", "Promo"]}` |
+| 14:20 | Rami Levy, update files | `{"mode": "poll", "chain": "ramilevy", "kinds": ["Price", "Promo"]}` |
+| 14:35 | Yochananof, update files | `{"mode": "poll", "chain": "yochananof", "kinds": ["Price", "Promo"]}` |
+| 14:50 | Osher Ad, update files | `{"mode": "poll", "chain": "osherad", "kinds": ["Price", "Promo"]}` |
+| 15:05 | Carrefour, update files | `{"mode": "poll", "chain": "carrefour", "kinds": ["Price", "Promo"]}` |
+| 16:20 | Rami Levy, update files | `{"mode": "poll", "chain": "ramilevy", "kinds": ["Price", "Promo"]}` |
+| 16:35 | Yochananof, update files | `{"mode": "poll", "chain": "yochananof", "kinds": ["Price", "Promo"]}` |
+| 16:50 | Osher Ad, update files | `{"mode": "poll", "chain": "osherad", "kinds": ["Price", "Promo"]}` |
+| 17:05 | Carrefour, update files | `{"mode": "poll", "chain": "carrefour", "kinds": ["Price", "Promo"]}` |
+| 18:20 | Rami Levy, update files | `{"mode": "poll", "chain": "ramilevy", "kinds": ["Price", "Promo"]}` |
+| 18:35 | Yochananof, update files | `{"mode": "poll", "chain": "yochananof", "kinds": ["Price", "Promo"]}` |
+| 18:50 | Osher Ad, update files | `{"mode": "poll", "chain": "osherad", "kinds": ["Price", "Promo"]}` |
+| 19:05 | Carrefour, update files | `{"mode": "poll", "chain": "carrefour", "kinds": ["Price", "Promo"]}` |
+| 20:20 | Rami Levy, update files | `{"mode": "poll", "chain": "ramilevy", "kinds": ["Price", "Promo"]}` |
+| 20:35 | Yochananof, update files | `{"mode": "poll", "chain": "yochananof", "kinds": ["Price", "Promo"]}` |
+| 20:50 | Osher Ad, update files | `{"mode": "poll", "chain": "osherad", "kinds": ["Price", "Promo"]}` |
+| 21:05 | Carrefour, update files | `{"mode": "poll", "chain": "carrefour", "kinds": ["Price", "Promo"]}` |
+| 22:20 | Rami Levy, update files | `{"mode": "poll", "chain": "ramilevy", "kinds": ["Price", "Promo"]}` |
+| 22:35 | Yochananof, update files | `{"mode": "poll", "chain": "yochananof", "kinds": ["Price", "Promo"]}` |
+| 22:50 | Osher Ad, update files | `{"mode": "poll", "chain": "osherad", "kinds": ["Price", "Promo"]}` |
+| 23:05 | Carrefour, update files | `{"mode": "poll", "chain": "carrefour", "kinds": ["Price", "Promo"]}` |
+| 23:20 | Rami Levy, update files | `{"mode": "poll", "chain": "ramilevy", "kinds": ["Price", "Promo"]}` |
+| 23:35 | Yochananof, update files | `{"mode": "poll", "chain": "yochananof", "kinds": ["Price", "Promo"]}` |
+| 23:50 | Osher Ad, update files | `{"mode": "poll", "chain": "osherad", "kinds": ["Price", "Promo"]}` |
+
 ## Deploy
 
 You need the personal AWS account (nothing from an employer) with il-central-1 enabled, the AWS CLI and the AWS SAM CLI as flights-archive uses them, and Python 3.13 on your Mac for `sam build` (or `sam build --use-container` with Docker). Every `aws` and `sam deploy` command below names the `flights-sam` profile and the region: every other profile on this Mac is the employer's, and a command without `--profile` would run against one of them.
@@ -105,6 +139,15 @@ You need the personal AWS account (nothing from an employer) with il-central-1 e
 
    **Shufersal's full files take two runs each.** The first run of a full kind usually ends with `"error": "stopped: under 90 s left"`; the second, the same event again, picks up where the first stopped (page 1, then the first run's furthest page again and on) and finishes. If the second stops short too, start it a third time; it picks up where the second stopped. On 2026-11-01 its pages took 15 to 39 s each, and a day much slower than that needs more runs. On 2026-11-06 PriceFull's pages took a median of 34.7 s (29.1 to 44.9 s) and PromoFull's 41.75 s (28.8 to 60.0 s), and 6 of about 39 page requests timed out at the 60 s wait. A page that times out is now asked for again, up to twice (ruling R38), but a slow spell still ends a run with `"error": "listing failed: … timed out on 3 tries: …"`; the next run of that kind picks up where it stopped. (The duration gate this step once held is gone: at that page speed one kind alone does not fit a run.)
 
+   The update-file polls by hand, one per chain that polls, each its scheduled event ("Through the day: the update-file polls", above), in the afternoon after 12:20, started asynchronously and one at a time as above:
+
+   ```bash
+   aws lambda invoke --function-name "$FN" --invocation-type Event --payload '{"mode": "poll", "chain": "ramilevy", "kinds": ["Price", "Promo"]}' --cli-binary-format raw-in-base64-out /dev/null --profile flights-sam --region il-central-1
+   aws lambda invoke --function-name "$FN" --invocation-type Event --payload '{"mode": "poll", "chain": "yochananof", "kinds": ["Price", "Promo"]}' --cli-binary-format raw-in-base64-out /dev/null --profile flights-sam --region il-central-1
+   aws lambda invoke --function-name "$FN" --invocation-type Event --payload '{"mode": "poll", "chain": "osherad", "kinds": ["Price", "Promo"]}' --cli-binary-format raw-in-base64-out /dev/null --profile flights-sam --region il-central-1
+   aws lambda invoke --function-name "$FN" --invocation-type Event --payload '{"mode": "poll", "chain": "carrefour", "kinds": ["Price", "Promo"]}' --cli-binary-format raw-in-base64-out /dev/null --profile flights-sam --region il-central-1
+   ```
+
 7. **A manual check.** The check is short, so a plain invoke is fine; `--cli-read-timeout 900` keeps the CLI waiting rather than sending it again, which would check twice and could email twice:
 
    ```bash
@@ -112,6 +155,12 @@ You need the personal AWS account (nothing from an employer) with il-central-1 e
    ```
 
    `/tmp/il-grocery-check.json` names the check record (`record`) and counts the alerts. The check pings healthchecks.io, which should show the ping within a minute. healthchecks.io measures a check's period from its last ping (the worked example on https://healthchecks.io/docs/, read 2026-11-01), so from that ping on it expects the next within a day and two hours. If the schedules will be on before then (step 9), leave the check running: the first scheduled check pings in time. If not, pause it: pausing is how its docs say to avoid unwanted alerts (same page; that a paused check sends none is implied, not stated). A ping normally takes a paused check out of pause: "Normally, when you ping a paused check, it leaves the paused state and goes into the 'up' state" (https://healthchecks.io/docs/configuring_checks/). The exception is on the same page: a check whose filtering rule for pinging a paused check is set to "Ignore the ping, stay in the paused state" stays paused, ignoring every ping, until it is resumed by hand. Leave that rule unset, and a manual check run while the check is paused un-pauses it. It also expects the day's retry runs: with none run that day, it reports each chain as failed ("the day's runs fell short: no retry run covered …") and emails you, which proves the email works. For a clean check, first run each retry event of the timetable (one per chain, Shufersal's one per kind) by hand, one at a time as there; each downloads only what is still missing. Do this only once that day's files are on the portals (step 6): the check fails a chain whose retry runs list nothing for the day, so a retry started too early makes the manual check alert every chain.
+
+   A manual check can also ask for the day before's update files, which the scheduled check judges only while `PollScheduleState` is on; this one judges them whatever the switch says:
+
+   ```bash
+   aws lambda invoke --function-name "$FN" --payload '{"mode": "check", "update_day": true}' --cli-read-timeout 900 --cli-binary-format raw-in-base64-out /tmp/il-grocery-check.json --profile flights-sam --region il-central-1
+   ```
 
 8. **Read what it wrote.** List a day's manifests, print one, and print the check record:
 

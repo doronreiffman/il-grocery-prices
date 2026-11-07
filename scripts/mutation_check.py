@@ -41,6 +41,10 @@ SHUFERSAL_REPLAYED = ("src/collector/sources/shufersal.py", ["tests/test_shufers
 NOV_6_REPLAY = ("src/collector/sources/shufersal.py", ["tests/test_replay.py::test_the_2026_11_06_pricefull_run_replayed"])
 # The 2026-11-06 Promo polls (q23), which must catch a poll started by R37's rule by themselves.
 PROMO_REPLAY = ("src/collector/run.py", ["tests/test_replay.py::test_a_day_of_shufersal_promo_passes_replayed"])
+# A store republished at a pass's resume point (q23), the only test of that case, which must catch R37's step back left
+# out by itself.
+PROMO_REPUBLISHED = ("src/collector/sources/shufersal.py",
+                     ["tests/test_replay.py::test_a_store_republished_at_the_resume_point_still_completes_the_pass"])
 # Two q24 breaks that pause where the rule has no pause. The older tests in test_shufersal.py build their sources with
 # the default sleep, time.sleep, so under these breaks they would wait for real (10 s a page) before -x reached the q24
 # tests near the end of the file: each names the one test that must catch it by itself.
@@ -74,6 +78,9 @@ RETRY_THREE_HOURS_ON = ("template.yaml", [_T + "test_retry_runs_start_three_hour
 CHECK_LAST = ("template.yaml", [_T + "test_one_check_after_the_last_retry_run_can_have_finished"])
 ALL_KINDS = ("template.yaml", [_T + "test_each_chain_has_runs_of_each_mode_over_the_kinds_it_collects"])
 HANDLER_EVENTS = ("template.yaml", [_T + "test_every_event_is_one_the_handler_takes"])
+NO_POLL_DURING_EXTRACTION = ("template.yaml", [_T + "test_no_poll_is_in_flight_while_the_extractions_run"])
+POLL_SWITCH = ("template.yaml", [_T + "test_every_schedule_runs_on_time_in_israel_and_follows_the_switch"])
+POLLED_CHAINS = ("src/collector/chains.py", [_T + "test_the_chains_that_poll_are_the_chains_with_update_kinds"])
 BASKET_TEMPLATE = ("template.yaml", ["tests/test_basket_template.py"])
 # The basket function's rules, each named for the one test in test_basket_template.py that must catch it by itself.
 _B = "tests/test_basket_template.py::"
@@ -576,6 +583,7 @@ MUTATIONS = {
                                                       '| {"day": result.day.isoformat(), "code_sha": code_sha, "other_days": {}}'),
     "a poll started by R37's rule (q23 run)": (RUN, '        rule = pass_start if self.result.mode == "poll" else start_for\n', "        rule = start_for\n"),
     "a poll started by R37's rule, the Promo replay alone (q23 replay)": (PROMO_REPLAY, '        rule = pass_start if self.result.mode == "poll" else start_for\n', "        rule = start_for\n"),
+    "no step back, the republish replay alone (q23 replay)": (PROMO_REPUBLISHED, "        while at > 2 and record.first > start.furthest:", "        while False:"),
     "a full kind started by the passes rule (q23 run)": (RUN, '        rule = pass_start if self.result.mode == "poll" else start_for\n', "        rule = pass_start\n"),
     # run: blocks and the latch
     "stopped chain collected": (RUN, '        if store.read_state(chain.slug).get("stopped"):', "        if False:"),
@@ -918,6 +926,7 @@ MUTATIONS = {
     "the poll's stopped email not sent (q23 handler)": (HANDLER, "    deps.publish(subject, body)\n    mark_alerted(deps.store, [alert])", "    mark_alerted(deps.store, [alert])"),
     "the chain marked alerted before the email (q23 handler)": (HANDLER, "    deps.publish(subject, body)\n    mark_alerted(deps.store, [alert])",
                                                                 "    mark_alerted(deps.store, [alert])\n    deps.publish(subject, body)"),
+    "the poll's chain never marked alerted (q23 handler)": (HANDLER, "mark_alerted(deps.store, [alert])  # only now", "pass  # only now"),
     "the poll's stopped email not logged before it is sent (q23 handler)": (HANDLER, '    log.warning("%s\\n%s", subject, body)  # logged first: the email can still fail',
                                                                             "    pass  # logged first: the email can still fail"),
     "every collecting run that stops a chain emails (q23 handler)": (HANDLER, '    if mode == "poll" and result.blocked and result.blocked != STOPPED_EARLIER:',
@@ -1011,6 +1020,25 @@ MUTATIONS = {
     "the poll switch takes any value (q23 template)": (TEMPLATE, "    AllowedValues: [ENABLED, DISABLED]\n    Description: The update-file polls through the day",
                                                        "    Description: The update-file polls through the day"),
     "the function not told the poll switch (q23 template)": (TEMPLATE, "          POLL_SCHEDULE_STATE: !Ref PollScheduleState\n", ""),
+    # template: the polls (q23). Each Input repeats 6 or 7 times, so a text to break that quotes one names its cron line.
+    "a poll moved into the extractions' window (q23 template)": (NO_POLL_DURING_EXTRACTION, '"cron(20 12 * * ? *)"', '"cron(10 12 * * ? *)"'),
+    "a poll still running when the extractions start (q23 template)": (NO_POLL_DURING_EXTRACTION, '"cron(20 12 * * ? *)"', '"cron(50 11 * * ? *)"'),
+    "a poll on the morning's switch (q23 template)": (
+        POLL_SWITCH, '"cron(20 14 * * ? *)"\n            ScheduleExpressionTimezone: Asia/Jerusalem\n            Input: \'{"mode": "poll", "chain": "ramilevy", "kinds": ["Price", "Promo"]}\'\n            State: !Ref PollScheduleState',
+        '"cron(20 14 * * ? *)"\n            ScheduleExpressionTimezone: Asia/Jerusalem\n            Input: \'{"mode": "poll", "chain": "ramilevy", "kinds": ["Price", "Promo"]}\'\n            State: !Ref ScheduleState'),
+    "a morning run on the poll switch (q23 template)": (POLL_SWITCH, "Input: '{\"mode\": \"main\", \"chain\": \"ramilevy\"}'\n            State: !Ref ScheduleState",
+                                                        "Input: '{\"mode\": \"main\", \"chain\": \"ramilevy\"}'\n            State: !Ref PollScheduleState"),
+    "a poll of a full kind (q23 template)": (
+        HANDLER_EVENTS, '"cron(5 13 * * ? *)"\n            ScheduleExpressionTimezone: Asia/Jerusalem\n            Input: \'{"mode": "poll", "chain": "carrefour", "kinds": ["Price", "Promo"]}\'',
+        '"cron(5 13 * * ? *)"\n            ScheduleExpressionTimezone: Asia/Jerusalem\n            Input: \'{"mode": "poll", "chain": "carrefour", "kinds": ["PriceFull", "Promo"]}\''),
+    "a poll without its kinds (q23 template)": (
+        HANDLER_EVENTS, '"cron(50 14 * * ? *)"\n            ScheduleExpressionTimezone: Asia/Jerusalem\n            Input: \'{"mode": "poll", "chain": "osherad", "kinds": ["Price", "Promo"]}\'',
+        '"cron(50 14 * * ? *)"\n            ScheduleExpressionTimezone: Asia/Jerusalem\n            Input: \'{"mode": "poll", "chain": "osherad"}\''),
+    "two NCR polls 10 minutes apart (q23 template)": (ONE_HOST_AT_A_TIME, '"cron(35 12 * * ? *)"', '"cron(30 12 * * ? *)"'),
+    "a chain's polls 10 minutes apart (q23 template)": (ONE_RUN_AT_A_TIME, '"cron(5 15 * * ? *)"', '"cron(15 13 * * ? *)"'),
+    "two polls in one minute (q23 template)": (ONE_MINUTE_EACH, '"cron(5 17 * * ? *)"', '"cron(50 16 * * ? *)"'),
+    "Shufersal polled before its schedules (q23 template)": (POLLED_CHAINS, '\n          kinds=("Stores", "PriceFull", "PromoFull")),',
+                                                             '\n          kinds=("Stores", "PriceFull", "PromoFull"), polled=("Price", "Promo")),'),
     # the operations doc
     "a manual collecting run started synchronously": (OPERATIONS, "--invocation-type Event --payload '{\"mode\": \"main\", \"chain\": \"ramilevy\"}'", "--payload '{\"mode\": \"main\", \"chain\": \"ramilevy\"}'"),
     "an aws command in the doc without the project profile": (OPERATIONS, "aws logs tail /il-grocery-prices/collector --follow --since 10m --profile flights-sam --region il-central-1", "aws logs tail /il-grocery-prices/collector --follow --since 10m --region il-central-1"),
@@ -1026,6 +1054,15 @@ MUTATIONS = {
     "a manual run for a day that is no date": (OPERATIONS, "\"chain\": \"shufersal\", \"day\": \"2026-11-02\"", "\"chain\": \"shufersal\", \"day\": \"2026-11-31\""),
     "a manual basket run collected by another time": (OPERATIONS, "\"collected_by\": \"12:03\"}' --cli-read-timeout", "\"collected_by\": \"12:30\"}' --cli-read-timeout"),
     "a manual basket run's day misspelled": (OPERATIONS, "{\"mode\": \"basket\", \"day\":", "{\"mode\": \"basket\", \"dya\":"),
+    "a poll's row at another time in the doc (q23 doc)": (OPERATIONS, "| 12:20 | Rami Levy, update files", "| 12:25 | Rami Levy, update files"),
+    "a chain's manual poll missing from the doc (q23 doc)": (OPERATIONS, "--payload '{\"mode\": \"poll\", \"chain\": \"yochananof\", \"kinds\": [\"Price\", \"Promo\"]}'",
+                                                             "--payload '{\"mode\": \"poll\", \"chain\": \"osherad\", \"kinds\": [\"Price\", \"Promo\"]}'"),
+    "a manual poll started synchronously (q23 doc)": (OPERATIONS, "--invocation-type Event --payload '{\"mode\": \"poll\", \"chain\": \"carrefour\"",
+                                                      "--payload '{\"mode\": \"poll\", \"chain\": \"carrefour\""),
+    "the manual update-day check's field misspelled in the doc (q23 doc)": (OPERATIONS, "'{\"mode\": \"check\", \"update_day\": true}'",
+                                                                            "'{\"mode\": \"check\", \"update_dya\": true}'"),
+    "the manual update-day check asks with a string in the doc (q23 doc)": (OPERATIONS, "'{\"mode\": \"check\", \"update_day\": true}'",
+                                                                            "'{\"mode\": \"check\", \"update_day\": \"true\"}'"),
     # site template: the bucket
     "public access unblocked": (SITE_TEMPLATE, "      PublicAccessBlockConfiguration:\n        BlockPublicAcls: true\n        BlockPublicPolicy: true\n        IgnorePublicAcls: true\n        RestrictPublicBuckets: true\n", ""),
     "site bucket public policies allowed": (SITE_TEMPLATE, "        RestrictPublicBuckets: true", "        RestrictPublicBuckets: false"),

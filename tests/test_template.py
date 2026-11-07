@@ -39,6 +39,10 @@ DAILY = re.compile(r"cron\((?P<minute>[0-9]{1,2}) (?P<hour>[0-9]{1,2}) \* \* \? 
 # the morning (the second run carries on where the first stopped) and once at the retry. A retry run
 # starts three hours after the first main run of its kinds; the check starts 15 minutes after the last
 # retry run can have finished (11:18 + 15 + 15 min). The four other chains fetch all five kinds in one run.
+# Then the update-file polls (docs/update-files.md, section 2): Rami Levy, Yochananof, Osher Ad and Carrefour read
+# their update kinds every two hours from 12:20 and once more at 23:20, the three NCR chains 15 minutes apart on
+# their shared host and Carrefour after them, none while the basket's extractions run, on a switch of their own
+# (PollScheduleState). Shufersal's passes come later (section 7).
 SCHEDULES = {
     "MainShufersalStores": ("06:30", {"mode": "main", "chain": "shufersal", "kinds": ["Stores"]}),
     "MainRamiLevy": ("06:33", {"mode": "main", "chain": "ramilevy"}),
@@ -57,6 +61,33 @@ SCHEDULES = {
     "RetryYochananof": ("10:03", {"mode": "retry", "chain": "yochananof"}),
     "RetryShufersalPromos": ("10:15", {"mode": "retry", "chain": "shufersal", "kinds": ["PromoFull"]}),
     "Check": ("11:48", {"mode": "check"}),
+    "PollRamiLevy1220": ("12:20", {"mode": "poll", "chain": "ramilevy", "kinds": ["Price", "Promo"]}),
+    "PollYochananof1235": ("12:35", {"mode": "poll", "chain": "yochananof", "kinds": ["Price", "Promo"]}),
+    "PollOsherAd1250": ("12:50", {"mode": "poll", "chain": "osherad", "kinds": ["Price", "Promo"]}),
+    "PollCarrefour1305": ("13:05", {"mode": "poll", "chain": "carrefour", "kinds": ["Price", "Promo"]}),
+    "PollRamiLevy1420": ("14:20", {"mode": "poll", "chain": "ramilevy", "kinds": ["Price", "Promo"]}),
+    "PollYochananof1435": ("14:35", {"mode": "poll", "chain": "yochananof", "kinds": ["Price", "Promo"]}),
+    "PollOsherAd1450": ("14:50", {"mode": "poll", "chain": "osherad", "kinds": ["Price", "Promo"]}),
+    "PollCarrefour1505": ("15:05", {"mode": "poll", "chain": "carrefour", "kinds": ["Price", "Promo"]}),
+    "PollRamiLevy1620": ("16:20", {"mode": "poll", "chain": "ramilevy", "kinds": ["Price", "Promo"]}),
+    "PollYochananof1635": ("16:35", {"mode": "poll", "chain": "yochananof", "kinds": ["Price", "Promo"]}),
+    "PollOsherAd1650": ("16:50", {"mode": "poll", "chain": "osherad", "kinds": ["Price", "Promo"]}),
+    "PollCarrefour1705": ("17:05", {"mode": "poll", "chain": "carrefour", "kinds": ["Price", "Promo"]}),
+    "PollRamiLevy1820": ("18:20", {"mode": "poll", "chain": "ramilevy", "kinds": ["Price", "Promo"]}),
+    "PollYochananof1835": ("18:35", {"mode": "poll", "chain": "yochananof", "kinds": ["Price", "Promo"]}),
+    "PollOsherAd1850": ("18:50", {"mode": "poll", "chain": "osherad", "kinds": ["Price", "Promo"]}),
+    "PollCarrefour1905": ("19:05", {"mode": "poll", "chain": "carrefour", "kinds": ["Price", "Promo"]}),
+    "PollRamiLevy2020": ("20:20", {"mode": "poll", "chain": "ramilevy", "kinds": ["Price", "Promo"]}),
+    "PollYochananof2035": ("20:35", {"mode": "poll", "chain": "yochananof", "kinds": ["Price", "Promo"]}),
+    "PollOsherAd2050": ("20:50", {"mode": "poll", "chain": "osherad", "kinds": ["Price", "Promo"]}),
+    "PollCarrefour2105": ("21:05", {"mode": "poll", "chain": "carrefour", "kinds": ["Price", "Promo"]}),
+    "PollRamiLevy2220": ("22:20", {"mode": "poll", "chain": "ramilevy", "kinds": ["Price", "Promo"]}),
+    "PollYochananof2235": ("22:35", {"mode": "poll", "chain": "yochananof", "kinds": ["Price", "Promo"]}),
+    "PollOsherAd2250": ("22:50", {"mode": "poll", "chain": "osherad", "kinds": ["Price", "Promo"]}),
+    "PollCarrefour2305": ("23:05", {"mode": "poll", "chain": "carrefour", "kinds": ["Price", "Promo"]}),
+    "PollRamiLevy2320": ("23:20", {"mode": "poll", "chain": "ramilevy", "kinds": ["Price", "Promo"]}),
+    "PollYochananof2335": ("23:35", {"mode": "poll", "chain": "yochananof", "kinds": ["Price", "Promo"]}),
+    "PollOsherAd2350": ("23:50", {"mode": "poll", "chain": "osherad", "kinds": ["Price", "Promo"]}),
 }
 CHECK_MARGIN = 15  # minutes after the last retry run can have finished
 SHUFERSAL_RUNS = {"main": [["Stores"], ["PriceFull"], ["PriceFull"], ["PromoFull"], ["PromoFull"]],
@@ -338,17 +369,23 @@ def test_schedules_are_rulings_r7_and_r30(schedules):
 
 def test_every_schedule_runs_on_time_in_israel_and_follows_the_switch(function):
     """Asia/Jerusalem, so daylight saving moves the runs with the shops; no flexible window, so the
-    15-minute spacing holds; no Scheduler retries; on or off with ScheduleState, never on its own.
+    15-minute spacing holds; no Scheduler retries; on or off with its switch, never on its own: a poll with
+    PollScheduleState, so the morning keeps running while the polls are tested and the polls can be paused alone
+    (docs/update-files.md, section 7), every other schedule with ScheduleState.
     The property names are pinned too: cfn-lint 1.57 lets a misspelled ScheduleV2 property through
     (and YAML reads an unquoted OFF as false)."""
+    switches = set()
     for name, event in function["Events"].items():
         properties = event["Properties"]
         assert set(properties) == {"ScheduleExpression", "ScheduleExpressionTimezone", "Input", "State",
                                    "FlexibleTimeWindow", "RetryPolicy"}, name
         assert properties["ScheduleExpressionTimezone"] == ISRAEL, name
-        assert properties["State"] == {"Ref": "ScheduleState"}, name
+        switch = "PollScheduleState" if json.loads(properties["Input"])["mode"] == "poll" else "ScheduleState"
+        assert properties["State"] == {"Ref": switch}, name
+        switches.add(switch)
         assert properties["FlexibleTimeWindow"] == {"Mode": "OFF"}, name
         assert properties["RetryPolicy"] == {"MaximumRetryAttempts": 0}, name
+    assert switches == {"ScheduleState", "PollScheduleState"}
 
 
 def test_no_two_schedules_share_a_start_minute(schedules):
@@ -357,13 +394,20 @@ def test_no_two_schedules_share_a_start_minute(schedules):
 
 
 def test_every_event_is_one_the_handler_takes(schedules):
+    """A main or retry run asks for some of the kinds its chain collects, or none (the chain's); a poll names its
+    kinds, some of the update kinds its chain polls (the handler refuses a poll without them, and the run loop one
+    of any other kind)."""
     for name, (_, event) in schedules.items():
-        assert event["mode"] in ("main", "retry", "check"), name
+        assert event["mode"] in ("main", "retry", "poll", "check"), name
         if event["mode"] == "check":
             assert event == {"mode": "check"}, name
             continue
         assert event["chain"] in CHAINS, name
-        assert set(event.get("kinds", KINDS)) <= set(CHAINS[event["chain"]].kinds), name
+        if event["mode"] == "poll":
+            assert event.get("kinds"), name
+            assert set(event["kinds"]) <= set(CHAINS[event["chain"]].polled), name
+        else:
+            assert set(event.get("kinds", KINDS)) <= set(CHAINS[event["chain"]].kinds), name
 
 
 @pytest.mark.parametrize("mode", ["main", "retry"])
@@ -423,14 +467,47 @@ def test_one_portal_host_never_serves_two_runs_at_once(schedules, function):
 
 
 def test_one_check_after_the_last_retry_run_can_have_finished(schedules, function):
+    """The check judges the morning from its main and retry runs (docs/update-files.md, section 5), so it waits for
+    those alone: the polls run on to 23:50, and the day before's are judged the next morning."""
     checks = [start for start, event in schedules.values() if event["mode"] == "check"]
-    runs = [start for start, event in schedules.values() if event["mode"] != "check"]
+    runs = [start for start, event in schedules.values() if event["mode"] in ("main", "retry")]
     assert len(checks) == 1
     # 15 minutes more than the last retry run can take, for its manifest write and the schedulers'
     # start-up lag: with none, a slow last retry can still be writing when the check reads (review,
     # 2026-11-01).
     assert checks[0] >= max(runs) + function["Timeout"] / 60 + CHECK_MARGIN
     assert checks[0] < 24 * 60  # the same Israel day as the runs it checks
+
+
+def test_no_poll_is_in_flight_while_the_extractions_run(schedules, basket_schedules, function, resources):
+    """docs/update-files.md, "Anti-goals" and section 6: the basket's five extractions start together at 12:03 and
+    can run to 12:18, and no poll is in flight meanwhile: each poll ends before they start or starts once they can
+    have ended. The basket run at 12:33 is not held to it: beside Rami Levy's 12:20 poll it is an overlap the design
+    accepts (section 2), two runs of different functions on different hosts. The spacing is the design's, written
+    when the account's Lambda quota in il-central-1 read 5, and kept as approved though it read 400 on 2026-11-07
+    (`aws lambda get-account-settings`)."""
+    poll_longest = function["Timeout"] / 60
+    extract_longest = resources["BasketFunction"]["Properties"]["Timeout"] / 60
+    extractions = {start for start, event in basket_schedules.values() if event["mode"] == "extract"}
+    polls = [start for start, event in schedules.values() if event["mode"] == "poll"]
+    assert extractions and polls
+    for extraction in extractions:
+        for poll in polls:
+            assert poll + poll_longest <= extraction or poll >= extraction + extract_longest, (poll, extraction)
+
+
+def test_the_chains_that_poll_are_the_chains_with_update_kinds(schedules):
+    """The chains the poll schedules name are the chains whose `polled` is set: a chain given `polled` with no polls
+    scheduled, or polls of a chain the handler would refuse them for, cannot be deployed. Each polls both update
+    kinds (docs/update-files.md, section 1). Shufersal's `polled` and passes come together, later (section 7)."""
+    polled = {}
+    for _, event in schedules.values():
+        if event["mode"] == "poll":
+            polled.setdefault(event["chain"], set()).update(event["kinds"])
+    assert set(polled) == {slug for slug, chain in CHAINS.items() if chain.polled}
+    for slug, kinds in polled.items():
+        assert CHAINS[slug].polled == ("Price", "Promo"), slug
+        assert kinds == {"Price", "Promo"}, slug
 
 
 # --- the operations doc ---
@@ -487,18 +564,30 @@ def _basket_event_is_taken(event: dict) -> None:
 
 def test_the_docs_events_are_ones_the_handler_takes(operations):
     """Each payload in the doc by the rules of the handler it goes to: the basket function's for its two modes, the
-    collector's for the rest."""
+    collector's for the rest. A poll names its kinds, some its chain polls. A check is the plain one or the one that
+    asks for the update day, whose `update_day` the handler takes only as the JSON value true: with the field
+    misspelled, or another value, the check would judge no update day while the poll switch is off."""
     payloads = _payloads(operations)
     assert payloads
     for event in payloads:
         if event["mode"] in basket_handler.MODES:
             _basket_event_is_taken(event)
             continue
-        assert event["mode"] in ("main", "retry", "check", "unblock"), event
+        assert event["mode"] in ("main", "retry", "poll", "check", "unblock"), event
+        if event["mode"] == "check":
+            asks = set(event) == {"mode", "update_day"} and event["update_day"] is True
+            assert event == {"mode": "check"} or asks, event
+            continue
         if "chain" in event:
             assert event["chain"] in CHAINS, event
-            assert set(event.get("kinds", KINDS)) <= set(CHAINS[event["chain"]].kinds), event
+            if event["mode"] == "poll":
+                assert event.get("kinds"), event
+                assert set(event["kinds"]) <= set(CHAINS[event["chain"]].polled), event
+            else:
+                assert set(event.get("kinds", KINDS)) <= set(CHAINS[event["chain"]].kinds), event
     assert {"mode": "check"} in payloads
+    assert {"mode": "check", "update_day": True} in payloads
+    assert any(event["mode"] == "poll" for event in payloads)
     assert any(event["mode"] == "unblock" for event in payloads)
     assert any(event["mode"] == "extract" for event in payloads)
     assert any(event["mode"] == "basket" for event in payloads)
@@ -512,12 +601,22 @@ def test_the_doc_runs_each_main_invocation_by_hand(operations, schedules):
     assert by_hand == scheduled
 
 
+def test_the_doc_runs_one_poll_per_chain_by_hand(operations, schedules):
+    """A manual poll per chain that polls, each the scheduled event (docs/update-files.md, section 7, step 2)."""
+    by_hand = sorted(json.dumps(event, sort_keys=True) for event in _payloads(operations) if event["mode"] == "poll")
+    scheduled = sorted({json.dumps(event, sort_keys=True) for _, event in schedules.values()
+                        if event["mode"] == "poll"})
+    assert by_hand
+    assert by_hand == scheduled
+
+
 def test_the_docs_timetable_is_the_schedules(operations, schedules, basket_schedules):
-    """The doc's two timetables, "What runs when" and the basket's: each row with an event shows, at its time, a
-    collector's main run or its check, or one of the basket function's schedules, and every one of those has a row."""
+    """The doc's timetables, "What runs when" with its polls and the basket's: each row with an event shows, at its
+    time, a collector's main run, poll or check, or one of the basket function's schedules, and every one of those
+    has a row."""
     rows = re.findall(r"^\| ([0-9]{2}:[0-9]{2}) \| [^|]+ \| `(\{[^`]*\})` \|$", operations, re.MULTILINE)
     shown = sorted((_minutes(clock), json.dumps(json.loads(event), sort_keys=True)) for clock, event in rows)
-    collector = [(start, event) for start, event in schedules.values() if event["mode"] in ("main", "check")]
+    collector = [(start, event) for start, event in schedules.values() if event["mode"] in ("main", "poll", "check")]
     scheduled = sorted((start, json.dumps(event, sort_keys=True))
                        for start, event in collector + list(basket_schedules.values()))
     assert shown == scheduled
@@ -542,13 +641,13 @@ def test_the_doc_runs_the_basket_by_hand_as_scheduled(operations, basket_schedul
 
 
 def test_the_doc_starts_collecting_runs_asynchronously(operations):
-    """A collecting run can take 15 minutes, and an extraction more than a minute (Shufersal's took 93.9 s on the
-    Mac); the CLI waits 60 s for a synchronous answer, then gives up and sends the invoke again, which would start
-    a second run of the same chain."""
+    """A collecting run, a poll included, can take 15 minutes, and an extraction more than a minute (Shufersal's took
+    93.9 s on the Mac); the CLI waits 60 s for a synchronous answer, then gives up and sends the invoke again, which
+    would start a second run of the same chain."""
     lines = [line for line in operations.splitlines() if "--payload" in line]
     for line in lines:
         event = json.loads(re.search(r"--payload '(\{[^']*\})'", line)[1])
-        if event["mode"] in ("main", "retry", "extract"):
+        if event["mode"] in ("main", "retry", "poll", "extract"):
             assert "--invocation-type Event" in line, line
 
 
