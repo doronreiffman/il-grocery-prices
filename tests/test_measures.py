@@ -219,13 +219,23 @@ def test_a_deal_equal_to_the_90_day_low_is_not_on_the_front_page():
     assert _on_front(_deal("7.89"), listed)
 
 
-def test_the_front_test_reads_the_exact_deal_price():
-    """3 for ₪4.34 is 1.4466... a unit; against a 90-day low of ₪1.45 it is below, though two places read 1.45."""
+def test_the_front_test_compares_the_shown_figures():
+    """Task 15's review, fix round 2: the front page states that its deals are below every listed price of the past 90
+    days, and the product page states the figures it shows, so the test compares the deal's price as shown (to the
+    agora, half up: `shopper.deals.to_agora`) with the 90-day low as shown. 3 for ₪4.34 is 1.4466... a unit and 3 for
+    ₪32.69 is 10.8966...: below a ₪1.45 or a ₪10.90 low exactly, equal to it as shown, so not on the front page; the
+    exact price still ranks the rows (`depth`)."""
     price = Fraction("4.34") / 3
-    assert round(price, 2) == Fraction("1.45")
     listed = {**listed_from(1, 25, "1.45"), **listed_from(26, 40, "1.60")}
-    assert _on_front(_deal(price), listed)
+    assert not _on_front(_deal(price), listed)
     assert not _on_front(_deal("1.45"), listed)
+    assert _on_front(_deal("1.44"), listed)
+    eleven = {**listed_from(1, 67, "10.90"), **listed_from(68, 90, "11.90")}
+    assert not _on_front(_deal(Fraction("32.69") / 3), eleven)
+    assert _on_front(_deal(Fraction("32.66") / 3), eleven)            # 10.8866..., shown ₪10.89
+    # the low as shown, too: ₪1.443 is shown ₪1.44, so a deal of ₪1.44 is not below it
+    assert not _on_front(_deal("1.44"), listed_from(1, 20, "1.443"))
+    assert _on_front(_deal("1.43"), listed_from(1, 20, "1.443"))
 
 
 def test_a_price_raised_before_the_promotion_does_not_lift_the_low():

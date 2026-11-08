@@ -259,7 +259,7 @@ def test_p7_and_p8_with_a_short_window():
         "The listed price did not change on the 5 days of records since 15 November 2026 before today.")
     assert _history(listed, promoted=[back(2), back(1)], today=False) == (
         f"On {ACROSS} on 2 of the 5 days of records since 15 November 2026 before today, {MORNING}.",
-        "Run before today: 18 to 19 November 2026.",
+        "Run seen before today: 18 to 19 November 2026.",
         "The last run ended on 19 November 2026, 1 day ago.")
     one = gap_sentences(_gap("7.90", {back(1): "10.00"}))
     assert one[0].endswith("(of the 1 day of records since 19 November 2026 before today).")
@@ -334,7 +334,7 @@ def test_p8_sentences_in_the_designs_forms():
                 or date(2026, 11, 24) <= day <= date(2026, 11, 30)]
     assert _history(listed, promoted, today=False, page_day=page_day, extra_days=not_listed) == (
         f"On {ACROSS} on 12 of the 87 days with records before today, {MORNING}.",
-        "Runs before today: 3 to 9 November 2026; 24 to 30 November 2026.",
+        "Runs seen before today: 3 to 9 November 2026; 24 to 30 November 2026.",
         "Days between runs: 14.",
         "The last run ended on 30 November 2026, 6 days ago.")
 
@@ -368,7 +368,7 @@ def test_p8_counts_the_days_with_records_p7_counts():
     assert found == (
         f"On {ACROSS} on 4 of the 6 days of records since 14 November 2026 before today (promotions could not be read "
         f"on 1), {MORNING}.",
-        "Run before today: 15 to 19 November 2026.",
+        "Run seen before today: 15 to 19 November 2026.",
         "The last run ended on 19 November 2026, 1 day ago.")
     same = "of the 6 days of records since 14 November 2026 before today"
     assert same in gap_sentences(_gap("7.90", listed))[0] and same in found[0]
@@ -392,7 +392,7 @@ def test_p8_on_promotion_today():
     # the run seen to 17 November, the two days after it holes: before today it may have gone on
     found = _history(listed, [back(n) for n in range(3, 11)], holes=[back(2), back(1)], today=True)
     assert found[1:] == (f"On {ACROSS} on 8 of the 88 days with records before today, {MORNING}.",
-                         "Run before today: from 10 November 2026 to 17 November 2026 or later.")
+                         "Run seen before today: from 10 November 2026 to 17 November 2026 or later.")
     # a run that ended before the days off promotion that led to today's: still no end said beside today's promotion
     assert _history(listed, [back(n) for n in range(5, 11)], today=True) == (
         f"On {ACROSS} today, {MORNING}.",
@@ -413,7 +413,7 @@ def test_p8_runs_at_the_windows_ends():
         "The last run ended on 27 August 2026, 85 days ago.")
     # the window's first day a hole: the run seen from the first day read
     assert _history(listed, first, holes=[back(90)], today=False)[1] == (
-        "Run before today: from 23 August 2026 or earlier to 27 August 2026.")
+        "Run seen before today: from 23 August 2026 or earlier to 27 August 2026.")
     last = [back(n) for n in range(1, 6)]                                 # 15 to 19 November
     for today in (None, "unread", "hole"):
         assert _history(listed, last, today=today) == (
@@ -441,16 +441,16 @@ def test_an_end_beside_a_gap_in_the_records_is_a_bound():
     promoted = [back(n) for n in range(3, 11)]
     assert _history(listed, promoted, holes=[back(2), back(1)], today=False) == (
         f"On {ACROSS} on 8 of the 88 days with records before today, {MORNING}.",
-        "Run before today: from 10 November 2026 to 17 November 2026 or later.",
-        "The last run ended on 17 November 2026 or later, at most 3 days ago.")
+        "Run seen before today: from 10 November 2026 to 17 November 2026 or later.",
+        "The last run seen ended on 17 November 2026 or later, at most 3 days ago.")
     # an unread day beside the end is a bound too, and a day read after it says the run did end
     assert _history(listed, promoted, unread=[back(2)])[1:] == (
-        "Run before today: from 10 November 2026 to 17 November 2026 or later.",
-        "The last run ended on 17 November 2026 or later, at most 3 days ago.")
+        "Run seen before today: from 10 November 2026 to 17 November 2026 or later.",
+        "The last run seen ended on 17 November 2026 or later, at most 3 days ago.")
     # a day the product is not listed is no reading of it either
     unlisted = {day: price for day, price in listed.items() if day != back(2)}
     assert _history(unlisted, promoted, today=False, extra_days=[back(2)])[2] == (
-        "The last run ended on 17 November 2026 or later, at most 3 days ago.")
+        "The last run seen ended on 17 November 2026 or later, at most 3 days ago.")
 
 
 def test_run_edges_and_the_days_between_runs_beside_a_gap_are_bounds():
@@ -460,8 +460,8 @@ def test_run_edges_and_the_days_between_runs_beside_a_gap_are_bounds():
     promoted = [back(n) for n in (30, 29, 28, 20, 19, 18)]
     assert _history(listed, promoted, unread=[back(21)], holes=[back(27)], today=False) == (
         f"On {ACROSS} on 6 of the 89 days with records before today (promotions could not be read on 1), {MORNING}.",
-        "Runs before today: from 21 October 2026 to 23 October 2026 or later; from 31 October 2026 or earlier to 2 "
-        "November 2026.",
+        "Runs seen before today: from 21 October 2026 to 23 October 2026 or later; from 31 October 2026 or earlier "
+        "to 2 November 2026.",
         "Days between runs: at most 7.",
         "The last run ended on 2 November 2026, 18 days ago.")
     # one edge unpinned is enough: here only the next run's start, the day before it not read
@@ -520,3 +520,29 @@ def test_no_sentence_but_f10s_says_an_odds_word():
         if text not in f10:
             for word in ODDS_WORDS:
                 assert flatten(word) not in flatten(text), (word, text)
+
+
+def test_a_run_may_hide_in_a_day_the_files_say_nothing_of():
+    """Fix round 2, ruling 2: a hole or an unread day could hold a one-day run nobody saw. After the last run it makes
+    that run "the last run seen"; inside the days between two runs it makes them "at most"; anywhere outside the runs
+    it makes the list the runs seen. A day the files say nothing of inside a run hides none."""
+    listed = listed_from(1, 90, "10.00")
+    pinned = [back(n) for n in range(5, 11)]                              # 10 to 15 November, both edges read
+    assert _history(listed, pinned, unread=[back(2)], today=False)[1:] == (
+        "Run seen before today: 10 to 15 November 2026.",
+        "The last run seen ended on 15 November 2026, 5 days ago.")
+    assert _history(listed, pinned, holes=[back(2)], today=False)[2] == (
+        "The last run seen ended on 15 November 2026, 5 days ago.")
+    assert _history(listed, pinned, unread=[back(7)], today=False)[1:] == (
+        "Run before today: 10 to 15 November 2026.", "The last run ended on 15 November 2026, 5 days ago.")
+    # a hole inside the days between two runs, beside neither run
+    two = [back(n) for n in (30, 29, 28, 20, 19, 18)]
+    assert _history(listed, two, holes=[back(24)], today=False)[1:] == (
+        "Runs seen before today: 21 to 23 October 2026; 31 October to 2 November 2026.",
+        "Days between runs: at most 7.",
+        "The last run ended on 2 November 2026, 18 days ago.")
+    # before the first run only: the list is of the runs seen, the days between and the last end stand
+    assert _history(listed, two, holes=[back(60)], today=False)[1:] == (
+        "Runs seen before today: 21 to 23 October 2026; 31 October to 2 November 2026.",
+        "Days between runs: 7.",
+        "The last run ended on 2 November 2026, 18 days ago.")
