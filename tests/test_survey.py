@@ -8,7 +8,7 @@ import pytest
 
 from basket.extract import extract
 from basket.stores import NoStoreList
-from shopper.survey import BIG_COUPON, carried_by_half, main, survey
+from shopper.survey import BIG_COUPON, carried_by_half, main, store_groups, survey
 
 FIXTURES = Path(__file__).parent / "fixtures"
 RAMI_LEVY = FIXTURES / "ncr" / "PromoFull7290058140886-001-731-20261101-001049.gz"
@@ -193,6 +193,29 @@ def test_codes_on_a_link_carried_by_half_the_counted_stores(tmp_path):
     assert wide["codes_counted_not_coupons"] == {"stores": 3, "codes": 2, "chain_wide": 1}
     assert {sub: by["codes_counted_not_coupons"] for sub, by in wide["by_sub_chain"].items()} == {
         "1": {"stores": 2, "codes": 2, "chain_wide": 2}, "2": {"stores": 1, "codes": 0, "chain_wide": 0}}
+
+
+def test_stores_are_grouped_by_the_promotions_they_carry(tmp_path):
+    letters = set("abcdefg")
+    assert store_groups({"1": {"a", "b"}, "2": {"a"}}) == [("1", "2")]  # a Jaccard index of exactly 1/2: joined
+    assert store_groups({"1": letters - {"f", "g"}, "2": letters - {"d", "e"}}) == [("1",), ("2",)]  # 3/7: not
+    # 8 and 30 (1/3) joined through 20 (2/3 with each); the largest group first, then by the lowest store as a number;
+    # each group's stores by number
+    assert store_groups({"10": {"a"}, "9": {"a"}, "30": {"c", "d"}, "4": {"e"}, "20": {"b", "c", "d"}, "8": {"b", "c"},
+                         "12": set()}) == [("8", "20", "30"), ("9", "10"), ("4",), ("12",)]
+    files = {_rami_name("1"): _promo_file("1", _promotion("20")),
+             _rami_name("2"): _promo_file("2", _promotion("20"), _promotion("30", coupon="1"),
+                                          _promotion("31", coupon="1")),
+             _rami_name("3"): _promo_file("3", _promotion("10"), _promotion("11")),
+             _rami_name("4"): _promo_file("4", _promotion("10"), _promotion("11")),
+             _rami_name("5"): _promo_file("5", _promotion("10"))}
+    # store 6 is counted with no promotion file, so it carries no set and is in no group
+    found = _rami(tmp_path, files, stores=("1", "2", "3", "4", "5", "6"))
+    # 1 and 2 carry {20}: the coupons 30 and 31 are out of store 2's set, which would otherwise be 1/3 like store 1's;
+    # 3, 4 and 5 are one group, 5 at 1/2 of 3's; the wide set is the promotions half the group's stores carry
+    assert found["store_groups"] == [
+        {"stores": ["3", "4", "5"], "wide": 2, "least_share": "0.5000", "median_share": "1.0000"},
+        {"stores": ["1", "2"], "wide": 1, "least_share": "1.0000", "median_share": "1.0000"}]
 
 
 def test_field_sets_per_file_and_tag_sets_per_element(tmp_path):

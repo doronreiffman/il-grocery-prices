@@ -29,6 +29,11 @@ What is measured, over every file read (each store's copy of a promotion counts)
   item codes a promotion that is no coupon links at any counted store, and those of them on a link (promotion id, group
   id, item code, as the promotions table keys its rows) carried by at least half the counted stores, for the chain and
   per sub-chain;
+- the counted stores with a promotion file grouped by the promotions they carry (`store_groups`, the pre-flight's N14):
+  each store's set of the promotions none of whose copies is a coupon, two stores joined when their sets' Jaccard index
+  (shared over either's) is at least 1/2, the groups the connected components; per group, its stores, its wide set's
+  size (the promotions carried by at least half its stores) and its stores' least and median share of that set. It
+  is how Carrefour's store table was drawn (`basket.chains.CARREFOUR_COLUMNS`, `shopper.columns`);
 - the links per store, and the coupons over BIG_COUPON items in a store's file (the vouchers);
 - the link variants: per (promotion id, group id, item code), whether the stores' copies differ in any field of the
   promotion, the group or the item, and which fields differ, each counted once per link;
@@ -46,11 +51,13 @@ import resource
 import sys
 import time
 from collections import Counter
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Set
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
+from fractions import Fraction
 from pathlib import Path
+from statistics import median
 
 import duckdb
 
@@ -72,6 +79,8 @@ TOP_AMOUNTS = 10       # MinPurchaseAmount values shown per group position
 PERCENT_OFF = "2"
 CENT = Decimal("0.01")
 OUTCOMES = ("no_rate", "no_discounted_price", "no_listed_price", "agrees", "reads_as_the_discount", "disagrees")
+JOINED = Fraction(1, 2)  # two stores whose promotion sets' Jaccard index is at least this are in one group
+SHARE = Decimal("0.0001")
 
 
 def _keep_all(promotion: Mapping[str, str]) -> bool:
@@ -88,12 +97,73 @@ def _cents(value: Decimal) -> Decimal:
     return value.quantize(CENT, rounding=ROUND_HALF_UP)
 
 
+def wide_set(carriers: Mapping[str, Set[str]], stores: Set[str]) -> set[str]:
+    """The promotions carried by at least half of `stores` (P3), each promotion given with the stores carrying it."""
+    return {pid for pid, by in carriers.items() if (count := len(by & stores)) and count * 2 >= len(stores)}
+
+
 def carried_by_half(carriers: Mapping[str, set[str]], stores: set[str]) -> dict[str, int]:
     """Over `stores`: the promotions any of them carries, and those carried by at least half of them (P3)."""
-    held = [len(by & stores) for by in carriers.values()]
-    held = [count for count in held if count]
-    return {"stores": len(stores), "promotions": len(held),
-            "carried_by_half": sum(1 for count in held if count * 2 >= len(stores))}
+    return {"stores": len(stores), "promotions": sum(1 for by in carriers.values() if by & stores),
+            "carried_by_half": len(wide_set(carriers, stores))}
+
+
+def store_sets(carriers: Mapping[str, Set[str]], stores: Set[str]) -> dict[str, set[str]]:
+    """Each of `stores`' set of the promotions it carries, from each promotion's carrying stores."""
+    sets: dict[str, set[str]] = {store: set() for store in stores}
+    for pid, by in carriers.items():
+        for store in by & stores:
+            sets[store].add(pid)
+    return sets
+
+
+def _by_number(store: str) -> tuple[int, str]:
+    return int(store), store
+
+
+def store_groups(sets: Mapping[str, Set[str]]) -> list[tuple[str, ...]]:
+    """The stores grouped by the promotions they carry: two stores are joined when |A ∩ B| ÷ |A ∪ B| of their sets is at
+    least JOINED (two empty sets join nothing), and the groups are the connected components; the largest group first,
+    then by its lowest store as a number, each group's stores by number."""
+    stores = sorted(sets, key=_by_number)
+    group_of = {store: store for store in stores}
+
+    def root(store: str) -> str:
+        while group_of[store] != store:
+            group_of[store] = group_of[group_of[store]]
+            store = group_of[store]
+        return store
+
+    for i, a in enumerate(stores):
+        for b in stores[i + 1:]:
+            shared = len(sets[a] & sets[b])
+            either = len(sets[a]) + len(sets[b]) - shared
+            if either and Fraction(shared, either) >= JOINED:
+                group_of[root(b)] = root(a)
+    groups: dict[str, list[str]] = {}
+    for store in stores:
+        groups.setdefault(root(store), []).append(store)
+    return sorted((tuple(group) for group in groups.values()), key=lambda group: (-len(group), _by_number(group[0])))
+
+
+def _share(value: Fraction) -> str:
+    """A share for the eye: four decimals, half up."""
+    return str((Decimal(value.numerator) / Decimal(value.denominator)).quantize(SHARE, rounding=ROUND_HALF_UP))
+
+
+def group_measure(carriers: Mapping[str, Set[str]], stores: Set[str]) -> list[dict]:
+    """`stores` grouped by the promotions of `carriers` they carry (`store_groups`): per group its stores, its wide
+    set's size (`wide_set` over the group) and its stores' least and median share of that set (None when it is
+    empty)."""
+    sets = store_sets(carriers, stores)
+    shown = []
+    for group in store_groups(sets):
+        wide = wide_set(carriers, set(group))
+        shares = sorted(Fraction(len(sets[store] & wide), len(wide)) for store in group) if wide else []
+        shown.append({"stores": list(group), "wide": len(wide),
+                      "least_share": _share(shares[0]) if shares else None,
+                      "median_share": _share(median(shares)) if shares else None})
+    return shown
 
 
 def codes_chain_wide(links: Mapping[tuple[str, str, str], set[str]], stores: set[str]) -> dict[str, int]:
@@ -359,6 +429,7 @@ def survey(raw_dir: Path, tables_dir: Path, slug: str, day: date) -> dict:
                        "counted_not_coupons": carried_by_half(not_coupons, counted),
                        "codes_counted_not_coupons": codes_chain_wide(links_not_coupons, counted),
                        "by_sub_chain": by_sub_chain},
+        "store_groups": group_measure(not_coupons, counted & with_file),
         "links_per_store": dict(sorted(measure.links_per_store.items(), key=lambda pair: (int(pair[0]), pair[0]))),
         "big_coupons": {"promotions": [{"promotion": pid, "links": most, "stores": stores_with}
                                        for pid, (most, stores_with) in sorted(measure.big_coupons.items())],

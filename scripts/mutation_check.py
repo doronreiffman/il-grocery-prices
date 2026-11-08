@@ -100,6 +100,9 @@ PRICEFILE_FOR_SHOP_PROMOFILE = ("src/basket/pricefile.py", ["tests/test_promofil
 SHOP_SURVEY = ("src/shopper/survey.py", ["tests/test_survey.py"])
 SHOP_PROMOTIONS = ("src/shopper/promotions.py", ["tests/test_promotions.py"])
 SHOP_DEALS = ("src/shopper/deals.py", ["tests/test_deals.py"])
+SHOP_COLUMNS = ("src/shopper/columns.py", ["tests/test_columns.py"])
+# Carrefour's hand-kept store table lives in basket.chains, beside EXCLUDED; the column tests must catch a change to it.
+CHAINS_FOR_SHOP_COLUMNS = ("src/basket/chains.py", ["tests/test_columns.py"])
 # The survey reads each store's latest promotion file through basket.extract.day_files, which its tests must catch too.
 EXTRACT_FOR_SHOP_SURVEY = ("src/basket/extract.py", ["tests/test_survey.py"])
 SYNC_SCRIPT = ("scripts/sync.sh", ["tests/test_scripts.py"])
@@ -1199,6 +1202,26 @@ MUTATIONS = {
     "a MinQty below 0 read (q22 P4)": (SHOP_DEALS, "        if quantity is not None and quantity <= 0:", "        if quantity is not None and quantity == 0:"),
     "a readable MinQty dropped from buy when the price is missing (q22 P4)": (SHOP_DEALS, "_ONE if quantity is None else quantity", "_ONE"),
     "deal rebuilt from the two-place price (q22 P4)": (SHOP_DEALS, "None if exact is None else Fraction(exact)", 'None if exact is None else Fraction(struct["price"])'),
+    # shopper: the columns, the store formats the site shows (q22 columns)
+    "the floor at 20 (q22 columns)": (SHOP_COLUMNS, "FLOOR = 30 ", "FLOOR = 20 "),
+    "the floor applied every day (q22 columns)": (SHOP_COLUMNS, "    return {key: frozenset(ids) for key, ids in found.items()}\n", "    return {key: frozenset(ids) for key, ids in found.items() if len(ids) >= FLOOR or not _split(slug)}\n"),
+    "Yesh Chesed a column (q22 columns)": (SHOP_COLUMNS, '    Column("shufersal-universe", "shufersal", "Shufersal Universe", "8"),\n', '    Column("shufersal-universe", "shufersal", "Shufersal Universe", "8"),\n    Column("shufersal-yesh-chesed", "shufersal", "Shufersal Yesh Chesed", "6"),\n'),
+    "a store not in the table put in City (q22 columns)": (SHOP_COLUMNS, "        return table.get(store.id)\n", '        return table.get(store.id, "carrefour-city")\n'),
+    "B2's left-out stores given a column (q22 columns)": (SHOP_COLUMNS, "        if store.id in included:\n            key = column_of", "        if True:\n            key = column_of"),
+    "a whole chain's store put in no column (q22 columns)": (SHOP_COLUMNS, "        return columns[0].key\n", "        return None\n"),
+    "a column with no store left out of members (q22 columns)": (SHOP_COLUMNS, "    return {key: frozenset(ids) for key, ids in found.items()}\n", "    return {key: frozenset(ids) for key, ids in found.items() if ids}\n"),
+    "a Carrefour store dropped from the table (q22 columns)": (CHAINS_FOR_SHOP_COLUMNS, '    "2", "12", ', '    "12", '),
+    "stores grouped at a Jaccard index of 1/3 (q22 columns)": (SHOP_SURVEY, "JOINED = Fraction(1, 2)", "JOINED = Fraction(1, 3)"),
+    "a coupon in a store's set (q22 columns)": (SHOP_SURVEY, '"store_groups": group_measure(not_coupons, counted & with_file),', '"store_groups": group_measure(measure.carriers, counted & with_file),'),
+    "a Shufersal store's sub-chain not read (q22 columns)": (SHOP_COLUMNS, "    return next((column.key for column in columns if column.sub_chain == store.sub_chain), None)", "    return columns[0].key"),
+    "the table passed to members not used (q22 columns)": (SHOP_COLUMNS, "            key = column_of(slug, store, table)\n", "            key = column_of(slug, store)\n"),
+    "the table passed to outside not used (q22 columns)": (SHOP_COLUMNS, "and column_of(slug, store, table) is None]", "and column_of(slug, store) is None]"),
+    "outside lists stores not included (q22 columns)": (SHOP_COLUMNS, "if store.id in included and column_of(slug, store, table) is None]", "if column_of(slug, store, table) is None]"),
+    "a whole chain named under the floor (q22 columns)": (SHOP_COLUMNS, "if _split(BY_KEY[key].slug) and len(ids) < FLOOR]", "if len(ids) < FLOOR]"),
+    "a column at the floor named under it (q22 columns)": (SHOP_COLUMNS, "and len(ids) < FLOOR]", "and len(ids) <= FLOOR]"),
+    "store groups not largest first (q22 columns)": (SHOP_SURVEY, "key=lambda group: (-len(group), _by_number(group[0])))", "key=lambda group: _by_number(group[0]))"),
+    "a group's stores ordered as text (q22 columns)": (SHOP_SURVEY, "def _by_number(store: str) -> tuple[int, str]:\n    return int(store), store\n", "def _by_number(store: str) -> tuple[int, str]:\n    return 0, store\n"),
+    "a counted store without a promotion file grouped (q22 columns)": (SHOP_SURVEY, "group_measure(not_coupons, counted & with_file)", "group_measure(not_coupons, counted)"),
     # basket: extract
     "extract older file wins": (EXTRACT, "latest = max(named)", "latest = min(named)"),
     "extract first duplicate wins": (EXTRACT, "        latest[row.code] = row", "        latest.setdefault(row.code, row)"),
