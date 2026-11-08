@@ -49,7 +49,7 @@ from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import date
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 import duckdb
@@ -60,6 +60,7 @@ from basket.extract import DayFile, day_files
 from basket.rules import apply_filters, chain_prices, open_day, stores_with_file_keys
 from basket.stores import chain_stores, included
 from shopper.promofile import PromotionRead, Tally, read_promotions
+from shopper.promotions import date_part, number
 
 KIND = "PromoFull"
 LEVELS = ("root", "promotion", "group", "item")
@@ -77,27 +78,10 @@ def _keep_all(promotion: Mapping[str, str]) -> bool:
     return True
 
 
-def _number(text: str) -> Decimal | None:
-    """The text as a finite decimal, or None."""
-    try:
-        value = Decimal(text)
-    except InvalidOperation:
-        return None
-    return value if value.is_finite() else None
-
-
 def _same_amount(a: str, b: str) -> bool:
     """Whether two fields hold the same number ("2" and "2.00"), or the same text when either is no number."""
-    x, y = _number(a), _number(b)
+    x, y = number(a), number(b)
     return x == y if x is not None and y is not None else a == b
-
-
-def _date(text: str) -> date | None:
-    """The date part of a promotion's date and time ("2026-11-01T00:00:00.000"), or None."""
-    try:
-        return date.fromisoformat(text[:10])
-    except ValueError:
-        return None
 
 
 def _cents(value: Decimal) -> Decimal:
@@ -192,7 +176,7 @@ class _Measure:
                 seen = self.big_coupons.setdefault(promotion_id, [0, 0])
                 seen[0], seen[1] = max(seen[0], len(record.links)), seen[1] + 1
                 self.big_coupon_links += len(record.links)
-        start, end = _date(start_text), _date(end_text)
+        start, end = date_part(start_text), date_part(end_text)
         self.unreadable_dates += start is None or end is None
         if start is not None and start > self.day:
             self.before_start[(promotion_id, start)] = (start - self.day).days
@@ -246,7 +230,7 @@ class _Measure:
         if value is None:
             return
         self.amounts.setdefault(position, Counter())[value] += 1
-        amount = _number(value)
+        amount = number(value)
         if value == "":
             counts["empty"] += 1
         elif amount == 0:
@@ -279,7 +263,7 @@ class _Measure:
         found = Counter({outcome: 0 for outcome in OUTCOMES})
         found["with_store_price"] = found["agrees_with_store_price"] = 0
         for store, code, rate_text, price_text in self.percent_off:
-            rate, price = _number(rate_text), _number(price_text)
+            rate, price = number(rate_text), number(price_text)
             if rate is None:
                 found["no_rate"] += 1
                 continue

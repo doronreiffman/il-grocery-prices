@@ -70,7 +70,7 @@ def test_day_comes_from_the_name_not_the_clock():
 
 def test_every_fixture_file_name_parses():
     files = sorted(p for p in FIXTURES.glob("*/*") if p.suffix in (".gz", ".xml"))
-    assert len(files) == 13
+    assert len(files) == 14
     for path in files:
         parsed = parse_file_name(path.name)
         assert parsed is not None, path.name

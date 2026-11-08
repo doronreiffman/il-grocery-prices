@@ -1,4 +1,5 @@
 """Promotion files: a record per promotion kept, with its groups and links; one not kept is counted and dropped as read."""
+import dataclasses
 import gzip
 import io
 import re
@@ -14,6 +15,8 @@ from shopper.promofile import FieldSets, PromotionFormatChanged, PromotionRead, 
 
 FIXTURES = Path(__file__).parent / "fixtures"
 SHUFERSAL = FIXTURES / "shufersal" / "PromoFull7290027600007-000-878-20261031-030000.gz"
+# Of 7 November 2026, under sub-chain 001: its second promotion's second group holds an item without MaxQty.
+SHUFERSAL_NOV_7 = FIXTURES / "shufersal" / "PromoFull7290027600007-001-001-20261107-030000.gz"
 RAMI_LEVY = FIXTURES / "ncr" / "PromoFull7290058140886-001-731-20261101-001049.gz"
 CARREFOUR = FIXTURES / "carrefour" / "PromoFull7290055700007-001-472-20261031-051058.gz"
 PROMO_FIXTURES = [SHUFERSAL, RAMI_LEVY, CARREFOUR]
@@ -43,10 +46,10 @@ def _links(records):
 
 
 def _own_sets(path):
-    """The fixture's field sets, as the reader saw them."""
+    """The fixture's field sets, as the reader saw them: each level's element tag sets."""
     tally = Tally()
     _records(path.name, path.read_bytes(), tally=tally)
-    return FieldSets(**{level: frozenset(tags) for level, tags in tally.seen.items()})
+    return FieldSets(**{level: frozenset(sets) for level, sets in tally.sets.items()})
 
 
 def _item(code):
@@ -132,8 +135,9 @@ def test_a_field_after_groups_is_refused():
 @pytest.mark.parametrize("path", PROMO_FIXTURES, ids=FIXTURE_IDS)
 def test_known_field_sets_hold(path):
     known = _own_sets(path)
-    assert known.root == {"ChainID", "SubChainID", "StoreID", "BikoretNo", "Promotions"}
-    assert "Groups" in known.promotion and "PromotionItems" in known.group and "ItemCode" in known.item
+    assert known.root == {frozenset({"ChainID", "SubChainID", "StoreID", "BikoretNo", "Promotions"})}
+    assert all("Groups" in tags for tags in known.promotion) and all("PromotionItems" in tags for tags in known.group)
+    assert all("ItemCode" in tags for tags in known.item)
     data = path.read_bytes()
     assert _records(path.name, data, known=known) == _records(path.name, data)
 
@@ -158,6 +162,29 @@ def test_a_new_or_missing_field_is_refused(level, old, new, added, missing, keep
     with pytest.raises(PromotionFormatChanged) as refused:
         _records(SHUFERSAL.name, changed, keep, known=known)
     assert str(refused.value) == f"{SHUFERSAL.name}: {level} fields changed: added {added}, missing {missing}"
+
+
+def test_an_element_may_carry_any_of_its_levels_sets():
+    name, data = SHUFERSAL_NOV_7.name, SHUFERSAL_NOV_7.read_bytes()
+    known = _own_sets(SHUFERSAL_NOV_7)
+    full = max(known.item, key=len)
+    without_max_qty = full - {"MaxQty"}
+    assert known.item == {full, without_max_qty}  # the second group's item has no MaxQty
+    assert len(_records(name, data, known=known)) == 2
+    with pytest.raises(PromotionFormatChanged) as refused:
+        _records(name, data, known=dataclasses.replace(known, item=frozenset({full})))
+    assert str(refused.value) == f"{name}: item fields changed: added [], missing ['MaxQty']"
+    # Refused, an element is told what it lacks of the nearest set: the fewest tags differing, then the first in
+    # sorted order.
+    body = gzip.decompress(data)
+    head, tail = body.rsplit(b"<bIsWeighted>0</bIsWeighted>", 1)  # from the last item, the one without MaxQty
+    with pytest.raises(PromotionFormatChanged) as refused:
+        _records(name, head + tail, known=known)
+    assert str(refused.value) == f"{name}: item fields changed: added [], missing ['bIsWeighted']"
+    tied = dataclasses.replace(known, item=frozenset({full, without_max_qty - {"bIsWeighted"}}))  # one tag off each
+    with pytest.raises(PromotionFormatChanged) as refused:
+        _records(name, data, known=tied)
+    assert str(refused.value) == f"{name}: item fields changed: added [], missing ['MaxQty']"
 
 
 def test_text_is_stripped_and_an_empty_element_is_empty():
@@ -275,8 +302,9 @@ def _shufersal_without_its_first_coupon_field():
 
 
 def _a_promotion_without_groups_or_its_coupon_field():
-    known = FieldSets(root=frozenset({"ChainID", "SubChainID", "StoreID", "BikoretNo", "Promotions"}),
-                      promotion=frozenset({"PromotionID", "AdditionalIsCoupon"}), group=frozenset(), item=frozenset())
+    known = FieldSets(root=frozenset({frozenset({"ChainID", "SubChainID", "StoreID", "BikoretNo", "Promotions"})}),
+                      promotion=frozenset({frozenset({"PromotionID", "AdditionalIsCoupon"})}), group=frozenset(),
+                      item=frozenset())
     return "plain.xml", _file("<Promotion><PromotionID>900001</PromotionID></Promotion>"), known
 
 

@@ -98,6 +98,7 @@ SHOP_PROMOFILE = ("src/shopper/promofile.py", ["tests/test_promofile.py"])
 # The body checks both readers share (basket.pricefile.parse_events), which the promotion tests must catch too.
 PRICEFILE_FOR_SHOP_PROMOFILE = ("src/basket/pricefile.py", ["tests/test_promofile.py"])
 SHOP_SURVEY = ("src/shopper/survey.py", ["tests/test_survey.py"])
+SHOP_PROMOTIONS = ("src/shopper/promotions.py", ["tests/test_promotions.py"])
 # The survey reads each store's latest promotion file through basket.extract.day_files, which its tests must catch too.
 EXTRACT_FOR_SHOP_SURVEY = ("src/basket/extract.py", ["tests/test_survey.py"])
 SYNC_SCRIPT = ("scripts/sync.sh", ["tests/test_scripts.py"])
@@ -1147,6 +1148,33 @@ MUTATIONS = {
     "a code chain-wide at a third of the stores (q22 survey)": (SHOP_SURVEY, "            if held * 2 >= len(stores):", "            if held * 3 >= len(stores):"),
     "coupons' codes counted (q22 survey)": (SHOP_SURVEY, "if key[0] not in measure.coupon_ids}", "if True}"),
     "codes counted over the included stores, not the counted ones (q22 survey)": (SHOP_SURVEY, '"codes_counted_not_coupons": codes_chain_wide(links_not_coupons, counted),', '"codes_counted_not_coupons": codes_chain_wide(links_not_coupons, set(included_ids)),'),
+    # shopper: which promotions count (q22 P3), their conditions from the fields (q22 P5), a format change (q22 P10)
+    "coupons kept (q22 P3)": (SHOP_PROMOTIONS, "        return not is_coupon(promotion)", "        return True"),
+    "a reward type 12 promotion kept (q22 P3)": (SHOP_PROMOTIONS, 'NOT_SHELF = {"6": "gift", "12": "basket_reward"}', 'NOT_SHELF = {"6": "gift"}'),
+    "a reward type 6 promotion kept (q22 P3)": (SHOP_PROMOTIONS, 'NOT_SHELF = {"6": "gift", "12": "basket_reward"}', 'NOT_SHELF = {"12": "basket_reward"}'),
+    "the shelf test on the first link only (q22 P3)": (SHOP_PROMOTIONS, "    for link in record.links:\n        code = _reward_type(slug, link.item)\n", "    for link in record.links[:1]:\n        code = _reward_type(slug, link.item)\n"),
+    "a zero link given a price effect (q22 P3)": (SHOP_PROMOTIONS, "    return kind(slug, item) is not None", '    return kind(slug, item) is not None or bool(item["DiscountedPrice"] or item["DiscountRate"])'),
+    "ten read as a fixed price (q22 P3)": (SHOP_PROMOTIONS, '"10": "n_for_m"', '"10": "fixed_price"'),
+    "a promotion ending on the day out (q22 P3)": (SHOP_PROMOTIONS, "    return start <= day <= end", "    return start <= day < end"),
+    "a promotion starting on the day out (q22 P3)": (SHOP_PROMOTIONS, "    return start <= day <= end", "    return start < day <= end"),
+    "an unreadable date passed (q22 P3)": (SHOP_PROMOTIONS, "    if found is None:\n        raise PromotionFormatChanged(f\"{field} {promotion[field]!r} is not a date\")\n", ""),
+    "the dash form read past its leading code (q22 P5)": (SHOP_PROMOTIONS, "        return [(code, label, False)]", "        return [(club_id, label, False)]"),
+    "a code-0 dash form restricted (q22 P5)": (SHOP_PROMOTIONS, "        return [(code, label, False)]", "        return [(code, label, True)]"),
+    "a code-0 term in a list read as none (q22 P5)": (SHOP_PROMOTIONS, "        if code == _NO_RESTRICTION and not listed:", "        if code == _NO_RESTRICTION:"),
+    "a list read by its first term only (q22 P5)": (SHOP_PROMOTIONS, '.replace("&", "|").split("|"):', '.replace("&", "|").split("|")[:1]:'),
+    "a programme's name dropped (q22 P5)": (SHOP_PROMOTIONS, "            names.append(name)", "            pass"),
+    "min spend from the first group only (q22 P5)": (SHOP_PROMOTIONS, "for group in groups if (amount := number(", "for group in list(groups)[:1] if (amount := number("),
+    "min spend the smaller of two (q22 P5)": (SHOP_PROMOTIONS, "    return max(amounts) if amounts else None", "    return min(amounts) if amounts else None"),
+    "min spend of zero kept (q22 P5)": (SHOP_PROMOTIONS, "is not None and amount > 0]", "is not None and amount >= 0]"),
+    "an unknown club form read as none (q22 P10)": (SHOP_PROMOTIONS, "    if terms is None:\n        raise PromotionFormatChanged(", "    if terms is None:\n        return Target((), ())\n        raise PromotionFormatChanged("),
+    "an unknown club code read as none (q22 P10)": (SHOP_PROMOTIONS, "        else:\n            raise PromotionFormatChanged(f\"{slug}: ClubID form", "        else:\n            continue\n            raise PromotionFormatChanged(f\"{slug}: ClubID form"),
+    "an unknown reward type read as none (q22 P10)": (SHOP_PROMOTIONS, "    if code not in REWARD_TYPES[slug]:", "    if False:"),
+    "reward types pooled over the chains (q22 P10)": (SHOP_PROMOTIONS, "    if code not in REWARD_TYPES[slug]:", "    if code not in set().union(*REWARD_TYPES.values()):"),
+    "an unknown discount type passed (q22 P10)": (SHOP_PROMOTIONS, '        if group["DiscountType"] not in DISCOUNT_TYPES[slug]:', "        if False:"),
+    "a gift value of another form passed (q22 P10)": (SHOP_PROMOTIONS, "    if amount is None or amount <= 0:", "    if False:"),
+    "a coupon's codes not checked (q22 P10)": (SHOP_PROMOTIONS, '        target(slug, promotion["ClubID"])\n', '        if is_coupon(promotion):\n            return False\n        target(slug, promotion["ClubID"])\n'),
+    "an element checked against its level's first set only (q22 P10)": (SHOP_PROMOFILE, "        if frozenset(tags) not in expected:", "        if frozenset(tags) != min(expected, key=sorted):"),
+    "missing named against the first set, not the nearest (q22 P10)": (SHOP_PROMOFILE, "            nearest = min(expected, key=lambda one: (len(one ^ tags), sorted(one)))", "            nearest = min(expected, key=sorted)"),
     # basket: extract
     "extract older file wins": (EXTRACT, "latest = max(named)", "latest = min(named)"),
     "extract first duplicate wins": (EXTRACT, "        latest[row.code] = row", "        latest.setdefault(row.code, row)"),

@@ -21,12 +21,16 @@ and every link. A group's links are built when the group ends, so a group's fiel
 element is cleared and taken off its parent once read, so a file is held as its bytes, the elements open or just
 parsed and one kept promotion, never as a whole tree.
 
-P10, the field half: with `known`, each element's set of child tags must equal its level's (the root, a promotion, a
-group, an item), a dropped promotion's elements included, and a set that differs stops the read naming the file, the
-level and the tags added and missing. An element inside a field is refused too, since it would read as an empty field.
-Every tag seen at each level is kept in the tally for the survey, and so is each element's own set of tags, counted
-(one promotion can carry an optional field another lacks, and a group with no items can lack `PromotionItems`). The codes inside the fields (`RewardType`, the
-target, the gift code) are P10's other half, left to the step that classifies promotions.
+P10, the field half: with `known`, each element's set of child tags must be one of its level's sets (the root, a
+promotion, a group, an item), a dropped promotion's elements included. A level holds the sets a chain's files were seen
+to carry, more than one where they differ by element (Shufersal's and Yochananof's second-group items lack `MaxQty`:
+`shopper.promotions.KNOWN_FIELDS`). A set that is none of them stops the read naming the file, the level, the tags
+added (in none of the level's sets) and the tags missing (those it lacks of the nearest set: the fewest tags
+differing, then the first in sorted order, so the message never depends on the order a set is held in). An element
+inside a field is refused too, since it would read as an empty field. Every tag seen at each level is kept in the
+tally for the survey, and so is each element's own set of tags, counted (one promotion can carry an optional field
+another lacks, and a group with no items can lack `PromotionItems`). The codes inside the fields (`RewardType`, the
+target, the gift value, `DiscountType`) are P10's other half, in `shopper.promotions`.
 """
 import xml.etree.ElementTree as ET
 from collections import Counter
@@ -39,11 +43,12 @@ from basket.pricefile import bodies, parse_events
 
 @dataclass(frozen=True)
 class FieldSets:
-    """Each level's child tags, as a chain's files carry them (P10)."""
-    root: frozenset[str]        # <Root>'s child tags (ChainID, SubChainID, StoreID, BikoretNo, Promotions, ...)
-    promotion: frozenset[str]   # a <Promotion>'s child tags, Groups included
-    group: frozenset[str]       # a <Group>'s child tags, PromotionItems included
-    item: frozenset[str]        # a <PromotionItem>'s child tags
+    """Each level's sets of child tags, one or more, as a chain's files carry them (P10): an element's tags must be one
+    of its level's sets."""
+    root: frozenset[frozenset[str]]        # <Root>'s child tags (ChainID, SubChainID, StoreID, BikoretNo, Promotions)
+    promotion: frozenset[frozenset[str]]   # a <Promotion>'s child tags, Groups included
+    group: frozenset[frozenset[str]]       # a <Group>'s child tags, PromotionItems included
+    item: frozenset[frozenset[str]]        # a <PromotionItem>'s child tags
 
 
 @dataclass(frozen=True)
@@ -192,14 +197,16 @@ def _ask(name: str, keep: Callable[[Mapping[str, str]], bool], fields: Mapping[s
 
 def _check(name: str, level: str, tags: set[str], known: FieldSets | None, tally: Tally) -> None:
     """Adds `tags` to the level's seen and counts them as one element's set; with `known`, refuses a set of tags that
-    is not the level's."""
+    is none of the level's, naming the tags in none of them and those it lacks of the nearest."""
     tally.seen.setdefault(level, set()).update(tags)
     tally.sets.setdefault(level, Counter())[frozenset(tags)] += 1
     if known is not None:
         expected = getattr(known, level)
-        if tags != expected:
-            raise PromotionFormatChanged(f"{name}: {level} fields changed: added {sorted(tags - expected)}, "
-                                         f"missing {sorted(expected - tags)}")
+        if frozenset(tags) not in expected:
+            nearest = min(expected, key=lambda one: (len(one ^ tags), sorted(one)))
+            added = tags - set().union(*expected)
+            raise PromotionFormatChanged(f"{name}: {level} fields changed: added {sorted(added)}, "
+                                         f"missing {sorted(nearest - tags)}")
 
 
 def _text(element: ET.Element) -> str:
