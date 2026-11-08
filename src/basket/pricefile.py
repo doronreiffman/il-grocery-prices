@@ -18,6 +18,7 @@ import io
 import xml.etree.ElementTree as ET
 import zipfile
 import zlib
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 from collector.payload import GZIP_MAGIC, XML_STARTS, ZIP_MAGICS
@@ -49,8 +50,8 @@ def read_items(name: str, data: bytes) -> list[Item]:
 
 def bodies(name: str, data: bytes) -> list[bytes]:
     """The XML bodies `data` holds, told apart by its first bytes: a ZIP's every file, a gzip's one body, or `data`
-    itself. A bad gzip or ZIP is refused with BadPriceFile, `name` first; each body's start and parse are its reader's
-    to check (the promotion reader, `shopper.promofile`, reads the same layouts through this)."""
+    itself. A bad gzip or ZIP is refused with BadPriceFile, `name` first; each body is checked as it is parsed, by
+    `parse_events` (the promotion reader, `shopper.promofile`, reads the same layouts through both)."""
     if data.startswith(ZIP_MAGICS):
         return _zip_bodies(name, data)
     if data.startswith(GZIP_MAGIC):
@@ -71,26 +72,32 @@ def _zip_bodies(name: str, data: bytes) -> list[bytes]:
         raise BadPriceFile(f"{name}: the zip is cut short or corrupt ({type(exc).__name__}: {exc})") from exc
 
 
-def _parse(name: str, body: bytes) -> list[Item]:
-    """The `<Item>`s in one XML body, each cleared once read."""
+def parse_events(name: str, body: bytes, events: tuple[str, ...]) -> Iterator[tuple[str, ET.Element]]:
+    """`iterparse`'s `events` over one XML body, for the price and the promotion readers alike. A body that does not
+    start like XML (empty, HTML or unknown) or does not parse is refused with BadPriceFile, `name` first."""
     if not body.startswith(XML_STARTS):
         raise BadPriceFile(f"{name}: not XML (it starts {body[:8]!r})")  # empty, HTML or unknown
-    items = []
     try:
-        for _, element in ET.iterparse(io.BytesIO(body), events=("end",)):
-            if element.tag == "Item":
-                items.append(Item(
-                    code=_text(element, "ItemCode"),
-                    name=_text(element, *NAME_TAGS),
-                    price=_text(element, "ItemPrice"),
-                    quantity=_text(element, "Quantity"),
-                    unit=_text(element, "UnitQty"),
-                    unit_of_measure=_text(element, "UnitOfMeasure"),
-                    updated=_text(element, *UPDATED_TAGS),
-                ))
-                element.clear()
+        yield from ET.iterparse(io.BytesIO(body), events=events)
     except ET.ParseError as exc:
         raise BadPriceFile(f"{name}: the XML does not parse ({exc})") from exc
+
+
+def _parse(name: str, body: bytes) -> list[Item]:
+    """The `<Item>`s in one XML body, each cleared once read."""
+    items = []
+    for _, element in parse_events(name, body, ("end",)):
+        if element.tag == "Item":
+            items.append(Item(
+                code=_text(element, "ItemCode"),
+                name=_text(element, *NAME_TAGS),
+                price=_text(element, "ItemPrice"),
+                quantity=_text(element, "Quantity"),
+                unit=_text(element, "UnitQty"),
+                unit_of_measure=_text(element, "UnitOfMeasure"),
+                updated=_text(element, *UPDATED_TAGS),
+            ))
+            element.clear()
     return items
 
 

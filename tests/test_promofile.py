@@ -243,3 +243,25 @@ def test_a_groups_field_after_its_items_is_taken():
     [record] = _records("plain.xml", _file(_promotion("900001", [], groups=groups)))
     [link] = record.links
     assert dict(link.group) == {"GroupID": "1", "MinPurchaseAmount": "50.00"}
+
+
+def _shufersal_without_its_first_coupon_field():
+    body = gzip.decompress(SHUFERSAL.read_bytes())
+    changed = body.replace(b"<AdditionalIsCoupon>1</AdditionalIsCoupon>", b"", 1)
+    assert changed != body
+    return SHUFERSAL.name, changed, _own_sets(SHUFERSAL)
+
+
+def _a_promotion_without_groups_or_its_coupon_field():
+    known = FieldSets(root=frozenset({"ChainID", "SubChainID", "StoreID", "BikoretNo", "Promotions"}),
+                      promotion=frozenset({"PromotionID", "AdditionalIsCoupon"}), group=frozenset(), item=frozenset())
+    return "plain.xml", _file("<Promotion><PromotionID>900001</PromotionID></Promotion>"), known
+
+
+@pytest.mark.parametrize("case", [_shufersal_without_its_first_coupon_field,
+                                  _a_promotion_without_groups_or_its_coupon_field], ids=["at Groups", "no Groups"])
+def test_a_missing_field_is_refused_before_keep_reads_it(case):
+    name, data, known = case()
+    with pytest.raises(PromotionFormatChanged) as refused:
+        _records(name, data, _not_a_coupon, known=known)  # keep reads AdditionalIsCoupon
+    assert str(refused.value) == f"{name}: promotion fields changed: added [], missing ['AdditionalIsCoupon']"
