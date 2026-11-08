@@ -7,8 +7,8 @@ kilogram. By the link's kind (`shopper.promotions.kind`):
 
 - A fixed price (`RewardType` 3) is the link's `DiscountedPrice`.
 - "N for ₪M" (1 and 10) is `DiscountedPrice` ÷ `MinQty`, with "buy N" kept as the condition (`buy`; 1.5 for that
-  meat). Both read from the fields of the variant most of the column's stores carry (Task 5), and the fields agree
-  when they read as numbers (an N not above 0 gives no price).
+  meat). Both read from the fields of the variant most of the column's stores carry (Task 5), and a price is read
+  when both read as numbers, N above 0.
 - Percent off (2) is the stores' own figure: the median of the column's counted stores' `DiscountedPrice` on the
   link, its lowest and highest kept and shown as P2 shows the listed range. The rate is the check: the price agrees
   when `DiscountRate` is above 0 and below 100 and the price is within ₪0.01 of the column's median listed price ×
@@ -18,21 +18,25 @@ kilogram. By the link's kind (`shopper.promotions.kind`):
   of 241,320, Carrefour all 13,664 with a store price), so S4 (the owner, 2026-11-08) turned them round. Checked so,
   Shufersal's percent-off links agree with their own formats' medians on 236,672 of 241,320 (98%). At Rami Levy the
   shelf `DiscountedPrice` is the store's own price × 0.75 or × 0.50 exactly (775 and 408 links), while the rate reads
-  50.00 on 509 of its 2,045 shelf percent-off links and 25.32 to 25.70 on most of the others; Yochananof's 162 links
-  at rates of 3 to 6% agree with neither price. Both show "price not read" until the reader, rather than a price a
-  few agorot off.
+  50.00 on 509 of its 2,045 shelf percent-off links and 25.32 to 25.70 on most of the others. A drifting rate
+  disagrees wherever it moves the figure by more than an agora (25.32% off ₪10.00 is ₪7.47, the price ₪7.50): on 7
+  November 138 of the 2,045 agreed with the chain's median listed price, Rami Levy being one column. Yochananof's 162
+  links at rates of 3 to 6% agreed with neither price. The links that disagree show "price not read" until the
+  reader, rather than a price a few agorot off.
 - A `RewardType` 0 link has no kind and no deal (S2).
 
 Then, for every kind, the deal is valid only when its price is above ₪0.01 and below twice the listed price (both
 ends exclusive; per kilogram when weighed). With no listed price there is nothing to check against, so no deal is
 valid. A deal that is not valid keeps any price it read, so a page can show it, says why, and is never ranked.
 The price is a `Fraction` and every check reads it exactly (the pre-flight's S6): 3 for ₪0.04 is 1/75 of a shekel,
-above the floor, though it would round to ₪0.01. Two places are only for writing it out (Task 6).
+above the floor, though it would round to ₪0.01. Two places are only for writing it out (Task 6), and a deal read
+back from the items table takes its price from the fraction's text (`deal_from_row`, the pre-flight's S11).
 """
 from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from fractions import Fraction
+from typing import Any
 
 from shopper.promotions import kind, number
 
@@ -115,3 +119,12 @@ def deal(slug: str, item: Mapping[str, str], listed: Decimal | None, stores: Sto
     if amount is None or quantity is None:
         return Deal(None, per, _ONE if quantity is None else quantity, None, None, False, _NO_PRICE)
     return _checked(Fraction(amount) / Fraction(quantity), per, quantity, None, None, listed, False)
+
+
+def deal_from_row(struct: Mapping[str, Any]) -> Deal:
+    """The deal a row of the items table's `promotions` struct holds (Task 6; the pre-flight's S11), the one place a
+    `Deal` is rebuilt: the price from `price_exact`, the `Fraction`'s text ("109/75"), None when NULL, and never from
+    the two-place `price`, which is for the eye."""
+    exact = struct["price_exact"]
+    return Deal(None if exact is None else Fraction(exact), struct["per"], struct["buy"], struct["low"],
+                struct["high"], struct["valid"], struct["why"])

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from shopper.deals import Deal, StorePrices, agrees, deal
+from shopper.deals import Deal, StorePrices, agrees, deal, deal_from_row
 from shopper.promofile import PromotionFormatChanged, Tally, read_promotions
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -103,6 +103,7 @@ def test_no_price_fields():
     assert deal("carrefour", _item(CARREFOUR, "900002", DiscountedPrice=""), Decimal("5.50")) == unread
     assert deal("carrefour", _item(CARREFOUR, "900003", MinQty=""), Decimal("10.90")) == unread
     assert deal("carrefour", _item(CARREFOUR, "900003", MinQty="0"), Decimal("10.90")) == unread
+    assert deal("carrefour", _item(CARREFOUR, "900003", MinQty="-3"), Decimal("10.90")) == unread
     assert deal("carrefour", _item(CARREFOUR, "900003", DiscountedPrice="-"), Decimal("10.90")) == Deal(
         None, "unit", Decimal(3), None, None, False, "no price in the fields")
 
@@ -132,3 +133,31 @@ def test_a_rate_not_above_0_and_below_100_is_not_read():
     for rate, price in (("0", "5.50"), ("100", "0.00"), ("", "4.40"), ("-", "4.40")):
         found = deal("carrefour", {**item, "DiscountRate": rate}, Decimal("5.50"), _same(price))
         assert (found.valid, found.why) == disagree, rate
+
+
+def _struct(price, exact, per, buy, low, high, valid, why):
+    """A deal as Task 6 writes it in the items table's `promotions` struct (the pre-flight's S11), as DuckDB reads it
+    back: DECIMAL as `Decimal`, `price_exact` the `Fraction`'s text, NULL as None."""
+    return {"promotion_id": "900001", "kind": "n_for_m", "buy": buy, "price": price, "price_exact": exact, "per": per,
+            "low": low, "high": high, "valid": valid, "why": why, "restrictions": [], "programmes": [],
+            "min_spend": None, "stores": 3, "wide": True}
+
+
+def test_a_deal_rebuilt_from_the_items_struct_is_the_deal():
+    six_for = deal("ramilevy", _item(RAMI_LEVY, "900001"), Decimal("2.00"))   # 6 for 8.72
+    weighed = deal("yochananof", _item(YOCHANANOF, "900001", MinQty="1.50", DiscountedPrice="75.00"), Decimal("59.90"))
+    percent = deal("carrefour", _item(CARREFOUR, "900002", DiscountedPrice="4.10"), Decimal("5.50"),
+                   StorePrices(Decimal("4.40"), Decimal("4.10"), Decimal("4.50")))
+    zero = deal("ramilevy", _item(RAMI_LEVY, "900002", RewardType="0"), Decimal("5.50"))
+    rows = [
+        (six_for, _struct(Decimal("1.45"), "109/75", "unit", Decimal("6.000"), None, None, True, None)),
+        (weighed, _struct(Decimal("50.00"), "50", "kg", Decimal("1.500"), None, None, True, None)),
+        (percent, _struct(Decimal("4.40"), "22/5", "unit", Decimal("1.000"), Decimal("4.100"), Decimal("4.500"), True,
+                          None)),
+        (zero, _struct(None, None, "unit", Decimal("1.000"), None, None, False, "no kind link")),
+    ]
+    for found, row in rows:
+        rebuilt = deal_from_row(row)
+        assert rebuilt == found
+        assert rebuilt.price is None or type(rebuilt.price) is Fraction
+    assert deal_from_row(rows[0][1]).price == Fraction(109, 75)   # not 1.45, the two places written for the eye

@@ -1196,6 +1196,9 @@ MUTATIONS = {
     "weighed priced per unit (q22 P4)": (SHOP_DEALS, '    per = "kg" if item["bIsWeighted"] == "1" else "unit"', '    per = "unit"'),
     "MinQty read as a whole number (q22 P4)": (SHOP_DEALS, '        quantity = number(item["MinQty"])\n', '        quantity = number(item["MinQty"])\n        quantity = None if quantity is None else Decimal(int(quantity))\n'),
     "the price rounded to agorot before the range (q22 P4)": (SHOP_DEALS, '    elif price <= _FLOOR:\n        why = "not above ₪0.01"\n    elif price >= 2 * Fraction(listed):', '    elif round(price, 2) <= _FLOOR:\n        why = "not above ₪0.01"\n    elif round(price, 2) >= 2 * Fraction(listed):'),
+    "a MinQty below 0 read (q22 P4)": (SHOP_DEALS, "        if quantity is not None and quantity <= 0:", "        if quantity is not None and quantity == 0:"),
+    "a readable MinQty dropped from buy when the price is missing (q22 P4)": (SHOP_DEALS, "_ONE if quantity is None else quantity", "_ONE"),
+    "deal rebuilt from the two-place price (q22 P4)": (SHOP_DEALS, "None if exact is None else Fraction(exact)", 'None if exact is None else Fraction(struct["price"])'),
     # basket: extract
     "extract older file wins": (EXTRACT, "latest = max(named)", "latest = min(named)"),
     "extract first duplicate wins": (EXTRACT, "        latest[row.code] = row", "        latest.setdefault(row.code, row)"),
