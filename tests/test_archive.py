@@ -5,6 +5,7 @@ Most tests run on MemoryArchive; the listing and the plain put also run on S3Arc
 """
 import json
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -24,10 +25,11 @@ from basket.archive import (
     table_key,
 )
 from basket.extract import table_path
-from shopper.freeze import archive_key
+from shopper.freeze import archive_key, scores_archive_key
 from shopper.history import READ_DAYS, covered_path
 from shopper.items import items_path, texts_path
 from shopper.promos import promotions_path
+from shopper.score import ColumnSummary, DaySummary, summary_json, summary_path
 from basket.stores import day_store_list
 from collector.store import AlreadyStored, check_key, manifest_key, raw_key
 from test_store import FakeS3, client_error, lock_of
@@ -518,6 +520,91 @@ def test_s3_archive_lists_through_the_paginator():
     assert ("paginate", {"Bucket": "bucket", "Prefix": "raw/chain=ramilevy/date=2026-11-02/"}) in fake.calls
 
 
+# Scoring: scores/date=<day>/scores.csv.gz write-once and locked, and each day's summary plain (F7, Task 13)
+
+SCORES = b"\x1f\x8b scores"   # the archive never reads a scores body; the freezer does
+
+
+def test_scores_are_put_write_once_and_locked(frozen_archive):
+    key = frozen_archive.put_scores(DAY, SCORES, NOW)
+    assert key == scores_archive_key(DAY) == "scores/date=2026-11-02/scores.csv.gz"
+    assert frozen_archive.read_raw(key) == SCORES
+    assert lock_of(frozen_archive, key) == ("GOVERNANCE", NOW + timedelta(days=3650))
+    assert frozen_archive.put_scores(DAY, SCORES, NOW) == key               # the same put retried
+    with pytest.raises(AlreadyStored):
+        frozen_archive.put_scores(DAY, SCORES + b"x", NOW)
+    assert frozen_archive.read_raw(key) == SCORES
+    assert frozen_archive._keys("scores/") == [key]                         # no second file beside it
+    with pytest.raises(ValueError, match="time zone"):
+        frozen_archive.put_scores(days_back(1), SCORES, datetime(2026, 11, 2, 11, 30))
+
+
+def test_put_scores_sends_the_lock_and_the_gzip_content_type():
+    fake = ClockedS3(NOW)
+    S3Archive(fake, "bucket").put_scores(DAY, SCORES, NOW)
+    assert fake.calls == [("put_object", {
+        "Bucket": "bucket", "Key": scores_archive_key(DAY), "Body": SCORES, "ContentType": GZIP, "IfNoneMatch": "*",
+        "ObjectLockMode": "GOVERNANCE", "ObjectLockRetainUntilDate": NOW + timedelta(days=3650),
+        "ChecksumAlgorithm": "SHA256"})]
+
+
+def day_summary(day: date, scored: int = 1) -> DaySummary:
+    column = ColumnSummary(forecasts=scored + 1, scored=scored, unscored=1, outcome_1=1, sq_model=Decimal("0.0625"),
+                           sq_a=Decimal("0.25"), sq_b=Decimal("0.5625"),
+                           bins=tuple((1, Decimal("0.75"), 1) if i == 7 else (0, Decimal(0), 0) for i in range(10)))
+    return DaySummary(day=day, frozen_at=datetime(2026, 10, 19, 10, 40, 5, tzinfo=timezone.utc), on_time=True,
+                      model_version="1", target_version="1", by_column={"shufersal-deal": column})
+
+
+def write_summary(tables: Path, summary: DaySummary) -> bytes:
+    path = summary_path(tables, summary.day)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    body = summary_json(summary)
+    path.write_bytes(body)
+    return body
+
+
+def test_put_summary_puts_the_days_summary_plain(tmp_path):
+    fake = FakeS3()
+    archive = S3Archive(fake, "bucket")
+    body = write_summary(tmp_path, day_summary(days_back(14)))
+    key = archive.put_summary(days_back(14), tmp_path)
+    assert key == kind_key("scored", None, days_back(14), "summary.json") == \
+        "tables/scored/date=2026-10-19/summary.json"
+    assert Path(key) == summary_path(Path("tables"), days_back(14))       # its path under the work folder's tables
+    assert fake.calls == [("put_object", {"Bucket": "bucket", "Key": key, "Body": body, "ContentType": JSON})]
+    again = write_summary(tmp_path, day_summary(days_back(14), scored=2))  # derived: a re-run replaces it
+    archive.put_summary(days_back(14), tmp_path)
+    assert fake.objects[key][0] == again
+
+
+def test_scored_days_are_the_days_with_a_summary(frozen_archive, tmp_path):
+    for day in (days_back(1), days_back(3), DAY):                           # out of order
+        write_summary(tmp_path, day_summary(day))
+        frozen_archive.put_summary(day, tmp_path)
+    # a scores file whose summary was never put (a run stopped between the two): not scored, so due again
+    frozen_archive.put_scores(days_back(5), SCORES, NOW)
+    frozen_archive._put_plain("tables/scored/date=soon/summary.json", b"{}", JSON)
+    frozen_archive._put_plain(kind_key("scored", None, days_back(7), "summary.json") + ".bak", b"{}", JSON)
+    frozen_archive._put_plain(kind_key("scored", "shufersal", days_back(8), "summary.json"), b"{}", JSON)
+    assert frozen_archive.scored_days() == [days_back(3), days_back(1), DAY]
+    assert MemoryArchive().scored_days() == []
+
+
+def test_fetch_summaries_returns_day_summaries(frozen_archive, tmp_path):
+    summaries = [day_summary(days_back(3)), day_summary(days_back(1), scored=4)]
+    bodies = {}
+    for summary in reversed(summaries):
+        bodies[summary.day] = write_summary(tmp_path / "out", summary)
+        frozen_archive.put_summary(summary.day, tmp_path / "out")
+    found = frozen_archive.fetch_summaries(tmp_path / "in")
+    assert found == summaries                                               # read through read_summary, by day
+    assert all(isinstance(summary, DaySummary) for summary in found)
+    for summary in summaries:                                               # and each one in the work folder
+        assert summary_path(tmp_path / "in", summary.day).read_bytes() == bodies[summary.day]
+    assert MemoryArchive().fetch_summaries(tmp_path / "none") == []
+
+
 def test_no_method_ever_deletes(tmp_path):
     fake = ClockedS3(NOW, page_size=2)
     archive = S3Archive(fake, "bucket")
@@ -568,6 +655,15 @@ def test_no_method_ever_deletes(tmp_path):
         call("put_frozen", DAY, FROZEN + b"x", NOW)
     call("frozen_days")
     assert archive.last_modified(archive_key(DAY)) == NOW
+    call("put_scores", DAY, SCORES, NOW)
+    call("put_scores", DAY, SCORES, NOW)
+    with pytest.raises(AlreadyStored):
+        call("put_scores", DAY, SCORES + b"x", NOW)
+    write_summary(tmp_path / "out", day_summary(days_back(14)))
+    call("put_summary", days_back(14), tmp_path / "out")
+    call("put_summary", days_back(14), tmp_path / "out")
+    call("scored_days")
+    call("fetch_summaries", tmp_path / "in")
     # every method _Archive defines was run above
     assert called == {name for name in vars(_Archive) if not name.startswith("_")}
     operations = {op for op, _ in fake.calls}

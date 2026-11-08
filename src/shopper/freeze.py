@@ -1,4 +1,5 @@
-"""The daily freeze and the ledger (docs/shopper-site.md F6, Calls 15 to 17; the plan's Task 12, questions D and E).
+"""The daily freeze and the ledger (docs/shopper-site.md F6, Calls 15 to 17; the plan's Task 12, questions D and E), and
+the scores file put the same way (F7; the plan's Task 13).
 
 Each day's forecasts file is written once, before the day's outcomes are known, so that anyone can see afterwards that
 it was not changed. It is one file for all the columns (`shopper.forecast.forecasts_csv`), at `forecasts/date=<day>/
@@ -21,6 +22,13 @@ run's time, `freeze`s the day's file. Its rules, in order:
   late rerun freezes nothing; the day is a gap).
 - Otherwise the file is put, write-once and locked like a manifest (`basket.archive`'s `put_frozen`), and S3's time is
   read back: on time when it is before the cutoff ("frozen"), else "late" (the file stays, and shows as late).
+
+The scores file (F7). Each frozen day's scores file (`shopper.score.scores_csv`) is written once too, by the same
+freezer (`put_scores`), at `scores/date=<day>/scores.csv.gz` in the archive (`scores_archive_key`) and, with the same
+bytes, on the site at `scores/<day>.csv.gz` (`scores_site_key`): write-once and locked like the forecasts
+(`basket.archive`'s `put_scores`), and compared the same way when one is already stored: the same rows return the
+stored bytes, which are the ones the site publishes; other rows raise `ScoresDiffer`, naming the day and both SHA-256s,
+and nothing is written. There is no cutoff: scoring needs no clock, so a day missed is scored by a later build.
 
 The Mac's `ReadOnlyFreezer` writes nothing (question D): it reads the files `scripts/sync.sh` brought into
 `<data dir>/forecasts/date=<day>/` and returns the synced file as "same", or None for a day it holds none of. It does
@@ -50,6 +58,10 @@ class ForecastsDiffer(Exception):
     """The archive holds a forecasts file for the day whose rows are not the ones this run made."""
 
 
+class ScoresDiffer(Exception):
+    """The archive holds a scores file for the day whose rows are not the ones this run made."""
+
+
 @dataclass(frozen=True)
 class Frozen:
     """A day's forecasts file as the archive holds it: its gzip `body`, the body's `sha256`, `frozen_at` (S3's time,
@@ -74,6 +86,24 @@ def archive_key(day: date) -> str:
 
 def site_key(day: date) -> str:
     return f"forecasts/{day.isoformat()}.csv.gz"
+
+
+def scores_archive_key(day: date) -> str:
+    return f"scores/date={day.isoformat()}/scores.csv.gz"
+
+
+def scores_site_key(day: date) -> str:
+    return f"scores/{day.isoformat()}.csv.gz"
+
+
+def _same(stored: bytes, body: bytes, differs: type[Exception], what: str, day: date) -> bytes:
+    """`stored` when the CSV inside it is the one inside `body` (question E), else `differs` naming the day and both
+    files' SHA-256."""
+    if gzip.decompress(stored) != gzip.decompress(body):
+        raise differs(
+            f"the {what} for {day.isoformat()} differ from the stored file: the archive holds SHA-256 "
+            f"{hashlib.sha256(stored).hexdigest()}, this run made {hashlib.sha256(body).hexdigest()}")
+    return stored
 
 
 def _frozen(day: date, body: bytes, at: datetime, status: str) -> Frozen:
@@ -103,16 +133,23 @@ class ArchiveFreezer:
         when its rows are other ones, None when it is too late and none is stored, else the file just written."""
         stored = self.frozen(day)
         if stored is not None:
-            if gzip.decompress(stored.body) != gzip.decompress(body):
-                raise ForecastsDiffer(
-                    f"the forecasts for {day.isoformat()} differ from the frozen file: the archive holds SHA-256 "
-                    f"{stored.sha256}, this run made {hashlib.sha256(body).hexdigest()}")
+            _same(stored.body, body, ForecastsDiffer, "forecasts", day)
             return stored
         if self.now >= cutoff(day):
             return None
         self.archive.put_frozen(day, body, self.now)
         written = _frozen(day, body, self.archive.last_modified(archive_key(day)), "frozen")
         return written if written.on_time else replace(written, status="late")
+
+    def put_scores(self, day: date, body: bytes) -> bytes:
+        """Put the day's scores file `body` once, write-once and locked (the module's docstring), and return the bytes
+        the archive then holds, the ones the site publishes: the stored file when there is one with the same rows
+        (ScoresDiffer when its rows are other ones), else `body`, written now. No cutoff: scoring needs no clock."""
+        key = scores_archive_key(day)
+        if self.archive.last_modified(key) is not None:
+            return _same(self.archive.read_raw(key), body, ScoresDiffer, "scores", day)
+        self.archive.put_scores(day, body, self.now)
+        return body
 
 
 class ReadOnlyFreezer:

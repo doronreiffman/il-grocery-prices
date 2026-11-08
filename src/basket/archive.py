@@ -14,8 +14,10 @@ and puts back, beside the collector's keys:
     tables/promotions/chain=<slug>/date=<day>/          promotions.parquet, texts.parquet and report.json, plain
     tables/items/chain=<slug>/date=<day>/               items.parquet and report.json, plain
     tables/covered/date=<day>/                          covered.parquet, the shopper site's registry, plain
+    tables/scored/date=<day>/                           summary.json, the shopper site's scoring summary, plain
     basket/date=<day>/basket-<run id>.json              the run's record, write-once and locked
     forecasts/date=<day>/forecasts.csv.gz               the shopper site's forecasts of the day, write-once and locked
+    scores/date=<day>/scores.csv.gz                     the scores of the day's forecasts, write-once and locked
 
 A table's key is its file's path under the tables folder (`kind_key`; `table_key` is the prices table's): the kind,
 the chain, the day, the name; a table of no chain (the shopper site's covered registry, its scored summaries) has no
@@ -53,6 +55,14 @@ AlreadyStored. `frozen_days` lists the days that hold one. `last_modified` gives
 the freezer reads back to say whether a file was stored before its day's cutoff (F6): a MemoryArchive keeps such a time
 per key, the put's `now` unless it is given an `s3_clock` (a function returning an aware time), which tests fix.
 
+Scoring (F7). A day's scores file (`put_scores`) is put as the forecasts file is: write-once and locked, as gzip, the
+freezer saying whether a stored one and a new one are the same scores. Its summary (`shopper.score.summary_json`) is
+derived and goes up plain from the work folder (`put_summary`); the build puts it after the scores file (Tasks 19 and
+23). A day is scored once its summary is in the archive (`scored_days`), so a run that stopped between the two leaves
+the day due, and the next build meets the same scores file. `fetch_summaries` writes every summary into the work
+folder and returns them, read through `shopper.score.read_summary`, as `DaySummary` objects (the first pre-flight's
+N17), earliest first.
+
 The day is ready once the collector's check has written a record under `checks/date=<day>/`
 (`day_checked`): the check is the morning's last run.
 
@@ -71,8 +81,9 @@ from basket.chains import SLUGS
 from basket.stores import is_store_list
 from collector.names import parse_file_name
 from collector.store import MISSING, MemoryStore, S3Store, check_key, error_code, manifest_key, published_name, raw_key
-from shopper.freeze import archive_key
+from shopper.freeze import archive_key, scores_archive_key
 from shopper.history import READ_DAYS
+from shopper.score import DaySummary, read_summary, summary_path
 
 STORE_LIST_LOOKBACK_DAYS = 14
 # Each kind of table a chain's extraction writes for a day, and its files, in the order they go up.
@@ -81,6 +92,7 @@ TABLES = {"prices": ("prices.parquet", "report.json"),
           "items": ("items.parquet", "report.json")}
 TABLE_FILES = TABLES["prices"]
 COVERED = ("covered", "covered.parquet")   # the shopper site's registry: its kind, with no chain, and its file
+SCORED = ("scored", "summary.json")        # the shopper site's scoring summaries: their kind, with no chain, and file
 _CONTENT_TYPES = {".parquet": "application/vnd.apache.parquet", ".json": "application/json"}
 
 
@@ -97,6 +109,12 @@ def table_key(slug: str, day: date, name: str) -> str:
 
 def record_key(day: date, run_id: str) -> str:
     return f"basket/date={day.isoformat()}/basket-{run_id}.json"
+
+
+def summary_key(day: date) -> str:
+    """tables/scored/date=<day>/summary.json: the day's scoring summary, a table of no chain."""
+    kind, name = SCORED
+    return kind_key(kind, None, day, name)
 
 
 def _stored_name(key: str) -> str:
@@ -254,14 +272,46 @@ class _Archive:
 
     def frozen_days(self) -> list[date]:
         """The days whose forecasts file is in the archive, earliest first."""
-        prefix = archive_key(date.min).rsplit("date=", 1)[0]   # forecasts/
+        return self._days_with(archive_key)
+
+    def put_scores(self, day: date, body: bytes, now: datetime) -> str:
+        """Put the day's scores file under its key, write-once and locked as a record is, as gzip; the key. The same
+        bytes again are the same put retried; other bytes under the key are AlreadyStored. `now` must carry a time zone."""
+        key = scores_archive_key(day)
+        self.put_record(key, body, now, content_type="application/gzip")
+        return key
+
+    def scored_days(self) -> list[date]:
+        """The days whose scoring summary is in the archive, earliest first: the days scored."""
+        return self._days_with(summary_key)
+
+    def put_summary(self, day: date, tables_dir: Path) -> str:
+        """Put the day's scoring summary from under `tables_dir` (`shopper.score.summary_path`), plain; the key."""
+        key = summary_key(day)
+        self._put_file(key, summary_path(tables_dir, day))
+        return key
+
+    def fetch_summaries(self, tables_dir: Path) -> list[DaySummary]:
+        """Write every scoring summary at its path under `tables_dir`; the summaries, earliest first."""
+        found = []
+        for day in self.scored_days():
+            body = self.read_raw(summary_key(day))
+            path = summary_path(tables_dir, day)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(body)
+            found.append(read_summary(body))
+        return found
+
+    def _days_with(self, key_of: Callable[[date], str]) -> list[date]:
+        """The days whose key `key_of` names holds a file in the archive, earliest first; only keys this code writes."""
+        prefix = key_of(date.min).rsplit("date=", 1)[0]   # forecasts/, tables/scored/
         days = []
         for key in self._keys(prefix):
             try:
                 listed = date.fromisoformat(key[len(prefix):].split("/", 1)[0].removeprefix("date="))
             except ValueError:
                 continue
-            if key == archive_key(listed):   # a file, as this code names one
+            if key == key_of(listed):   # a file, as this code names one
                 days.append(listed)
         return sorted(days)
 

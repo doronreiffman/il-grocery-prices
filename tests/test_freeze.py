@@ -24,9 +24,12 @@ from shopper.freeze import (
     ForecastsDiffer,
     Frozen,
     ReadOnlyFreezer,
+    ScoresDiffer,
     archive_key,
     cutoff,
     ledger,
+    scores_archive_key,
+    scores_site_key,
     site_key,
 )
 from test_store import lock_of
@@ -209,6 +212,70 @@ def test_one_file_a_day_for_every_column_and_each_day_its_own():
     freezer.freeze(NEXT, forecasts_of(Fraction(3, 4)))
     assert sorted(archive.objects) == [archive_key(DAY), archive_key(NEXT)]
     assert archive.frozen_days() == [DAY, NEXT]
+
+
+# The scores file (F7, Task 13): put once and locked through the freezer, like the day's forecasts, with no cutoff
+
+def scores_of(outcome: str = "1") -> bytes:
+    """A day's scores file, in short: what the freezer compares is the CSV inside the gzip."""
+    return gzip.compress(f"column,barcode,outcome\n{DEAL},{CODES[0]},{outcome}\n".encode(), mtime=0)
+
+
+def test_the_scores_keys():
+    assert scores_archive_key(DAY) == "scores/date=2026-11-07/scores.csv.gz"
+    assert scores_site_key(DAY) == "scores/2026-11-07.csv.gz"
+
+
+def test_scores_are_put_once_and_locked():
+    archive = MemoryArchive()
+    body = scores_of()
+    assert ArchiveFreezer(archive, NOW).put_scores(DAY, body) == body
+    assert list(archive.objects) == [scores_archive_key(DAY)]
+    assert archive.objects[scores_archive_key(DAY)].body == body
+    assert lock_of(archive, scores_archive_key(DAY)) == ("GOVERNANCE", NOW + timedelta(days=3650))
+    # the same scores again change nothing: one file, one lock
+    assert ArchiveFreezer(archive, NOW + timedelta(hours=1)).put_scores(DAY, body) == body
+    assert list(archive.objects) == [scores_archive_key(DAY)]
+    assert lock_of(archive, scores_archive_key(DAY)) == ("GOVERNANCE", NOW + timedelta(days=3650))
+
+
+def test_a_rescoring_with_the_same_rows_returns_the_archives_bytes():
+    archive = MemoryArchive()
+    body = scores_of()
+    other_bytes = recompressed(body, 1)
+    assert other_bytes != body and gzip.decompress(other_bytes) == gzip.decompress(body)   # the premise
+    ArchiveFreezer(archive, NOW).put_scores(DAY, body)
+    again = ArchiveFreezer(archive, NOW + timedelta(days=1)).put_scores(DAY, other_bytes)
+    assert again == body and again is not other_bytes                      # the site publishes the archive's bytes
+    assert list(archive.objects) == [scores_archive_key(DAY)]
+
+
+def test_a_rescoring_with_other_rows_raises_naming_both_hashes():
+    archive = MemoryArchive()
+    stored, other = scores_of("1"), scores_of("0")
+    ArchiveFreezer(archive, NOW).put_scores(DAY, stored)
+    with pytest.raises(ScoresDiffer) as caught:
+        ArchiveFreezer(archive, NOW + timedelta(days=1)).put_scores(DAY, other)
+    message = str(caught.value)
+    assert "scores" in message and "2026-11-07" in message and sha(stored) in message and sha(other) in message
+    assert archive.objects[scores_archive_key(DAY)].body == stored and list(archive.objects) == [scores_archive_key(DAY)]
+
+
+def test_scores_need_no_clock():
+    # the build of day d + 14 scores day d, long past its cutoff, and a missed one is scored later still
+    archive = MemoryArchive()
+    now = CUTOFF + timedelta(days=30)
+    assert ArchiveFreezer(archive, now).put_scores(DAY, scores_of()) == scores_of()
+    assert lock_of(archive, scores_archive_key(DAY)) == ("GOVERNANCE", now + timedelta(days=3650))
+
+
+def test_scores_and_forecasts_of_a_day_are_two_files():
+    archive = MemoryArchive()
+    freezer = ArchiveFreezer(archive, NOW)
+    freezer.freeze(DAY, forecasts_of())
+    freezer.put_scores(DAY, scores_of())
+    assert sorted(archive.objects) == [archive_key(DAY), scores_archive_key(DAY)]
+    assert archive.frozen_days() == [DAY]
 
 
 # The ledger
