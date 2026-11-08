@@ -353,7 +353,7 @@ def test_a_day_of_shufersal_promo_passes_replayed():
     assert chain["passes"]["Promo"] == {
         "complete": [[POLL_1, POLL_2]], "out_of_order": [],
         "open": {"runs": [POLL_3], "unread": "pages 21 to 22 never read, page 20 read in part"}}
-    assert chain["not_tried"] == {"Promo": 1}
+    assert chain["not_tried"] == {"Promo": [promo_name(381, "145959") + ".gz"]}
 
     # The fourth run resumes the open pass at page 20, where the third stopped.
     fourth = promo_poll(store, POLL_4, AFTERNOON)
@@ -365,7 +365,7 @@ def test_a_day_of_shufersal_promo_passes_replayed():
     assert alerts == []
     assert chain["passes"]["Promo"] == {"complete": [[POLL_1, POLL_2], [POLL_3, POLL_4]], "out_of_order": [],
                                         "open": None}
-    assert (chain["not_tried"], chain["missing"], chain["failed"]) == ({"Promo": 0}, [], None)
+    assert (chain["not_tried"], chain["missing"], chain["failed"]) == ({"Promo": []}, [], None)
     assert chain["by_hour"] == {"Promo": {"09": 286, "14": 22}}
     mornings = {promo_name(i) + ".gz" for i in range(1, ROWS * PROMO_PAGES + 1) if (i - 1) % ROWS < DAYS_ROWS}
     afternoons = {promo_name(i, stamp) + ".gz" for i, stamp in AFTERNOON.items()}
@@ -398,5 +398,5 @@ def test_a_store_republished_at_the_resume_point_still_completes_the_pass():
     alerts, chain = update_day(store)
     assert alerts == []
     assert chain["passes"]["Promo"] == {"complete": [[POLL_1, POLL_2]], "out_of_order": [], "open": None}
-    assert (chain["not_tried"], chain["missing"], chain["failed"]) == ({"Promo": 1}, [], None)
+    assert (chain["not_tried"], chain["missing"], chain["failed"]) == ({"Promo": [promo_name(321) + ".gz"]}, [], None)
     assert chain["by_hour"] == {"Promo": {"09": 285, "10": 1}}
