@@ -2,7 +2,7 @@
 
 Grade: production. The collector is live, and every file it stores is locked for ten years.
 
-Status: draft of 2026-11-08, written by Opus 5.5 from the approved design; nothing built.
+Status: draft of 2026-11-08, written by Opus 5.5 from the approved design; approved by the owner the same day (no questions open); building.
 
 ## What ships
 
