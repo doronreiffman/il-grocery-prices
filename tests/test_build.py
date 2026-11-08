@@ -169,6 +169,27 @@ def test_golden_day_matches(tmp_path):
     assert outcome.headline_lines[0] == "Lowest listed total today: Osher Ad, ₪22.65."
 
 
+def _restate_milk(data: Path, slug: str, store: str, quantity: str, unit: str) -> None:
+    """One store's MILK stated as `quantity` `unit` in its price file of the golden day."""
+    path = data / "raw" / f"chain={slug}" / f"date={DAY.isoformat()}" / price_file_name(slug, store)
+    body = gzip.decompress(path.read_bytes()).decode()
+    stated = "<Quantity>1</Quantity><UnitQty>ליטר</UnitQty>"
+    assert body.count(stated) == 1
+    restated = f"<Quantity>{quantity}</Quantity><UnitQty>{unit}</UnitQty>"
+    path.write_bytes(gzip.compress(body.replace(stated, restated).encode(), mtime=0))
+
+
+@pytest.mark.parametrize("quantity", ["1E+1000000", "1E-5000"], ids=["past Decimal's exponent", "tiny"])
+def test_a_quantity_no_chain_writes_states_no_size(tmp_path, quantity):
+    # basket.units' bound: read, the first overflows Decimal in normal_size, and the second, a size smaller than the
+    # other store's litre, wins B7's tie to the smaller amount and leaves milk out as of another size
+    data, site = golden_tree(tmp_path), tmp_path / "site"
+    _restate_milk(data, "osherad", "001", quantity, "גרם")
+    build_at(data, site, NOW)
+    public = json.loads(day_file(site).read_text(encoding="utf-8"))
+    assert comparable(public) == json.loads(GOLDEN.read_text(encoding="utf-8"))
+
+
 def test_build_twice_is_unchanged(tmp_path):
     data, site = golden_tree(tmp_path), tmp_path / "site"
     first = build_at(data, site, NOW)

@@ -139,6 +139,11 @@ RULES_FOR_DUCK = ("src/basket/rules.py", ["tests/test_duck.py"])
 STORES = ("src/basket/stores.py", ["tests/test_stores.py"])
 CHAINS_BASKET = ("src/basket/chains.py", ["tests/test_stores.py"])
 UNITS_BASKET = ("src/basket/units.py", ["tests/test_units.py"])
+# The bound on a published decimal (basket.units.bounded) holds for sizes in the basket run and the items table, and for
+# the promotion fields (shopper.promotions.number): each reader's tests must catch it lost.
+UNITS_FOR_BUILD = ("src/basket/units.py", ["tests/test_build.py"])
+UNITS_FOR_SHOP_ITEMS = ("src/basket/units.py", ["tests/test_items.py"])
+UNITS_FOR_SHOP_PROMOTIONS = ("src/basket/units.py", ["tests/test_promotions.py"])
 BASKET_FILE = ("src/basket/basket_file.py", ["tests/test_basket_file.py"])
 RULES = ("src/basket/rules.py", ["tests/test_rules.py"])
 RECORD = ("src/basket/record.py", ["tests/test_record.py"])
@@ -1205,11 +1210,11 @@ MUTATIONS = {
     "a gift value of another form passed (q22 P10)": (SHOP_PROMOTIONS, "    if amount is None or amount <= 0:", "    if False:"),
     "a coupon's codes not checked (q22 P10)": (SHOP_PROMOTIONS, '        target(slug, promotion["ClubID"])\n', '        if is_coupon(promotion):\n            return False\n        target(slug, promotion["ClubID"])\n'),
     # shopper.promotions.number's bound (the exponent fix), at its own tests and at each reader's
-    "a number's places unbounded (q22 P10)": (SHOP_PROMOTIONS, " or value.as_tuple().exponent < -PLACES", ""),
-    "a number's digits before the point unbounded (q22 P10)": (SHOP_PROMOTIONS, " or value.adjusted() >= DIGITS", ""),
-    "a number of any exponent read by the deal (q22 P4)": (PROMOTIONS_FOR_SHOP_DEALS, "    if not value.is_finite() or value.as_tuple().exponent < -PLACES or value.adjusted() >= DIGITS:", "    if not value.is_finite():"),
-    "a number of any exponent read as a store price or a min spend (q22 promotions table)": (PROMOTIONS_FOR_SHOP_PROMOS, "    if not value.is_finite() or value.as_tuple().exponent < -PLACES or value.adjusted() >= DIGITS:", "    if not value.is_finite():"),
-    "a number of any exponent read into the items table (q22 items)": (PROMOTIONS_FOR_SHOP_ITEMS, "    if not value.is_finite() or value.as_tuple().exponent < -PLACES or value.adjusted() >= DIGITS:", "    if not value.is_finite():"),
+    "a number's places unbounded (q22 P10)": (UNITS_FOR_SHOP_PROMOTIONS, "value.as_tuple().exponent >= -PLACES and ", ""),
+    "a number's digits before the point unbounded (q22 P10)": (UNITS_FOR_SHOP_PROMOTIONS, " and value.adjusted() < DIGITS", ""),
+    "a number of any exponent read by the deal (q22 P4)": (PROMOTIONS_FOR_SHOP_DEALS, "    if not value.is_finite() or not bounded(value):", "    if not value.is_finite():"),
+    "a number of any exponent read as a store price or a min spend (q22 promotions table)": (PROMOTIONS_FOR_SHOP_PROMOS, "    if not value.is_finite() or not bounded(value):", "    if not value.is_finite():"),
+    "a number of any exponent read into the items table (q22 items)": (PROMOTIONS_FOR_SHOP_ITEMS, "    if not value.is_finite() or not bounded(value):", "    if not value.is_finite():"),
     "an element checked against its level's first set only (q22 P10)": (SHOP_PROMOFILE, "        if frozenset(tags) not in expected:", "        if frozenset(tags) != min(expected, key=sorted):"),
     "missing named against the first set, not the nearest (q22 P10)": (SHOP_PROMOFILE, "            nearest = min(expected, key=lambda one: (len(one ^ tags), sorted(one)), default=frozenset())", "            nearest = min(expected, key=sorted, default=frozenset())"),
     "the nearest set's tie broken in reverse order (q22 P10)": (SHOP_PROMOFILE, "(len(one ^ tags), sorted(one))", "(len(one ^ tags), sorted(one, reverse=True))"),
@@ -1555,6 +1560,11 @@ MUTATIONS = {
     "units non-finite quantity accepted": (UNITS_BASKET, "if not amount.is_finite() or amount", "if amount"),
     "units amount not made plain": (UNITS_BASKET, "Size(Decimal(plain(amount * factor)), kind)", "Size(amount * factor, kind)"),
     "units one unit read as a size": (UNITS_BASKET, 'if kind == "unit" and amount == 1:', "if False:"),
+    "units quantity past the bound read": (UNITS_BASKET, "    if not bounded(amount):\n        return None\n", ""),
+    "units quantity of more than twelve places read": (UNITS_BASKET, "value.as_tuple().exponent >= -PLACES and ", ""),
+    "units quantity of thirteen digits read": (UNITS_BASKET, " and value.adjusted() < DIGITS", ""),
+    "units quantity past the bound read in the basket run": (UNITS_FOR_BUILD, "    if not bounded(amount):\n        return None\n", ""),
+    "a quantity past the bound read into the items table (q22 items)": (UNITS_FOR_SHOP_ITEMS, "    if not bounded(amount):\n        return None\n", ""),
     # basket: basket file
     "basket file check digit not checked": (BASKET_FILE, "    if not is_gs1(code):", "    if False:"),
     "basket file duplicates allowed": (BASKET_FILE, "        if digits in first_with:", "        if False:"),

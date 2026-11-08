@@ -24,6 +24,11 @@ from basket.units import Size, normal_size, plain
     ("1.5", "ליטרים", Size(Decimal(1500), "gml")), ("2", "קילוגרמים", Size(Decimal(2000), "gml")),
     ("10", "יח", Size(Decimal(10), "unit")), ("250", "מ'ל", Size(Decimal(250), "gml")),
     ("100", "גרמים", Size(Decimal(100), "gml")),
+    # a quantity no chain could publish (the bound: at most 12 places, fewer than 13 digits before the point)
+    ("1E+1000000", "גרם", None), ("1E+999999", "קילוגרם", None), ("1E-5000", "גרם", None),
+    ("1000000000000", "גרם", None), ("0.0000000000001", "ליטר", None),
+    ("999999999999", "קילוגרם", Size(Decimal("999999999999000"), "gml")),
+    ("0.000000000001", "קילוגרם", Size(Decimal("0.000000001"), "gml")),
 ])
 def test_normal_size(q, u, size):
     assert normal_size(q, u) == size

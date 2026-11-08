@@ -159,6 +159,14 @@ def test_the_size_is_the_columns_most_common(tmp_path):
     assert (rows[(SHELI, B)]["size_amount"], rows[(SHELI, B)]["size_kind"]) == (None, None)     # no size stated
 
 
+@pytest.mark.parametrize("quantity", ["1E+1000000", "1E-5000"], ids=["past Decimal's exponent", "tiny"])
+def test_a_quantity_no_chain_writes_states_no_size(tmp_path, quantity):
+    # basket.units' bound: read, the first overflows Decimal in normal_size, and the second wins B7's tie to the smaller
+    # amount over the other store's litre, a size_amount of 5,002 characters
+    _, rows = _run(tmp_path, {"1": [(A, "5.00", NAME, "1", "ליטר")], "2": [(A, "5.00", NAME, quantity, "גרם")]})
+    assert (rows[(SHELI, A)]["size_amount"], rows[(SHELI, A)]["size_kind"]) == ("1000", "gml")
+
+
 # P1's day test: wide (B6 per column)
 
 def test_wide_is_half_the_columns_stores_with_a_file(tmp_path):

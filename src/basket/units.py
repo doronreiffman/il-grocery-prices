@@ -8,6 +8,11 @@ after trimming the spaces around them; any other string, "לא ידוע" ("unkno
 among them, is "not stated". So is a quantity that is not a number, is not finite ("NaN",
 "Infinity") or is not above zero (38,941 rows of 2026-11-02 state 0.00).
 
+A quantity past the bound (`bounded`: more than 12 places, or 13 digits or more before the point) is
+"not stated" too: no chain publishes one (every quantity read from the prices tables of 5 and 7
+November 2026 has at most 3 places and 5 digits before the point), and read, "1E+1000000" overflows Decimal in the scale and
+"1E-5000" is a size of 5,002 characters that would win B7's tie to the smaller amount.
+
 A count of one is not a size either: it carries none. 791,019 rows of 2026-11-02 say "1 unit",
 among them products with real weights, so one unit must not count as a disagreement with a size in
 grams or millilitres. A count above one ("6 units") is a size.
@@ -19,6 +24,8 @@ from decimal import Decimal, InvalidOperation
 
 ONE = Decimal(1)
 THOUSAND = Decimal(1000)
+PLACES = 12  # a published decimal's bound: at most twelve places,
+DIGITS = 12  # and at most twelve digits before the point
 
 # The unit strings of 2026-11-02, the selection day, with their rows over the five chains' tables
 # (5,140,268 rows, 21 strings). Every string of at least 1,000 rows is decided here: read, or left
@@ -66,9 +73,19 @@ def normal_size(quantity: str, unit: str) -> Size | None:
         return None
     if not amount.is_finite() or amount <= 0:
         return None
+    if not bounded(amount):
+        return None
     if kind == "unit" and amount == 1:
         return None
     return Size(Decimal(plain(amount * factor)), kind)
+
+
+def bounded(value: Decimal) -> bool:
+    """Whether a finite decimal is one a chain could publish: at most PLACES places and below 10 ** DIGITS. The bound
+    for every number read from the chains' files that the code scales, divides or writes out: sizes here, the
+    promotion fields in `shopper.promotions.number`. Past it, a value's plain text or exact fraction runs to thousands
+    of digits, or its arithmetic overflows Decimal."""
+    return value.as_tuple().exponent >= -PLACES and value.adjusted() < DIGITS
 
 
 def plain(d: Decimal) -> str:
