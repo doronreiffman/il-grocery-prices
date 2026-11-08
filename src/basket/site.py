@@ -28,7 +28,7 @@ from pathlib import Path
 
 from botocore.exceptions import ClientError
 
-from collector.store import MISSING, _code
+from collector.store import MISSING, error_code
 
 PAGES = ("index.html", "method.html")
 HTML = "text/html; charset=utf-8"
@@ -106,7 +106,7 @@ class S3Site(_Site):
         try:
             answer = self.s3.get_object(Bucket=self.bucket, Key=key)
         except ClientError as err:
-            if _code(err) in MISSING:
+            if error_code(err) in MISSING:
                 return None
             raise
         return answer["Body"].read()

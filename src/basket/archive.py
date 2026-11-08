@@ -15,6 +15,7 @@ and puts back, beside the collector's keys:
     tables/items/chain=<slug>/date=<day>/               items.parquet and report.json, plain
     tables/covered/date=<day>/                          covered.parquet, the shopper site's registry, plain
     basket/date=<day>/basket-<run id>.json              the run's record, write-once and locked
+    forecasts/date=<day>/forecasts.csv.gz               the shopper site's forecasts of the day, write-once and locked
 
 A table's key is its file's path under the tables folder (`kind_key`; `table_key` is the prices table's): the kind,
 the chain, the day, the name; a table of no chain (the shopper site's covered registry, its scored summaries) has no
@@ -45,6 +46,13 @@ covered registry of the day before (`fetch_covered`) is the latest `tables/cover
 before the run's, found by listing `tables/covered/`, since a run may have missed days; the run's own registry goes
 back plain (`put_covered`), replaced by a re-run of the day as every table is.
 
+The day's forecasts file (`put_frozen`) is put as a record is: write-once and locked, its content type gzip. The archive
+only stores it: whether a stored file and a new one are the same forecasts is the freezer's to say
+(`shopper.freeze`, question E), so the same bytes again are the same put retried and other bytes under the key are
+AlreadyStored. `frozen_days` lists the days that hold one. `last_modified` gives an object's time as S3 set it, which
+the freezer reads back to say whether a file was stored before its day's cutoff (F6): a MemoryArchive keeps such a time
+per key, the put's `now` unless it is given an `s3_clock` (a function returning an aware time), which tests fix.
+
 The day is ready once the collector's check has written a record under `checks/date=<day>/`
 (`day_checked`): the check is the morning's last run.
 
@@ -53,13 +61,17 @@ uses their bare list, read and plain put (`_keys`, `_get`, `_put_plain`), `read_
 Nothing here ever deletes.
 """
 import json
+from collections.abc import Callable
 from datetime import date, datetime, timedelta
 from pathlib import Path
+
+from botocore.exceptions import ClientError
 
 from basket.chains import SLUGS
 from basket.stores import is_store_list
 from collector.names import parse_file_name
-from collector.store import MemoryStore, S3Store, check_key, manifest_key, published_name, raw_key
+from collector.store import MISSING, MemoryStore, S3Store, check_key, error_code, manifest_key, published_name, raw_key
+from shopper.freeze import archive_key
 from shopper.history import READ_DAYS
 
 STORE_LIST_LOOKBACK_DAYS = 14
@@ -233,6 +245,26 @@ class _Archive:
         self._put_file(key, _local(tables_dir, key))
         return key
 
+    def put_frozen(self, day: date, body: bytes, now: datetime) -> str:
+        """Put the day's forecasts file under its key, write-once and locked as a record is, as gzip; the key. The same
+        bytes again are the same put retried; other bytes under the key are AlreadyStored. `now` must carry a time zone."""
+        key = archive_key(day)
+        self.put_record(key, body, now, "application/gzip")
+        return key
+
+    def frozen_days(self) -> list[date]:
+        """The days whose forecasts file is in the archive, earliest first."""
+        prefix = archive_key(date.min).rsplit("date=", 1)[0]   # forecasts/
+        days = []
+        for key in self._keys(prefix):
+            try:
+                listed = date.fromisoformat(key[len(prefix):].split("/", 1)[0].removeprefix("date="))
+            except ValueError:
+                continue
+            if key == archive_key(listed):   # a file, as this code names one
+                days.append(listed)
+        return sorted(days)
+
     def _put_file(self, key: str, path: Path) -> None:
         """Put a table's file plain, its content type by its suffix: a re-run replaces it."""
         self._put_plain(key, path.read_bytes(), _CONTENT_TYPES[path.suffix])
@@ -250,6 +282,37 @@ class _Archive:
 class S3Archive(_Archive, S3Store):
     """The archive bucket, through a boto3 S3 client."""
 
+    def last_modified(self, key: str) -> datetime | None:
+        """The object's time as S3 set it (aware); None when the key holds nothing."""
+        try:
+            answer = self.client.head_object(Bucket=self.bucket, Key=key)
+        except ClientError as err:
+            if error_code(err) in MISSING:
+                return None
+            raise
+        return answer["LastModified"]
+
 
 class MemoryArchive(_Archive, MemoryStore):
-    """The same in a dict, for tests."""
+    """The same in a dict, for tests. Each key has a time as S3 would give it: the `now` of the locked put that wrote it,
+    or the time `s3_clock()` gives when it is given one (it must return an aware time); a plain put has none without a
+    clock, as it has no `now`."""
+
+    def __init__(self, *args, s3_clock: Callable[[], datetime] | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.s3_clock = s3_clock
+        self.times: dict[str, datetime | None] = {}
+
+    def _put_locked(self, key: str, body: bytes, until: datetime, content_type: str | None = None) -> bool:
+        stored = super()._put_locked(key, body, until, content_type)
+        if stored:   # the put's `now` is the end of its lock less the retention
+            self.times[key] = until - self.retention if self.s3_clock is None else self.s3_clock()
+        return stored
+
+    def _put_plain(self, key: str, body: bytes, content_type: str) -> None:
+        super()._put_plain(key, body, content_type)
+        self.times[key] = None if self.s3_clock is None else self.s3_clock()
+
+    def last_modified(self, key: str) -> datetime | None:
+        """The key's time (the class's docstring); None when it holds nothing or has none."""
+        return self.times.get(key)
