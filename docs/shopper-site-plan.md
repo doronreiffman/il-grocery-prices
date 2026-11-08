@@ -92,7 +92,7 @@ From "Left to the builder", each settled here:
 - **Test layout:** a test file per module (`tests/test_<module>.py`, prefixed `shop_` where a basket file has the name), a golden 90 days in `tests/shopper_golden.py`, Node behaviour tests in `tests/test_search_js.py`.
 - **Not in step one:** opening and closing the gate (F9's owner's go and its 60-day closing rule) and the odds line are step three's; step one evaluates the gate's conditions and shows them, closed. A rescoring tool (the grade line's "a second file beside the first") waits for the first fix that needs one.
 - **The day's promotion files:** each counted store's latest `PromoFull` of the day by the time in its name, as B1 takes price files, for the stores of a column; files of stores not counted, and of counted stores in no column, are passed over unread and listed.
-- **A missing past items table** (an extraction that never ran) is a hole for each of that chain's columns that day; a missing items table for the run's own day stops the run (`MissingTable`), as a missing prices table does today.
+- **A missing past items table** (the extraction did not run, or stopped before its items table) is a hole for each of that chain's columns that day; a missing items table for the run's own day stops the run (`MissingTable`), as a missing prices table does today.
 
 ## Global Constraints
 
