@@ -430,6 +430,24 @@ def test_an_items_promotions_are_listed_by_start_then_id_as_a_number(tmp_path):
                                                     None, "unit")
 
 
+LONG = "1" + "0" * 4300   # a 4,301-digit id: past the 4,300 digits Python's int() reads from a text
+
+
+def test_ids_of_any_length_order_as_numbers(tmp_path):
+    """Promotion ids, group ids and store ids are published text: they order as numbers ("9" before "10", "009" before
+    "9", the text breaking a tie), then any other text, however many digits they have."""
+    promotions = [_one(promotion_id, _item(A, reward="3", price="4.00"))
+                  for promotion_id in ("10", "A1", LONG, "9", "009")]
+    two_groups = _promotion("95", _group(LONG, [_item(B, reward="3", price="3.00")]),
+                            _group("9", [_item(B, reward="3", price="4.00")]))
+    long_store = _store("2" + "0" * 4300, "6")   # on the list in Yesh Chesed's sub-chain: in no column
+    report, rows = _run(tmp_path, LISTED, {"1": promotions + [two_groups], "2": promotions + [two_groups]},
+                        stores=STORES + (long_store,))
+    assert [p["promotion_id"] for p in rows[(SHELI, A)]["promotions"]] == ["009", "9", "10", LONG, "A1"]
+    assert _price_on(rows[(SHELI, B)]) == [("95", "fixed_price", Decimal("4.00"), True, None, True)]   # group 9's
+    assert report.outside == ["6", long_store.id]
+
+
 def test_a_promotions_conditions_reach_its_struct(tmp_path):
     club = _promotion("110", _group(items=[_item(A, reward="3", price="4.00")], min_purchase="100"), club="1 - a club")
     _, rows = _run(tmp_path, LISTED, {"1": [club], "2": [club]})

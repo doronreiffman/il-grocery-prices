@@ -155,8 +155,14 @@ def texts_path(tables_dir: Path, slug: str, day: date) -> Path:
 
 
 def _by_number(text: str) -> tuple:
-    """A sort key: numbers as numbers ("9" before "10"), then any other text."""
-    return (0, int(text), text) if text.isascii() and text.isdigit() else (1, 0, text)
+    """A sort key for a published id: ids of ASCII digits first, in numeric order ("9" before "10", "009" before "9",
+    the text breaking a tie), then any other text. Numeric order without `int()`, which refuses a text past 4,300
+    digits: with leading zeros stripped, a shorter number is the smaller, and one of the same length orders as its
+    text, so an id of any length orders."""
+    if text.isascii() and text.isdigit():
+        digits = text.lstrip("0")
+        return (0, len(digits), digits, text)
+    return (1, 0, "", text)
 
 
 def _text(value: Decimal | None) -> str | None:
