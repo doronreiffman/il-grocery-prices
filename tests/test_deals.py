@@ -161,3 +161,15 @@ def test_a_deal_rebuilt_from_the_items_struct_is_the_deal():
         assert rebuilt == found
         assert rebuilt.price is None or type(rebuilt.price) is Fraction
     assert deal_from_row(rows[0][1]).price == Fraction(109, 75)   # not 1.45, the two places written for the eye
+
+
+@pytest.mark.parametrize("text", ["1E+5000", "1E-5000"], ids=["huge", "tiny"])
+def test_a_field_of_an_exponent_no_chain_writes_is_not_read(text):
+    # read, each would be a Fraction past the 4,300 digits Python prints, or a rate of nothing that agrees
+    unread = (None, False, "no price in the fields")
+    for found in (deal("carrefour", _item(CARREFOUR, "900001", DiscountedPrice=text), Decimal("10.90")),
+                  deal("carrefour", _item(CARREFOUR, "900003", MinQty=text), Decimal("10.90")),
+                  deal("carrefour", _item(CARREFOUR, "900002", DiscountedPrice=text), Decimal("5.50"))):
+        assert (found.price, found.valid, found.why) == unread
+    rate = deal("carrefour", _item(CARREFOUR, "900002", DiscountRate=text), Decimal("5.50"), _same("5.50"))
+    assert (rate.valid, rate.why) == (False, "the rate and the price disagree")

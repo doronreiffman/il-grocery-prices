@@ -298,13 +298,23 @@ def test_a_rate_not_above_0_and_below_100_never_agrees(tmp_path, rate, price):
     assert _keys(rows, "with_store_price", "agrees_with_store") == [(1, 0)]
 
 
-def test_a_store_price_of_a_tiny_exponent_is_staged_short(tmp_path):
-    # written out in full, 1E-3000000 is a field of 3 MB, past what the CSV reader takes on a line
-    files = {_name("1"): _file("1", _promotion("65", _group(items=[_item(price="1E-3000000")]))),
+@pytest.mark.parametrize("price", ["1E+5000", "1E-5000", "1E-3000000"], ids=["huge", "tiny", "a 3 MB field"])
+def test_a_store_price_of_an_exponent_no_chain_writes_is_no_price(tmp_path, price):
+    # shopper.promotions.number's bound: once read as 0.000, a tiny exponent pulled the stores' median down
+    files = {_name("1"): _file("1", _promotion("65", _group(items=[_item(price=price)]))),
              _name("2"): _file("2", _promotion("65", _group(items=[_item(price="4.00")])))}
     _, rows = _run(tmp_path, files, {"shufersal-sheli": {"1", "2"}})
-    assert _keys(rows, "discounted_median", "discounted_low", "discounted_high") == [
-        (Decimal("2.000"), Decimal("0.000"), Decimal("4.000"))]
+    assert _keys(rows, "stores", "discounted_median", "discounted_low", "discounted_high") == [
+        (2, Decimal("4.000"), Decimal("4.000"), Decimal("4.000"))]
+
+
+@pytest.mark.parametrize("amount", ["1E+5000", "1E-5000"], ids=["huge", "tiny"])
+def test_a_min_spend_of_an_exponent_no_chain_writes_stops_the_chain(tmp_path, amount):
+    promotion = _promotion("66", _group(items=[_item()], min_purchase=amount))
+    raw, tables = _write_day(tmp_path, {_name("1"): _file("1", promotion)})
+    with pytest.raises(PromotionFormatChanged) as refused:
+        extract_promotions(raw, "shufersal", DAY, {"shufersal-sheli": {"1"}}, tables, frozenset())
+    assert str(refused.value) == f"MinPurchaseAmount {amount!r} is not an amount"
 
 
 def test_a_day_of_many_copies_fits_a_small_duckdb_ceiling(tmp_path, monkeypatch):

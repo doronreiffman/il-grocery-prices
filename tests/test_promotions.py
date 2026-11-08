@@ -10,7 +10,7 @@ import pytest
 from basket.chains import SLUGS
 from shopper.promofile import Link, PromotionFormatChanged, PromotionRead, Tally, read_promotions
 from shopper.promotions import (GIFT_VALUES, KNOWN_FIELDS, Target, check_codes, dates, gift_value, has_price_effect,
-                                in_day, is_coupon, keep, kind, min_spend, not_shelf, target)
+                                in_day, is_coupon, keep, kind, min_spend, not_shelf, number, target)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 SHUFERSAL_NOV_7 = FIXTURES / "shufersal" / "PromoFull7290027600007-001-001-20261107-030000.gz"
@@ -230,8 +230,31 @@ def test_min_spend_from_any_group():
     assert min_spend([]) is None
 
 
-@pytest.mark.parametrize("amount", ["75,00", "₪75"])
+@pytest.mark.parametrize("amount", ["75,00", "₪75", "1E+5000", "1E-5000"])
 def test_an_unreadable_min_spend_is_a_format_change(amount):
     with pytest.raises(PromotionFormatChanged) as refused:  # read as none, a ₪75 basket would show as no condition
         min_spend([_group("1"), _group("2", amount)])
     assert str(refused.value) == f"MinPurchaseAmount {amount!r} is not an amount"
+
+
+# number's bound: a value no chain could publish as a price, a quantity, a rate or an amount reads as no number
+
+@pytest.mark.parametrize("text", ["1E+5000", "1E-5000", "1." + "2" * 5000, "1000000000000", "0.0000000000001",
+                                  "0E-5000", "-1E+13"],
+                         ids=["huge", "tiny", "5,000 places", "13 digits", "13 places", "zero at 5,000 places",
+                              "minus 14 digits"])
+def test_a_number_past_twelve_places_or_twelve_digits_is_no_number(text):
+    # the first three make a Fraction whose numerator or denominator is past the 4,300 digits Python prints
+    assert number(text) is None
+
+
+@pytest.mark.parametrize("text", ["8.72", "0.000000000001", "999999999999.999999999999", "1E+11", "1E-12", "-3", "0",
+                                  "75.00"])
+def test_a_number_within_twelve_places_and_twelve_digits_reads(text):
+    assert number(text) == Decimal(text)
+
+
+def test_a_gift_value_of_an_exponent_no_chain_writes_is_a_format_change():
+    for value in ("1E+5000", "1E-5000"):
+        with pytest.raises(PromotionFormatChanged, match=r"^ramilevy: IsGiftItem '1E[+-]5000' is not a quantity$"):
+            gift_value("ramilevy", value)

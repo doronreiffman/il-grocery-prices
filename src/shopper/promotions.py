@@ -95,6 +95,8 @@ RESTRICTIONS = {"1": "club", "2": "chain_card", "3": "other"}
 _ORDER = ("club", "chain_card", "other")
 _NO_RESTRICTION = "0"
 _CODES = frozenset("0123456789")
+PLACES = 12   # number's bound: at most twelve places,
+DIGITS = 12   # and at most twelve digits before the point
 
 
 @dataclass(frozen=True)
@@ -109,12 +111,19 @@ class Target:
 
 
 def number(text: str) -> Decimal | None:
-    """The text as a finite decimal, or None."""
+    """The text as a finite decimal of at most PLACES places and fewer than DIGITS + 1 digits before the point, or None.
+
+    Every price, quantity, rate and amount the chains' files carry sits far inside the bound (PLACES and DIGITS), and
+    every table the shopper site writes holds less (DECIMAL(13,3) at most). A value past it is no number to every
+    reader, as a text that is no decimal is: read, "1E+5000" or "1E-5000" makes a Fraction whose numerator or
+    denominator has more than the 4,300 digits Python prints, so the items table's exact price could not be written."""
     try:
         value = Decimal(text)
     except InvalidOperation:
         return None
-    return value if value.is_finite() else None
+    if not value.is_finite() or value.as_tuple().exponent < -PLACES or value.adjusted() >= DIGITS:
+        return None
+    return value
 
 
 def date_part(text: str) -> date | None:

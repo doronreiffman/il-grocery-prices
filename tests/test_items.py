@@ -394,6 +394,19 @@ def test_a_deal_price_too_large_to_show_keeps_its_fraction(tmp_path):
     assert deal_from_row(struct).price == Fraction(12345678901)
 
 
+@pytest.mark.parametrize("text", ["1E+5000", "1E-5000"], ids=["huge", "tiny"])
+def test_a_deal_of_an_exponent_no_chain_writes_has_no_price(tmp_path, text):
+    # read, the fixed price was a Fraction too long for price_exact's text (Python prints 4,300 digits), and the MinQty
+    # a buy the table cannot hold: shopper.promotions.number's bound reads neither
+    fixed = _one("92", _item(A, reward="3", price=text))
+    bundle = _one("93", _item(B, reward="1", min_qty=text, price="8.72"))
+    _, rows = _run(tmp_path, _at(("1", "2"), (A, "5.00"), (B, "5.00")), {"1": [fixed, bundle], "2": [fixed, bundle]})
+    for code in (A, B):
+        (struct,) = rows[(SHELI, code)]["promotions"]
+        assert (struct["price"], struct["price_exact"], struct["buy"], struct["valid"], struct["why"]) == (
+            None, None, Decimal("1.000"), False, "no price in the fields"), code
+
+
 def test_an_item_takes_the_kind_link_of_the_lowest_group_as_a_number(tmp_path):
     two_groups = _promotion("90", _group("10", [_item(A, reward="3", price="3.00")]),
                             _group("9", [_item(A, reward="3", price="4.00")]))

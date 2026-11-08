@@ -70,7 +70,8 @@ class Deal:
 
 def agrees(price: Decimal, base: Decimal, rate: Decimal) -> bool:
     """Whether `price` is within ₪0.01 of `base` × (1 − rate/100) rounded half up to agorot (question C). Exact while
-    `base` and `rate` hold 28 digits between them, `Decimal`'s precision (the tables' prices hold 12)."""
+    `base` and 100 − `rate` hold 28 digits between them, `Decimal`'s precision: the tables' prices hold at most 13,
+    and a rate above 0 and below 100 that `number` reads at most 14."""
     figure = (base * (100 - rate) / 100).quantize(AGREE, rounding=ROUND_HALF_UP)
     return abs(price - figure) <= AGREE
 

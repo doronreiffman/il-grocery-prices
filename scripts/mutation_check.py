@@ -108,6 +108,11 @@ EXTRACT_FOR_SHOP_PROMOS = ("src/basket/extract.py", ["tests/test_promos.py"])
 RULES_FOR_SHOP_PROMOS = ("src/basket/rules.py", ["tests/test_promos.py"])
 # The stores' agreement takes the deal's own rate check (shopper.deals.rate_agrees): its tests must catch the bound lost.
 DEALS_FOR_SHOP_PROMOS = ("src/shopper/deals.py", ["tests/test_promos.py"])
+# Every reader of a published number takes shopper.promotions.number's bound: the deal's, the promotions table's and
+# the items table's tests must each catch it lost.
+PROMOTIONS_FOR_SHOP_DEALS = ("src/shopper/promotions.py", ["tests/test_deals.py"])
+PROMOTIONS_FOR_SHOP_PROMOS = ("src/shopper/promotions.py", ["tests/test_promos.py"])
+PROMOTIONS_FOR_SHOP_ITEMS = ("src/shopper/promotions.py", ["tests/test_items.py"])
 SHOP_ITEMS = ("src/shopper/items.py", ["tests/test_items.py"])
 SHOP_EXTRACT = ("src/shopper/extract.py", ["tests/test_shop_extract.py"])
 # The items table reads B5, B6, B7, B8 and the rows that count from basket.rules, through a view of its own: its tests
@@ -1190,6 +1195,12 @@ MUTATIONS = {
     "an unknown discount type passed (q22 P10)": (SHOP_PROMOTIONS, '        if group["DiscountType"] not in DISCOUNT_TYPES[slug]:', "        if False:"),
     "a gift value of another form passed (q22 P10)": (SHOP_PROMOTIONS, "    if amount is None or amount <= 0:", "    if False:"),
     "a coupon's codes not checked (q22 P10)": (SHOP_PROMOTIONS, '        target(slug, promotion["ClubID"])\n', '        if is_coupon(promotion):\n            return False\n        target(slug, promotion["ClubID"])\n'),
+    # shopper.promotions.number's bound (the exponent fix), at its own tests and at each reader's
+    "a number's places unbounded (q22 P10)": (SHOP_PROMOTIONS, " or value.as_tuple().exponent < -PLACES", ""),
+    "a number's digits before the point unbounded (q22 P10)": (SHOP_PROMOTIONS, " or value.adjusted() >= DIGITS", ""),
+    "a number of any exponent read by the deal (q22 P4)": (PROMOTIONS_FOR_SHOP_DEALS, "    if not value.is_finite() or value.as_tuple().exponent < -PLACES or value.adjusted() >= DIGITS:", "    if not value.is_finite():"),
+    "a number of any exponent read as a store price or a min spend (q22 promotions table)": (PROMOTIONS_FOR_SHOP_PROMOS, "    if not value.is_finite() or value.as_tuple().exponent < -PLACES or value.adjusted() >= DIGITS:", "    if not value.is_finite():"),
+    "a number of any exponent read into the items table (q22 items)": (PROMOTIONS_FOR_SHOP_ITEMS, "    if not value.is_finite() or value.as_tuple().exponent < -PLACES or value.adjusted() >= DIGITS:", "    if not value.is_finite():"),
     "an element checked against its level's first set only (q22 P10)": (SHOP_PROMOFILE, "        if frozenset(tags) not in expected:", "        if frozenset(tags) != min(expected, key=sorted):"),
     "missing named against the first set, not the nearest (q22 P10)": (SHOP_PROMOFILE, "            nearest = min(expected, key=lambda one: (len(one ^ tags), sorted(one)), default=frozenset())", "            nearest = min(expected, key=sorted, default=frozenset())"),
     "the nearest set's tie broken in reverse order (q22 P10)": (SHOP_PROMOFILE, "(len(one ^ tags), sorted(one))", "(len(one ^ tags), sorted(one, reverse=True))"),
@@ -1345,7 +1356,6 @@ MUTATIONS = {
     'the extract given the hand-kept table whatever the module holds (q22 extract)': (BASKET_HANDLER, 'extract_chain_day(raw, slug, day, tables, table=CARREFOUR_TABLE)', 'extract_chain_day(raw, slug, day, tables)'),
     "the shopper's half left out of the extract summary (q22 extract)": (BASKET_HANDLER, '"keys": keys, **report.summary()}', '"keys": keys}'),
     "the rate's bound left out of the stores' agreement (q22 promotions table)": (DEALS_FOR_SHOP_PROMOS, 'rate is not None and 0 < rate < 100 and agrees(price, base, rate)', 'rate is not None and agrees(price, base, rate)'),
-    'a store price staged in its full digits (q22 promotions table)': (SHOP_PROMOS, 'None if price is None else str(price),', 'None if price is None else format(price, "f"),'),
     'the copies not sorted by row (q22 promotions table)': (SHOP_PROMOS, '        ORDER BY k.col, k.promotion_id, k.group_id, k.code, h.store_number, h.seq\n', ''),
     "each row's copies gathered as an ordered list (q22 promotions table)": (SHOP_PROMOS, '        SELECT k.col, k.promotion_id, k.group_id, k.code, i.kind, h.store, h.price, h.rate, h.own\n        FROM keyed k\n        JOIN chosen ch ON ch.col = k.col AND ch.promotion_id = k.promotion_id AND ch.group_id = k.group_id\n                      AND ch.code = k.code\n        JOIN read_parquet({staged["items"]}) i ON i.variant = ch.item_variant\n        JOIN held h ON h.col = k.col AND h.promotion_id = k.promotion_id AND h.group_id = k.group_id AND h.code = k.code\n        ORDER BY k.col, k.promotion_id, k.group_id, k.code, h.store_number, h.seq\n', '        SELECT col, promotion_id, group_id, code, kind, unnest(copies, recursive := true)\n        FROM (SELECT k.col, k.promotion_id, k.group_id, k.code, i.kind, list({{\'store\': h.store, \'price\': h.price, \'rate\': h.rate, \'own\': h.own}} ORDER BY h.store_number, h.seq) AS copies\n        FROM keyed k\n        JOIN chosen ch ON ch.col = k.col AND ch.promotion_id = k.promotion_id AND ch.group_id = k.group_id\n                      AND ch.code = k.code\n        JOIN read_parquet({staged["items"]}) i ON i.variant = ch.item_variant\n        JOIN held h ON h.col = k.col AND h.promotion_id = k.promotion_id AND h.group_id = k.group_id AND h.code = k.code\n        GROUP BY ALL) ORDER BY col, promotion_id, group_id, code\n'),
     # basket: extract
