@@ -87,6 +87,7 @@ from shopper.words import (BROWSE_LINK, FINE_PRINT, FRONT_RULE, FRONT_TITLE, GAP
                            shown_below, unreadable)
 
 BASKET_SECTION = "headline-basket"     # the basket's method on the method page: not its inner heading's id, "basket"
+BASKET_PAGE = "the basket page"        # what the basket's method section speaks of on the method page
 GITHUB = HIRING[-1][1]
 # The front page's own words
 RULE_LINE = f"The rule: {FRONT_RULE}."
@@ -113,6 +114,9 @@ CONDITIONS = {
                     f"scored forecasts off by more than {BIN_OFF}"),
 }
 TOO_FEW = "too few days"
+SCORED_SO_FAR = (f"The tables below count only the days whose forecasts file has been scored so far: a day's file is "
+                 f"scored {HORIZON} days after it is frozen, so the latest days frozen are not in them yet (the days "
+                 "frozen are counted further down).")
 FILES_LABEL = ("These files are this site's test records of its forecasts, published so that anyone can check them; "
                "they are not advice.")
 # The method page: Shufersal's formats in no column on the fixed day, named where the design names them
@@ -302,10 +306,12 @@ def render_front(rows: Iterable[FrontRow], counts: Counts, day: date, collected_
 
 COLUMN_INTRO = ("A column is a store format this site shows as its own unit. Shufersal's and Carrefour's formats carry "
                 "different promotions and list different prices (measured on the files of 5 and 7 November 2026), so "
-                "each format is a column of its own, and every measure here is a column's: which products are covered, "
-                "listed prices, promotions listed across a column, the history, the forecasts and the record. "
-                f"{joined([CHAIN_NAMES[slug] for slug in SLUGS if len(columns_of(slug)) == 1])} are each shown as one "
-                "format, whole.")
+                f"each of their formats with at least {FLOOR} included stores is a column of its own (the floor below; "
+                "the smaller ones are in no column), and every measure on the front, product and record pages is a "
+                "column's: which products are covered, listed prices, promotions listed across a column, the history, "
+                "the forecasts and the record. The headline basket, in its section below, takes each chain's median "
+                f"instead. {joined([CHAIN_NAMES[slug] for slug in SLUGS if len(columns_of(slug)) == 1])} are each "
+                "shown as one format, whole.")
 COLUMNS_FIXED = (f"The {_NINE} columns are fixed in the code for target version {TARGET_VERSION}. A format of a "
                  f"chain split into formats is a column when it had at least {FLOOR} included stores on the store "
                  f"lists of {_day(FIXED_ON)}; a chain shown whole is a column whatever its size. A column whose stores "
@@ -567,8 +573,8 @@ def _reproduce_section(day: date, code_sha: str) -> str:
     site_day = f"site-days/{day.isoformat()}.json"
     take = (f"Take each chain's full price and promotion files and its store list of the day and the {READ_DAYS} days "
             f"before it, as the chains published them, this site's code on GitHub at the fingerprint {code_sha}")
-    same = ("and the rules above: the same files and code give the same numbers on every page. The day's inputs are "
-            "named in")
+    same = ("and the rules above: the same files and code give the same numbers on every page, the record's "
+            "intervals to rounding (F8). The day's inputs are named in")
     rest = ("; the forecasts and scores files and the ledger, linked from the record page, let anyone recompute the "
             "record.")
     return _section("reproduce", "To reproduce a page",
@@ -586,7 +592,7 @@ def render_method(basket: Basket, exclusions: Mapping[str, Sequence[Store]], col
              _section("measured", "Measured and inferred", f"<p>{text(MEASURED)}</p>"),
              _section("law", "The law", f"<p>{text(LAW)}</p>"), _reproduce_section(day, code_sha),
              f'<section id="{BASKET_SECTION}"><h2>{text(BASKET_TITLE)}</h2>'
-             f'{"".join(method_parts(basket, exclusions, public))}</section>']
+             f'{"".join(method_parts(basket, exclusions, public, BASKET_PAGE))}</section>']
     links = ((RECORD_TITLE, "record.html"), (BASKET_TITLE, "basket.html"))
     return page(f"{METHOD_TITLE} - {SITE_NAME}", "\n".join(parts), day, collected_by, links,
                 BASKET_STYLE + METHOD_STYLE, up="")
@@ -668,7 +674,8 @@ def _calibration(name: str, calibration: dict, scored: int) -> str:
 def _version(name: str, version: dict) -> str:
     periods = [("All", version["all"]), *((_month(month["month"]), month) for month in version["months"])]
     counts_head = "".join(f'<th scope="col">{head}</th>' for head in (
-        "Period", "Days frozen on time", "Days late, not counted", "Days scored", "Forecasts", "Scored", "Unscored",
+        "Period", "Files scored, frozen on time", "Files scored, frozen late (not counted)",
+        "Days with a scored forecast", "Forecasts", "Scored", "Unscored",
         "Outcome-1 share"))
     scores_head = "".join(f'<th scope="col">{head}</th>' for head in (
         "Period", "Brier score: model", "A", "B", "Model − A", "Model − B", "Skill against A", "Skill against B"))
@@ -702,7 +709,7 @@ def scorecard_section(scorecard: dict) -> str:
              f"{text(force['model_version'])}, target {text(force['target_version'])}.</p>",
              f"<p>Intervals: a moving-block bootstrap over the scored days, blocks of {boot['block']} scored days, "
              f"{boot['draws']:,} draws, seed {boot['seed']}, {boot['level']}% intervals; none under {boot['min_days']} "
-             "scored days.</p>"]
+             "scored days.</p>", f"<p>{text(SCORED_SO_FAR)}</p>"]
     if not any(version["all"]["scored"] for found in columns.values() for version in found["versions"]):
         parts.append(f"<p><b>{text(NOTHING_SCORED)}</b></p>")
     for key, found in columns.items():
@@ -767,9 +774,9 @@ def _days_read(column_days: Mapping[tuple[str, date], ColumnDay]) -> str:
         "Column", "Days with records", "Short of price files", "Promotions short of files or not read", "No table"))
     said = "No day is read."
     if days:
-        said = (f"This page reads the {len(days)} days from {_day(days[0])} to {_day(days[-1])}. A day short of price "
-                "files is a hole (P2); a day whose promotions were short of files or not read counts in no promotion "
-                "history (P8); a day with no table is one its chain's extraction did not write.")
+        said = (f"The site's build reads the {len(days)} days from {_day(days[0])} to {_day(days[-1])}. A day short "
+                "of price files is a hole (P2); a day whose promotions were short of files or not read counts in no "
+                "promotion history (P8); a day with no table is one its chain's extraction did not write.")
     table = f'<table class="days"><thead><tr>{head}</tr></thead><tbody>{"".join(rows)}</tbody></table>'
     return f"<p>{text(said)}</p>{_scroller('The days read', table)}"
 

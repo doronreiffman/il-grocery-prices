@@ -156,6 +156,8 @@ SHOP_WORDS_FOR_SHOP_PAGES = ("src/shopper/words.py", ["tests/test_shop_pages.py"
 PRODUCT_FOR_SHOP_PAGES = ("src/shopper/product.py", ["tests/test_shop_pages.py"])
 RECORD_FOR_SHOP_PAGES = ("src/shopper/record.py", ["tests/test_shop_pages.py"])
 FREEZE_FOR_SHOP_PAGES = ("src/shopper/freeze.py", ["tests/test_shop_pages.py"])
+# The basket's reproduce words name the page the day file's numbers are on (Task 18, fix round 1).
+WORDS_FOR_SHOP_PAGES = ("src/basket/words.py", ["tests/test_shop_pages.py"])
 # The deal price for the eye is written by shopper.deals.to_agora, which the items table and the words both call: each
 # one's tests must catch a break of it.
 DEALS_FOR_SHOP_ITEMS = ("src/shopper/deals.py", ["tests/test_items.py"])
@@ -1950,7 +1952,7 @@ MUTATIONS = {
     'the stores left out by rule in a column not named (q22 pages)': (SHOP_PAGES, '_left_out_in_columns(exclusions, columns.carrefour),', '"",'),
     'store 779 not named (q22 pages)': (SHOP_PAGES, '                    f"<p>{text(STORE_779)}</p>")\n', '                    "")\n'),
     'the rules left off the method page (q22 pages)': (SHOP_PAGES, '_floor_section(columns), _rules_section(), _never_section(),', '_floor_section(columns), _never_section(),'),
-    "the basket's method left off the method page (q22 pages)": (SHOP_PAGES, 'f\'{"".join(method_parts(basket, exclusions, public))}</section>\']', '"</section>"]'),
+    "the basket's method left off the method page (q22 pages)": (SHOP_PAGES, 'f\'{"".join(method_parts(basket, exclusions, public, BASKET_PAGE))}</section>\']', '"</section>"]'),
     "the basket's section under its inner heading's id (q22 pages)": (SHOP_PAGES, 'BASKET_SECTION = "headline-basket"', 'BASKET_SECTION = "basket"'),
     "the record's gate shown open (q22 pages)": (SHOP_PAGES, 'GATE_CLOSED = "Gate: closed."', 'GATE_CLOSED = "Gate: open."'),
     'an open gate rendered on the record page (q22 pages)': (SHOP_PAGES, '    if found["open"]:\n        raise', '    if False:\n        raise'),
@@ -1982,6 +1984,17 @@ MUTATIONS = {
     'an unchanged day file rewritten when the pages are not asked (q22 pages)': (BUILD_FOR_SHOP_PAGES, '    elif not unchanged:\n', '    else:\n'),
     "the outcome's day as built, not as shown (q22 pages)": (BUILD_FOR_SHOP_PAGES, 'index_headline(shown, basket), shown,', 'index_headline(shown, basket), public_day(record),'),
     "the outcome's stores left out not the chain's (q22 pages)": (BUILD_FOR_SHOP_PAGES, '    exclusions = {slug: excluded(stores[slug], slug) for slug in chains}\n', '    exclusions = {slug: [] for slug in chains}\n'),
+    # Task 18, fix round 1: the record's tables, the basket section's page, the column intro, reproducing, the days read
+    "the record's tables said to count every frozen day (q22 pages)": (SHOP_PAGES, '             "scored days.</p>", f"<p>{text(SCORED_SO_FAR)}</p>"]', '             "scored days.</p>"]'),
+    "the record's heads read as every frozen day (q22 pages)": (SHOP_PAGES, '"Period", "Files scored, frozen on time", "Files scored, frozen late (not counted)",', '"Period", "Days frozen on time", "Days late, not counted",'),
+    "the basket's method section speaking of this page (q22 pages)": (SHOP_PAGES, 'method_parts(basket, exclusions, public, BASKET_PAGE)', 'method_parts(basket, exclusions, public)'),
+    "the claims heading ignoring the page's name (q22 pages)": (PAGE_FOR_SHOP_PAGES, 'f"<h2>What {_text(page or \'this page\')} does not claim</h2>"', '"<h2>What this page does not claim</h2>"'),
+    "the day file's page not passed to the reproduce words (q22 pages)": (PAGE_FOR_SHOP_PAGES, 'public[\'code_sha\'], on))}</p>",', 'public[\'code_sha\']))}</p>",'),
+    "the reproduce words ignoring the page's name (q22 pages)": (WORDS_FOR_SHOP_PAGES, 'f"number on {page} and the counts behind them', '"number on the page and the counts behind them'),
+    'the column intro making every format a column (q22 pages)': (SHOP_PAGES, 'f"each of their formats with at least {FLOOR} included stores is a column of its own (the floor below; "', '"each format is a column of its own ("'),
+    'the column intro claiming every measure on the page (q22 pages)': (SHOP_PAGES, '"the smaller ones are in no column), and every measure on the front, product and record pages is a "', '"the smaller ones are in no column), and every measure here is a "'),
+    "the reproduce sentence without the intervals' rounding (q22 pages)": (SHOP_PAGES, 'same numbers on every page, the record\'s "\n            "intervals to rounding (F8). The day\'s inputs are named in")', 'same numbers on every page. The day\'s inputs are named in")'),
+    'the days read said of this page (q22 pages)': (SHOP_PAGES, 'said = (f"The site\'s build reads the {len(days)} days from', 'said = (f"This page reads the {len(days)} days from'),
     # basket: extract
     "extract older file wins": (EXTRACT, "latest = max(named)", "latest = min(named)"),
     "extract first duplicate wins": (EXTRACT, "        latest[row.code] = row", "        latest.setdefault(row.code, row)"),
