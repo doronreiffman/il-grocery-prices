@@ -9,8 +9,8 @@ from fractions import Fraction
 
 from shopper.deals import Deal
 from shopper.history import ColumnDay, Pair, Point, Window, window
-from shopper.measures import (MIN_FRONT_DAYS, Change, Gap, Run, days_since, depth, gap, gaps, on_front,
-                              promoted_today, promotion_days, promotion_points, runs)
+from shopper.measures import (MIN_FRONT_DAYS, RECENT_DAYS, Change, Gap, Run, changes, days_since, depth, gap, gaps,
+                              on_front, promoted_today, promotion_days, promotion_points, runs)
 
 DAY = date(2026, 11, 20)
 DEAL, SHELI = "shufersal-deal", "shufersal-sheli"
@@ -170,6 +170,26 @@ def test_a_change_across_a_hole_is_dated_the_day_it_is_seen():
     # a price spelled with another number of places is the same price
     spelled = {back(2): "10.9", back(1): "10.90"}
     assert gap(Fraction("7.90"), _pair(DEAL, spelled), _days(DEAL, spelled), DAY).changes == ()
+
+
+def test_changes_over_a_window_of_any_length():
+    """`changes` with the window's length: P7 reads the 30 days' (the gap's own), the product page's history the 90's;
+    each is a change between consecutive counted days of the 90-day window, the later day in the window."""
+    listed = {back(91): "8.00",                                                     # before the 90: never read
+              **listed_from(46, 90, "10.00"), **listed_from(32, 45, "10.50"), back(31): "11.00",
+              **listed_from(16, 30, "12.00"), **listed_from(1, 15, "9.50")}
+    pair, column_days = _pair(DEAL, listed), _days(DEAL, listed)
+    assert changes(pair, column_days, DAY, RECENT_DAYS) == _gap("7.90", listed).changes
+    assert changes(pair, column_days, DAY, 90) == (
+        Change(day=back(45), since=back(46), before=Decimal("10.00"), after=Decimal("10.50")),
+        Change(day=back(31), since=back(32), before=Decimal("10.50"), after=Decimal("11.00")),
+        Change(day=back(30), since=back(31), before=Decimal("11.00"), after=Decimal("12.00")),
+        Change(day=back(15), since=back(16), before=Decimal("12.00"), after=Decimal("9.50")))
+    # a change on the 90-day window's second day counts; the first has no counted day before it
+    edge = {**listed_from(90, 90, "10.00"), **listed_from(1, 89, "11.00")}
+    assert changes(_pair(DEAL, edge), _days(DEAL, edge), DAY, 90) == (
+        Change(day=back(89), since=back(90), before=Decimal("10.00"), after=Decimal("11.00")),)
+    assert changes(_pair(DEAL, edge), _days(DEAL, edge), DAY, RECENT_DAYS) == ()
 
 
 # The front page's test (Q3 (b))

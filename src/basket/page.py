@@ -13,6 +13,11 @@ tiles' labels are the headline's own: "Lowest listed total today", "Highest", an
 Look. One style block: colours as custom properties with a dark set for `prefers-color-scheme: dark`, the
 system font stack, tabular figures in tables, a header band, cards, and the item table scrolling in its own
 box on a narrow screen (its first column held in place) and its header row held at the top on a wide one.
+The block has two parts: `BASE_STYLE`, the rules every page of this site and of the shopper site takes (the
+colours and their dark set, the fonts, the body, links, the header band, sections, tables, the footer and the
+phone's spacing), and `BASKET_STYLE`, the basket pages' own. The base rules are not the old block's first lines,
+so both are cut from pieces kept in the old order, and `STYLE`, their join in that order, is the same bytes the
+basket's pages carried before the split.
 
 Order. Chains go by rank, the slug breaking a tie; a chain with no rank comes after those with one. Items
 go in the basket's order.
@@ -52,7 +57,8 @@ from basket.stores import Store
 
 MARKER = ".basket-site"
 HEBREW = re.compile(r"[\u0590-\u05FF]+(?:[\s\d%'\".,()\-]+[\u0590-\u05FF]+)*")
-STYLE = """
+# every page: the colours and their dark set, the fonts, the body, links, the header band, sections
+_TOP = """\
 :root {
   color-scheme: light dark;
   --bg: #f5f6f4; --surface: #ffffff; --surface-2: #f0f2ef; --hover: #f7f8f6;
@@ -95,6 +101,9 @@ main > p, main > section p, main > section ul { max-width: 46rem; }
 main > section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
                  box-shadow: var(--shadow); padding: var(--s5); margin: var(--s5) 0; }
 main > section > :last-child { margin-bottom: 0; }
+"""
+# the basket's: the tiles, the headline, the revised line, the bars
+_TILES_AND_BARS = """\
 .tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s4); margin: 0 0 var(--s5); }
 .tile { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
         box-shadow: var(--shadow); padding: var(--s4) var(--s5); }
@@ -121,6 +130,9 @@ li.lowest .fill { fill: var(--accent); }
 .total { grid-area: total; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
 ol.bars li.out { grid-template-areas: "rank name name name" "rank note note note"; }
 li.out .name { color: var(--text-3); }
+"""
+# every page: tables and their scrolling box
+_TABLES = """\
 .table { overflow-x: auto; }
 table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: .875rem;
         font-variant-numeric: tabular-nums; }
@@ -130,6 +142,9 @@ thead th { background: var(--surface-2); color: var(--text-2); font-size: .8125r
 th small, td small { display: block; margin-top: 2px; color: var(--text-3); font-size: .75rem; font-weight: 400;
                      line-height: 1.35; text-wrap: balance; }
 tbody tr:hover > * { background: var(--hover); }
+"""
+# the basket's: the price and basket tables, the notes, the rules, the stores' details
+_BASKET_TABLES = """\
 table.prices { min-width: 44rem; }
 table.prices thead th + th, table.prices td { text-align: right; }
 table.prices td { font-size: .9375rem; font-weight: 600; }
@@ -156,10 +171,16 @@ summary { cursor: pointer; color: var(--accent); font-weight: 600; }
 details ul { columns: 3 13rem; column-gap: var(--s5); margin-top: var(--s2); font-size: .8125rem;
              color: var(--text-2); }
 details li { break-inside: avoid; }
+"""
+# every page: the footer
+_FOOTER = """\
 footer { margin-top: var(--s7); background: var(--surface); border-top: 1px solid var(--border); color: var(--text-3);
          font-size: .8125rem; }
 footer .wrap { padding-top: var(--s5); padding-bottom: var(--s6); }
 footer p { max-width: 46rem; margin: 0; }
+"""
+# the basket's: the price table on wide and narrow screens
+_BASKET_SCREENS = """\
 @media (min-width: 50rem) {
   .table { overflow: visible; }
   table.prices thead th { position: sticky; top: 0; z-index: 1; }
@@ -172,9 +193,14 @@ footer p { max-width: 46rem; margin: 0; }
   table.prices thead th:first-child { background: var(--surface-2); }
   table.prices th:first-child { padding-left: var(--s4); }
 }
-@media (max-width: 37.5rem) {
+"""
+# every page, on a phone
+_NARROW_BASE = """\
   main { padding-top: var(--s5); }
   main > section { padding: var(--s4); margin: var(--s4) 0; }
+"""
+# the basket's, on a phone
+_NARROW_BASKET = """\
   .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s3); margin-bottom: var(--s4); }
   .tile { padding: var(--s3) var(--s4); }
   .tile.gap { grid-column: 1 / -1; }
@@ -184,8 +210,14 @@ footer p { max-width: 46rem; margin: 0; }
                grid-template-areas: "rank name total" "rank bar bar" "rank note note"; row-gap: var(--s1); }
   ol.bars li.out { grid-template-areas: "rank name name" "rank note note"; }
   ol.rules li { grid-template-columns: minmax(0, 1fr); gap: var(--s1); }
-}
 """
+_NARROW = "@media (max-width: 37.5rem) {\n"
+_END = "}\n"
+BASE_STYLE = "\n" + _TOP + _TABLES + _FOOTER + _NARROW + _NARROW_BASE + _END      # every page of either site
+BASKET_STYLE = _TILES_AND_BARS + _BASKET_TABLES + _BASKET_SCREENS + _NARROW + _NARROW_BASKET + _END   # the basket's own
+# The two in the old block's order, so the basket's pages carry the same bytes as before the split.
+STYLE = ("\n" + _TOP + _TILES_AND_BARS + _TABLES + _BASKET_TABLES + _FOOTER + _BASKET_SCREENS + _NARROW + _NARROW_BASE
+         + _NARROW_BASKET + _END)
 
 
 def render_index(public: dict, basket: Basket, exclusions: Mapping[str, Sequence[Store]]) -> str:

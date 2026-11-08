@@ -9,6 +9,7 @@ docs/shopper-site-plan.md), so a change on either side shows. The pairs and colu
 tests/test_measures.py builds them."""
 import re
 from datetime import date, timedelta
+from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
 
@@ -24,8 +25,10 @@ from shopper.words import (ALWAYS, ALWAYS_SENTENCE, AT_SOME_STORES, CREDIT_START
                            FRONT_RULE, FRONT_TITLE, GAP_HEADING, HIRING, HISTORY_HEADING, METHOD_TITLE, NEVER,
                            ODDS_WORDS, PRICE_NOT_READ, RECORD_TITLE, SITE_NAME, TARGET_PHRASES, across, as_listed,
                            club_label, columns_tested, count_line, credit, date_line, date_range, formats_note,
-                           gap_sentences, history_sentences, last_across, no_odds_yet, starts_on, targets, unreadable,
-                           window_note)
+                           gap_sentences, history_sentences, last_across, no_odds_yet, price_history, starts_on,
+                           targets, unreadable, window_note)
+from shopper.words import (ACROSS_HEADING, BARCODE, BROWSE_LINK, CHANGES_SHOWN, NOT_LISTED, PER, buy, chart_key,
+                           deal_price, listed_price, minimum_spend, stores_range)
 from test_measures import DAY, DEAL, _days, _pair, back, listed_from
 
 ROOT = Path(__file__).parent.parent
@@ -320,6 +323,114 @@ def test_p7_figures_are_the_shown_figures():
         "listed at ₪3.33 or less on 0 of the 30 days of records since 21 October 2026 before today.")
 
 
+
+def _price_history(listed, holes=()):
+    """The product page's listed-price history for a Deal pair listing `listed` (day -> price), on the page's day."""
+    return price_history(_pair(DEAL, listed), _days(DEAL, listed, holes=holes), DAY)
+
+
+def test_the_listed_price_history_over_the_90_days():
+    """The product page's history as text (Task 16; the controller's ruling 1): P7's change sentence over the 90-day
+    window, on Task 15's rules: the shown figures, a date only between consecutive days with records, before today."""
+    assert _price_history(_example()) == "The listed price rose from ₪10.90 to ₪11.90 on 28 October 2026."
+    listed = {**listed_from(46, 90, "10.00"), **listed_from(32, 45, "10.50"), back(31): "11.00",
+              **listed_from(16, 30, "12.00"), **listed_from(1, 15, "9.50")}
+    assert _price_history(listed) == (
+        "The listed price rose from ₪10.00 to ₪10.50 on 6 October 2026, then rose from ₪10.50 to ₪11.00 on 20 "
+        "October 2026, then rose from ₪11.00 to ₪12.00 on 21 October 2026, then fell from ₪12.00 to ₪9.50 on 5 "
+        "November 2026.")
+    # P7 says the 30 days' changes only, the history the 90's
+    assert gap_sentences(_gap("7.90", listed))[2] == (
+        "The listed price rose from ₪11.00 to ₪12.00 on 21 October 2026, then fell from ₪12.00 to ₪9.50 on 5 November "
+        "2026.")
+    # across a gap in the records, both days
+    across_hole = {back(5): "10.90", back(4): "99.00", back(3): "11.90", back(2): "11.90"}
+    assert _price_history(across_hole, holes=[back(4)]) == (
+        "The listed price rose from ₪10.90 (15 November 2026) to ₪11.90 (17 November 2026).")
+    # a change the shown figures do not show is none
+    assert _price_history({back(3): "1.445", back(2): "1.45", back(1): "1.45"}) == (
+        "The listed price did not change on the 3 days of records since 17 November 2026 before today.")
+
+
+def test_the_listed_price_history_unchanged_says_its_days():
+    """With no change, the days the files say it of: all 90, those with records of the 90, or a short window's."""
+    assert _price_history(listed_from(1, 90, "10.00")) == "The listed price did not change in the 90 days before today."
+    assert _price_history(listed_from(1, 90, "10.00"), holes=[back(n) for n in range(1, 6)]) == (
+        "The listed price did not change on the 85 days with records of the 90 before today.")
+    assert _price_history(listed_from(1, 59, "10.00")) == (
+        "The listed price did not change on the 59 days of records since 22 September 2026 before today.")
+    assert _price_history(listed_from(1, 5, "10.00")) == (
+        "The listed price did not change on the 5 days of records since 15 November 2026 before today.")
+    # today's own price is no day of the window; with no day of records in the 90, nothing is said
+    assert _price_history({**listed_from(1, 5, "10.00"), DAY: "11.00"}) == _price_history(listed_from(1, 5, "10.00"))
+    assert _price_history({DAY: "11.00"}) is None
+    assert _price_history(listed_from(1, 5, "10.00"), holes=[back(n) for n in range(1, 6)]) is None
+
+
+
+def _changing(count: int, start: int = 1) -> dict:
+    """A listed price that changes `count` times over the days before today, a change every other day, newest first
+    seen `start` days back: ₪10.00, then ₪11.00, ₪10.00, … ."""
+    return {back(start + n): ("10.00" if (count - n // 2) % 2 == 0 else "11.00") for n in range(2 * count + 1)}
+
+
+def test_a_change_list_holds_the_newest_five():
+    """Task 16, round 2 (the 60 KB cap): both change lists, P7's 30 days and the history's 90, show at most
+    CHANGES_SHOWN (5) changes, the newest, in day order; past five, a tail says how many were seen, in the very
+    window phrase the sentence uses when nothing changed."""
+    assert CHANGES_SHOWN == 5
+    five = _changing(5)
+    assert len(gap_sentences(_gap("7.90", five))[2].split(", then ")) == 5
+    assert "(the last" not in gap_sentences(_gap("7.90", five))[2] and "(the last" not in _price_history(five)
+    six = _changing(6)
+    days = sorted(six)
+    assert gap_sentences(_gap("7.90", six))[2] == (
+        f"The listed price fell from ₪11.00 to ₪10.00 on {days[3]:%-d %B %Y}, then rose from ₪10.00 to ₪11.00 on "
+        f"{days[5]:%-d %B %Y}, then fell from ₪11.00 to ₪10.00 on {days[7]:%-d %B %Y}, then rose from ₪10.00 to "
+        f"₪11.00 on {days[9]:%-d %B %Y}, then fell from ₪11.00 to ₪10.00 on {days[11]:%-d %B %Y} (the last 5 of 6 "
+        "changes seen on the 13 days of records since 7 November 2026 before today).")
+    assert days[3] - days[1] == timedelta(days=2) and "rose from ₪10.00 to ₪11.00 on" not in gap_sentences(
+        _gap("7.90", six))[2].split(", then ")[0]                       # the oldest change is the one left out
+    # the window phrase is the unchanged sentence's own: every day with a record, or those with records of the 90
+    daily = {back(n): ("10.00" if n % 2 else "11.00") for n in range(1, 91)}
+    assert _price_history(daily).endswith(" (the last 5 of 89 changes seen in the 90 days before today).")
+    assert _price_history(daily, holes=[back(2)]).endswith(
+        " (the last 5 of 87 changes seen on the 89 days with records of the 90 before today).")
+    assert gap_sentences(_gap("7.90", daily))[2].endswith(
+        " (the last 5 of 30 changes seen in the 30 days before today).")   # one on the window's first day
+
+
+def test_a_change_across_a_gap_keeps_its_bounds_in_the_capped_list():
+    """Inside the newest five, a change across a hole still gives both record days, never one date."""
+    listed = _changing(6)
+    days = sorted(listed)
+    hole = days[-2]                                                       # between the last two changes' days
+    listed[hole] = "99.00"
+    said = _price_history(listed, holes=[hole])
+    shown = said.split(", then ")
+    assert len(shown) == 5 and "(the last 5 of 6 changes seen" in said
+    assert shown[-1].startswith(f"fell from ₪11.00 ({days[-3]:%-d %B %Y}) to ₪10.00 ({days[-1]:%-d %B %Y})")
+
+
+def test_the_product_pages_labels():
+    """Task 16's labels (the controller's rulings): the design's and the brief's phrases put together. Today's listed
+    price carries the three ALWAYS phrases a listed price takes; a deal's price is a unit's or a kilogram's (P4), to the
+    agora half up; the stores' range is labelled as the stores'; P9's heading and the chart's key."""
+    assert listed_price(Decimal("11.895")) == (
+        "Listed price ₪11.90, before promotions, as listed in the chain's price files")
+    assert all(phrase in listed_price(Decimal(1)).lower() for phrase in ALWAYS[:3])
+    assert PER == {"unit": "per unit", "kg": "per kilogram"}
+    assert deal_price(Fraction(10, 3), "unit") == "Deal price ₪3.33 per unit"
+    assert deal_price(Fraction("4.34") / 3, "kg") == "Deal price ₪1.45 per kilogram"
+    assert buy(Decimal("3.000")) == "buy 3" and buy(Decimal("1.500")) == "buy 1.5"
+    assert stores_range(Decimal("4.355"), Decimal("4.6")) == "stores ₪4.36 to ₪4.60"
+    assert minimum_spend(Decimal("150")) == "minimum spend ₪150.00"
+    assert (NOT_LISTED, ACROSS_HEADING, BROWSE_LINK, BARCODE) == (
+        "not listed today", "Today at each column, in name order", "Browse by first letter", "Barcode")
+    assert chart_key("shufersal-deal") == ("listed price", "a promotion listed across Shufersal Deal")
+    assert chart_key("ramilevy")[1] == f"a promotion {across('ramilevy')}"
+
+
 # P8
 
 def test_p8_sentences_in_the_designs_forms():
@@ -499,7 +610,13 @@ def _every_sentence() -> list[str]:
                                                       last_across(column.key, FRIDAY), as_listed([column.key]))),
             as_listed([column.key for column in COLUMNS]), *(unreadable(slug) for slug in slugs),
             *(text for found in gaps for text in gap_sentences(found)),
-            *(text for found in histories for text in found)]
+            *(text for found in histories for text in found),
+            listed_price(Decimal("11.90")), deal_price(Fraction(1), "unit"), deal_price(Fraction(1), "kg"),
+            buy(Decimal(3)), stores_range(Decimal(1), Decimal(2)), minimum_spend(Decimal(150)), NOT_LISTED,
+            ACROSS_HEADING, BROWSE_LINK, BARCODE, *(text for column in COLUMNS for text in chart_key(column.key)),
+            *(_price_history(listed) for listed in (_example(), listed_from(1, 90, "10.00"), listed_from(1, 5, "10.00"),
+                                                    {back(3): "11.90", back(1): "10.90"},
+                                                    {back(n): ("10.90" if n % 2 else "11.90") for n in range(1, 91)}))]
 
 
 def test_no_sentence_says_a_never_phrase_or_we():

@@ -25,9 +25,9 @@ The browse pages. `browse/<hex>.html` for each Hebrew letter (alef to tav, after
 starts some covered product's longest name, and `browse/other.html` for every product whose longest name does not start
 with a Hebrew letter: a Latin name, a digit, a sign. A page lists its products in name order, each a link to
 `../p/<barcode>.html` with the name as published, escaped, in a span of its own (`CHAIN_SPAN`), and the barcode; a row of
-links to every browse page sits above the list. The pages need no script: they are the path to every product. They carry
-the band, the date line and the credit line as the other pages do, `noindex`, and no script. A letter nobody starts
-a name with has no page.
+links to every browse page sits above the list. The pages need no script: they are the path to every product. They are
+built on the site's shared shell (`shopper.shell`: the band, the date line, the credit line, `noindex`, the base style
+and no script), with their own few rules after the base. A letter nobody starts a name with has no page.
 """
 import json
 from collections import defaultdict
@@ -36,10 +36,10 @@ from datetime import date
 from html import escape
 from pathlib import Path
 
-from basket.page import STYLE
 from basket.words import METHOD_LINK
 from shopper.history import Covered
-from shopper.words import SITE_NAME, credit, date_line
+from shopper.shell import page
+from shopper.words import SITE_NAME
 
 PIECE_MAX = 150_000
 SCRIPT = Path(__file__).parent / "static" / "search.js"
@@ -159,22 +159,4 @@ def _browse_page(key: str, items: list[Covered], keys: list[str], day: date, col
     main = (f'<h1>{heading}</h1>\n<nav aria-label="First letters"><ul class="letters">{nav}</ul></nav>\n'
             f'<p>{count}</p>\n<section><ul class="names">{rows}</ul></section>')
     title = (OTHER_HEADING if key == OTHER else f"Names that start with {chr(int(key, 16))}") + f" - {SITE_NAME}"
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex">
-<meta name="color-scheme" content="light dark">
-<title>{_text(title)}</title>
-<style>{STYLE}{BROWSE_STYLE}</style>
-</head>
-<body>
-<header class="band"><div class="wrap"><a href="../index.html">{_text(SITE_NAME)}</a><p class="dateline">{_text(date_line(day))}</p></div></header>
-<main>
-{main}
-</main>
-<footer><div class="wrap"><p>{_text(credit(day, collected_by))} <a href="../method.html">{_text(METHOD_LINK)}</a></p></div></footer>
-</body>
-</html>
-"""
+    return page(title, main, day, collected_by, ((METHOD_LINK, "method.html"),), BROWSE_STYLE)

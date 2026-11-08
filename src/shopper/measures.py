@@ -17,7 +17,8 @@ The gap (P7). With no day of records in the past 30 there is none (`gap` gives N
 - `low30` and `low90`: the lowest listed price of each window; `at_or_below`: the days of the 90 on which the item was
   listed at or below the deal. The listed price is the shelf price, before promotions.
 - `changes`: each pair of consecutive counted days of the 90-day window whose listed prices differ, with the later of
-  the two in the 30-day window; its day is the later one, its `since` the earlier. The earlier may lie before the
+  the two in the 30-day window (`changes` with the 30 days; the product page's history takes the 90's, every change of
+  the window); its day is the later one, its `since` the earlier. The earlier may lie before the
   window, so a rise on the window's first day shows. A day skipped between the two (a hole) does not hide a change;
   it is dated the day the new price is seen, and `since` keeps the last day the old one was seen, so the words can
   give both days when the change lies somewhere between them (Task 9's review).
@@ -104,9 +105,12 @@ def whole(value: Fraction) -> int:
     return whole if value >= 0 else -whole
 
 
-def _changes(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: date) -> tuple[Change, ...]:
+def changes(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: date,
+            length: int) -> tuple[Change, ...]:
+    """Each change between consecutive counted days of the 90-day window whose later day is in the window of `length`
+    days (30 for P7, 90 for the product page's history), in day order (the module's docstring)."""
     points = counted(pair, column_days, day, READ_DAYS)
-    first = day - timedelta(days=RECENT_DAYS)
+    first = day - timedelta(days=length)
     return tuple(Change(day=later.day, since=earlier.day, before=earlier.listed, after=later.listed)
                  for earlier, later in zip(points, points[1:])
                  if later.listed != earlier.listed and later.day >= first)
@@ -123,7 +127,7 @@ def gap(deal: Fraction, pair: Pair, column_days: Mapping[tuple[str, date], Colum
     return Gap(deal=deal, median30=middle, below=below, percent=whole(100 * below / Fraction(middle)),
                low30=min(recent.listed), low90=min(long.listed),
                at_or_below=sum(1 for listed in long.listed if Fraction(listed) <= deal),
-               window30=recent, window90=long, changes=_changes(pair, column_days, day))
+               window30=recent, window90=long, changes=changes(pair, column_days, day, RECENT_DAYS))
 
 
 def depth(gap: Gap) -> Fraction:

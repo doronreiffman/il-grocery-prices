@@ -48,6 +48,17 @@ November 2026) to ₪11.90 (17 November 2026)"), never one date the files cannot
 else "did not change on the 25 days with records of the 30 before today" (or a short window's words), since the files
 say nothing of the other days.
 
+The listed-price history on a product page (`price_history`, the plan's Task 16): P7's change sentence over the 90-day
+window, every change of the window (`shopper.measures.changes`) on the same rules: the shown figures, both days across
+a gap in the records. With none: "The listed price did not change in the 90 days before today." when each of the 90
+has a record, else "did not change on the 85 days with records of the 90 before today" (or a short window's words);
+with no day of records in the 90, nothing.
+
+Both change lists (P7's and the history's) show at most CHANGES_SHOWN (5) changes, the newest, in day order and in
+the same words (Task 16, round 2: a page of nine columns whose prices change daily stays under 60 KB). When more were
+seen, a tail says how many, in the very phrase the sentence uses for its window when nothing changed: "…, then fell from
+₪11.90 to ₪10.90 on 19 November 2026 (the last 5 of 89 changes seen in the 90 days before today)."
+
 P8, from the 90-day window (`shopper.measures`), naming the column as the amendment's "Words" do, so a promotion carried
 by fewer than half the column's stores is never denied: "On a promotion listed across Shufersal Deal on 12 of the 87
 days with records before today, as listed in the morning's files." ("(promotions could not be read on 2)" before the
@@ -66,6 +77,13 @@ run reaching yesterday when today's files list the product on a wide promotion i
 said when no day after the run was read (today's files saying nothing either way): the run may still be on. With no day
 of records in the 90 there is no history to count.
 
+The product page's labels (Task 16): the design's and the brief's phrases put together, never a claim of their own.
+Today's listed price carries "before promotions" and "as listed in the chain's price files" (`listed_price`); a deal's
+price is a unit's or a kilogram's (`deal_price`, P4), with "buy N" for "N for ₪M"; a percent-off deal's range is the
+stores' (`stores_range`), never a listed price, so ALWAYS_SENTENCE stays true; "minimum spend ₪150.00"; "not listed
+today"; P9's heading, "Today at each column, in name order"; the chart's key, "listed price" and P8's "a promotion
+listed across Shufersal Deal".
+
 Conditions (P5, question K and S3). A promotion's restrictions read from `ClubID` are K's phrase for each code present,
 joined in the order club, card, other ("club members only, and some customers only"); the programmes' names go beside
 them, as published, in the chain's own span (the product page's). The club-only filter's label names the chains whose
@@ -78,12 +96,13 @@ from fractions import Fraction
 
 from basket.chains import SLUGS
 from basket.record import money
+from basket.units import plain
 from basket.words import CHAIN_NAMES, METHOD_TITLE, NEVER as BASKET_NEVER, joined
 from shopper.columns import BY_KEY, COLUMNS, columns_of
 from shopper.deals import to_agora
 from shopper.history import READ_DAYS, ColumnDay, Pair, Window, window
-from shopper.measures import (RECENT_DAYS, Change, Gap, Run, days_since, gaps, promoted_today, promotion_days,
-                              promotion_points, runs, whole)
+from shopper.measures import (RECENT_DAYS, Change, Gap, Run, changes, days_since, gaps, promoted_today,
+                              promotion_days, promotion_points, runs, whole)
 from shopper.promotions import RESTRICTIONS
 
 SITE_NAME = "Five chains, listed prices"                                  # question J
@@ -115,8 +134,16 @@ CREDIT_START = (f"Prices and promotions from the price and promotion files {join
 HIRING = (("Built by Doron Reiffman", "https://www.linkedin.com/in/doronreiffman"), (METHOD_TITLE, "method.html"),
           (RECORD_TITLE, "record.html"), ("Code on GitHub", "https://github.com/doronreiffman/il-grocery-prices"))
 MORNING = "as listed in the morning's files"
+CHANGES_SHOWN = 5          # a change sentence lists the newest five, so a product page stays under its 60 KB
 NUMBER_WORDS = ("Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven",
                 "Twelve")
+# The product page's labels (the plan's Task 16, its controller's rulings): the design's and the brief's phrases put
+# together, never a sentence of their own
+BARCODE = "Barcode"
+NOT_LISTED = "not listed today"                              # P9, and a section's today
+PER = {"unit": "per unit", "kg": "per kilogram"}             # P4: a weighed deal's price is a kilogram's
+ACROSS_HEADING = "Today at each column, in name order"       # P9
+BROWSE_LINK = "Browse by first letter"                       # search.js's own "browse by first letter"
 
 
 def _day(day: date) -> str:
@@ -156,6 +183,37 @@ def as_listed(columns: Sequence[str]) -> str:
     if not names:
         raise ValueError("a name is listed by at least one column")
     return f"(as {joined(names)} {_plural(len(names), 'lists', 'list')} it)"
+
+
+def listed_price(price: Decimal) -> str:
+    """Today's listed price (P2) as shown (`basket.record.money`), with the ALWAYS phrases a listed price takes."""
+    return f"Listed price ₪{money(price)}, before promotions, as listed in the chain's price files"
+
+
+def deal_price(price: Fraction, per: str) -> str:
+    """A deal's price as shown (`shopper.deals.to_agora`), a unit's or a kilogram's (P4)."""
+    return f"Deal price ₪{to_agora(price)} {PER[per]}"
+
+
+def buy(quantity: Decimal) -> str:
+    """The condition of "N for ₪M" (P4)."""
+    return f"buy {plain(quantity)}"
+
+
+def stores_range(low: Decimal, high: Decimal) -> str:
+    """A percent-off deal's range over the stores carrying it (S4), labelled as the stores', never a listed price."""
+    return f"stores ₪{money(low)} to ₪{money(high)}"
+
+
+def minimum_spend(amount: Decimal) -> str:
+    """P5's minimum spend, from `MinPurchaseAmount`."""
+    return f"minimum spend ₪{money(amount)}"
+
+
+def chart_key(column: str) -> tuple[str, str]:
+    """The history chart's two marks: the line of listed prices, and the days on a promotion listed across the
+    column, in P8's words."""
+    return ALWAYS[0], f"a promotion {across(column)}"
 
 
 def across(column: str) -> str:
@@ -266,12 +324,31 @@ def _change(change: Change) -> str:
     return f"{verb} from ₪{before} ({_day(change.since)}) to ₪{after} ({_day(change.day)})"
 
 
-def _unchanged(recent: Window) -> str:
-    if recent.days == RECENT_DAYS:
-        return f"The listed price did not change in the {RECENT_DAYS} days before today."
+def _window_phrase(recent: Window, length: int) -> str:
+    """The days a change sentence over `recent`, a window of `length` days, speaks of: all of them only when each has
+    a record."""
+    if recent.days == length:
+        return f"in the {length} days before today"
     if recent.short:
-        return f"The listed price did not change on {_count(recent)}."
-    return f"The listed price did not change on {_the_days(recent)} of the {RECENT_DAYS} before today."
+        return f"on {_count(recent)}"
+    return f"on {_the_days(recent)} of the {length} before today"
+
+
+def _unchanged(recent: Window, length: int) -> str:
+    return f"The listed price did not change {_window_phrase(recent, length)}."
+
+
+def _changes_sentence(found: Sequence[Change], recent: Window, length: int) -> str:
+    """The changes the shown figures show, the newest CHANGES_SHOWN in day order, joined by "then", with a tail when
+    more were seen; or that there was none over `recent`, a window of `length` days (P7's third sentence, and the
+    product page's history over the 90)."""
+    stated = [change for change in found if _shown(change.before) != _shown(change.after)]
+    if not stated:
+        return _unchanged(recent, length)
+    tail = ""
+    if len(stated) > CHANGES_SHOWN:
+        tail = f" (the last {CHANGES_SHOWN} of {len(stated)} changes seen {_window_phrase(recent, length)})"
+    return f"The listed price {', then '.join(_change(change) for change in stated[-CHANGES_SHOWN:])}{tail}."
 
 
 def gap_sentences(gap: Gap) -> tuple[str, str, str]:
@@ -282,12 +359,17 @@ def gap_sentences(gap: Gap) -> tuple[str, str, str]:
     second = (f"The lowest listed price was ₪{money(gap.low30)} over the {RECENT_DAYS} days before today and "
               f"₪{money(gap.low90)} over the {READ_DAYS}; listed at ₪{deal} or less on {at_or_below} of "
               f"{_count(gap.window90)}.")
-    stated = [change for change in gap.changes if _shown(change.before) != _shown(change.after)]
-    if stated:
-        third = f"The listed price {', then '.join(_change(change) for change in stated)}."
-    else:
-        third = _unchanged(gap.window30)
-    return first, second, third
+    return first, second, _changes_sentence(gap.changes, gap.window30, RECENT_DAYS)
+
+
+def price_history(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: date) -> str | None:
+    """The product page's listed-price history as text: P7's change sentence over the 90-day window (every change of
+    the window, `shopper.measures.changes`), or that there was none on its days; None with no day of records in the
+    90."""
+    long = window(pair, column_days, day, READ_DAYS)
+    if not long.days:
+        return None
+    return _changes_sentence(changes(pair, column_days, day, READ_DAYS), long, READ_DAYS)
 
 
 # P8
