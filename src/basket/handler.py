@@ -1,7 +1,8 @@
 """The scheduled build's Lambda entry point: one invocation per event, as the collector's handler is. EventBridge
 Scheduler sends the events each morning; the owner sends the same with a "day" to run an earlier day by hand.
 
-    {"mode": "extract", "chain": "<slug>"}         the chain's full price files of the day into its table
+    {"mode": "extract", "chain": "<slug>"}         the chain's day of full files into its prices, promotions and
+                                                   items tables
     {"mode": "basket", "collected_by": "HH:MM"}    the day's record, pages and day file, built and published
 
 "day" (YYYY-MM-DD) is optional in both; without it the day is the Israel calendar date when the invocation starts.
@@ -15,11 +16,20 @@ so each run, before it makes its own, removes every `basket-*` folder under `tmp
 they hold is always an earlier run's. DuckDB's folder is swept only when it is a folder of its own under `tmp_root`.
 A removal that fails is logged as a warning and the run goes on.
 
-The extract mode fetches the chain's price files of the day from the archive bucket into the work folder, runs
-`basket.extract` over them as the Mac does, and puts the table and its report back under `tables/`, replacing an
-earlier run's. Its summary, logged as one JSON line and returned, counts the files read and passed over, the stores
-and rows in the table and the rows whose price could not be read, and gives the extraction's own seconds (the fetch
-and the put left out).
+The extract mode fetches the chain's full price and promotion files of the day (`PriceFull`, `PromoFull`) and its
+store list from the archive bucket into the work folder, runs `shopper.extract.extract_chain_day` over them as the
+Mac does (the prices table as `basket.extract` has always written it, then the store list, the columns, the
+promotions table and the items table), and puts each table's files that are present back under `tables/`, plain,
+replacing an earlier run's. Carrefour's columns are those of CARREFOUR_TABLE, the hand-kept table, read at call time so
+the tests can give the golden day's own. A promotion format change, or a promotion file that does not read, stops the
+chain's promotions and not the run: its prices and items tables go up, its promotions folder's report naming the error.
+Whatever stops the run once the prices table is written (no store list, a failure in the shopper's steps), the files
+written so far go up before the error is raised, so the basket run keeps the chain's prices table as before the
+shopper's steps. Its summary, logged as one JSON line and returned, counts the files read and passed over, the stores
+and rows in the prices table and the rows whose price could not be read, and gives the prices extraction's own seconds
+(the fetch and the put left out) and the keys put; then the promotions' counts (None when they were not read), the
+promotions error (None when there was none), each column's items, wide items, hole and promotion hole, and the
+seconds of the promotions and of the items steps.
 
 The basket mode fetches each chain's table of the day (MissingTable, naming the chain and the table's key, when its
 extraction run did not run or did not finish), its store list and its manifests, and the site's published copy of the
@@ -50,7 +60,6 @@ import os
 import re
 import shutil
 import tempfile
-import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -63,10 +72,9 @@ from zoneinfo import ZoneInfo
 from basket.archive import S3Archive, table_key
 from basket.basket_file import DEFAULT_BASKET
 from basket.build import build_day
-from basket.chains import SLUGS
+from basket.chains import CARREFOUR_COLUMNS, SLUGS
 from basket.check import check_site
 from basket.duck import TEMP_DIRECTORY_VAR
-from basket.extract import extract
 from basket.guard import guard_days
 from basket.rules import MissingTable
 from basket.site import S3Site
@@ -74,6 +82,7 @@ from collector.handler import ping, ping_user_agent
 from collector.http import check_user_agent
 from collector.run import new_run_id
 from collector.store import RETENTION_DAYS
+from shopper.extract import extract_chain_day
 
 # INFO on the package's logger itself, so the runs' summaries reach CloudWatch whatever level the runtime gives
 # the root logger, as the collector's handler does for its package.
@@ -87,6 +96,8 @@ ISRAEL = ZoneInfo("Asia/Jerusalem")
 CLOCK = re.compile(r"^[0-2][0-9]:[0-5][0-9]$")
 BASKET_FILE = DEFAULT_BASKET  # read at call time, as MIN_ITEMS is: the tests give the golden day's own
 MIN_ITEMS = 25  # the fewest items the basket may hold, as the hand build's default
+CARREFOUR_TABLE = CARREFOUR_COLUMNS  # read at call time, as BASKET_FILE is: the tests give the golden day's own
+EXTRACT_KINDS = ("PriceFull", "PromoFull")  # the extract mode's files of the day
 FAIL_BYTES = 100_000  # a /fail ping's body: the error's name and text, cut to this many bytes of UTF-8
 PING_PATHS = {"start": "/start", "success": "", "fail": "/fail"}  # each ping's kind and its path after the URL
 
@@ -261,14 +272,18 @@ def _masked(text: str, url: str) -> str:
 
 def _extract(slug: str, day: date, deps: Deps, now: datetime, work: Path) -> dict:
     run_id = new_run_id(now, "extract")
-    deps.archive.fetch_raw(slug, day, work / "raw")
-    started = time.perf_counter()
-    report = extract(work / "raw", slug, day, work / "tables")
-    seconds = time.perf_counter() - started
-    keys = deps.archive.put_table(slug, day, work / "tables")
-    return {"mode": "extract", "chain": slug, "day": day.isoformat(), "run_id": run_id, "files": len(report.files),
-            "skipped": len(report.skipped), "stores": report.stores, "rows": report.rows,
-            "unreadable_prices": report.unreadable_prices, "seconds": round(seconds, 1), "keys": keys}
+    raw, tables = work / "raw", work / "tables"
+    deps.archive.fetch_raw(slug, day, raw, kinds=EXTRACT_KINDS)
+    deps.archive.fetch_store_list(slug, day, raw)  # None: the extraction refuses the chain after its prices table
+    try:
+        report = extract_chain_day(raw, slug, day, tables, table=CARREFOUR_TABLE)
+    finally:  # whatever stopped it, what the extraction wrote goes up: a chain stopped after its prices keeps them
+        keys = deps.archive.put_tables(slug, day, tables)
+    prices = report.prices
+    return {"mode": "extract", "chain": slug, "day": day.isoformat(), "run_id": run_id, "files": len(prices.files),
+            "skipped": len(prices.skipped), "stores": prices.stores, "rows": prices.rows,
+            "unreadable_prices": prices.unreadable_prices, "seconds": round(report.seconds["prices"], 1),
+            "keys": keys, **report.summary()}
 
 
 def _basket(event: dict, deps: Deps, now: datetime, work: Path, day: date) -> dict:

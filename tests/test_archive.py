@@ -12,13 +12,17 @@ import pytest
 
 from basket.archive import (
     TABLE_FILES,
+    TABLES,
     MemoryArchive,
     S3Archive,
     _Archive,
+    kind_key,
     record_key,
     table_key,
 )
 from basket.extract import table_path
+from shopper.items import items_path, texts_path
+from shopper.promos import promotions_path
 from basket.stores import day_store_list
 from collector.store import AlreadyStored, check_key, manifest_key, raw_key
 from test_store import FakeS3, lock_of
@@ -30,6 +34,7 @@ PRICE = "PriceFull7290058140886-001-722-20261102-001016.gz"
 PRICE_COPY = PRICE + ".0123456789ab"  # a different body stored beside PRICE
 PRICE_OTHER_STORE = "PriceFull7290058140886-001-002-20261102-001500.gz"
 PROMO = "PromoFull7290058140886-001-722-20261102-001016.gz"
+PROMO_LOWER = "promofull7290058140886-001-002-20261102-001500.gz"  # the Mac's parse reads a name in any case
 STORES = "Stores7290058140886-000-20261102-050500.xml"
 PRICE_DAY_BEFORE = "PriceFull7290058140886-001-723-20261101-231500.gz"  # in the day's folder, named the day before
 
@@ -73,7 +78,7 @@ def test_day_checked_is_whether_the_day_has_a_check_record(archive):
     assert archive.day_checked(DAY) is True
 
 
-def test_day_price_file_keys_are_the_days_pricefull_files_only(archive):
+def test_day_file_keys_of_pricefull_are_the_days_pricefull_files_only(archive):
     # stored out of key order: the answer is sorted whatever order the listing gives
     stored(archive, DAY, PRICE_OTHER_STORE, b"other store")
     stored(archive, DAY, PRICE_COPY, b"changed")
@@ -83,8 +88,35 @@ def test_day_price_file_keys_are_the_days_pricefull_files_only(archive):
     stored(archive, DAY, PRICE, b"first")
     stored(archive, days_back(1), PRICE_DAY_BEFORE, b"the day before's folder")
     stored(archive, DAY, PRICE, b"another chain's", slug="shufersal")
-    assert archive.day_price_file_keys(SLUG, DAY) == [raw_key(SLUG, DAY, PRICE_OTHER_STORE),
-                                                      raw_key(SLUG, DAY, PRICE), raw_key(SLUG, DAY, PRICE_COPY)]
+    assert archive.day_file_keys(SLUG, DAY, "PriceFull") == [raw_key(SLUG, DAY, PRICE_OTHER_STORE),
+                                                             raw_key(SLUG, DAY, PRICE), raw_key(SLUG, DAY, PRICE_COPY)]
+
+
+def test_day_file_keys_of_each_kind(archive):
+    """The day's files of the kind asked for, as `basket.extract.day_files` reads them: a lower-case name read in any
+    case, a conflict copy by its published name, sorted; of another kind or another day, none."""
+    promo_copy = PROMO + ".0123456789ab"
+    for name in (PROMO_LOWER, promo_copy, PRICE, STORES, PROMO, "PromoFull7290058140886-001-723-20261101-231500.gz"):
+        stored(archive, DAY, name, b"body")
+    assert archive.day_file_keys(SLUG, DAY, "PromoFull") == [raw_key(SLUG, DAY, PROMO), raw_key(SLUG, DAY, promo_copy),
+                                                             raw_key(SLUG, DAY, PROMO_LOWER)]
+    assert archive.day_file_keys(SLUG, DAY, "PriceFull") == [raw_key(SLUG, DAY, PRICE)]
+    assert archive.day_file_keys(SLUG, DAY, "Stores") == [raw_key(SLUG, DAY, STORES)]
+
+
+def test_fetch_raw_takes_each_kind_asked_for_from_one_listing(archive, tmp_path):
+    stored(archive, DAY, PRICE, b"price")
+    stored(archive, DAY, PROMO, b"promo")
+    stored(archive, DAY, PROMO_LOWER, b"lower-case promo")
+    stored(archive, DAY, STORES, b"stores")
+    reads = []
+    listing = archive._keys
+    archive._keys = lambda prefix: reads.append(prefix) or listing(prefix)
+    raw_dir = tmp_path / "raw"
+    assert archive.fetch_raw(SLUG, DAY, raw_dir, kinds=("PriceFull", "PromoFull")) == [PRICE, PROMO, PROMO_LOWER]
+    assert local_files(raw_dir / "chain=ramilevy" / "date=2026-11-02") == {
+        PRICE: b"price", PROMO: b"promo", PROMO_LOWER: b"lower-case promo"}
+    assert reads == [raw_key(SLUG, DAY, "")]  # one listing of the day's folder, whatever the kinds
 
 
 def test_fetch_raw_writes_under_the_days_folder_and_returns_stored_names(archive, tmp_path):
@@ -166,14 +198,14 @@ def test_fetch_table_needs_both_files(archive, tmp_path):
     assert local_files(folder) == {"prices.parquet": b"PAR1", "report.json": b'{"rows": 1}'}
 
 
-def test_put_table_puts_both_files_plain(tmp_path):
+def test_put_tables_puts_the_prices_files_plain(tmp_path):
     fake = FakeS3()
     archive = S3Archive(fake, "bucket")
     folder = table_path(tmp_path, SLUG, DAY).parent
     folder.mkdir(parents=True)
     (folder / "prices.parquet").write_bytes(b"PAR1")
     (folder / "report.json").write_bytes(b'{"rows": 1}')
-    keys = archive.put_table(SLUG, DAY, tmp_path)
+    keys = archive.put_tables(SLUG, DAY, tmp_path)
     assert keys == [table_key(SLUG, DAY, "prices.parquet"), table_key(SLUG, DAY, "report.json")]
     assert fake.calls == [
         ("put_object", {"Bucket": "bucket", "Key": keys[0], "Body": b"PAR1",
@@ -183,8 +215,57 @@ def test_put_table_puts_both_files_plain(tmp_path):
     assert not any("ObjectLockMode" in kwargs or "IfNoneMatch" in kwargs for _, kwargs in fake.calls)
     # a re-run of the extraction replaces the table
     (folder / "prices.parquet").write_bytes(b"PAR2")
-    archive.put_table(SLUG, DAY, tmp_path)
+    archive.put_tables(SLUG, DAY, tmp_path)
     assert fake.objects[keys[0]][0] == b"PAR2"
+
+
+def test_kind_key_names_each_kind():
+    """A derived table's key, its kind's folder first; with no chain (the covered registry, the scored summaries),
+    no chain segment (the second pre-flight's S4). Each key is its file's path under a local folder named tables."""
+    assert TABLES == {"prices": ("prices.parquet", "report.json"),
+                      "promotions": ("promotions.parquet", "texts.parquet", "report.json"),
+                      "items": ("items.parquet", "report.json")}
+    assert TABLE_FILES == TABLES["prices"]
+    assert kind_key("promotions", SLUG, DAY, "texts.parquet") == (
+        "tables/promotions/chain=ramilevy/date=2026-11-02/texts.parquet")
+    assert kind_key("items", "shufersal", DAY, "items.parquet") == (
+        "tables/items/chain=shufersal/date=2026-11-02/items.parquet")
+    assert kind_key("covered", None, DAY, "covered.parquet") == "tables/covered/date=2026-11-02/covered.parquet"
+    assert kind_key("prices", SLUG, DAY, "report.json") == table_key(SLUG, DAY, "report.json")
+    assert Path(kind_key("promotions", SLUG, DAY, "promotions.parquet")) == promotions_path(Path("tables"), SLUG, DAY)
+    assert Path(kind_key("items", SLUG, DAY, "items.parquet")) == items_path(Path("tables"), SLUG, DAY)
+    assert Path(kind_key("promotions", SLUG, DAY, "texts.parquet")) == texts_path(Path("tables"), SLUG, DAY)
+
+
+def test_put_tables_puts_the_files_present(tmp_path):
+    """Each kind's files that are there, plain, in TABLES' order: after a format change the promotions folder holds
+    its report alone, and only that goes up (the first pre-flight's S7); a kind with no folder puts nothing."""
+    fake = FakeS3()
+    archive = S3Archive(fake, "bucket")
+    files = {table_path(tmp_path, SLUG, DAY): b"PAR1", table_path(tmp_path, SLUG, DAY).with_name("report.json"): b"{}",
+             promotions_path(tmp_path, SLUG, DAY).with_name("report.json"): b'{"promotions_error": "ramilevy: x"}',
+             items_path(tmp_path, SLUG, DAY): b"PAR3", items_path(tmp_path, SLUG, DAY).with_name("report.json"): b"{}"}
+    for path, body in files.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(body)
+    keys = archive.put_tables(SLUG, DAY, tmp_path)
+    assert keys == [table_key(SLUG, DAY, "prices.parquet"), table_key(SLUG, DAY, "report.json"),
+                    kind_key("promotions", SLUG, DAY, "report.json"), kind_key("items", SLUG, DAY, "items.parquet"),
+                    kind_key("items", SLUG, DAY, "report.json")]
+    parquet, plain_json = "application/vnd.apache.parquet", "application/json"
+    assert [(kwargs["Key"], kwargs["Body"], kwargs["ContentType"]) for _, kwargs in fake.calls] == [
+        (keys[0], b"PAR1", parquet), (keys[1], b"{}", plain_json),
+        (keys[2], b'{"promotions_error": "ramilevy: x"}', plain_json), (keys[3], b"PAR3", parquet),
+        (keys[4], b"{}", plain_json)]
+    assert not any("ObjectLockMode" in kwargs or "IfNoneMatch" in kwargs for _, kwargs in fake.calls)
+    # once the promotions were read, its three files go up, the texts table among them
+    promotions_path(tmp_path, SLUG, DAY).write_bytes(b"PAR2")
+    texts_path(tmp_path, SLUG, DAY).write_bytes(b"PAR4")
+    fake.calls.clear()
+    assert archive.put_tables(SLUG, DAY, tmp_path)[2:5] == [kind_key("promotions", SLUG, DAY, name)
+                                                           for name in TABLES["promotions"]]
+    assert fake.objects[kind_key("promotions", SLUG, DAY, "texts.parquet")][0] == b"PAR4"
+    assert MemoryArchive().put_tables(SLUG, DAY, tmp_path / "nothing") == []
 
 
 def test_put_basket_record_is_write_once_and_locked(archive, tmp_path):
@@ -208,7 +289,7 @@ def test_s3_archive_lists_through_the_paginator():
     archive = S3Archive(fake, "bucket")
     keys = [stored(archive, DAY, name, b"gz") for name in (PRICE, PRICE_OTHER_STORE, PRICE_COPY)]
     fake.calls.clear()
-    assert archive.day_price_file_keys(SLUG, DAY) == sorted(keys)
+    assert archive.day_file_keys(SLUG, DAY, "PriceFull") == sorted(keys)
     assert ("paginate", {"Bucket": "bucket", "Prefix": "raw/chain=ramilevy/date=2026-11-02/"}) in fake.calls
 
 
@@ -234,13 +315,13 @@ def test_no_method_ever_deletes(tmp_path):
         return getattr(archive, method)(*args)
 
     call("day_checked", DAY)
-    call("day_price_file_keys", SLUG, DAY)
-    call("fetch_raw", SLUG, DAY, tmp_path / "raw")
+    call("day_file_keys", SLUG, DAY, "PriceFull")
+    call("fetch_raw", SLUG, DAY, tmp_path / "raw", ("PriceFull", "PromoFull"))
     call("fetch_store_list", SLUG, DAY, tmp_path / "raw")
     call("fetch_manifests", SLUG, DAY, tmp_path / "manifests")
     call("fetch_table", SLUG, DAY, tmp_path / "in")
-    call("put_table", SLUG, DAY, tmp_path / "out")
-    call("put_table", SLUG, DAY, tmp_path / "out")
+    call("put_tables", SLUG, DAY, tmp_path / "out")
+    call("put_tables", SLUG, DAY, tmp_path / "out")
     call("fetch_table", SLUG, DAY, tmp_path / "in")
     call("put_basket_record", record, NOW)
     call("put_basket_record", record, NOW)

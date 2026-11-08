@@ -20,10 +20,10 @@ import duckdb
 import pytest
 
 from basket import build as build_module
-from basket import extract as extract_module
 from basket import handler as handler_module
-from basket.archive import TABLE_FILES, MemoryArchive, record_key, table_key
+from basket.archive import TABLE_FILES, TABLES, MemoryArchive, kind_key, record_key, table_key
 from basket.basket_file import DEFAULT_BASKET
+from basket.chains import CARREFOUR_COLUMNS
 from basket.build import RevisionNeeded
 from basket.guard import guard_days
 from basket.handler import (REQUIRED, SITE_BUCKET_PREFIX, Config, Deps, MorningNotChecked, SiteCheckFailed, event_day,
@@ -32,9 +32,12 @@ from basket.pricefile import BadPriceFile
 from basket.record import code_fingerprint
 from basket.rules import MissingTable
 from basket.site import CACHE_CONTROL, HTML, JSON, MemorySite
+from basket.stores import NoStoreList
 from collector.store import LOCK_MODE, RETENTION_DAYS, check_key, raw_key
-from test_build import BASKET, DAY, PRICES, SLUGS, golden_tree, price_file_name, reprice
+from shopper import extract as shop_extract
+from test_build import BASKET, DAY, MILK, PRICES, SLUGS, golden_tree, price_file_name, reprice, store_list
 from test_extract import TABLE_COLUMNS
+from test_shop_extract import COLUMN, GOLDEN_COLUMNS, on, promo_file, promo_file_name, read, with_promotions
 
 ROOT = Path(__file__).parent.parent
 NOW = datetime(2026, 1, 1, 9, 0, tzinfo=timezone.utc)  # 11:00 in Israel, the golden day's morning
@@ -250,30 +253,132 @@ def test_run_refuses_a_day_without_a_check_record(data, tmp_root):
 
 # ---- the extract mode ----
 
+def every_key(slug: str) -> list[str]:
+    """The keys of the chain's three tables of the day, in the order `put_tables` puts them."""
+    return [kind_key(kind, slug, DAY, name) for kind, names in TABLES.items() for name in names]
+
+
+@pytest.fixture
+def golden_columns(monkeypatch):
+    """The golden day's Carrefour stores placed by its own table, never the hand-kept one (S18)."""
+    monkeypatch.setattr(handler_module, "CARREFOUR_TABLE", GOLDEN_COLUMNS)
+
+
 @pytest.mark.parametrize("slug", SLUGS)
-def test_extract_fetches_the_days_files_extracts_and_puts_the_table(data, tmp_root, tmp_path, slug):
+def test_extract_fetches_the_days_files_extracts_and_puts_the_table(tmp_path, tmp_root, golden_columns, slug):
+    data = with_promotions(golden_tree(tmp_path / "golden"))
     archive = archive_from(data)
     deps = deps_of(archive)
     summary = run(CFG, {"mode": "extract", "chain": slug}, deps, NOW, tmp_root)
-    # the check's folder, then the chain's price files of the day, and nothing else of the archive
+    # the check's folder; the chain's price and promotion files of the day, from one listing; its store list; and
+    # nothing else of the archive
+    files = sorted([price_file_name(slug, store) for store in PRICES[slug]]
+                   + [promo_file_name(slug, store) for store in PRICES[slug]])
     assert archive.reads == [("list", "checks/date=2026-01-01/"), ("list", raw_key(slug, DAY, "")),
-                             *[("get", raw_key(slug, DAY, price_file_name(slug, store))) for store in PRICES[slug]]]
-    keys = [table_key(slug, DAY, name) for name in TABLE_FILES]
+                             *[("get", raw_key(slug, DAY, name)) for name in files],
+                             ("list", raw_key(slug, DAY, "")), ("get", raw_key(slug, DAY, store_list(slug)[0]))]
+    keys = every_key(slug)
     assert summary == {"mode": "extract", "chain": slug, "day": "2026-01-01", "run_id": summary["run_id"], "files": 2,
                        "skipped": 0, "stores": 2, "rows": ROWS[slug], "unreadable_prices": 0,
-                       "seconds": summary["seconds"], "keys": keys}
+                       "seconds": summary["seconds"], "keys": keys, "promotions": summary["promotions"],
+                       "promotions_error": None, "columns": summary["columns"],
+                       "promotion_seconds": summary["promotion_seconds"], "items_seconds": summary["items_seconds"]}
     assert re.fullmatch(r"090000Z-extract-[0-9a-f]{4}", summary["run_id"])  # the run's start in UTC
-    assert isinstance(summary["seconds"], float) and summary["seconds"] >= 0
+    for name in ("seconds", "promotion_seconds", "items_seconds"):
+        assert isinstance(summary[name], float) and summary[name] >= 0
     # the summary counts what the extraction's report says
     report = json.loads(archive.read_raw(keys[1]))
     assert report["files"] == [price_file_name(slug, store) for store in PRICES[slug]]
     assert (summary["files"], summary["skipped"], summary["stores"], summary["rows"], summary["unreadable_prices"]) == (
         len(report["files"]), len(report["skipped"]), report["stores"], report["rows"], report["unreadable_prices"])
-    # the table holds the day's rows, and both files went up plain, replaceable by a re-run
+    # the prices table holds the day's rows, and every file went up plain, replaceable by a re-run
     assert parquet_of(archive.read_raw(keys[0]), tmp_path / "read") == (TABLE_COLUMNS, ROWS[slug])
     assert {key: archive.objects[key].lock_mode for key in archive.objects if key.startswith("tables/")} == {
-        keys[0]: None, keys[1]: None}
+        key: None for key in keys}
     assert deps.ping.calls == [] and deps.site.objects == {}
+
+
+@pytest.mark.parametrize("slug", SLUGS)
+def test_extract_puts_the_three_tables_and_reports_them(tmp_path, tmp_root, golden_columns, slug):
+    """The promotions, texts and items tables go up beside the prices table, and the summary gives what their
+    reports say: the promotions' counts, no error, and each column's items, wide items and holes."""
+    data = with_promotions(golden_tree(tmp_path / "golden"))
+    archive = archive_from(data)
+    summary = run(CFG, {"mode": "extract", "chain": slug}, deps_of(archive), NOW, tmp_root)
+    got = tmp_path / "got"
+    for key in every_key(slug):   # the keys are the local paths under a folder named tables
+        (got / key).parent.mkdir(parents=True, exist_ok=True)
+        (got / key).write_bytes(archive.read_raw(key))
+    tables = got / "tables"
+    column = COLUMN[slug]
+    assert [(row["column"], row["promotion_id"], row["code"], row["wide"]) for row in read(
+        tables / "promotions" / f"chain={slug}" / "date=2026-01-01" / "promotions.parquet", "code")] == [
+        (column, "1", MILK, True)]
+    assert [row["promotion_id"] for row in read(
+        tables / "promotions" / f"chain={slug}" / "date=2026-01-01" / "texts.parquet", "promotion_id")] == ["1"]
+    items = read(tables / "items" / f"chain={slug}" / "date=2026-01-01" / "items.parquet", "code")
+    assert [(row["column"], row["code"], row["on_promotion"]) for row in items if row["code"] == MILK] == [
+        (column, MILK, True)]
+    promotions = json.loads((tables / "promotions" / f"chain={slug}" / "date=2026-01-01" / "report.json").read_text())
+    assert summary["promotions"] == {"files": len(promotions["files"]), "passed_over": len(promotions["passed_over"]),
+                                     "outside": len(promotions["outside"]), **{
+        name: promotions[name] for name in ("promotions", "coupons", "gifts", "basket_rewards", "dropped_links",
+                                            "expired", "before_start", "rows")}}
+    report = json.loads((tables / "items" / f"chain={slug}" / "date=2026-01-01" / "report.json").read_text())
+    assert summary["columns"] == {key: {name: one[name] for name in ("items", "wide", "hole", "promo_hole")}
+                                  for key, one in report["columns"].items()}
+    assert summary["columns"][column] == {"items": 3, "wide": 3, "hole": False, "promo_hole": False}
+    assert summary["promotions_error"] is None and report["promotions_error"] is None
+
+
+def test_the_extract_summary_names_a_promotions_error(tmp_path, tmp_root):
+    """A promotion format change at one store: the run succeeds; the summary names the chain, the field and its
+    value; no promotions or texts table goes up, the promotions folder's report alone; the items table goes up with
+    every column a promotion hole."""
+    data = with_promotions(golden_tree(tmp_path / "golden"))
+    name = promo_file_name("ramilevy", "002")
+    (data / "raw" / "chain=ramilevy" / "date=2026-01-01" / name).write_bytes(
+        promo_file("ramilevy", "002", on(MILK, reward="99")))
+    archive = archive_from(data)
+    summary = run(CFG, {"mode": "extract", "chain": "ramilevy"}, deps_of(archive), NOW, tmp_root)
+    error = "ramilevy: RewardType 99 not seen in the chain's files"
+    assert (summary["promotions_error"], summary["promotions"]) == (error, None)
+    assert summary["columns"] == {"ramilevy": {"items": 3, "wide": 3, "hole": False, "promo_hole": True}}
+    assert summary["keys"] == [*[table_key("ramilevy", DAY, name) for name in TABLE_FILES],
+                               kind_key("promotions", "ramilevy", DAY, "report.json"),
+                               *[kind_key("items", "ramilevy", DAY, name) for name in TABLES["items"]]]
+    assert sorted(key for key in archive.objects if key.startswith("tables/")) == sorted(summary["keys"])
+    assert json.loads(archive.read_raw(kind_key("promotions", "ramilevy", DAY, "report.json"))) == {
+        "slug": "ramilevy", "day": "2026-01-01", "promotions_error": error}
+    assert json.loads(archive.read_raw(kind_key("items", "ramilevy", DAY, "report.json")))["promotions_error"] == error
+
+
+@pytest.mark.parametrize("stop", ["no store list", "a shopper step's failure"])
+def test_a_chain_stopped_after_its_prices_keeps_its_prices_table(tmp_path, tmp_root, monkeypatch, stop):
+    """Whatever stops the run after the prices table was written, what was written goes up before the error is
+    raised: a chain with no store list keeps its prices table in the archive, as before the shopper's steps (the basket
+    run then refuses it as NoStoreList), and a failure in those steps never takes the basket's prices table away."""
+    data = with_promotions(golden_tree(tmp_path / "golden"))
+    if stop == "no store list":
+        (data / "raw" / "chain=osherad" / "date=2026-01-01" / store_list("osherad")[0]).unlink()
+        raised = NoStoreList
+        written = [table_key("osherad", DAY, name) for name in TABLE_FILES]
+    else:
+        def failing(*args, **kwargs):
+            raise RuntimeError("the items table could not be written")
+        monkeypatch.setattr(shop_extract, "write_items", failing)
+        raised = RuntimeError   # the texts table is the items step's, so it is not there
+        written = [*[table_key("osherad", DAY, name) for name in TABLE_FILES],
+                   *[kind_key("promotions", "osherad", DAY, name) for name in ("promotions.parquet", "report.json")]]
+    archive = archive_from(data)
+    with pytest.raises(raised):
+        run(CFG, {"mode": "extract", "chain": "osherad"}, deps_of(archive), NOW, tmp_root)
+    assert sorted(key for key in archive.objects if key.startswith("tables/")) == sorted(written)
+    assert list(tmp_root.iterdir()) == []
+
+
+def test_the_extract_places_carrefours_stores_by_the_hand_kept_table():
+    assert handler_module.CARREFOUR_TABLE is CARREFOUR_COLUMNS
 
 
 def test_extract_of_a_day_with_no_files_puts_an_empty_table(tmp_path, tmp_root):
@@ -283,7 +388,8 @@ def test_extract_of_a_day_with_no_files_puts_an_empty_table(tmp_path, tmp_root):
     summary = run(CFG, {"mode": "extract", "chain": "osherad", "day": "2026-01-01"}, deps_of(archive), later, tmp_root)
     assert (summary["day"], summary["files"], summary["skipped"], summary["stores"], summary["rows"]) == (
         "2026-01-01", 0, 0, 0, 0)
-    assert summary["keys"] == [table_key("osherad", DAY, name) for name in TABLE_FILES]
+    assert summary["keys"] == every_key("osherad")  # every table, of no rows
+    assert summary["columns"] == {"osherad": {"items": 0, "wide": 0, "hole": True, "promo_hole": False}}
     assert parquet_of(archive.read_raw(summary["keys"][0]), tmp_path / "read") == (TABLE_COLUMNS, 0)
     assert json.loads(archive.read_raw(summary["keys"][1]))["rows"] == 0
 
@@ -300,11 +406,11 @@ def test_extract_leaves_tmp_root_empty(data, tmp_root, monkeypatch):
     """The run works in a folder of its own under tmp_root and removes it, after a failure too."""
     during = []
 
-    def extract_seen(*args):
+    def extract_seen(*args, **kwargs):
         during.append([path.name for path in tmp_root.iterdir()])
-        return extract_module.extract(*args)
+        return shop_extract.extract_chain_day(*args, **kwargs)
 
-    monkeypatch.setattr(handler_module, "extract", extract_seen)
+    monkeypatch.setattr(handler_module, "extract_chain_day", extract_seen)
     archive = archive_from(data)
     run(CFG, {"mode": "extract", "chain": "ramilevy"}, deps_of(archive), NOW, tmp_root)
     [[work]] = during
@@ -347,11 +453,11 @@ def test_what_duckdb_left_in_its_temp_folder_is_gone_before_the_run(data, tmp_ro
     (spill / "nested" / "more.tmp").write_bytes(b"spilled")
     seen = []
 
-    def extract_seen(*args):
+    def extract_seen(*args, **kwargs):
         seen.append(spill.exists())
-        return extract_module.extract(*args)
+        return shop_extract.extract_chain_day(*args, **kwargs)
 
-    monkeypatch.setattr(handler_module, "extract", extract_seen)
+    monkeypatch.setattr(handler_module, "extract_chain_day", extract_seen)
     cfg = replace(CFG, duckdb_temp_directory=spill)
     with caplog.at_level(logging.INFO, logger="basket.handler"):
         run(cfg, {"mode": "extract", "chain": "osherad"}, deps_of(archive_from(data)), NOW, tmp_root)
@@ -418,8 +524,8 @@ def test_a_folder_the_run_cannot_remove_is_logged_and_the_run_stands(data, tmp_r
     silence; the run's outcome stands. The next run's sweep tries again."""
     locked = []
 
-    def extract_locking(raw, slug, day, tables):
-        report = extract_module.extract(raw, slug, day, tables)
+    def extract_locking(raw, slug, day, tables, **kwargs):
+        report = shop_extract.extract_chain_day(raw, slug, day, tables, **kwargs)
         folder = tables.parent / "locked"
         folder.mkdir()
         (folder / "kept.txt").write_text("kept")
@@ -427,7 +533,7 @@ def test_a_folder_the_run_cannot_remove_is_logged_and_the_run_stands(data, tmp_r
         locked.append(folder)
         return report
 
-    monkeypatch.setattr(handler_module, "extract", extract_locking)
+    monkeypatch.setattr(handler_module, "extract_chain_day", extract_locking)
     try:
         with caplog.at_level(logging.INFO, logger="basket.handler"):
             summary = run(CFG, {"mode": "extract", "chain": "osherad"}, deps_of(archive_from(data)), NOW, tmp_root)

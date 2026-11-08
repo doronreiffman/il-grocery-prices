@@ -6,22 +6,30 @@ synced `data/`:
 
     <raw dir>/chain=<slug>/date=<day>/<stored name>     the raw files, named as stored
     <manifests dir>/date=<day>/<slug>-<run id>.json     the chain's manifests of the day
-    <tables dir>/prices/chain=<slug>/date=<day>/        prices.parquet and report.json
+    <tables dir>/<kind>/chain=<slug>/date=<day>/        each kind's table files (TABLES)
 
 and puts back, beside the collector's keys:
 
-    tables/prices/chain=<slug>/date=<day>/prices.parquet   plain; each extraction run replaces it
-    tables/prices/chain=<slug>/date=<day>/report.json      plain, the same
-    basket/date=<day>/basket-<run id>.json                 the run's record, write-once and locked
+    tables/prices/chain=<slug>/date=<day>/              prices.parquet and report.json, plain
+    tables/promotions/chain=<slug>/date=<day>/          promotions.parquet, texts.parquet and report.json, plain
+    tables/items/chain=<slug>/date=<day>/               items.parquet and report.json, plain
+    basket/date=<day>/basket-<run id>.json              the run's record, write-once and locked
 
-A table is derived and a re-run replaces it, so it goes up plain. A record is one run's own and never
-changes, so it goes up as a manifest does (`_Store.put_record`): write-once, under a ten-year governance
-lock; the same bytes again are the same put retried, other bytes under its key are AlreadyStored.
+A table's key is its file's path under the tables folder (`kind_key`; `table_key` is the prices table's): the kind,
+the chain, the day, the name; a table of no chain (the shopper site's covered registry, its scored summaries) has no
+chain segment. A table is derived and a re-run replaces it, so it goes up plain. Of each kind's files, those present
+go up (`put_tables`): after a promotion format change the promotions folder holds its report alone, and only that
+goes up (the shopper site's plan, the first pre-flight's S7). Nothing deletes, so an earlier run's promotions table of
+the day can stay in the archive beside that report: a reader takes a chain's promotion state from the items table's
+report. A record is one run's own and never changes, so it goes up as a manifest does (`_Store.put_record`):
+write-once, under a ten-year governance lock; the same bytes again are the same put retried, other bytes under its key
+are AlreadyStored.
 
-Which files. The day's price files are the `PriceFull` files under `raw/chain=<slug>/date=<day>/` whose
-name says that kind and that day (B1, as `basket.extract.day_files` reads them); a conflict copy counts by
-its published name and is fetched under its stored name. Every one is fetched: `day_files` then takes each
-store's latest from the work folder, as on the Mac. The store list is the greatest name of the day that
+Which files. The day's files of a kind (`PriceFull`, `PromoFull`) are those under `raw/chain=<slug>/date=<day>/` whose
+name says that kind and that day (B1, as `basket.extract.day_files` reads them), a name read in any case; a conflict
+copy counts by its published name and is fetched under its stored name. Every one of the kinds asked for is fetched,
+from one listing of the day's folder: `day_files` then takes each store's latest from the work folder, as on the
+Mac. The store list is the greatest name of the day that
 `basket.stores.is_store_list` accepts (B2), read from a list of the day's whole folder (an S3 prefix matches in one
 case only, and that parse reads a name in any case), else that of each earlier day in turn, back to 13 days before
 the day: S3 has no cheap "latest folder before", and a chain with no store list for two weeks is the
@@ -44,12 +52,23 @@ from collector.names import parse_file_name
 from collector.store import MemoryStore, S3Store, check_key, manifest_key, published_name, raw_key
 
 STORE_LIST_LOOKBACK_DAYS = 14
-TABLE_FILES = ("prices.parquet", "report.json")
-_CONTENT_TYPES = {"prices.parquet": "application/vnd.apache.parquet", "report.json": "application/json"}
+# Each kind of table a chain's extraction writes for a day, and its files, in the order they go up.
+TABLES = {"prices": ("prices.parquet", "report.json"),
+          "promotions": ("promotions.parquet", "texts.parquet", "report.json"),
+          "items": ("items.parquet", "report.json")}
+TABLE_FILES = TABLES["prices"]
+_CONTENT_TYPES = {".parquet": "application/vnd.apache.parquet", ".json": "application/json"}
+
+
+def kind_key(kind: str, slug: str | None, day: date, name: str) -> str:
+    """tables/<kind>/chain=<slug>/date=<day>/<name>; with no chain (`slug` None), tables/<kind>/date=<day>/<name>."""
+    chain = "" if slug is None else f"chain={slug}/"
+    return f"tables/{kind}/{chain}date={day.isoformat()}/{name}"
 
 
 def table_key(slug: str, day: date, name: str) -> str:
-    return f"tables/prices/chain={slug}/date={day.isoformat()}/{name}"
+    """The prices table's key."""
+    return kind_key("prices", slug, day, name)
 
 
 def record_key(day: date, run_id: str) -> str:
@@ -72,22 +91,26 @@ class _Archive:
         folder = check_key(day, "x").rsplit("/", 1)[0] + "/"
         return bool(self._keys(folder))
 
-    def day_price_file_keys(self, slug: str, day: date) -> list[str]:
-        """The keys of the chain's `PriceFull` files of the day, conflict copies included, sorted."""
+    def day_file_keys(self, slug: str, day: date, kind: str) -> list[str]:
+        """The keys of the chain's files of `kind` of the day, conflict copies included, sorted."""
+        return self._day_file_keys(slug, day, (kind,))
+
+    def _day_file_keys(self, slug: str, day: date, kinds: tuple[str, ...]) -> list[str]:
+        """The same for each of `kinds`, from one listing of the day's folder."""
         keys = []
         for key in self._keys(raw_key(slug, day, "")):
             parsed = parse_file_name(published_name(_stored_name(key)))
-            if parsed is None or parsed.kind != "PriceFull" or parsed.day != day:
+            if parsed is None or parsed.kind not in kinds or parsed.day != day:
                 continue
             keys.append(key)
         return sorted(keys)
 
-    def fetch_raw(self, slug: str, day: date, raw_dir: Path) -> list[str]:
-        """Write the day's price files under `raw_dir/chain=<slug>/date=<day>/`; their stored names."""
+    def fetch_raw(self, slug: str, day: date, raw_dir: Path, kinds: tuple[str, ...] = ("PriceFull",)) -> list[str]:
+        """Write the day's files of `kinds` under `raw_dir/chain=<slug>/date=<day>/`; their stored names."""
         folder = _day_folder(raw_dir, slug, day)
         folder.mkdir(parents=True, exist_ok=True)
         names = []
-        for key in self.day_price_file_keys(slug, day):
+        for key in self._day_file_keys(slug, day, tuple(kinds)):
             name = _stored_name(key)
             (folder / name).write_bytes(self.read_raw(key))
             names.append(name)
@@ -130,14 +153,17 @@ class _Archive:
             (folder / name).write_bytes(body)
         return True
 
-    def put_table(self, slug: str, day: date, tables_dir: Path) -> list[str]:
-        """Put the chain's table and report of the day from beside `table_path`, plain; their keys."""
-        folder = table_path(tables_dir, slug, day).parent
+    def put_tables(self, slug: str, day: date, tables_dir: Path) -> list[str]:
+        """Put the chain's tables of the day from under `tables_dir`, each file at the path its key names there:
+        of each kind's files (TABLES), those present, plain; their keys, in TABLES' order."""
         keys = []
-        for name in TABLE_FILES:
-            key = table_key(slug, day, name)
-            self._put_plain(key, (folder / name).read_bytes(), _CONTENT_TYPES[name])
-            keys.append(key)
+        for kind, names in TABLES.items():
+            for name in names:
+                key = kind_key(kind, slug, day, name)
+                path = tables_dir.joinpath(*key.split("/")[1:])  # the key less its "tables/"
+                if path.is_file():
+                    self._put_plain(key, path.read_bytes(), _CONTENT_TYPES[path.suffix])
+                    keys.append(key)
         return keys
 
     def put_basket_record(self, path: Path, now: datetime) -> str:
