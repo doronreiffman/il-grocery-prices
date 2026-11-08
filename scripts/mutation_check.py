@@ -116,6 +116,7 @@ PROMOTIONS_FOR_SHOP_ITEMS = ("src/shopper/promotions.py", ["tests/test_items.py"
 SHOP_ITEMS = ("src/shopper/items.py", ["tests/test_items.py"])
 SHOP_EXTRACT = ("src/shopper/extract.py", ["tests/test_shop_extract.py"])
 SHOP_HISTORY = ("src/shopper/history.py", ["tests/test_history.py"])
+SHOP_FORECAST = ("src/shopper/forecast.py", ["tests/test_forecast.py"])
 # The covered registry takes a product's size by B7's tie rule over its columns (basket.rules.most_common_size).
 RULES_FOR_SHOP_HISTORY = ("src/basket/rules.py", ["tests/test_history.py"])
 # The items table reads B5, B6, B7, B8 and the rows that count from basket.rules, through a view of its own: its tests
@@ -1305,10 +1306,10 @@ MUTATIONS = {
     'unread promotions written as none on promotion (q22 items)': (SHOP_ITEMS, '        on = next_start = structs = None\n', '        on, next_start, structs = False, None, []\n'),
     'valid deals counted whether on the day or not (q22 items)': (SHOP_ITEMS, 'if link["in_day"] and struct["valid"]', 'if struct["valid"]'),
     'under the floor never named (q22 items)': (SHOP_ITEMS, 'under_floor=key in floor', 'under_floor=False'),
-    'the link of the lowest GroupID as text (q22 items)': (SHOP_ITEMS, '_by_number(link["group_id"]), link["code"]', 'link["group_id"], link["code"]'),
-    'a zero link shown over a kind link (q22 items)': (SHOP_ITEMS, '(link["kind"] is None, _by_number(link["group_id"]), link["code"])', '(_by_number(link["group_id"]), link["code"])'),
-    'promotions listed by id before start (q22 items)': (SHOP_ITEMS, '(struct["start"], _by_number(struct["promotion_id"]))', '(_by_number(struct["promotion_id"]), struct["start"])'),
-    'promotions of one start listed by id as text (q22 items)': (SHOP_ITEMS, '(struct["start"], _by_number(struct["promotion_id"]))', '(struct["start"], struct["promotion_id"])'),
+    'the link of the lowest GroupID as text (q22 items)': (SHOP_ITEMS, 'by_number(link["group_id"]), link["code"]', 'link["group_id"], link["code"]'),
+    'a zero link shown over a kind link (q22 items)': (SHOP_ITEMS, '(link["kind"] is None, by_number(link["group_id"]), link["code"])', '(by_number(link["group_id"]), link["code"])'),
+    'promotions listed by id before start (q22 items)': (SHOP_ITEMS, '(struct["start"], by_number(struct["promotion_id"]))', '(by_number(struct["promotion_id"]), struct["start"])'),
+    'promotions of one start listed by id as text (q22 items)': (SHOP_ITEMS, '(struct["start"], by_number(struct["promotion_id"]))', '(struct["start"], struct["promotion_id"])'),
     'a percent-off deal priced without its stores (q22 items)': (SHOP_ITEMS, 'found = deal(slug, item, listed, stores)', 'found = deal(slug, item, listed, None)'),
     'the deal price written rounded only (q22 items)': (SHOP_ITEMS, '"price_exact": None if found.price is None else str(found.price)', '"price_exact": None if found.price is None else str(Fraction(_two(found.price)))'),
     'the price for the eye rounded down (q22 items)': (SHOP_ITEMS, 'math.floor(abs(price) * 100 + Fraction(1, 2))', 'math.floor(abs(price) * 100)'),
@@ -1397,6 +1398,35 @@ MUTATIONS = {
     'the earliest registry before the day taken (q22 history)': (ARCHIVE, '        latest = max(days)\n', '        latest = min(days)\n'),
     'a key the code never writes taken as a registry (q22 history)': (ARCHIVE, 'if key == kind_key(kind, None, listed, name) and listed < day', 'if listed < day'),
     'the registry put under a chain (q22 history)': (ARCHIVE, '        key = kind_key(kind, None, day, name)\n        self._put_file(', '        key = kind_key(kind, "all", day, name)\n        self._put_file('),
+    # shopper: the forecast's target per column, who gets a forecast, inputs pinned to the day (q22 F1, F2, F3)
+    'the horizon fifteen days (q22 F1)': (SHOP_FORECAST, '    for ahead in range(1, HORIZON + 1):\n', '    for ahead in range(1, HORIZON + 2):\n'),
+    'the day itself in the window (q22 F1)': (SHOP_FORECAST, '    for ahead in range(1, HORIZON + 1):\n', '    for ahead in range(0, HORIZON + 1):\n'),
+    'at some stores counted (q22 F1)': (SHOP_FORECAST, 'if first is None and point is not None and point.on_promotion:', 'if first is None and point is not None and (point.on_promotion or point.promotions):'),
+    'five holes scored (q22 F1)': (SHOP_FORECAST, '    if holes > MAX_HOLES:\n', '    if holes > MAX_HOLES + 1:\n'),
+    'a hole read from the chain, not the column (q22 F1)': (SHOP_FORECAST, '    found = column_days.get((column, day))\n    return found is None', '    found = column_days.get((column, day))\n    found = next((c for c in column_days.values() if found and c.day == day and c.slug == found.slug and not c.record), found)\n    return found is None'),
+    'a price hole read as an outcome day (q22 F1)': (SHOP_FORECAST, 'return found is None or not found.record or found.promo_hole', 'return found is None or not found.present or found.promo_hole'),
+    'a promotion hole read as an outcome day (q22 F1)': (SHOP_FORECAST, 'return found is None or not found.record or found.promo_hole', 'return found is None or not found.record'),
+    'a day the history does not hold read as no hole (q22 F1)': (SHOP_FORECAST, 'return found is None or not found.record or found.promo_hole', 'return found is not None and (not found.record or found.promo_hole)'),
+    "a hole day's promotion read (q22 F1)": (SHOP_FORECAST, '            holes += 1\n            continue\n', '            holes += 1\n'),
+    'the last day read kept as the first (q22 F1)': (SHOP_FORECAST, 'if first is None and point is not None and point.on_promotion:', 'if point is not None and point.on_promotion:'),
+    'the evidence promotion the largest id (q22 F1)': (SHOP_FORECAST, 'min(wide, key=by_number, default=None)', 'max(wide, key=by_number, default=None)'),
+    'the evidence promotion ordered as text (q22 F1)': (SHOP_FORECAST, 'min(wide, key=by_number, default=None)', 'min(wide, default=None)'),
+    'a promotion at some stores as evidence (q22 F1)': (SHOP_FORECAST, 'if found["wide"] and found["kind"] is not None and', 'if found["kind"] is not None and'),
+    'a promotion with no kind as evidence (q22 F1)': (SHOP_FORECAST, 'if found["wide"] and found["kind"] is not None and', 'if found["wide"] and'),
+    'a promotion not yet started as evidence (q22 F1)': (SHOP_FORECAST, 'found["start"] <= point.day <= found["end"]]', 'point.day <= found["end"]]'),
+    'an ended promotion as evidence (q22 F1)': (SHOP_FORECAST, 'found["start"] <= point.day <= found["end"]]', 'found["start"] <= point.day]'),
+    'a forecast for an item on promotion (q22 F2)': (SHOP_FORECAST, '    if point.on_promotion:\n', '    if False:\n'),
+    'a forecast for an item starting soon (q22 F2)': (SHOP_FORECAST, '    if point.next_start is not None:\n', '    if False:\n'),
+    'a forecast at some stores (q22 F2)': (SHOP_FORECAST, '    if point is None or not point.wide:\n', '    if point is None:\n'),
+    'a forecast on a hole day (q22 F2)': (SHOP_FORECAST, '    if _hole(column_days, pair.column, day):\n        return "hole"\n', '    if False:\n        return "hole"\n'),
+    'on promotion answered before not wide (q22 F2)': (SHOP_FORECAST, '    if point is None or not point.wide:\n        return "not_wide"\n    if point.on_promotion:\n        return "on_promotion"\n', '    if point is not None and point.on_promotion:\n        return "on_promotion"\n    if point is None or not point.wide:\n        return "not_wide"\n'),
+    'an item starting soon answered before one on promotion (q22 F2)': (SHOP_FORECAST, '    if point.on_promotion:\n        return "on_promotion"\n    if point.next_start is not None:\n        return "starts_soon"\n', '    if point.next_start is not None:\n        return "starts_soon"\n    if point.on_promotion:\n        return "on_promotion"\n'),
+    'a closed day at d - 13 (q22 F3)': (SHOP_FORECAST, '    for back in range(READ_DAYS, HORIZON - 1, -1):\n', '    for back in range(READ_DAYS, HORIZON - 2, -1):\n'),
+    'a closed day at d - 91 (q22 F3)': (SHOP_FORECAST, '    for back in range(READ_DAYS, HORIZON - 1, -1):\n', '    for back in range(READ_DAYS + 1, HORIZON - 1, -1):\n'),
+    'closed days newest first (q22 F3)': (SHOP_FORECAST, '    for back in range(READ_DAYS, HORIZON - 1, -1):\n', '    for back in range(HORIZON, READ_DAYS + 1):\n'),
+    'a day after d read (q22 F3)': (SHOP_FORECAST, '        result = outcome(pair, column_days, seen)\n', '        result = outcome(pair, column_days, seen + timedelta(days=1))\n'),
+    'a closed day with five holes kept (q22 F3)': (SHOP_FORECAST, '        if result.value is not None:\n', '        if True:\n'),
+    'a closed day not eligible kept (q22 F3)': (SHOP_FORECAST, '        if eligible(pair, column_days, seen) != "yes":\n            continue\n', '        if False:\n            continue\n'),
     # basket: extract
     "extract older file wins": (EXTRACT, "latest = max(named)", "latest = min(named)"),
     "extract first duplicate wins": (EXTRACT, "        latest[row.code] = row", "        latest.setdefault(row.code, row)"),
