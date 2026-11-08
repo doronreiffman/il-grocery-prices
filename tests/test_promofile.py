@@ -4,6 +4,7 @@ import io
 import re
 import tracemalloc
 import zipfile
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -213,6 +214,27 @@ def test_an_item_less_group_is_kept_with_its_fields():
     assert [link.item["ItemCode"] for link in record.links] == ["2000000000046", "2000000000053"]
     assert all(link.group is record.groups[0] for link in record.links)
     assert tally.links == 2
+
+
+def test_each_elements_own_tag_set_is_counted_dropped_promotions_included():
+    groups = ("<Group><GroupID>1</GroupID><MinPurchaseAmount/><PromotionItems>" + _item("2000000000046")
+              + "</PromotionItems></Group>"
+              "<Group><GroupID>2</GroupID><MinPurchaseAmount>50.00</MinPurchaseAmount></Group>")  # no PromotionItems
+    without_remarks = _promotion("900002", ["2000000000053"], coupon="1").replace("<Remarks/>", "")
+    tally = Tally()
+    _records("plain.xml", _file(_promotion("900001", [], groups=groups), without_remarks), _not_a_coupon, tally)
+    promotion = {"PromotionID", "PromotionDescription", "ClubID", "IsGiftItem", "AdditionalIsCoupon", "Groups"}
+    item = {"ItemCode", "ItemType", "RewardType", "MinQty", "MaxQty", "DiscountRate", "DiscountedPrice",
+            "DiscountedPricePerMida", "bIsWeighted"}
+    assert tally.sets == {
+        "root": Counter({frozenset({"ChainID", "SubChainID", "StoreID", "BikoretNo", "Promotions"}): 1}),
+        "promotion": Counter({frozenset(promotion | {"Remarks"}): 1, frozenset(promotion): 1}),
+        "group": Counter({frozenset({"GroupID", "MinPurchaseAmount", "PromotionItems"}): 1,
+                          frozenset({"GroupID", "MinPurchaseAmount"}): 1,
+                          frozenset({"GroupID", "MinPurchaseAmount", "DiscountType", "PromotionItems"}): 1}),
+        "item": Counter({frozenset(item): 2}),
+    }
+    assert tally.seen["promotion"] == promotion | {"Remarks"}  # the union, as before
 
 
 def test_a_promotion_without_groups_is_asked_at_its_end():

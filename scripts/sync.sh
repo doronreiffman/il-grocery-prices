@@ -1,7 +1,7 @@
 #!/bin/sh
 # Copy one day of the archive into data/ for the basket (read-only on AWS):
 #   sh scripts/sync.sh 2026-11-02
-# The day's full price files and store lists of every chain into data/raw/, then the day's manifests
+# The day's full price files, full promotion files and store lists of every chain into data/raw/, then the day's manifests
 # into data/manifests/, then, once the site's stack exists, the published day files into site/days/.
 set -eu
 PROFILE=flights-sam
@@ -23,6 +23,7 @@ if [ "$who" != "$EXPECTED" ]; then
 fi
 aws s3 sync "s3://$BUCKET/raw/" data/raw/ --exclude '*' \
   --include "chain=*/date=$day/PriceFull*" --include "chain=*/date=$day/pricefull*" \
+  --include "chain=*/date=$day/PromoFull*" --include "chain=*/date=$day/promofull*" \
   --include "chain=*/date=$day/Stores*" --profile "$PROFILE" --region "$REGION"
 aws s3 sync "s3://$BUCKET/manifests/date=$day/" "data/manifests/date=$day/" --profile "$PROFILE" --region "$REGION"
 

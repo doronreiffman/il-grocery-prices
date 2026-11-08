@@ -7,8 +7,10 @@ import pytest
 from collector.names import KINDS, FileName, hour_of, parse_file_name
 
 FIXTURES = Path(__file__).parent / "fixtures"
-CHAIN_IDS = {"shufersal": "7290027600007", "ncr": "7290058140886", "carrefour": "7290055700007",
-             "basket": "7290000000001"}  # the basket's own fixture: a made-up chain in the common layout
+# By portal folder: the NCR portal's fixtures are Rami Levy's, Osher Ad's and Yochananof's; the basket's own fixture is a
+# made-up chain in the common layout.
+CHAIN_IDS = {"shufersal": ("7290027600007",), "ncr": ("7290058140886", "7290103152017", "7290803800003"),
+             "carrefour": ("7290055700007",), "basket": ("7290000000001",)}
 
 
 def test_kinds():
@@ -68,11 +70,11 @@ def test_day_comes_from_the_name_not_the_clock():
 
 def test_every_fixture_file_name_parses():
     files = sorted(p for p in FIXTURES.glob("*/*") if p.suffix in (".gz", ".xml"))
-    assert len(files) == 11
+    assert len(files) == 13
     for path in files:
         parsed = parse_file_name(path.name)
         assert parsed is not None, path.name
-        assert parsed.chain_id == CHAIN_IDS[path.parent.name]
+        assert parsed.chain_id in CHAIN_IDS[path.parent.name]
         assert path.name.lower().startswith(parsed.kind.lower())  # store 039's names are lower case
 
 

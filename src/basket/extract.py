@@ -2,7 +2,8 @@
 
 Files (rule B1). A chain's files for a day are the `PriceFull` files under
 `raw/chain=<slug>/date=<day>/` whose name says that kind and that day; other kinds, other days and
-names that do not parse are not read. A store's key is the store number in the file name with
+names that do not parse are not read. `day_files` takes another kind when asked (`PromoFull`, for the
+shopper site's promotion files), by the same rules. A store's key is the store number in the file name with
 leading zeros stripped ("093" and "93" are one store, "000" is "0"); the number inside the file is
 never read (Carrefour's disagree with their names). The sub-chain is keyed the same way, and is None
 for Rami Levy store 039's names, which carry none. A conflict copy (a stored name plus a dot and 12
@@ -110,13 +111,13 @@ def store_key(published: str) -> str:
     return published.lstrip("0") or "0"
 
 
-def day_files(raw_dir: Path, slug: str, day: date) -> tuple[list[DayFile], list[str]]:
-    """The latest `PriceFull` file of each store that day, by store key as a number; the names passed over, sorted."""
+def day_files(raw_dir: Path, slug: str, day: date, kind: str = "PriceFull") -> tuple[list[DayFile], list[str]]:
+    """The latest file of `kind` of each store that day, by store key as a number; the names passed over, sorted."""
     folder = raw_dir / f"chain={slug}" / f"date={day.isoformat()}"
     by_store: dict[str, dict[str, DayFile]] = {}
     for path in sorted(folder.iterdir()) if folder.is_dir() else []:
         parsed = parse_file_name(published_name(path.name))
-        if parsed is None or parsed.kind != "PriceFull" or parsed.day != day:
+        if parsed is None or parsed.kind != kind or parsed.day != day:
             continue
         store = store_key(parsed.store)
         sub_chain = None if parsed.sub_chain is None else store_key(parsed.sub_chain)

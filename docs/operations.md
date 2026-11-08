@@ -376,6 +376,68 @@ A build with every table kept took 1.2 s, and a second build of the day 0.9 s (`
 - "Lowest listed total today: Rami Levy, ₪401.40."
 - "Highest: Carrefour, ₪487.42, 21% more. 32 everyday items, listed shelf prices before promotions, from the chains' price files of Monday 2 November 2026."
 
+### Measured for the shopper site
+
+The promotion survey (`src/shopper/survey.py`) read each included store's latest full promotion file of Saturday 7 November 2026 and Thursday 5 November 2026, synced read-only by `sh scripts/sync.sh <day>` (which copies the day's `PromoFull` files beside the price files), against each day's prices table:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m shopper.survey --data data --day 2026-11-07
+```
+
+It prints one JSON document per chain. The up to five promotion texts it prints per code are for the eye: none is written to a file or quoted here. The figures are 7 November's; 5 November's are in brackets where given. On 5 November the archive holds price files from 214 of Shufersal's 319 included stores, so that day's Shufersal figures cover two thirds of the chain.
+
+**Files.** The stores counted are P2's: included, with a price file that counts that day.
+
+| Chain | Included | Counted | Files read | Earlier files passed over | Promotions | Item links | Distinct texts | Links a file, median | Most |
+|---|---|---|---|---|---|---|---|---|---|
+| Shufersal | 319 | 317 (214) | 318 (208) | 0 | 321,893 (258,624) | 5,461,315 (4,162,130) | 8,191 (7,965) | 17,904 | 28,288 |
+| Rami Levy | 98 | 97 | 97 | 62 (73) | 189,189 (187,961) | 1,035,778 (1,034,920) | 6,128 (5,841) | 13,521 | 14,467 |
+| Osher Ad | 24 | 21 (24) | 21 (24) | 20 (24) | 15,697 (18,345) | 61,163 (72,150) | 1,282 (1,352) | 2,930 | 3,061 |
+| Carrefour | 146 | 136 (145) | 136 (145) | 11 (10) | 223,231 (236,175) | 1,024,064 (1,092,921) | 7,087 (7,064) | 7,392 | 24,205 |
+| Yochananof | 51 | 47 | 47 | 0 | 53,275 (52,172) | 175,136 (172,777) | 2,399 (2,349) | 4,060 | 4,375 |
+
+The files of stores not included were passed over unread: Shufersal's 99 (96 named under Be's sub-chain 005; store 413; store 678, named under 002 but in Be's sub-chain on the store list; store 878, not on the day's store list), Rami Levy's store 039 and Carrefour's store 471. Store 039's promotion file has a layout of its own (elements inside `AdditionalRestrictions`), which the reader refuses; it is left out by B2 in any case. Shufersal's promotion files of 7 November are named under the sub-chains its price files carry (001 to 032; one file under 000), not under 000 as P3 records from 31 October. Shufersal's two largest coupons (9,107 and 9,110 item links, at 312 stores) hold 3,557,570 of its 5,461,315 links; Carrefour has four coupons of 1,104 to 3,122 links, each at one store; no other chain has a coupon over 1,000 links.
+
+**Fields.** Every file of every chain on both days carries the same tags at each level: the root's 5 (`ChainID`, `SubChainID`, `StoreID`, `BikoretNo`, `Promotions`), a promotion's 17 (`PromotionUpdateTime`, `AllowMultipleDiscounts`, `PromotionID`, `PromotionDescription`, `PromotionStartDateTime`, `PromotionEndDateTime`, `PromotionStartHour`, `PromotionEndHour`, `PromotionDays`, `RedemptionLimit`, `MinNoOfItemOffered`, `ClubID`, `IsGiftItem`, `AdditionalIsCoupon`, `AdditionalRestrictions`, `Remarks`, `Groups`), a group's 4 (`GroupID`, `MinPurchaseAmount`, `DiscountType`, `PromotionItems`) and an item's 9 (`ItemCode`, `ItemType`, `RewardType`, `MinQty`, `MaxQty`, `DiscountRate`, `DiscountedPrice`, `DiscountedPricePerMida`, `bIsWeighted`). Element by element, one set per level, except items: at Shufersal 9,831 items (6,886) and at Yochananof 652 (653) have no `MaxQty`, every one of them in the second group of a promotion of two groups (a one-off read of 60 of Shufersal's files and all of Yochananof's).
+
+**Codes**: the values seen on either day; the counts, of item links or promotion copies over the files read, are 7 November's.
+
+- `RewardType`: Shufersal 0, 1, 2, 3, 6, 10, 12; Rami Levy and Yochananof 0, 1, 2, 3, 10; Carrefour 0, 1, 2, 3, 10, 12; Osher Ad 1, 3, 10. Read with the texts for the eye: 1 and 10 "N for ₪M", 2 percent off (and gift coupons), 3 a fixed price, as P3 reads them; 12 basket-level rewards (a voucher, delivery over a basket, paying by credit card: Shufersal's 2 promotions, 68,053 links; Carrefour's 18, 81,394 links); 6 at Shufersal "buy and get a gift" (one promotion and 4 links at the stores read; Be's stores, not read, carry more). 0 sits in promotions of two groups: in the first group at Rami Levy (all 54,415 links), mostly the first at Carrefour (16,157 links; 2,295 coupon links in the second), both at Yochananof (1,413 in the first, 652 in the second), and at Shufersal on coupons (99.6% of its 0 links in 60 files; a one-off read of the files). On 7 November, `RewardType` 0 links with a `DiscountedPrice`: Shufersal 4,349,017 of 4,352,201, Rami Levy 15,580 of 54,415, Carrefour 2,305 of 18,604, Yochananof 1,413 of 2,065; none has a `DiscountRate`.
+- `ClubID`: Osher Ad writes "0" only. Shufersal and Yochananof write a code and a label, "0 - " with "all customers", Shufersal also "2 - " with the retailer's credit club (272 copies, 2 promotions), Yochananof "1 - " with its employees' club (593, 13). Rami Levy writes "0" or an expression of codes and names, as `((1=…|1=…))&(3=…|3=…)` and `(1=…|1=…)`: 12 expressions, codes 1, 2 and 3. Carrefour writes "0", "()" (61 copies) or one of 7 lists, as `(2=…|2=…)`: codes 0 to 3, code 0 with its credit and app clubs named on 1,834 copies (the five texts printed for each of those two forms all begin with "app"), and code 3 with other programmes (a benefits card, two municipalities).
+- `IsGiftItem`: Shufersal "" and 0.5 to 6.5; Rami Levy "" and 1 to 10; Osher Ad "" and 1 to 10 and 12; Carrefour "" and 1 to 8 and 10; Yochananof "" and 0.5, 2.0, 3.0, 4.0. Where set, it equals the link's `MinQty` (both days) on 100% of Osher Ad's links, 98.6% of Carrefour's, 93.3% of Rami Levy's, every one of Shufersal's 1.5 to 6.5 (0.5 never), and none of Yochananof's. Read with the texts, it is the deal's quantity ("N for ₪M", or kilograms of a weighed deal) at every chain, never a gift marker.
+- `AdditionalIsCoupon` 0 and 1 (Osher Ad 0 only); `DiscountType` "", 0 and 1 (Osher Ad "" and 1, Yochananof "" and 0); `bIsWeighted` 0 and 1.
+
+**Minimum spend** (`MinPurchaseAmount` above zero, by the group's place in its promotion, 7 November): Shufersal on 8,331 first groups and 2,050 second groups; Rami Levy on 6,079 first groups (75.00 on 5,650), none of its second groups; Carrefour on 104 first groups; Yochananof on 652 second groups only (its first groups leave it empty); Osher Ad none. No group without items carries one.
+
+**Chain-wide** (P3: carried by at least half the counted stores). By promotion id, and by item code: the codes a promotion that is no coupon links at a counted store, and those on a link (promotion, group, item code) at least half the counted stores carry.
+
+| Chain | Promotions, chain-wide of all | Not coupons | Item codes, chain-wide of all |
+|---|---|---|---|
+| Shufersal | 121 of 8,191 (134 of 7,962) | 11 of 8,039 (22 of 7,812) | 681 of 7,942 (732 of 8,710) |
+| Rami Levy | 2,353 of 5,465 (2,359 of 5,173) | 2,006 of 5,115 (2,012 of 4,823) | 7,605 of 9,523 (7,690 of 9,502) |
+| Osher Ad | 754 of 1,255 (761 of 1,318) | 754 of 1,255 (761 of 1,318) | 2,898 of 3,411 (2,957 of 3,513) |
+| Carrefour | 376 of 7,077 (1,632 of 7,042) | 282 of 6,967 (1,538 of 6,932) | 2,623 of 7,446 (6,016 of 7,374) |
+| Yochananof | 1,226 of 2,399 (1,193 of 2,349) | 1,202 of 2,374 (1,169 of 2,324) | 3,894 of 5,595 (3,821 of 5,526) |
+
+Over the included stores instead (7 November), the promotions chain-wide are the same at Shufersal and Rami Levy, and Osher Ad 746, Carrefour 252, Yochananof 1,207. Shufersal's promotions are its sub-chains': within each, most are carried by half its stores (sub-chain 1, 71 stores: 1,233 of 1,646 promotions, 3,193 of 4,777 codes; 2, 76 stores: 1,446 of 1,793 and 3,905 of 5,360; 7, 93 stores: 832 of 1,445 and 1,822 of 4,270; 8, 31 stores: 1,552 of 1,780 and 4,352 of 5,212). Carrefour's swing between the days comes from about 1,300 promotions carried by about half its stores: at 50% to 59% of 145 stores on 5 November and at 40% to 49% of 136 on 7 November (a one-off read); of the 1,538 not coupons at half or more on 5 November, 216 were at half or more on 7 November.
+
+**The same link at different stores** (one (promotion, group, item code) whose copies differ in some field): Shufersal 47,855 of 71,268 links, Rami Levy 16,679 of 22,341, Carrefour 19,412 of 42,288, Osher Ad 2,180 of 5,102, Yochananof 573 of 8,356. The fields that differ most: `PromotionUpdateTime` (Shufersal 28,455 links, Rami Levy 13,653, Carrefour 19,384), the price fields (`DiscountedPrice` at Shufersal on 44,962 links), and at Rami Levy the text (3,075 links).
+
+**Percent off** (`RewardType` 2): `DiscountedPrice` against the day's median price (B5) × (1 − `DiscountRate`/100), rounded half up to agorot, within ₪0.01; and against the store's own price.
+
+| Chain | Links | Agree with the median | No median | Disagree | Agree with the store's own price |
+|---|---|---|---|---|---|
+| Shufersal | 299,008 | 206,625 (69%) | 0 | 92,383 | 297,859 of 298,402 |
+| Rami Levy | 57,564 | 52,258 (91%) | 2,445 | 2,861 | 38,209 of 39,172 |
+| Carrefour | 206,362 | 109,734 (53%) | 85,425 | 11,203 | 15,131 of 15,131 |
+| Yochananof | 1,202 | 1,035 (86%) | 0 | 167 | 1,040 of 1,202 |
+
+None reads as the discount itself; Osher Ad has no percent-off links. Most of Carrefour's percent-off links name codes the store's own price file does not list, and about 40% codes no Carrefour price file lists that day (a one-off read of 40 files).
+
+**Dates.** No promotion of either day is listed before its start, and none ended before the day; every date reads.
+
+**Time and memory.** Shufersal's survey took 231 to 296 s on this Mac over three runs of the same files (the last with the final measures, other work beside it), the five chains 350 to 445 s, at a peak of 571 to 783 MB resident (`/usr/bin/time -l`). The site's `Last-Modified` header passes through CloudFront (`curl -sI https://d153udx05irk2f.cloudfront.net/index.html` on 8 November: `last-modified: Sat, 07 Nov 2026 10:33:27 GMT`).
+
 ### The two gates
 
 1. **The stack,** once, on the owner's go. The identity must show account `137953273942` and a user ARN ending in `user/doron-admin`; then the deploy, as flights-archive deploys its site (no SAM: the template holds no code); then the outputs:

@@ -97,6 +97,10 @@ PRICEFILE = ("src/basket/pricefile.py", ["tests/test_pricefile.py"])
 SHOP_PROMOFILE = ("src/shopper/promofile.py", ["tests/test_promofile.py"])
 # The body checks both readers share (basket.pricefile.parse_events), which the promotion tests must catch too.
 PRICEFILE_FOR_SHOP_PROMOFILE = ("src/basket/pricefile.py", ["tests/test_promofile.py"])
+SHOP_SURVEY = ("src/shopper/survey.py", ["tests/test_survey.py"])
+# The survey reads each store's latest promotion file through basket.extract.day_files, which its tests must catch too.
+EXTRACT_FOR_SHOP_SURVEY = ("src/basket/extract.py", ["tests/test_survey.py"])
+SYNC_SCRIPT = ("scripts/sync.sh", ["tests/test_scripts.py"])
 EXTRACT = ("src/basket/extract.py", ["tests/test_extract.py"])
 DUCK = ("src/basket/duck.py", ["tests/test_duck.py"])
 EXTRACT_FOR_DUCK = ("src/basket/extract.py", ["tests/test_duck.py"])
@@ -1113,6 +1117,33 @@ MUTATIONS = {
     "a group's field after its items left out (q22 promo read)": (SHOP_PROMOFILE, "            if kept:\n                group[tag] = _text(element)", "            if kept and not items:\n                group[tag] = _text(element)"),
     "a well-formed HTML page read as a file of no promotions (q22 promo read)": (PRICEFILE_FOR_SHOP_PROMOFILE, "    if not body.startswith(XML_STARTS):", "    if False:"),
     "a cut-short promotion file not a bad file (q22 promo read)": (PRICEFILE_FOR_SHOP_PROMOFILE, "    except ET.ParseError as exc:", "    except KeyError as exc:"),
+    "an element's tag set not counted (q22 survey)": (SHOP_PROMOFILE, "    tally.sets.setdefault(level, Counter())[frozenset(tags)] += 1\n", ""),
+    # shopper: the promotion survey (q22 survey)
+    "every file of a store counted (q22 survey)": (EXTRACT_FOR_SHOP_SURVEY, "        files.append(named[latest])\n", "        files.extend(named.values())\n"),
+    "the kind asked for ignored (q22 survey)": (EXTRACT, "parsed.kind != kind", 'parsed.kind != "PriceFull"'),
+    "promotion files not synced (q22 survey)": (SYNC_SCRIPT, '  --include "chain=*/date=$day/PromoFull*" --include "chain=*/date=$day/promofull*" \\\n', ""),
+    "stores not included read (q22 survey)": (SHOP_SURVEY, "        if day_file.store in included_ids:\n            measure.add_file(day_file)", "        measure.add_file(day_file)"),
+    "counted stores taken as the included ones (q22 survey)": (SHOP_SURVEY, "        counted = set(stores_with_file_keys(con, {slug: included_ids}, {slug: left_out})[slug])", "        counted = set(included_ids)"),
+    "gift code compared with MaxQty (q22 survey)": (SHOP_SURVEY, '_same_amount(gift, item.get("MinQty", ""))', '_same_amount(gift, item.get("MaxQty", ""))'),
+    "gift code compared as text (q22 survey)": (SHOP_SURVEY, "    return x == y if x is not None and y is not None else a == b", "    return a == b"),
+    "an empty gift field counted (q22 survey)": (SHOP_SURVEY, "            if gift:\n", "            if True:\n"),
+    "a promotion starting on the day counted as before its start (q22 survey)": (SHOP_SURVEY, "start is not None and start > self.day", "start is not None and start >= self.day"),
+    "a promotion ending on the day counted as ended (q22 survey)": (SHOP_SURVEY, "end is not None and end < self.day", "end is not None and end <= self.day"),
+    "half the stores not enough (q22 survey)": (SHOP_SURVEY, "count * 2 >= len(stores)", "count * 2 > len(stores)"),
+    "coupons kept in the share without coupons (q22 survey)": (SHOP_SURVEY, "if pid not in measure.coupon_ids}", "if True}"),
+    "a file's field sets counted per element (q22 survey)": (SHOP_SURVEY, "        for level, tags in tally.seen.items():\n            self.field_sets[level][frozenset(tags)] += 1", "        for level, sets in tally.sets.items():\n            self.field_sets[level].update(sets)"),
+    "link variants told apart by the item only (q22 survey)": (SHOP_SURVEY, "(promotion_hash, group_hashes[id(link.group)], hash(frozenset(item.items())))", "(0, 0, hash(frozenset(item.items())))"),
+    "a group with no items not told apart (q22 survey)": (SHOP_SURVEY, 'group.get("MinPurchaseAmount"), id(group) not in with_items)', 'group.get("MinPurchaseAmount"), False)'),
+    "a coupon of a thousand items listed as big (q22 survey)": (SHOP_SURVEY, "            if len(record.links) > BIG_COUPON:", "            if len(record.links) >= BIG_COUPON:"),
+    "descriptions for the eye not capped (q22 survey)": (SHOP_SURVEY, "        if len(shown) < SAMPLES and description not in shown:", "        if description not in shown:"),
+    "percent off not rounded to agorot (q22 survey)": (SHOP_SURVEY, "            elif abs(price - _cents(median * (100 - rate) / 100)) <= CENT:", "            elif abs(price - median * (100 - rate) / 100) <= CENT:"),
+    "percent off an agora off not agreeing (q22 survey)": (SHOP_SURVEY, "            elif abs(price - _cents(median * (100 - rate) / 100)) <= CENT:", "            elif abs(price - _cents(median * (100 - rate) / 100)) < CENT:"),
+    "percent off never read as the discount (q22 survey)": (SHOP_SURVEY, "            elif abs(price - _cents(median * rate / 100)) <= CENT:", "            elif False:"),
+    "the store's own price taken as the median (q22 survey)": (SHOP_SURVEY, "            store_price = own.get((store, normalize(code)))", "            store_price = medians.get(normalize(code))"),
+    "an empty price field counted as carried (q22 survey)": (SHOP_SURVEY, '                carried[1] += bool(item.get("DiscountedPrice"))', '                carried[1] += "DiscountedPrice" in item'),
+    "a code chain-wide at a third of the stores (q22 survey)": (SHOP_SURVEY, "            if held * 2 >= len(stores):", "            if held * 3 >= len(stores):"),
+    "coupons' codes counted (q22 survey)": (SHOP_SURVEY, "if key[0] not in measure.coupon_ids}", "if True}"),
+    "codes counted over the included stores, not the counted ones (q22 survey)": (SHOP_SURVEY, '"codes_counted_not_coupons": codes_chain_wide(links_not_coupons, counted),', '"codes_counted_not_coupons": codes_chain_wide(links_not_coupons, set(included_ids)),'),
     # basket: extract
     "extract older file wins": (EXTRACT, "latest = max(named)", "latest = min(named)"),
     "extract first duplicate wins": (EXTRACT, "        latest[row.code] = row", "        latest.setdefault(row.code, row)"),
@@ -1123,7 +1154,7 @@ MUTATIONS = {
     "extract sub-chain padded": (EXTRACT, "sub_chain = None if parsed.sub_chain is None else store_key(parsed.sub_chain)", "sub_chain = parsed.sub_chain"),
     "extract conflict copy not read": (EXTRACT, "parse_file_name(published_name(path.name))", "parse_file_name(path.name)"),
     "extract another day's file read": (EXTRACT, ' or parsed.day != day:', ":"),
-    "extract another kind's file read": (EXTRACT, 'parsed.kind != "PriceFull"', 'parsed.kind not in ("PriceFull", "PromoFull")'),
+    "extract another kind's file read": (EXTRACT, "parsed.kind != kind", 'parsed.kind not in (kind, "PromoFull")'),
     "extract stores sorted as text": (EXTRACT, "key=lambda f: (int(f.store), f.store)", "key=lambda f: f.store"),
     "extract price too large for the table accepted": (EXTRACT, " or abs(value) >= PRICE_LIMIT:", ":"),
     "extract NaN price accepted": (EXTRACT, "if not value.is_finite() or -value", "if -value"),

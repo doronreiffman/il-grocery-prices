@@ -24,10 +24,12 @@ parsed and one kept promotion, never as a whole tree.
 P10, the field half: with `known`, each element's set of child tags must equal its level's (the root, a promotion, a
 group, an item), a dropped promotion's elements included, and a set that differs stops the read naming the file, the
 level and the tags added and missing. An element inside a field is refused too, since it would read as an empty field.
-Every tag seen at each level is kept in the tally for the survey. The codes inside the fields (`RewardType`, the
+Every tag seen at each level is kept in the tally for the survey, and so is each element's own set of tags, counted
+(one promotion can carry an optional field another lacks, and a group with no items can lack `PromotionItems`). The codes inside the fields (`RewardType`, the
 target, the gift code) are P10's other half, left to the step that classifies promotions.
 """
 import xml.etree.ElementTree as ET
+from collections import Counter
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
@@ -63,12 +65,13 @@ class PromotionRead:
 @dataclass
 class Tally:
     """What reads counted, over every file they were given: every promotion asked of `keep`, those not kept, the links
-    of those kept and the items of those not kept, and each level's tags."""
+    of those kept and the items of those not kept, each level's tags and each element's own set of them."""
     promotions: int = 0
     links: int = 0
     dropped_promotions: int = 0
     dropped_links: int = 0
     seen: dict[str, set[str]] = field(default_factory=dict)   # level -> every tag seen, for the survey
+    sets: dict[str, Counter[frozenset[str]]] = field(default_factory=dict)   # level -> each element's tags, counted
 
 
 class PromotionFormatChanged(Exception):
@@ -188,8 +191,10 @@ def _ask(name: str, keep: Callable[[Mapping[str, str]], bool], fields: Mapping[s
 
 
 def _check(name: str, level: str, tags: set[str], known: FieldSets | None, tally: Tally) -> None:
-    """Adds `tags` to the level's seen; with `known`, refuses a set of tags that is not the level's."""
+    """Adds `tags` to the level's seen and counts them as one element's set; with `known`, refuses a set of tags that
+    is not the level's."""
     tally.seen.setdefault(level, set()).update(tags)
+    tally.sets.setdefault(level, Counter())[frozenset(tags)] += 1
     if known is not None:
         expected = getattr(known, level)
         if tags != expected:

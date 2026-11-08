@@ -90,6 +90,17 @@ def test_day_files_ignores_other_days_and_kinds(tmp_path):
     assert skipped == []
 
 
+def test_day_files_reads_the_kind_asked_for(tmp_path):
+    early, late = "PromoFull7290058140886-001-722-20261102-001049.gz", "PromoFull7290058140886-001-722-20261102-071049.gz"
+    store_039 = "promofull7290058140886-039-202611020514.gz"
+    data = NCR_722.read_bytes()
+    raw = raw_tree(tmp_path, {LATE_722: data, early: data, late: data, store_039: data})
+    files, skipped = day_files(raw, SLUG, DAY, kind="PromoFull")
+    assert [(f.store, f.name) for f in files] == [("39", store_039), ("722", late)]  # never the price file
+    assert skipped == [early]
+    assert [f.name for f in day_files(raw, SLUG, DAY)[0]] == [LATE_722]  # PriceFull unless asked otherwise
+
+
 def test_day_files_of_a_chain_with_no_folder_are_none(tmp_path):
     assert day_files(tmp_path / "raw", SLUG, DAY) == ([], [])
 
