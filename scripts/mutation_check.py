@@ -94,6 +94,7 @@ TMP_SIZE = ("template.yaml", [_B + "test_function_has_two_gb_two_gb_of_tmp_and_l
 LAYER_ATTACHED = ("template.yaml", [_B + "test_function_runs_the_basket_handler_on_python_313_arm64_with_the_layer"])
 BARCODE = ("src/basket/barcode.py", ["tests/test_barcode.py"])
 PRICEFILE = ("src/basket/pricefile.py", ["tests/test_pricefile.py"])
+SHOP_PROMOFILE = ("src/shopper/promofile.py", ["tests/test_promofile.py"])
 EXTRACT = ("src/basket/extract.py", ["tests/test_extract.py"])
 DUCK = ("src/basket/duck.py", ["tests/test_duck.py"])
 EXTRACT_FOR_DUCK = ("src/basket/extract.py", ["tests/test_duck.py"])
@@ -1090,6 +1091,24 @@ MUTATIONS = {
     "pricefile text not stripped": (PRICEFILE, 'return (element.text or "").strip()', 'return element.text or ""'),
     "pricefile ZIP folder read as a file": (PRICEFILE, "members = [member for member in archive.infolist() if not member.is_dir()]", "members = archive.infolist()"),
     "pricefile well-formed HTML read as a file of no items": (PRICEFILE, "    if not body.startswith(XML_STARTS):", "    if False:"),
+    # shopper: promotion files, read one promotion at a time (q22 promo read)
+    "a dropped promotion's links built (q22 promo read)": (SHOP_PROMOFILE, "                item = {} if kept else None", "                item = {}"),
+    "dropped links not counted (q22 promo read)": (SHOP_PROMOFILE, "                tally.dropped_links += 1\n", "                pass\n"),
+    "keep asked of nothing, every promotion kept (q22 promo read)": (SHOP_PROMOFILE, "    kept = bool(keep(fields))", "    kept = True"),
+    "a promotion without Groups never asked (q22 promo read)": (SHOP_PROMOFILE, "            if kept is None:  # no Groups: asked at its end, so every promotion is asked once\n                kept = _ask(keep, fields, tally)\n", ""),
+    "a field after Groups taken (q22 promo read)": (SHOP_PROMOFILE, '                if kept is not None:\n                    raise PromotionFormatChanged(f"{name}: {tag} after Groups")\n', ""),
+    "the promotion's fields not checked (q22 promo read)": (SHOP_PROMOFILE, '_check(name, "promotion", promotion_tags, known, tally)', '_check(name, "promotion", promotion_tags, None, tally)'),
+    "a group's fields not checked (q22 promo read)": (SHOP_PROMOFILE, '_check(name, "group", group_tags, known, tally)', '_check(name, "group", group_tags, None, tally)'),
+    "an item's fields not checked (q22 promo read)": (SHOP_PROMOFILE, '_check(name, "item", item_tags, known, tally)', '_check(name, "item", item_tags, None, tally)'),
+    "a dropped promotion's items not checked (q22 promo read)": (SHOP_PROMOFILE, '_check(name, "item", item_tags, known, tally)', '_check(name, "item", item_tags, known if item is not None else None, tally)'),
+    "the root's fields not checked (q22 promo read)": (SHOP_PROMOFILE, '_check(name, "root", root_tags, known, tally)', '_check(name, "root", root_tags, None, tally)'),
+    "an element inside a field read as nothing (q22 promo read)": (SHOP_PROMOFILE, '                raise PromotionFormatChanged(f"{name}: {tag} inside {open_elements[-1].tag}")\n', "                role = _ROOT_FIELD\n"),
+    "elements not cleared (q22 promo read)": (SHOP_PROMOFILE, "        element.clear()  # read: its text and children go, and so does its place in its parent\n        if open_elements:\n            open_elements[-1].remove(element)\n", ""),
+    "text not stripped (q22 promo read)": (SHOP_PROMOFILE, '    return (element.text or "").strip()', '    return element.text or ""'),
+    "an item-less group left out (q22 promo read)": (SHOP_PROMOFILE, "            if kept:\n                view = MappingProxyType(group)", "            if kept and items:\n                view = MappingProxyType(group)"),
+    "a group's field after its items left out (q22 promo read)": (SHOP_PROMOFILE, "            if kept:\n                group[tag] = _text(element)", "            if kept and not items:\n                group[tag] = _text(element)"),
+    "a well-formed HTML page read as a file of no promotions (q22 promo read)": (SHOP_PROMOFILE, "        if not body.startswith(XML_STARTS):", "        if False:"),
+    "a cut-short promotion file not a bad file (q22 promo read)": (SHOP_PROMOFILE, "        except ET.ParseError as exc:", "        except PromotionFormatChanged as exc:"),
     # basket: extract
     "extract older file wins": (EXTRACT, "latest = max(named)", "latest = min(named)"),
     "extract first duplicate wins": (EXTRACT, "        latest[row.code] = row", "        latest.setdefault(row.code, row)"),

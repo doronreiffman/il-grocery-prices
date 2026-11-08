@@ -44,16 +44,21 @@ class Item:
 
 def read_items(name: str, data: bytes) -> list[Item]:
     """The items in `data`, in file order; `name` goes in a refusal's message."""
+    return [item for body in bodies(name, data) for item in _parse(name, body)]
+
+
+def bodies(name: str, data: bytes) -> list[bytes]:
+    """The XML bodies `data` holds, told apart by its first bytes: a ZIP's every file, a gzip's one body, or `data`
+    itself. A bad gzip or ZIP is refused with BadPriceFile, `name` first; each body's start and parse are its reader's
+    to check (the promotion reader, `shopper.promofile`, reads the same layouts through this)."""
     if data.startswith(ZIP_MAGICS):
-        bodies = _zip_bodies(name, data)
-    elif data.startswith(GZIP_MAGIC):
+        return _zip_bodies(name, data)
+    if data.startswith(GZIP_MAGIC):
         try:
-            bodies = [gzip.decompress(data)]
+            return [gzip.decompress(data)]
         except (EOFError, OSError, zlib.error) as exc:  # cut short; bad CRC, length or header; bad data
             raise BadPriceFile(f"{name}: the gzip is cut short or corrupt ({exc})") from exc
-    else:
-        bodies = [data]
-    return [item for body in bodies for item in _parse(name, body)]
+    return [data]
 
 
 def _zip_bodies(name: str, data: bytes) -> list[bytes]:
