@@ -10,6 +10,7 @@ from xml.sax.saxutils import escape
 import duckdb
 import pytest
 
+from basket import duck
 from basket.barcode import is_gs1, normalize
 from basket.extract import Row, table_path, write_table
 from basket.pricefile import BadPriceFile
@@ -304,6 +305,28 @@ def test_a_store_price_of_a_tiny_exponent_is_staged_short(tmp_path):
     _, rows = _run(tmp_path, files, {"shufersal-sheli": {"1", "2"}})
     assert _keys(rows, "discounted_median", "discounted_low", "discounted_high") == [
         (Decimal("2.000"), Decimal("0.000"), Decimal("4.000"))]
+
+
+def test_a_day_of_many_copies_fits_a_small_duckdb_ceiling(tmp_path, monkeypatch):
+    # Shufersal's day, 2026-11-07, failed at Lambda's 1,200 MB while each row's copies were gathered as an ordered list,
+    # which DuckDB holds in memory whole; sorted, they can spill. This day of 40 stores carrying the same 1,000 links
+    # fails that way at 128 MB and fits sorted, from 80 MB up; on one thread, so the figures hang on no machine's cores
+    items = [_item(f"{2000000000000 + n:013d}", price="4.00") for n in range(1000)]
+    stores = [str(store) for store in range(1, 41)]
+    raw, tables = _write_day(tmp_path, {_name(store): _file(store, _promotion("66", _group(items=items)))
+                                        for store in stores})
+    connect = duck.connect
+
+    def one_thread(env=None):
+        con = connect(env)
+        con.execute("SET threads = 1")
+        return con
+    monkeypatch.setattr(duck, "connect", one_thread)
+    monkeypatch.setenv("DUCKDB_MEMORY_LIMIT", "128MB")
+    monkeypatch.setenv("DUCKDB_TEMP_DIRECTORY", str(tmp_path / "duckdb"))
+    report = extract_promotions(raw, "shufersal", DAY, {"shufersal-sheli": set(stores)}, tables, frozenset())
+    rows = _read(promotions_path(tables, "shufersal", DAY))
+    assert (report.rows, {(row["stores"], row["discounted_median"]) for row in rows}) == (1000, {(40, Decimal("4.00"))})
 
 
 def test_an_expired_promotion_is_counted_and_a_future_one_kept(tmp_path):

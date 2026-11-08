@@ -14,14 +14,14 @@ What is kept. A file's records are taken whole before any of them counts: with t
 (`shopper.promotions.KNOWN_FIELDS`) a changed root is refused only at `</Root>`, after the file's promotions were read,
 so a file refused there leaves none of its promotions counted. Every promotion read is counted, each copy in each
 store's file. Coupons are dropped as read (`keep`), their links counted. Every promotion `keep` keeps has its codes
-checked (`check_codes`); one holding a `RewardType` 6 or 12 link is dropped whole, its links counted, as a gift or a basket
-reward (`not_shelf`, S2: its "N for ₪M" links are that reward's terms); one that ended before the day is counted and
-dropped; one that starts after the day is kept and counted (F2 forecasts from it); `RewardType` 0 links are kept with
-no kind (S2: never a price effect, Task 6 shows them as "price not read"). A format change (`PromotionFormatChanged`)
-is raised, not caught, and no table is written: a field set the chain's files never carried (its message names the
-file), a code (it names the chain and the field), a date or a minimum spend that does not read (it names the field
-only: Task 7, which catches the error, names the chain). A file that does not read at all stops it with
-BadPriceFile, as a price file does.
+checked (`check_codes`); one holding a `RewardType` 6 or 12 link is dropped whole, its links counted, as a gift or a
+basket reward (`not_shelf`, S2: its "N for ₪M" links are that reward's terms); one that ended before the day is counted
+and dropped; one that starts after the day is kept and counted (F2 forecasts from it); `RewardType` 0 links are kept
+with no kind (S2: never a price effect, Task 6 shows them as "price not read"). A format change
+(`PromotionFormatChanged`) is raised, not caught, and no table is written: a field set the chain's files never carried
+(its message names the file), a code (it names the chain and the field), a date or a minimum spend that does not read
+(it names the field only: Task 7, which catches the error, names the chain). A file that does not read at all stops it
+with BadPriceFile, as a price file does.
 
 The rows. One per (column, `PromotionID`, `GroupID`, item code) that at least one of the column's counted stores
 carries (the plan's B4; the design's "Where the key lives"), its fields those of the variant most of the column's
@@ -56,7 +56,9 @@ Task 6's texts table: a text one store alone carries is there too. They stay out
 How. The day's prices table must be there (`basket.rules.open_day`'s MissingTable otherwise; Task 7 writes it first).
 Each file's links, the promotions' copies and each new promotion and item variant go to CSVs in a temporary folder
 inside the table's folder, written with `basket.extract`'s writer and read back by its `copy_sql`, and DuckDB groups
-them; the stores' figures are worked out in Decimal, a row at a time, and the table is written to
+them; the stores' figures are worked out in Decimal, a row at a time from the copies DuckDB sorts by row and store (a
+sort, unlike a list gathered per row, can spill to DuckDB's temp folder, so Shufersal's day fits Lambda's DuckDB ceiling
+of 1,200 MB), and the table is written to
 `tables/promotions/chain=<slug>/date=<day>/promotions.parquet`, overwritten by each run, with `report.json` beside it.
 A day with no files writes the columns.
 """
@@ -68,6 +70,8 @@ from dataclasses import dataclass, fields
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from hashlib import blake2b
+from itertools import groupby
+from operator import itemgetter
 from pathlib import Path
 
 import duckdb
@@ -270,24 +274,30 @@ def _agrees(price: Decimal | None, own: Decimal, rate: str) -> bool:
     return price is not None and rate_agrees(rate, price, own)
 
 
-def _figures(result: duckdb.DuckDBPyConnection) -> Iterator[tuple]:
-    """Each row's stores' figures (the module's docstring), from its carrying copies, a batch at a time."""
+def _fetched(result: duckdb.DuckDBPyConnection) -> Iterator[tuple]:
     while batch := result.fetchmany(BATCH):
-        for column, promotion_id, group_id, code, found, copies in batch:
-            lowest: dict[str, tuple[Decimal | None, str, Decimal | None]] = {}   # a store's copy at its lowest price
-            for copy in copies:   # by store, then as the file lists them
-                price = None if copy["price"] is None else Decimal(copy["price"])
-                known = lowest.get(copy["store"])
-                if known is None or (price is not None and (known[0] is None or price < known[0])):
-                    lowest[copy["store"]] = (price, copy["rate"], copy["own"])
-            held = list(lowest.values())
-            prices = sorted(price for price, _, _ in held if price is not None)
-            figures = (_three(median(prices)), _three(prices[0]), _three(prices[-1])) if prices else (None, None, None)
-            with_price = agreeing = None
-            if found == PERCENT_OFF:
-                with_price = sum(1 for _, _, own in held if own is not None)
-                agreeing = sum(1 for price, rate, own in held if own is not None and _agrees(price, own, rate))
-            yield (column, promotion_id, group_id, code, *(_text(value) for value in figures), with_price, agreeing)
+        yield from batch
+
+
+def _figures(result: duckdb.DuckDBPyConnection) -> Iterator[tuple]:
+    """Each row's stores' figures (the module's docstring), from its carrying copies, which come ordered by the row's
+    key, then by store and as the file lists them: one row's copies are held at a time."""
+    for key, copies in groupby(_fetched(result), key=itemgetter(0, 1, 2, 3, 4)):
+        column, promotion_id, group_id, code, found = key
+        lowest: dict[str, tuple[Decimal | None, str, Decimal | None]] = {}   # a store's copy at its lowest price
+        for *_, store, text, rate, own in copies:
+            price = None if text is None else Decimal(text)
+            known = lowest.get(store)
+            if known is None or (price is not None and (known[0] is None or price < known[0])):
+                lowest[store] = (price, rate, own)
+        held = list(lowest.values())
+        prices = sorted(price for price, _, _ in held if price is not None)
+        figures = (_three(median(prices)), _three(prices[0]), _three(prices[-1])) if prices else (None, None, None)
+        with_price = agreeing = None
+        if found == PERCENT_OFF:
+            with_price = sum(1 for _, _, own in held if own is not None)
+            agreeing = sum(1 for price, rate, own in held if own is not None and _agrees(price, own, rate))
+        yield (column, promotion_id, group_id, code, *(_text(value) for value in figures), with_price, agreeing)
 
 
 def _stage_table(con: duckdb.DuckDBPyConnection, folder: Path, name: str) -> Path:
@@ -370,16 +380,16 @@ def _write(con: duckdb.DuckDBPyConnection, read: _Read, columns: Mapping[str, fr
         QUALIFY row_number() OVER (PARTITION BY col, promotion_id, group_id, code
                                    ORDER BY carrying DESC, first_store, promotion_variant, item_variant) = 1
     """)
+    # Each row's carrying copies, streamed in the row's order: an ordered list per row would be held in memory whole,
+    # where a sort spills to DuckDB's temp folder (Shufersal's day, 2026-11-07, in Lambda's 1,200 MB).
     copies = con.execute(f"""
-        SELECT k.col, k.promotion_id, k.group_id, k.code, i.kind,
-               list({{'store': h.store, 'price': h.price, 'rate': h.rate, 'own': h.own}}
-                    ORDER BY h.store_number, h.seq) AS copies
+        SELECT k.col, k.promotion_id, k.group_id, k.code, i.kind, h.store, h.price, h.rate, h.own
         FROM keyed k
         JOIN chosen ch ON ch.col = k.col AND ch.promotion_id = k.promotion_id AND ch.group_id = k.group_id
                       AND ch.code = k.code
         JOIN read_parquet({staged["items"]}) i ON i.variant = ch.item_variant
         JOIN held h ON h.col = k.col AND h.promotion_id = k.promotion_id AND h.group_id = k.group_id AND h.code = k.code
-        GROUP BY ALL
+        ORDER BY k.col, k.promotion_id, k.group_id, k.code, h.store_number, h.seq
     """)
     figures_csv = read.folder / "figures.csv"
     write_csv(_figures(copies), figures_csv, _FIGURES)
