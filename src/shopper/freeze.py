@@ -35,10 +35,17 @@ listed apart and left unscored, without stopping the build (`shopper.score.out_o
 
 The Mac's `ReadOnlyFreezer` writes nothing (question D): it reads the files `scripts/sync.sh` brought into
 `<data dir>/forecasts/date=<day>/` and returns the synced file as "same", or None for a day it holds none of. It does
-not compare: the bytes published are always the archive's. A synced file's time is its modification time, which the
-AWS CLI sets on a download to the object's time in S3, to the second (`ProvideLastModifiedTimeSubscriber` in
-`awscli/customizations/s3/subscribers.py`, read in awscli 2.34.9; the same fact `--exact-timestamps` relies on in
-`scripts/sync.sh`).
+not compare: the bytes published are always the archive's, so the Mac's hand build of a day frozen at other code
+publishes the frozen file and never stops on it (Task 19's choice: a hand build is the way to put up pages fixed after
+the day was frozen, and the forecasts' bytes stay the archive's whatever the build). A synced file's time is its
+modification time, which the AWS CLI sets on a download to the object's time in S3, to the second
+(`ProvideLastModifiedTimeSubscriber` in `awscli/customizations/s3/subscribers.py`, read in awscli 2.34.9; the same fact
+`--exact-timestamps` relies on in `scripts/sync.sh`).
+
+What the build asks of either freezer (Task 19): `frozen_days`, the days a forecasts file is held for (the archive's,
+or the sync's), for `shopper.score.due` and `out_of_reach`; and of the archive's freezer `stored_scores`, the stored
+scores file that is the record when this run's rows differ (ScoresDiffer). `days_with` lists a local folder's days the
+way `basket.archive` lists the archive's: only the files a key function names.
 
 The ledger (Call 17). `forecasts/ledger.csv` on the site gains one line a day, `<day>,<SHA-256 of the file's gzip
 bytes>,<S3's time, UTC to the second, ISO with a Z>` (`utc_text`), and only grows: `ledger` returns the published
@@ -51,6 +58,7 @@ would let through. The upload check (Task 21) refuses a ledger that does not beg
 """
 import gzip
 import hashlib
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -118,6 +126,22 @@ def scores_site_key(day: date) -> str:
     return f"scores/{day.isoformat()}.csv.gz"
 
 
+def days_with(root: Path, key_of: Callable[[date], str]) -> list[date]:
+    """The days whose file `key_of(day)`, a path relative to `root` with a `date=<day>/` folder in it, is under `root`,
+    earliest first; only the names `key_of` gives, so a folder named in another form is passed over."""
+    prefix, _, rest = key_of(date.min).partition("date=")
+    name = rest.split("/", 1)[1]
+    found = []
+    for path in root.glob(f"{prefix}date=*/{name}"):
+        try:
+            day = date.fromisoformat(path.parent.name.removeprefix("date="))
+        except ValueError:
+            continue
+        if path == root / key_of(day) and path.is_file():
+            found.append(day)
+    return sorted(found)
+
+
 def _same(stored: bytes, body: bytes, differs: type[Exception], what: str, day: date) -> bytes:
     """`stored` when the CSV inside it is the one inside `body` (question E), else `differs` naming the day and both
     files' SHA-256."""
@@ -173,6 +197,16 @@ class ArchiveFreezer:
         self.archive.put_scores(day, body, self.now)
         return body
 
+    def frozen_days(self) -> list[date]:
+        """The days the archive holds a forecasts file for, earliest first."""
+        return self.archive.frozen_days()
+
+    def stored_scores(self, day: date) -> bytes | None:
+        """The day's scores file as the archive holds it, None when it holds none: the record when a run's own rows
+        differ from it (ScoresDiffer)."""
+        key = scores_archive_key(day)
+        return None if self.archive.last_modified(key) is None else self.archive.read_raw(key)
+
 
 class ReadOnlyFreezer:
     """The Mac's freezer (the module's docstring): reads the synced files under `data_dir`, writes nothing."""
@@ -191,6 +225,10 @@ class ReadOnlyFreezer:
     def freeze(self, day: date, body: bytes) -> Frozen | None:
         """What `frozen` gives: the run's own `body` is not compared and never written."""
         return self.frozen(day)
+
+    def frozen_days(self) -> list[date]:
+        """The days the sync brought a forecasts file for, earliest first."""
+        return days_with(self.data_dir, archive_key)
 
 
 def ledger(published: bytes | None, frozen: Frozen) -> bytes:

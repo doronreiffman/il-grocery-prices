@@ -27,6 +27,7 @@ from shopper.freeze import (
     ScoresDiffer,
     archive_key,
     cutoff,
+    days_with,
     ledger,
     scores_archive_key,
     scores_site_key,
@@ -408,3 +409,52 @@ def test_the_read_only_freezer_reads_a_late_file_as_late(tmp_path):
     other = tmp_path / "other"
     _synced(other, forecasts_of(), CUTOFF - timedelta(seconds=1))
     assert ReadOnlyFreezer(other).frozen(DAY).on_time is True
+
+
+# What the build asks of a freezer (Task 19): the days frozen, and a stored scores file that differs
+
+def test_the_archive_freezer_lists_the_archives_frozen_days():
+    archive = MemoryArchive()
+    freezer = ArchiveFreezer(archive, NOW)
+    assert freezer.frozen_days() == []
+    freezer.freeze(NEXT, forecasts_of())
+    freezer.freeze(DAY, forecasts_of(Fraction(3, 4)))
+    assert freezer.frozen_days() == [DAY, NEXT] == archive.frozen_days()
+
+
+def test_the_archive_freezer_gives_the_stored_scores_file_the_record():
+    """On ScoresDiffer the stored file is the record (Task 19's carry): the freezer gives its bytes, unchanged."""
+    archive = MemoryArchive()
+    stored = scores_of("1")
+    ArchiveFreezer(archive, NOW).put_scores(DAY, stored)
+    later = ArchiveFreezer(archive, NOW + timedelta(days=1))
+    with pytest.raises(ScoresDiffer):
+        later.put_scores(DAY, scores_of("0"))
+    assert later.stored_scores(DAY) == stored
+    assert later.stored_scores(NEXT) is None
+
+
+def test_the_read_only_freezer_lists_the_days_the_sync_brought(tmp_path):
+    assert ReadOnlyFreezer(tmp_path / "none").frozen_days() == []
+    stamp = datetime(2026, 11, 7, 10, 33, 12, tzinfo=timezone.utc)
+    _synced(tmp_path, forecasts_of(), stamp, NEXT)
+    _synced(tmp_path, forecasts_of(), stamp, DAY)
+    for odd in ("date=20261109/forecasts.csv.gz", "date=2026-11-10/other.csv.gz", "date=x/forecasts.csv.gz"):
+        (tmp_path / "forecasts" / odd).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / "forecasts" / odd).write_bytes(forecasts_of())          # names this code never writes
+    before = _tree(tmp_path)
+    assert ReadOnlyFreezer(tmp_path).frozen_days() == [DAY, NEXT]
+    assert _tree(tmp_path) == before
+
+
+def test_days_with_lists_only_the_files_a_key_names_earliest_first(tmp_path):
+    def key_of(day: date) -> str:
+        return f"scored/date={day.isoformat()}/summary.json"
+    for name in ("scored/date=2026-11-08/summary.json", "scored/date=2026-11-07/summary.json",
+                 "scored/date=20261106/summary.json", "scored/date=2026-11-05/other.json",
+                 "scored/2026-11-04/summary.json"):
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_bytes(b"{}")
+    (tmp_path / "scored" / "date=2026-11-03" / "summary.json").mkdir(parents=True)   # a folder, not a file
+    assert days_with(tmp_path, key_of) == [DAY, NEXT]
+    assert days_with(tmp_path / "none", key_of) == []

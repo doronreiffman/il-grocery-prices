@@ -28,7 +28,10 @@ what differs, unless a one-line reason is given (stripped of the spaces around i
 holding a line break, is no reason); then the day file is rewritten with the earlier run added to the end
 of `revisions` (its run id, code fingerprint, build time, totals and its own `revised`, None for the day as
 first published, which is the first entry) and `revised` set to the reason and the Israel date of `now`. So
-every revision's reason stays in the day file: the latest in `revised`, each earlier one in `revisions`.
+every revision's reason stays in the day file: the latest in `revised`, each earlier one in `revisions`. The rule is
+`publish_day_file`, over any published day file and the figures its caller keeps of an earlier run (the totals here);
+the shopper site's site-day file is published by it too (`shopper.siteday`, the shopper plan's Task 19 and its first
+pre-flight's N8).
 
 Pages. The build writes the index and method pages and the marker beside the day file (`basket.page.build_site`).
 With `write_pages` false (the shopper site's run, which renders the basket's page as `basket.html` in its own frame and
@@ -43,7 +46,7 @@ import argparse
 import json
 import sys
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -152,27 +155,39 @@ def _write_record(data_dir: Path, record: DayRecord) -> Path:
 
 
 def _publish(record: DayRecord, site_dir: Path, now: datetime, revise: str | None) -> tuple[dict, bool, bool]:
-    """B12: the day the pages show, whether the published day file already holds the record's numbers, and
-    whether it is revised."""
-    public = public_day(record)
-    published = site_dir / "days" / f"{record.day.isoformat()}.json"
+    """B12 for the basket's day file (`publish_day_file`), an earlier run keeping its chains' totals."""
+    return publish_day_file(public_day(record), site_dir / "days" / f"{record.day.isoformat()}.json", now, revise,
+                            _totals)
+
+
+def _totals(previous: dict) -> dict:
+    """What a revision keeps of the earlier run's figures: each chain's total."""
+    return {"totals": {slug: chain["total"] for slug, chain in previous["chains"].items()}}
+
+
+def publish_day_file(public: dict, published: Path, now: datetime, revise: str | None,
+                     earlier: Callable[[dict], dict]) -> tuple[dict, bool, bool]:
+    """B12 for the day file `public` against the one at `published` (the module's docstring, "Publish"): the day the
+    pages show, whether the published file already holds its numbers, and whether it is revised. A revision adds the
+    earlier run to `revisions`, its run id, code fingerprint, build time and `revised` with what `earlier` keeps of its
+    figures; RevisionNeeded names what differs when no one-line reason is given. `public` must be JSON-ready, as a
+    published file reads back."""
     if not published.is_file():
         return public, False, False
     previous = json.loads(published.read_text(encoding="utf-8"))
     if comparable(public) == comparable(previous):
         return previous, True, False
-    reason = _one_line(revise)
+    reason = one_line(revise)
     if reason is None:
         raise RevisionNeeded(f"{published} is published with other numbers: {', '.join(_differing(public, previous))}"
                              " differ. To republish it, give a one-line reason with --revise.")
-    earlier = {"run_id": previous["run_id"], "code_sha": previous["code_sha"], "built_at": previous["built_at"],
-               "revised": previous["revised"],
-               "totals": {slug: chain["total"] for slug, chain in previous["chains"].items()}}
+    run = {"run_id": previous["run_id"], "code_sha": previous["code_sha"], "built_at": previous["built_at"],
+           "revised": previous["revised"], **earlier(previous)}
     revised = {"on": now.astimezone(ISRAEL).date().isoformat(), "reason": reason}
-    return public | {"revisions": previous["revisions"] + [earlier], "revised": revised}, False, True
+    return public | {"revisions": previous["revisions"] + [run], "revised": revised}, False, True
 
 
-def _one_line(revise: str | None) -> str | None:
+def one_line(revise: str | None) -> str | None:
     """The reason with the spaces around it stripped; None for no reason, a blank one, or one of more than a line."""
     if revise is None:
         return None
