@@ -198,6 +198,12 @@ def test_put_record_is_write_once_and_locked(s3, fake):
     assert fake.calls == [put(key, b'{"a": 1}', ContentType="application/json", **LOCKED)]
 
 
+def test_a_records_content_type_is_the_callers_when_given(s3, fake):
+    key = "forecasts/date=2026-11-01/forecasts.csv.gz"   # an object's type cannot be changed once it is locked
+    s3.put_record(key, b"gz", NOW, "application/gzip")
+    assert fake.calls == [put(key, b"gz", ContentType="application/gzip", **LOCKED)]
+
+
 def test_identical_body_is_exists(s3, fake):
     s3.put_raw(KEY, b"one", NOW)
     fake.calls.clear()

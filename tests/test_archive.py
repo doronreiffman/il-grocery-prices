@@ -4,11 +4,15 @@ Mac's build reads, the tables put back plain, the record put back write-once and
 Most tests run on MemoryArchive; the listing and the plain put also run on S3Archive over test_store's FakeS3.
 """
 import json
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import boto3
 import pytest
+from botocore.exceptions import ClientError
+from botocore.stub import Stubber
 
 from basket.archive import (
     TABLE_FILES,
@@ -21,12 +25,14 @@ from basket.archive import (
     table_key,
 )
 from basket.extract import table_path
+from shopper.freeze import archive_key, scores_archive_key
 from shopper.history import READ_DAYS, covered_path
 from shopper.items import items_path, texts_path
 from shopper.promos import promotions_path
+from shopper.score import ColumnSummary, DaySummary, summary_json, summary_path
 from basket.stores import day_store_list
 from collector.store import AlreadyStored, check_key, manifest_key, raw_key
-from test_store import FakeS3, lock_of
+from test_store import FakeS3, client_error, lock_of
 
 NOW = datetime(2026, 11, 2, 11, 30, tzinfo=ZoneInfo("Asia/Jerusalem"))
 DAY = date(2026, 11, 2)
@@ -368,6 +374,143 @@ def test_put_basket_record_is_write_once_and_locked(archive, tmp_path):
     assert archive.read_raw(key) == body
 
 
+# The daily freeze's keys: forecasts/date=<day>/forecasts.csv.gz, write-once and locked (F6, Task 12)
+
+GZIP = "application/gzip"
+FROZEN = b"\x1f\x8b frozen forecasts"   # the archive never reads a body; the freezer does
+
+
+class ClockedS3(FakeS3):
+    """FakeS3 whose head_object also gives each key's LastModified: `now` as it was when the key was put."""
+
+    def __init__(self, now: datetime, **kwargs):
+        super().__init__(**kwargs)
+        self.now = now
+        self.modified: dict[str, datetime] = {}
+
+    def put_object(self, **kwargs):
+        answer = super().put_object(**kwargs)
+        self.modified[kwargs["Key"]] = self.now
+        return answer
+
+    def head_object(self, **kwargs):
+        answer = super().head_object(**kwargs)
+        return {**answer, "LastModified": self.modified[kwargs["Key"]]}
+
+
+@pytest.fixture(params=["s3", "memory"])
+def frozen_archive(request):
+    return S3Archive(ClockedS3(NOW, page_size=2), "bucket") if request.param == "s3" else MemoryArchive()
+
+
+def test_put_frozen_is_write_once_and_locked(frozen_archive):
+    key = frozen_archive.put_frozen(DAY, FROZEN, NOW)
+    assert key == archive_key(DAY) == "forecasts/date=2026-11-02/forecasts.csv.gz"
+    assert frozen_archive.read_raw(key) == FROZEN
+    assert lock_of(frozen_archive, key) == ("GOVERNANCE", NOW + timedelta(days=3650))
+    assert frozen_archive.put_frozen(DAY, FROZEN, NOW) == key              # the same put retried
+    with pytest.raises(AlreadyStored):
+        frozen_archive.put_frozen(DAY, FROZEN + b"x", NOW)
+    assert frozen_archive.read_raw(key) == FROZEN
+    assert frozen_archive.frozen_days() == [DAY]                           # no second file beside it
+
+
+def test_put_frozen_sends_the_lock_and_the_gzip_content_type():
+    fake = ClockedS3(NOW)
+    S3Archive(fake, "bucket").put_frozen(DAY, FROZEN, NOW)
+    assert fake.calls == [("put_object", {
+        "Bucket": "bucket", "Key": archive_key(DAY), "Body": FROZEN, "ContentType": GZIP, "IfNoneMatch": "*",
+        "ObjectLockMode": "GOVERNANCE", "ObjectLockRetainUntilDate": NOW + timedelta(days=3650),
+        "ChecksumAlgorithm": "SHA256"})]
+
+
+def test_a_put_frozen_without_a_time_zone_is_refused(frozen_archive):
+    with pytest.raises(ValueError, match="time zone"):
+        frozen_archive.put_frozen(DAY, FROZEN, datetime(2026, 11, 2, 11, 30))
+    assert frozen_archive.frozen_days() == []
+
+
+def test_frozen_days_are_the_days_with_a_forecasts_file(frozen_archive):
+    for day in (days_back(1), days_back(3), DAY):                          # out of order
+        frozen_archive.put_frozen(day, FROZEN, NOW)
+    frozen_archive.put_record(archive_key(days_back(5)) + ".0123456789ab", b"x", NOW)   # a key the code never writes
+    frozen_archive.put_record("forecasts/date=soon/forecasts.csv.gz", b"x", NOW)
+    frozen_archive.put_record("forecasts/ledger.csv", b"x", NOW)
+    frozen_archive.put_record("scores/date=2026-10-20/scores.csv.gz", b"x", NOW)
+    assert frozen_archive.frozen_days() == [days_back(3), days_back(1), DAY]
+
+
+def test_frozen_days_of_an_empty_archive(frozen_archive):
+    assert frozen_archive.frozen_days() == []
+
+
+def test_a_memory_archives_s3_time_is_the_puts_now_unless_a_clock_is_given():
+    archive = MemoryArchive()
+    stamp = datetime(2026, 11, 2, 11, 30, 5, tzinfo=timezone.utc)
+    archive.put_frozen(DAY, FROZEN, stamp)
+    assert archive.last_modified(archive_key(DAY)) == stamp
+    archive.put_record(check_key(DAY, "x"), b"{}", stamp + timedelta(hours=1))
+    assert archive.last_modified(check_key(DAY, "x")) == stamp + timedelta(hours=1)
+    assert archive.last_modified(archive_key(days_back(1))) is None        # nothing stored there
+    clocked = MemoryArchive(s3_clock=lambda: stamp + timedelta(days=1))
+    clocked.put_frozen(DAY, FROZEN, stamp)
+    clocked.put_record(check_key(DAY, "x"), b"{}", stamp)
+    clocked.put_raw(raw_key(SLUG, DAY, PRICE), b"gz", stamp)
+    assert [clocked.last_modified(key) for key in (archive_key(DAY), check_key(DAY, "x"), raw_key(SLUG, DAY, PRICE))] == \
+        [stamp + timedelta(days=1)] * 3
+
+
+def test_a_memory_archive_times_a_plain_put_by_its_clock(tmp_path):
+    stamp = datetime(2026, 11, 2, 11, 30, tzinfo=timezone.utc)
+    clocked = MemoryArchive(s3_clock=lambda: stamp)
+    path = covered_path(tmp_path, DAY)
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"PAR1")
+    key = clocked.put_covered(DAY, tmp_path)
+    assert clocked.last_modified(key) == stamp
+    assert MemoryArchive().last_modified(key) is None                      # no clock, no `now` to take
+
+
+def test_a_memory_archive_keeps_the_first_time_of_a_key_it_refused_to_write():
+    archive = MemoryArchive()
+    first = datetime(2026, 11, 2, 11, 30, tzinfo=timezone.utc)
+    archive.put_frozen(DAY, FROZEN, first)
+    archive.put_frozen(DAY, FROZEN, first + timedelta(hours=3))            # a retry meets the first write
+    assert archive.last_modified(archive_key(DAY)) == first
+
+
+def test_s3_last_modified_is_what_head_object_says():
+    stamp = datetime(2026, 11, 2, 8, 30, 1, tzinfo=timezone.utc)
+    fake = ClockedS3(stamp)
+    archive = S3Archive(fake, "bucket")
+    key = archive.put_frozen(DAY, FROZEN, NOW)
+    fake.calls.clear()
+    assert archive.last_modified(key) == stamp
+    assert fake.calls == [("head_object", {"Bucket": "bucket", "Key": key})]
+    assert archive.last_modified(archive_key(days_back(1))) is None        # S3's bare 404 is a missing key
+
+
+def test_s3_last_modified_does_not_hide_other_errors():
+    fake = ClockedS3(NOW)
+    fake.errors["head_object"] = [client_error("AccessDenied", 403, "HeadObject")]
+    with pytest.raises(ClientError):
+        S3Archive(fake, "bucket").last_modified(archive_key(DAY))
+
+
+def test_s3_last_modified_against_the_real_clients_model():
+    client = boto3.client("s3", region_name="il-central-1", aws_access_key_id="test", aws_secret_access_key="test")
+    stamp = datetime(2026, 11, 2, 8, 30, 1, tzinfo=timezone.utc)
+    with Stubber(client) as stubber:
+        key = archive_key(DAY)
+        stubber.add_response("head_object", {"LastModified": stamp}, {"Bucket": "bucket", "Key": key})
+        stubber.add_client_error("head_object", "404", http_status_code=404,
+                                 expected_params={"Bucket": "bucket", "Key": key})
+        archive = S3Archive(client, "bucket")
+        assert archive.last_modified(key) == stamp
+        assert archive.last_modified(key) is None
+        stubber.assert_no_pending_responses()
+
+
 def test_s3_archive_lists_through_the_paginator():
     fake = FakeS3(page_size=2)
     archive = S3Archive(fake, "bucket")
@@ -377,8 +520,106 @@ def test_s3_archive_lists_through_the_paginator():
     assert ("paginate", {"Bucket": "bucket", "Prefix": "raw/chain=ramilevy/date=2026-11-02/"}) in fake.calls
 
 
+# Scoring: scores/date=<day>/scores.csv.gz write-once and locked, and each day's summary plain (F7, Task 13)
+
+SCORES = b"\x1f\x8b scores"   # the archive never reads a scores body; the freezer does
+
+
+def test_scores_are_put_write_once_and_locked(frozen_archive):
+    key = frozen_archive.put_scores(DAY, SCORES, NOW)
+    assert key == scores_archive_key(DAY) == "scores/date=2026-11-02/scores.csv.gz"
+    assert frozen_archive.read_raw(key) == SCORES
+    assert lock_of(frozen_archive, key) == ("GOVERNANCE", NOW + timedelta(days=3650))
+    assert frozen_archive.put_scores(DAY, SCORES, NOW) == key               # the same put retried
+    with pytest.raises(AlreadyStored):
+        frozen_archive.put_scores(DAY, SCORES + b"x", NOW)
+    assert frozen_archive.read_raw(key) == SCORES
+    assert frozen_archive._keys("scores/") == [key]                         # no second file beside it
+    with pytest.raises(ValueError, match="time zone"):
+        frozen_archive.put_scores(days_back(1), SCORES, datetime(2026, 11, 2, 11, 30))
+
+
+def test_put_scores_sends_the_lock_and_the_gzip_content_type():
+    fake = ClockedS3(NOW)
+    S3Archive(fake, "bucket").put_scores(DAY, SCORES, NOW)
+    assert fake.calls == [("put_object", {
+        "Bucket": "bucket", "Key": scores_archive_key(DAY), "Body": SCORES, "ContentType": GZIP, "IfNoneMatch": "*",
+        "ObjectLockMode": "GOVERNANCE", "ObjectLockRetainUntilDate": NOW + timedelta(days=3650),
+        "ChecksumAlgorithm": "SHA256"})]
+
+
+def day_summary(day: date, scored: int = 1) -> DaySummary:
+    column = ColumnSummary(forecasts=scored + 1, scored=scored, unscored=1, outcome_1=1, sq_model=Decimal("0.0625"),
+                           sq_a=Decimal("0.25"), sq_b=Decimal("0.5625"),
+                           bins=tuple((1, Decimal("0.75"), 1) if i == 7 else (0, Decimal(0), 0) for i in range(10)))
+    return DaySummary(day=day, frozen_at=datetime(2026, 10, 19, 10, 40, 5, tzinfo=timezone.utc), on_time=True,
+                      model_version="1", target_version="1", by_column={"shufersal-deal": column})
+
+
+def write_summary(tables: Path, summary: DaySummary) -> bytes:
+    path = summary_path(tables, summary.day)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    body = summary_json(summary)
+    path.write_bytes(body)
+    return body
+
+
+def test_put_summary_puts_the_days_summary_plain(tmp_path):
+    fake = ClockedS3(NOW)
+    archive = S3Archive(fake, "bucket")
+    archive.put_scores(days_back(14), SCORES, NOW)
+    body = write_summary(tmp_path, day_summary(days_back(14)))
+    fake.calls.clear()
+    key = archive.put_summary(days_back(14), tmp_path)
+    assert key == kind_key("scored", None, days_back(14), "summary.json") == \
+        "tables/scored/date=2026-10-19/summary.json"
+    assert Path(key) == summary_path(Path("tables"), days_back(14))       # its path under the work folder's tables
+    assert fake.calls == [("head_object", {"Bucket": "bucket", "Key": scores_archive_key(days_back(14))}),
+                          ("put_object", {"Bucket": "bucket", "Key": key, "Body": body, "ContentType": JSON})]
+    again = write_summary(tmp_path, day_summary(days_back(14), scored=2))  # derived: a re-run replaces it
+    archive.put_summary(days_back(14), tmp_path)
+    assert fake.objects[key][0] == again
+
+
+def test_put_summary_refuses_a_day_without_its_scores_file(frozen_archive, tmp_path):
+    write_summary(tmp_path, day_summary(days_back(14)))
+    frozen_archive.put_scores(days_back(15), SCORES, NOW)                  # another day's scores file
+    with pytest.raises(ValueError, match="2026-10-19"):
+        frozen_archive.put_summary(days_back(14), tmp_path)
+    assert frozen_archive._keys("tables/") == [] and frozen_archive.scored_days() == []
+
+
+def test_scored_days_are_the_days_with_a_summary(frozen_archive, tmp_path):
+    for day in (days_back(1), days_back(3), DAY):                           # out of order
+        write_summary(tmp_path, day_summary(day))
+        frozen_archive.put_scores(day, SCORES, NOW)
+        frozen_archive.put_summary(day, tmp_path)
+    # a scores file whose summary was never put (a run stopped between the two): not scored, so due again
+    frozen_archive.put_scores(days_back(5), SCORES, NOW)
+    frozen_archive._put_plain("tables/scored/date=soon/summary.json", b"{}", JSON)
+    frozen_archive._put_plain(kind_key("scored", None, days_back(7), "summary.json") + ".bak", b"{}", JSON)
+    frozen_archive._put_plain(kind_key("scored", "shufersal", days_back(8), "summary.json"), b"{}", JSON)
+    assert frozen_archive.scored_days() == [days_back(3), days_back(1), DAY]
+    assert MemoryArchive().scored_days() == []
+
+
+def test_fetch_summaries_returns_day_summaries(frozen_archive, tmp_path):
+    summaries = [day_summary(days_back(3)), day_summary(days_back(1), scored=4)]
+    bodies = {}
+    for summary in reversed(summaries):
+        bodies[summary.day] = write_summary(tmp_path / "out", summary)
+        frozen_archive.put_scores(summary.day, SCORES, NOW)
+        frozen_archive.put_summary(summary.day, tmp_path / "out")
+    found = frozen_archive.fetch_summaries(tmp_path / "in")
+    assert found == summaries                                               # read through read_summary, by day
+    assert all(isinstance(summary, DaySummary) for summary in found)
+    for summary in summaries:                                               # and each one in the work folder
+        assert summary_path(tmp_path / "in", summary.day).read_bytes() == bodies[summary.day]
+    assert MemoryArchive().fetch_summaries(tmp_path / "none") == []
+
+
 def test_no_method_ever_deletes(tmp_path):
-    fake = FakeS3(page_size=2)
+    fake = ClockedS3(NOW, page_size=2)
     archive = S3Archive(fake, "bucket")
     stored(archive, DAY, PRICE, b"first")
     stored(archive, DAY, PRICE_COPY, b"changed")
@@ -421,6 +662,24 @@ def test_no_method_ever_deletes(tmp_path):
     record.write_text(json.dumps({"day": "2026-11-02", "run_id": "093000Z-basket-ab12", "other": 1}))
     with pytest.raises(AlreadyStored):
         call("put_basket_record", record, NOW)
+    call("put_frozen", DAY, FROZEN, NOW)
+    call("put_frozen", DAY, FROZEN, NOW)
+    with pytest.raises(AlreadyStored):
+        call("put_frozen", DAY, FROZEN + b"x", NOW)
+    call("frozen_days")
+    assert archive.last_modified(archive_key(DAY)) == NOW
+    call("put_scores", DAY, SCORES, NOW)
+    call("put_scores", DAY, SCORES, NOW)
+    with pytest.raises(AlreadyStored):
+        call("put_scores", DAY, SCORES + b"x", NOW)
+    write_summary(tmp_path / "out", day_summary(days_back(14)))
+    with pytest.raises(ValueError):
+        call("put_summary", days_back(14), tmp_path / "out")               # no scores file for the day yet
+    call("put_scores", days_back(14), SCORES, NOW)
+    call("put_summary", days_back(14), tmp_path / "out")
+    call("put_summary", days_back(14), tmp_path / "out")
+    call("scored_days")
+    call("fetch_summaries", tmp_path / "in")
     # every method _Archive defines was run above
     assert called == {name for name in vars(_Archive) if not name.startswith("_")}
     operations = {op for op, _ in fake.calls}

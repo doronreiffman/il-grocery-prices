@@ -14,7 +14,10 @@ and puts back, beside the collector's keys:
     tables/promotions/chain=<slug>/date=<day>/          promotions.parquet, texts.parquet and report.json, plain
     tables/items/chain=<slug>/date=<day>/               items.parquet and report.json, plain
     tables/covered/date=<day>/                          covered.parquet, the shopper site's registry, plain
+    tables/scored/date=<day>/                           summary.json, the shopper site's scoring summary, plain
     basket/date=<day>/basket-<run id>.json              the run's record, write-once and locked
+    forecasts/date=<day>/forecasts.csv.gz               the shopper site's forecasts of the day, write-once and locked
+    scores/date=<day>/scores.csv.gz                     the scores of the day's forecasts, write-once and locked
 
 A table's key is its file's path under the tables folder (`kind_key`; `table_key` is the prices table's): the kind,
 the chain, the day, the name; a table of no chain (the shopper site's covered registry, its scored summaries) has no
@@ -46,6 +49,23 @@ covered registry of the day before (`fetch_covered`) is the latest `tables/cover
 before the run's, found by listing `tables/covered/`, since a run may have missed days; the run's own registry goes
 back plain (`put_covered`), replaced by a re-run of the day as every table is.
 
+The day's forecasts file (`put_frozen`) is put as a record is: write-once and locked, its content type gzip. The archive
+only stores it: whether a stored file and a new one are the same forecasts is the freezer's to say
+(`shopper.freeze`, question E), so the same bytes again are the same put retried and other bytes under the key are
+AlreadyStored. `frozen_days` lists the days that hold one. `last_modified` gives an object's time as S3 reports it
+(`LastModified`), which the freezer reads back to say whether a file was stored before its day's cutoff (F6): a
+MemoryArchive keeps such a time per key, the put's `now` unless it is given an `s3_clock` (a function returning an
+aware time), which tests fix.
+
+Scoring (F7). A day's scores file (`put_scores`) is put as the forecasts file is: write-once and locked, as gzip, the
+freezer saying whether a stored one and a new one are the same scores. Its summary (`shopper.score.summary_json`) is
+derived and goes up plain from the work folder (`put_summary`), only once the day's scores file is in the archive (a
+ValueError before: the build puts it after the scores file, Tasks 19 and 23). A day is scored once its summary is in the
+archive (`scored_days`), so a run that stopped between the two leaves the day due (within the read's reach:
+`shopper.score.due`), and the next build meets the same scores file. `fetch_summaries` writes every summary into the
+work folder and returns them, read through `shopper.score.read_summary`, as `DaySummary` objects (the first pre-flight's
+N17), earliest first.
+
 The day is ready once the collector's check has written a record under `checks/date=<day>/`
 (`day_checked`): the check is the morning's last run.
 
@@ -54,14 +74,19 @@ uses their bare list, read and plain put (`_keys`, `_get`, `_put_plain`), `read_
 Nothing here ever deletes.
 """
 import json
+from collections.abc import Callable
 from datetime import date, datetime, timedelta
 from pathlib import Path
+
+from botocore.exceptions import ClientError
 
 from basket.chains import SLUGS
 from basket.stores import is_store_list
 from collector.names import parse_file_name
-from collector.store import MemoryStore, S3Store, check_key, manifest_key, published_name, raw_key
+from collector.store import MISSING, MemoryStore, S3Store, check_key, error_code, manifest_key, published_name, raw_key
+from shopper.freeze import archive_key, scores_archive_key
 from shopper.history import READ_DAYS
+from shopper.score import DaySummary, read_summary, summary_path
 
 STORE_LIST_LOOKBACK_DAYS = 14
 # Each kind of table a chain's extraction writes for a day, and its files, in the order they go up.
@@ -70,6 +95,7 @@ TABLES = {"prices": ("prices.parquet", "report.json"),
           "items": ("items.parquet", "report.json")}
 TABLE_FILES = TABLES["prices"]
 COVERED = ("covered", "covered.parquet")   # the shopper site's registry: its kind, with no chain, and its file
+SCORED = ("scored", "summary.json")        # the shopper site's scoring summaries: their kind, with no chain, and file
 _CONTENT_TYPES = {".parquet": "application/vnd.apache.parquet", ".json": "application/json"}
 
 
@@ -86,6 +112,12 @@ def table_key(slug: str, day: date, name: str) -> str:
 
 def record_key(day: date, run_id: str) -> str:
     return f"basket/date={day.isoformat()}/basket-{run_id}.json"
+
+
+def summary_key(day: date) -> str:
+    """tables/scored/date=<day>/summary.json: the day's scoring summary, a table of no chain."""
+    kind, name = SCORED
+    return kind_key(kind, None, day, name)
 
 
 def _stored_name(key: str) -> str:
@@ -234,6 +266,63 @@ class _Archive:
         self._put_file(key, _local(tables_dir, key))
         return key
 
+    def put_frozen(self, day: date, body: bytes, now: datetime) -> str:
+        """Put the day's forecasts file under its key, write-once and locked as a record is, as gzip; the key. The same
+        bytes again are the same put retried; other bytes under the key are AlreadyStored. `now` must carry a time zone."""
+        key = archive_key(day)
+        self.put_record(key, body, now, "application/gzip")
+        return key
+
+    def frozen_days(self) -> list[date]:
+        """The days whose forecasts file is in the archive, earliest first."""
+        return self._days_with(archive_key)
+
+    def put_scores(self, day: date, body: bytes, now: datetime) -> str:
+        """Put the day's scores file under its key, write-once and locked as a record is, as gzip; the key. The same
+        bytes again are the same put retried; other bytes under the key are AlreadyStored. `now` must carry a time
+        zone."""
+        key = scores_archive_key(day)
+        self.put_record(key, body, now, content_type="application/gzip")
+        return key
+
+    def scored_days(self) -> list[date]:
+        """The days whose scoring summary is in the archive, earliest first: the days scored."""
+        return self._days_with(summary_key)
+
+    def put_summary(self, day: date, tables_dir: Path) -> str:
+        """Put the day's scoring summary from under `tables_dir` (`shopper.score.summary_path`), plain; the key. A
+        ValueError, putting nothing, when the archive holds no scores file for the day: a summary goes up only after
+        its scores file, so a day `scored_days` lists has one."""
+        if self.last_modified(scores_archive_key(day)) is None:
+            raise ValueError(f"no scores file for {day.isoformat()} in the archive: its summary goes up after it")
+        key = summary_key(day)
+        self._put_file(key, summary_path(tables_dir, day))
+        return key
+
+    def fetch_summaries(self, tables_dir: Path) -> list[DaySummary]:
+        """Write every scoring summary at its path under `tables_dir`; the summaries, earliest first."""
+        found = []
+        for day in self.scored_days():
+            body = self.read_raw(summary_key(day))
+            path = summary_path(tables_dir, day)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(body)
+            found.append(read_summary(body))
+        return found
+
+    def _days_with(self, key_of: Callable[[date], str]) -> list[date]:
+        """The days whose key `key_of` names holds a file in the archive, earliest first; only keys this code writes."""
+        prefix = key_of(date.min).rsplit("date=", 1)[0]   # forecasts/, tables/scored/
+        days = []
+        for key in self._keys(prefix):
+            try:
+                listed = date.fromisoformat(key[len(prefix):].split("/", 1)[0].removeprefix("date="))
+            except ValueError:
+                continue
+            if key == key_of(listed):   # a file, as this code names one
+                days.append(listed)
+        return sorted(days)
+
     def _put_file(self, key: str, path: Path) -> None:
         """Put a table's file plain, its content type by its suffix: a re-run replaces it."""
         self._put_plain(key, path.read_bytes(), _CONTENT_TYPES[path.suffix])
@@ -251,6 +340,37 @@ class _Archive:
 class S3Archive(_Archive, S3Store):
     """The archive bucket, through a boto3 S3 client."""
 
+    def last_modified(self, key: str) -> datetime | None:
+        """The object's time as S3 reports it (`LastModified`, aware); None when the key holds nothing."""
+        try:
+            answer = self.client.head_object(Bucket=self.bucket, Key=key)
+        except ClientError as err:
+            if error_code(err) in MISSING:
+                return None
+            raise
+        return answer["LastModified"]
+
 
 class MemoryArchive(_Archive, MemoryStore):
-    """The same in a dict, for tests."""
+    """The same in a dict, for tests. Each key has a time as S3 would give it: the `now` of the locked put that wrote it,
+    or the time `s3_clock()` gives when it is given one (it must return an aware time); a plain put has none without a
+    clock, as it has no `now`."""
+
+    def __init__(self, *args, s3_clock: Callable[[], datetime] | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.s3_clock = s3_clock
+        self.times: dict[str, datetime | None] = {}
+
+    def _put_locked(self, key: str, body: bytes, until: datetime, content_type: str | None = None) -> bool:
+        stored = super()._put_locked(key, body, until, content_type)
+        if stored:   # the put's `now` is the end of its lock less the retention
+            self.times[key] = until - self.retention if self.s3_clock is None else self.s3_clock()
+        return stored
+
+    def _put_plain(self, key: str, body: bytes, content_type: str) -> None:
+        super()._put_plain(key, body, content_type)
+        self.times[key] = None if self.s3_clock is None else self.s3_clock()
+
+    def last_modified(self, key: str) -> datetime | None:
+        """The key's time (the class's docstring); None when it holds nothing or has none."""
+        return self.times.get(key)

@@ -153,7 +153,7 @@ def texts_path(tables_dir: Path, slug: str, day: date) -> Path:
     return promotions_path(tables_dir, slug, day).with_name("texts.parquet")
 
 
-def _by_number(text: str) -> tuple:
+def by_number(text: str) -> tuple:
     """A sort key for a published id: ids of ASCII digits first, in numeric order ("9" before "10", "009" before "9",
     the text breaking a tie), then any other text. Numeric order without `int()`, which refuses a text past 4,300
     digits: with leading zeros stripped, a shorter number is the smaller, and one of the same length orders as its
@@ -229,7 +229,7 @@ def _link_groups(result: duckdb.DuckDBPyConnection) -> Iterator[tuple[tuple[str,
 
 def _shown(links: list[dict[str, Any]]) -> dict[str, Any]:
     """A promotion's link shown for the item: a kind before none, then the lowest GroupID as a number, then the code."""
-    return min(links, key=lambda link: (link["kind"] is None, _by_number(link["group_id"]), link["code"]))
+    return min(links, key=lambda link: (link["kind"] is None, by_number(link["group_id"]), link["code"]))
 
 
 def _struct(slug: str, link: dict[str, Any], listed: Decimal) -> dict[str, Any]:
@@ -263,7 +263,7 @@ def _on_item(slug: str, day: date, links: list[dict[str, Any]], listed: Decimal)
     shown = [_shown(promotion) for promotion in by_promotion.values()]
     structs = [_struct(slug, link, listed) for link in shown]
     valid = sum(1 for link, struct in zip(shown, structs) if link["in_day"] and struct["valid"])
-    structs.sort(key=lambda struct: (struct["start"], _by_number(struct["promotion_id"])))
+    structs.sort(key=lambda struct: (struct["start"], by_number(struct["promotion_id"])))
     return on, min(starts, default=None), structs, valid
 
 
@@ -327,7 +327,7 @@ def write_items(tables_dir: Path, slug: str, day: date, stores: Sequence[Store],
     (`promo`, Task 5's report), the texts table; the report. `stores`: the day's store list; `included` its included
     ids; `promotions_error`: why the promotions were not read, when they were not."""
     columns = members(slug, stores, included, table)
-    in_no_column = sorted({store.id for store in outside(slug, stores, included, table)}, key=_by_number)
+    in_no_column = sorted({store.id for store in outside(slug, stores, included, table)}, key=by_number)
     keys, sub_chains = {slug: set(included)}, {slug: excluded_sub_chains}
     out = items_path(tables_dir, slug, day)
     counts: dict[str, Counter] = {key: Counter() for key in columns}

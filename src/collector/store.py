@@ -112,9 +112,10 @@ class _Store:
             return PutOutcome.EXISTS  # this changed body was kept beside the first on an earlier run
         raise AlreadyStored(f"{copy}: holds another body whose SHA-256 starts the same; neither is replaced")
 
-    def put_record(self, key: str, body: bytes, now: datetime) -> None:
-        """Store a manifest or a check record, write-once and locked like a raw file."""
-        if self._put_locked(key, body, self._retain_until(now), "application/json"):
+    def put_record(self, key: str, body: bytes, now: datetime, content_type: str = "application/json") -> None:
+        """Store a manifest, a check record or a frozen forecasts file, write-once and locked like a raw file. The
+        content type is the object's own: it cannot be changed afterwards, since the object cannot be replaced."""
+        if self._put_locked(key, body, self._retain_until(now), content_type):
             return
         # The same record already there is this put's own earlier try: botocore retries a put whose
         # answer was lost (a dropped connection, a read timeout), and the retry meets the first write.
@@ -152,7 +153,7 @@ class _Store:
         return now + self.retention
 
 
-def _code(err: ClientError) -> str | None:
+def error_code(err: ClientError) -> str | None:
     return err.response.get("Error", {}).get("Code")
 
 
@@ -178,7 +179,7 @@ class S3Store(_Store):
                 ChecksumAlgorithm="SHA256",
             )
         except ClientError as err:
-            if _code(err) in REFUSED:
+            if error_code(err) in REFUSED:
                 return False
             raise
         return True
@@ -198,7 +199,7 @@ class S3Store(_Store):
         try:
             answer = self.client.get_object(Bucket=self.bucket, Key=key)
         except ClientError as err:
-            if _code(err) in MISSING:
+            if error_code(err) in MISSING:
                 return None
             raise
         return answer["Body"].read()
