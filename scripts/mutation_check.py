@@ -120,6 +120,11 @@ SHOP_HISTORY = ("src/shopper/history.py", ["tests/test_history.py"])
 RULES_FOR_SHOP_HISTORY = ("src/basket/rules.py", ["tests/test_history.py"])
 SHOP_MEASURES = ("src/shopper/measures.py", ["tests/test_measures.py"])
 SHOP_WORDS = ("src/shopper/words.py", ["tests/test_shop_words.py"])
+# Search and browse (Task 17): shopper/search.py with its Python tests, and the one script with its Node tests (Node is a CI
+# tool for this file; a machine without it errs every SHOP_SEARCH_JS mutation to exit 1, a vacuous catch: the first
+# pre-flight's N7).
+SHOP_SEARCH = ("src/shopper/search.py", ["tests/test_search.py"])
+SHOP_SEARCH_JS = ("src/shopper/static/search.js", ["tests/test_search_js.py"])
 # The deal price for the eye is written by shopper.deals.to_agora, which the items table and the words both call: each
 # one's tests must catch a break of it.
 DEALS_FOR_SHOP_ITEMS = ("src/shopper/deals.py", ["tests/test_items.py"])
@@ -1526,6 +1531,40 @@ MUTATIONS = {
     'an end beside a gap dated exactly (q22 words)': (SHOP_WORDS, '        if pinned_end(last):\n', '        if True:\n'),
     'an end said when nothing after it was read (q22 words)': (SHOP_WORDS, '    ended = today is False or any(seen > last.end for seen in read_days)\n', '    ended = True\n'),
     "an end said only on today's reading (q22 words)": (SHOP_WORDS, '    ended = today is False or any(seen > last.end for seen in read_days)\n', '    ended = today is False\n'),
+    # shopper: search and browse, the index pieces and search.js, the one script (q22 search)
+    "final letters kept (q22 search)": (SHOP_SEARCH, r'    "\u05da": "\u05db", "\u05dd": "\u05de", "\u05df": "\u05e0", "\u05e3": "\u05e4", "\u05e5": "\u05e6",   # final letters' + "\n", ""),
+    "geresh kept (q22 search)": (SHOP_SEARCH, r'"\u05f3": "", ', ""),
+    "gershayim kept (q22 search)": (SHOP_SEARCH, r'"\u05f4": "",', ""),
+    "a tab kept (q22 search)": (SHOP_SEARCH, r'"\t": " ", ', ""),
+    "Latin not lower-cased (q22 search)": (SHOP_SEARCH, "for char in text.lower())", "for char in text)"),
+    "spaces not collapsed (q22 search)": (SHOP_SEARCH, '    return " ".join(part for part in mapped.split(" ") if part)\n', "    return mapped\n"),
+    "pieces never split (q22 search)": (SHOP_SEARCH, "        if len(whole) <= PIECE_MAX:\n", "        if True:\n"),
+    "a piece of exactly 150 KB split (q22 search)": (SHOP_SEARCH, "        if len(whole) <= PIECE_MAX:\n", "        if len(whole) < PIECE_MAX:\n"),
+    "split at 300 KB (q22 search)": (SHOP_SEARCH, "PIECE_MAX = 150_000", "PIECE_MAX = 300_000"),
+    "a product in two pieces (q22 search)": (SHOP_SEARCH, "        by_first[_first(entry[2])].append(entry)\n", "        for first in {_first(name) for name in entry[2:]}:\n            by_first[first].append(entry)\n"),
+    "only the title searchable (q22 search)": (SHOP_SEARCH, "    others = sorted({name for name in map(normalize, item.names.values()) if name and name != title})\n", "    others = []\n"),
+    "pieces out of name order (q22 search)": (SHOP_SEARCH, "key=lambda entry: (entry[2], entry[0]))", "key=lambda entry: entry[0])"),
+    "pieces listed without the split keys (q22 search)": (SHOP_SEARCH, '    listed = sorted(name[len("search/"):-len(".json")] for name in files)\n', '    listed = sorted(name[len("search/"):-len(".json")] for name in files if "-" not in name)\n'),
+    "a product with no Hebrew name left off every browse page (q22 search)": (SHOP_SEARCH, "        groups[_browse_key(item.title)].append(item)\n", "        if _browse_key(item.title) != OTHER:\n            groups[_browse_key(item.title)].append(item)\n"),
+    "a browse page out of name order (q22 search)": (SHOP_SEARCH, "    names = sorted(items, key=lambda item: (normalize(item.title), item.code))\n", "    names = list(items)\n"),
+    "a name unescaped on a browse page (q22 search)": (SHOP_SEARCH, "CHAIN_SPAN.format(_text(item.title))", "CHAIN_SPAN.format(item.title)"),
+    "a browse page without the links to the others (q22 search)": (SHOP_SEARCH, '<ul class="letters">{nav}</ul>', '<ul class="letters"></ul>'),
+    "a browse page indexable (q22 search)": (SHOP_SEARCH, '<meta name="robots" content="noindex">\n', ""),
+    "a browse page without the credit line (q22 search)": (SHOP_SEARCH, '<footer><div class="wrap"><p>{_text(credit(day, collected_by))} ', '<footer><div class="wrap"><p>'),
+    "the JS table differs (q22 search)": (SHOP_SEARCH_JS, r'"\u05df": "\u05e0", ', r'"\u05df": "\u05e1", '),
+    "Latin not lower-cased in the script (q22 search)": (SHOP_SEARCH_JS, "String(text).toLowerCase()", "String(text)"),
+    "a split letter not found by its second letter (q22 search)": (SHOP_SEARCH_JS, "  if (letters.length > 1 && pieces.includes(", "  if (false && pieces.includes("),
+    "matches out of name order (q22 search)": (SHOP_SEARCH_JS, "    .sort(byName)\n", ""),
+    "more than 50 matches (q22 search)": (SHOP_SEARCH_JS, "    .slice(0, MAX_SHOWN);", "    .slice(0, MAX_SHOWN + 1);"),
+    "only the first name matched (q22 search)": (SHOP_SEARCH_JS, "entry.slice(2).some(", "entry.slice(2, 3).some("),
+    "leading zeros kept in a barcode (q22 search)": (SHOP_SEARCH_JS, '  return typed.replace(/^0+/, "") || null;', "  return typed;"),
+    "a barcode of 7 digits asked for (q22 search)": (SHOP_SEARCH_JS, "[0-9]{8,14}", "[0-9]{7,14}"),
+    "a 403 read as a page (q22 search)": (SHOP_SEARCH_JS, '      if (response.status !== 200) return "<p>" + NO_PAGE + "</p>";', '      if (response.status >= 500) return "<p>" + NO_PAGE + "</p>";'),
+    "a barcode asked for by GET (q22 search)": (SHOP_SEARCH_JS, '{ method: "HEAD" }', '{ method: "GET" }'),
+    "a failed check read as no page (q22 search)": (SHOP_SEARCH_JS, '      html = "<p>" + FAILED + "</p>";', '      html = "<p>" + NO_PAGE + "</p>";'),
+    "a piece fetched on every key (q22 search)": (SHOP_SEARCH_JS, "    if (!kept[url]) {", "    if (true) {"),
+    "a failed fetch kept (q22 search)": (SHOP_SEARCH_JS, "      kept[url].catch(() => { delete kept[url]; });", "      kept[url].catch(() => {});"),
+    "a late answer for an old query shown (q22 search)": (SHOP_SEARCH_JS, "    if (mine === latest) results.innerHTML = html;", "    results.innerHTML = html;"),
     # basket: extract
     "extract older file wins": (EXTRACT, "latest = max(named)", "latest = min(named)"),
     "extract first duplicate wins": (EXTRACT, "        latest[row.code] = row", "        latest.setdefault(row.code, row)"),

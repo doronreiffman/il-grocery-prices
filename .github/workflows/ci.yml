@@ -16,6 +16,10 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install -r requirements-dev.txt
+      # Node is for the behaviour tests of search.js only. 22.11.0 was released on 2024-10-29 (nodejs.org/dist/index.json)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.11.0"
       - run: pytest --cov=collector --cov=src/basket --cov=src/shopper --cov-fail-under=95
       - run: python scripts/mutation_check.py
       - run: cfn-lint --regions il-central-1 -- template.yaml site-template.yaml
