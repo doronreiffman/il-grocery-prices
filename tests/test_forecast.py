@@ -475,6 +475,18 @@ def test_b_scored_at_its_calibrated_rate():
     assert (row.b_says, row.b, row.a) == (True, Fraction(2, 3), Fraction(2, 3))
 
 
+def test_b_on_a_closed_day_reads_only_the_runs_before_it():
+    # L (runs at -80, -66 and -64): on -75 one run is before it, so B says no (outcome 1: -66 in -74 to -61); read
+    # with the later runs, B would say yes there (-64 + 2 = -62, in -74 to -61). On -65 B says yes from the two runs
+    # before it (-66 + 14 = -52, in -64 to -51; outcome 1: -64). M is off promotion on -50, no run (no; outcome 0).
+    # B's no days: L's -75 and M's -50, 1 of 2; its yes days: L's -65, 1 of 1.
+    pairs = [_shape(CODES[0], on=(-80, -66, -64), off=(-75, -65)), _shape(CODES[1], off=(-50,)),
+             _shape(CODES[2], off=(0,)), _shape(CODES[3], on=(-20, -19, -3, -2), off=(-10, 0))]
+    rows = _by_code(forecasts(_Read(_records(DEAL), pairs), DAY))
+    assert (rows[CODES[2]].b_says, rows[CODES[2]].b) == (False, Fraction(1, 2))
+    assert (rows[CODES[3]].b_says, rows[CODES[3]].b) == (True, Fraction(1))
+
+
 def test_no_forecast_before_the_columns_30th_day_of_records():
     # Deal has records from DAY - 29 (its 30th day of records is DAY), Express from DAY - 28 (29 days); both have a
     # closed day to learn from
