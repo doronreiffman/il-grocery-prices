@@ -99,6 +99,7 @@ SHOP_PROMOFILE = ("src/shopper/promofile.py", ["tests/test_promofile.py"])
 PRICEFILE_FOR_SHOP_PROMOFILE = ("src/basket/pricefile.py", ["tests/test_promofile.py"])
 SHOP_SURVEY = ("src/shopper/survey.py", ["tests/test_survey.py"])
 SHOP_PROMOTIONS = ("src/shopper/promotions.py", ["tests/test_promotions.py"])
+SHOP_DEALS = ("src/shopper/deals.py", ["tests/test_deals.py"])
 # The survey reads each store's latest promotion file through basket.extract.day_files, which its tests must catch too.
 EXTRACT_FOR_SHOP_SURVEY = ("src/basket/extract.py", ["tests/test_survey.py"])
 SYNC_SCRIPT = ("scripts/sync.sh", ["tests/test_scripts.py"])
@@ -1175,6 +1176,23 @@ MUTATIONS = {
     "a coupon's codes not checked (q22 P10)": (SHOP_PROMOTIONS, '        target(slug, promotion["ClubID"])\n', '        if is_coupon(promotion):\n            return False\n        target(slug, promotion["ClubID"])\n'),
     "an element checked against its level's first set only (q22 P10)": (SHOP_PROMOFILE, "        if frozenset(tags) not in expected:", "        if frozenset(tags) != min(expected, key=sorted):"),
     "missing named against the first set, not the nearest (q22 P10)": (SHOP_PROMOFILE, "            nearest = min(expected, key=lambda one: (len(one ^ tags), sorted(one)))", "            nearest = min(expected, key=sorted)"),
+    # shopper: the deal price (q22 P4)
+    "n for m read as m (q22 P4)": (SHOP_DEALS, "Fraction(amount) / Fraction(quantity), per,", "Fraction(amount), per,"),
+    "n for m read as m times n (q22 P4)": (SHOP_DEALS, "Fraction(amount) / Fraction(quantity), per,", "Fraction(amount) * Fraction(quantity), per,"),
+    "percent off from the variant's price, not the stores' median (q22 P4)": (SHOP_DEALS, "        if stores is None and amount is not None:\n", "        if amount is not None:\n"),
+    "percent off computed from the rate (q22 P4)": (SHOP_DEALS, "        price = Fraction(stores.median)\n", '        price = Fraction(stores.median) if listed is None or number(item["DiscountRate"]) is None else Fraction(listed) * (100 - Fraction(number(item["DiscountRate"]))) / 100\n'),
+    "the rate not checked (q22 P4)": (SHOP_DEALS, "        disagrees = listed is not None and not _rate_agrees(item, stores.median, listed)\n", "        disagrees = False\n"),
+    "agreement within a shekel (q22 P4)": (SHOP_DEALS, "    return abs(price - figure) <= AGREE\n", "    return abs(price - figure) <= 1\n"),
+    "agreement against the unrounded figure (q22 P4)": (SHOP_DEALS, "    figure = (base * (100 - rate) / 100).quantize(AGREE, rounding=ROUND_HALF_UP)\n", "    figure = base * (100 - rate) / 100\n"),
+    "agreement rounded half to even (q22 P4)": (SHOP_DEALS, ".quantize(AGREE, rounding=ROUND_HALF_UP)", ".quantize(AGREE)"),
+    "a rate of 0 read (q22 P4)": (SHOP_DEALS, "0 < rate < 100", "0 <= rate < 100"),
+    "a rate of 100 read (q22 P4)": (SHOP_DEALS, "0 < rate < 100", "0 < rate <= 100"),
+    "range lower bound inclusive (q22 P4)": (SHOP_DEALS, "    elif price <= _FLOOR:", "    elif price < _FLOOR:"),
+    "range upper bound inclusive (q22 P4)": (SHOP_DEALS, "    elif price >= 2 * Fraction(listed):", "    elif price > 2 * Fraction(listed):"),
+    "range against the deal, not the listed price (q22 P4)": (SHOP_DEALS, "    elif price >= 2 * Fraction(listed):", "    elif price >= 2 * price:"),
+    "weighed priced per unit (q22 P4)": (SHOP_DEALS, '    per = "kg" if item["bIsWeighted"] == "1" else "unit"', '    per = "unit"'),
+    "MinQty read as a whole number (q22 P4)": (SHOP_DEALS, '        quantity = number(item["MinQty"])\n', '        quantity = number(item["MinQty"])\n        quantity = None if quantity is None else Decimal(int(quantity))\n'),
+    "the price rounded to agorot before the range (q22 P4)": (SHOP_DEALS, '    elif price <= _FLOOR:\n        why = "not above ₪0.01"\n    elif price >= 2 * Fraction(listed):', '    elif round(price, 2) <= _FLOOR:\n        why = "not above ₪0.01"\n    elif round(price, 2) >= 2 * Fraction(listed):'),
     # basket: extract
     "extract older file wins": (EXTRACT, "latest = max(named)", "latest = min(named)"),
     "extract first duplicate wins": (EXTRACT, "        latest[row.code] = row", "        latest.setdefault(row.code, row)"),
