@@ -142,6 +142,20 @@ SHELL_FOR_SHOP_SEARCH = ("src/shopper/shell.py", ["tests/test_search.py"])
 # The product pages carry basket.page's base style, cut from the basket's block in its old order (Task 16): the product
 # tests pin the split and the old block's bytes.
 PAGE_FOR_SHOP_PRODUCT = ("src/basket/page.py", ["tests/test_product.py"])
+# The front, method, record and basket pages (Task 18), and what they read from the modules beside them: the basket's
+# index in the site's frame and its method's parts (basket.page), the build without the basket's pages (basket.build),
+# the band (shopper.shell), the front page's test (shopper.measures), the shown gap (shopper.words), a promotion's day
+# and conditions (shopper.product), a bin's share (shopper.record) and the ledger's on-time rule (shopper.freeze): the
+# page tests must catch a break of each.
+SHOP_PAGES = ("src/shopper/pages.py", ["tests/test_shop_pages.py"])
+PAGE_FOR_SHOP_PAGES = ("src/basket/page.py", ["tests/test_shop_pages.py"])
+BUILD_FOR_SHOP_PAGES = ("src/basket/build.py", ["tests/test_shop_pages.py"])
+SHELL_FOR_SHOP_PAGES = ("src/shopper/shell.py", ["tests/test_shop_pages.py"])
+MEASURES_FOR_SHOP_PAGES = ("src/shopper/measures.py", ["tests/test_shop_pages.py"])
+SHOP_WORDS_FOR_SHOP_PAGES = ("src/shopper/words.py", ["tests/test_shop_pages.py"])
+PRODUCT_FOR_SHOP_PAGES = ("src/shopper/product.py", ["tests/test_shop_pages.py"])
+RECORD_FOR_SHOP_PAGES = ("src/shopper/record.py", ["tests/test_shop_pages.py"])
+FREEZE_FOR_SHOP_PAGES = ("src/shopper/freeze.py", ["tests/test_shop_pages.py"])
 # The deal price for the eye is written by shopper.deals.to_agora, which the items table and the words both call: each
 # one's tests must catch a break of it.
 DEALS_FOR_SHOP_ITEMS = ("src/shopper/deals.py", ["tests/test_items.py"])
@@ -1539,7 +1553,7 @@ MUTATIONS = {
     'a gap between the runs not said to hide one (q22 words)': (SHOP_WORDS, '\n               or any(hidden(earlier.end, later.start) for earlier, later in zip(found, found[1:])))', ')'),
     "the window's days the files say nothing of from its second day (q22 words)": (SHOP_WORDS, '    first = day - timedelta(days=READ_DAYS)\n', '    first = day - timedelta(days=READ_DAYS - 1)\n'),
     'the gap worked from the exact figures (q22 words)': (SHOP_WORDS, '    amount = median - deal\n', '    amount = to_agora(gap.below)\n'),
-    'the percent worked from the exact figures (q22 words)': (SHOP_WORDS, '{whole(100 * Fraction(amount) / Fraction(median))}%', '{gap.percent}%'),
+    'the percent worked from the exact figures (q22 words)': (SHOP_WORDS, 'return amount, whole(100 * Fraction(amount) / Fraction(median))', 'return amount, gap.percent'),
     'the percent rounded down in the words (q22 words)': (MEASURES_FOR_SHOP_WORDS, 'whole = int(abs(value) + Fraction(1, 2))', 'whole = int(abs(value))'),
     'the days at or below counted on the exact deal (q22 words)': (SHOP_WORDS, '    at_or_below = sum(1 for listed in gap.window90.listed if _shown(listed) <= deal)\n', '    at_or_below = gap.at_or_below\n'),
     'a change the shown figures do not show stated (q22 words)': (SHOP_WORDS, '    stated = [change for change in found if _shown(change.before) != _shown(change.after)]\n', '    stated = list(found)\n'),
@@ -1691,7 +1705,7 @@ MUTATIONS = {
     'the cutoff a day late (q22 F6)': (SHOP_FREEZE, 'datetime.combine(day + timedelta(days=1), ', 'datetime.combine(day + timedelta(days=2), '),
     'the cutoff at the days start (q22 F6)': (SHOP_FREEZE, 'datetime.combine(day + timedelta(days=1), ', 'datetime.combine(day, '),
     "on time by the writer's clock (q22 F6)": (SHOP_FREEZE, 'written = _frozen(day, body, self.archive.last_modified(archive_key(day)), "frozen")', 'written = _frozen(day, body, self.now, "frozen")'),
-    'on time at the cutoff itself (q22 F6)': (SHOP_FREEZE, 'on_time=at < cutoff(day)', 'on_time=at <= cutoff(day)'),
+    'on time at the cutoff itself (q22 F6)': (SHOP_FREEZE, '    return at < cutoff(day)\n', '    return at <= cutoff(day)\n'),
     'a late file written as frozen (q22 F6)': (SHOP_FREEZE, 'return written if written.on_time else replace(written, status="late")', 'return written'),
     'a second file written (q22 F6)': (ARCHIVE, 'self.put_record(key, body, now, "application/gzip")', 'self.put_raw(key, body, now)'),
     'a freeze put plain (q22 F6)': (ARCHIVE, 'self.put_record(key, body, now, "application/gzip")', 'self._put_plain(key, body, "application/gzip")'),
@@ -1808,7 +1822,7 @@ MUTATIONS = {
     'calibration error 0.05 (q22 F9)': (SHOP_RECORD, 'CAL_MAX = Decimal("0.03")', 'CAL_MAX = Decimal("0.05")'),
     'a calibration error of 0.03 refused (q22 F9)': (SHOP_RECORD, 'if error > Fraction(CAL_MAX):', 'if error >= Fraction(CAL_MAX):'),
     'a bin of 1% not checked (q22 F9)': (SHOP_RECORD, 'count >= Fraction(BIN_SHARE) * rows', 'count > Fraction(BIN_SHARE) * rows'),
-    'a bin under 1% checked (q22 F9)': (SHOP_RECORD, 'if count and count >= Fraction(BIN_SHARE) * rows and', 'if count and'),
+    'a bin under 1% checked (q22 F9)': (SHOP_RECORD, 'if count and holds_share(count, rows) and', 'if count and'),
     'a bin off by 0.10 refused (q22 F9)': (SHOP_RECORD, '_gap(count, p, ones) > Fraction(BIN_OFF)]', '_gap(count, p, ones) >= Fraction(BIN_OFF)]'),
     'late days counted (q22 F9)': (SHOP_RECORD, 'for found in _of_version(summaries, version) if found.on_time]', 'for found in _of_version(summaries, version)]'),
     'versions pooled (q22 F9)': (SHOP_RECORD, '    counted = _counted(summaries, IN_FORCE)\n', '    counted = [found for found in summaries if found.on_time]\n'),
@@ -1830,7 +1844,7 @@ MUTATIONS = {
     "a programme's name outside its span (q22 product)": (SHOP_PRODUCT, "', '.join(_span(name) for name in names)", "', '.join(text(name) for name in names)"),
     'F10 left out (q22 product)': (SHOP_PRODUCT, '    parts.append(f"<p>{text(no_odds_yet(key))}</p>")\n', ''),
     'F10 for the chain, not the column (q22 product)': (SHOP_PRODUCT, 'text(no_odds_yet(key))', 'text(no_odds_yet(next(c.key for c in COLUMNS if c.slug == column.slug)))'),
-    'fine print label left out (q22 product)': (SHOP_PRODUCT, '    conditions = "; ".join([*_conditions(struct), text(FINE_PRINT)])', '    conditions = "; ".join(_conditions(struct))'),
+    'fine print label left out (q22 product)': (SHOP_PRODUCT, '    conditions = "; ".join([*field_conditions(struct), text(FINE_PRINT)])', '    conditions = "; ".join(field_conditions(struct))'),
     "the promotions error on the first of the chain's columns only (q22 product)": (SHOP_PRODUCT, '    if column.slug in promotions_errors:\n', '    if column.slug in promotions_errors and key == next(c.key for c in COLUMNS if c.slug == column.slug):\n'),
     'a deal per unit when weighed (q22 product)': (SHOP_PRODUCT, 'head = f"<b>{text(deal_price(deal.price, deal.per))}</b>"', 'head = f"<b>{text(deal_price(deal.price, \'unit\'))}</b>"'),
     'the history chart without promotion days (q22 product)': (SHOP_PRODUCT, '    on = [point.day for point in promotion_points(pair, column_days, day) if point.on_promotion]\n', '    on = []\n'),
@@ -1898,6 +1912,70 @@ MUTATIONS = {
     "the stores' range labelled a listed price (q22 words)": (SHOP_WORDS, 'return f"stores ₪{money(low)}', 'return f"listed price ₪{money(low)}'),
     "the changes' window length ignored (q22 P7)": (SHOP_MEASURES, '    first = day - timedelta(days=length)\n', '    first = day - timedelta(days=RECENT_DAYS)\n'),
     "the gap's changes over the 90 days (q22 P7)": (SHOP_MEASURES, 'changes=changes(pair, column_days, day, RECENT_DAYS))', 'changes=changes(pair, column_days, day, READ_DAYS))'),
+    # shopper: the front, method, record and basket pages, and the basket's frame, parts and build (q22 pages)
+    'front rows by price (q22 pages)': (SHOP_PAGES, 'key=lambda row: (-depth(row.gap), _ORDER[row.column], by_number(row.code))', 'key=lambda row: (row.deal.price, _ORDER[row.column], by_number(row.code))'),
+    'two rows for one column and product (q22 pages)': (SHOP_PAGES, '                best = deal, struct\n', '                best = deal, struct\n                rows.append(FrontRow(column.key, code, title, deal, gap(deal.price, pair, column_days, day), (), None))\n'),
+    "one row for a product's two columns (q22 pages)": (SHOP_PAGES, '                                 programmes=tuple(struct["programmes"])))\n    return rows\n', '                                 programmes=tuple(struct["programmes"])))\n    return rows[:1]\n'),
+    'a row not passing the front test (q22 pages)': (SHOP_PAGES, 'if on_front(deal, struct["wide"], pair, column_days, day) and (', 'if deal.valid and deal.price is not None and ('),
+    'the highest deal shown, not the lowest (q22 pages)': (SHOP_PAGES, '(best is None or deal.price < best[0].price)', '(best is None or deal.price > best[0].price)'),
+    'a front row for a promotion not running today (q22 pages)': (SHOP_PAGES, 'for struct in running_today(pair.points.get(day), day):', 'for struct in (pair.points[day].promotions if day in pair.points else ()):'),
+    'front rows ordered by barcode as text (q22 pages)': (SHOP_PAGES, '_ORDER[row.column], by_number(row.code)))', '_ORDER[row.column], row.code))'),
+    'a front row on a hole day (q22 pages)': (MEASURES_FOR_SHOP_PAGES, 'today is not None and today.record', 'today is not None'),
+    'a second script (q22 pages)': (SHOP_PAGES, '    parts.append(_hiring())\n', '    parts.append(_hiring() + \'<script src="other.js"></script>\')\n'),
+    'the search box without its script (q22 pages)': (SHOP_PAGES, '<script src="search.js" defer></script>{link}</section>', '{link}</section>'),
+    'the rule without its store format (q22 pages)': (SHOP_PAGES, 'RULE_LINE = f"The rule: {FRONT_RULE}."', 'RULE_LINE = "The rule: promotion prices lower than every price the chain listed for the item over the past 90 days with records."'),
+    'the count line left off (q22 pages)': (SHOP_PAGES, '             f"<p>{text(count_line(counts.promotions, counts.products, counts.below))}</p>",\n', '             "",\n'),
+    "a front row's depth from the exact figures (q22 pages)": (SHOP_PAGES, '    percent = "" if shown is None else f"{shown[1]}%"\n', '    percent = f"{row.gap.percent}%"\n'),
+    "the shown gap's percent from the exact figures on the front page (q22 pages)": (SHOP_WORDS_FOR_SHOP_PAGES, 'return amount, whole(100 * Fraction(amount) / Fraction(median))', 'return amount, gap.percent'),
+    "a front row's conditions without the fine print label (q22 pages)": (SHOP_PAGES, '"min_spend": row.min_spend}), text(FINE_PRINT)])', '"min_spend": row.min_spend})])'),
+    "a front row's conditions without their source (q22 pages)": (PRODUCT_FOR_SHOP_PAGES, 'if part)}, {text(FROM_FIELDS)}")', 'if part)}")'),
+    'a front row for a promotion that starts tomorrow (q22 pages)': (PRODUCT_FOR_SHOP_PAGES, 'for struct in point.promotions if struct["start"] <= day <= struct["end"]]', 'for struct in point.promotions]'),
+    "a column's filter rule left out (q22 pages)": (SHOP_PAGES, '              "{ display: none; }\\n" for column in COLUMNS) + ', '              "{ display: none; }\\n" for column in COLUMNS[1:]) + '),
+    'the club-only filter hiding nothing (q22 pages)': (SHOP_PAGES, '    marks = (\' data-club=""\' if row.restrictions else "")', '    marks = ("")'),
+    'the minimum-spend filter hiding nothing (q22 pages)': (SHOP_PAGES, '+ (\' data-spend=""\' if row.min_spend is not None else "")', '+ ""'),
+    'the club label left off (q22 pages)': (SHOP_PAGES, '              f"<small>({text(club_label(marking_none))})</small>",\n', '              "<small></small>",\n'),
+    'the story from the last row (q22 pages)': (SHOP_PAGES, '        parts.append(_story(shown[0]))\n', '        parts.append(_story(shown[-1]))\n'),
+    'the story with no P7 (q22 pages)': (SHOP_PAGES, '            f"<p>{text(\' \'.join(gap_sentences(row.gap)))}</p></section>")', '            "</section>")'),
+    'the never list short of one (q22 pages)': (SHOP_PAGES, '    items = "".join(f"<li>{text(phrase)}</li>" for phrase in NEVER)\n', '    items = "".join(f"<li>{text(phrase)}</li>" for phrase in NEVER[1:])\n'),
+    'the method page without the stores in no column (q22 pages)': (SHOP_PAGES, '_carrefour_section(columns.carrefour), _outside_section(columns),', '_carrefour_section(columns.carrefour),'),
+    "Carrefour's table left off the method page (q22 pages)": (SHOP_PAGES, '_columns_section(columns, exclusions), _carrefour_section(columns.carrefour),', '_columns_section(columns, exclusions),'),
+    'a store in no column named outside its span (q22 pages)': (SHOP_PAGES, '+ f" {_span(store.name)}</li>" for store in stores)', '+ f" {text(store.name)}</li>" for store in stores)'),
+    'a column under the floor not named (q22 pages)': (SHOP_PAGES, 'for key in columns.under_floor]', 'for key in []]'),
+    'the stores left out by rule in a column not named (q22 pages)': (SHOP_PAGES, '_left_out_in_columns(exclusions, columns.carrefour),', '"",'),
+    'store 779 not named (q22 pages)': (SHOP_PAGES, '                    f"<p>{text(STORE_779)}</p>")\n', '                    "")\n'),
+    'the rules left off the method page (q22 pages)': (SHOP_PAGES, '_floor_section(columns), _rules_section(), _never_section(),', '_floor_section(columns), _never_section(),'),
+    "the basket's method left off the method page (q22 pages)": (SHOP_PAGES, 'f\'{"".join(method_parts(basket, exclusions, public))}</section>\']', '"</section>"]'),
+    "the basket's section under its inner heading's id (q22 pages)": (SHOP_PAGES, 'BASKET_SECTION = "headline-basket"', 'BASKET_SECTION = "basket"'),
+    "the record's gate shown open (q22 pages)": (SHOP_PAGES, 'GATE_CLOSED = "Gate: closed."', 'GATE_CLOSED = "Gate: open."'),
+    'an open gate rendered on the record page (q22 pages)': (SHOP_PAGES, '    if found["open"]:\n        raise', '    if False:\n        raise'),
+    'the record page without the columns tested (q22 pages)': (SHOP_PAGES, '    parts = [f"<p>{text(columns_tested(scorecard[\'columns_tested\']))}</p>",', '    parts = ["",'),
+    'nothing scored said beside scores (q22 pages)': (SHOP_PAGES, '    if not any(version["all"]["scored"] for found in columns.values() for version in found["versions"]):', '    if True:'),
+    "a version's months left off the record page (q22 pages)": (SHOP_PAGES, 'periods = [("All", version["all"]), *((_month(month["month"]), month) for month in version["months"])]', 'periods = [("All", version["all"])]'),
+    "the record's intervals left off (q22 pages)": (SHOP_PAGES, 'f"<td>{_figure(model - a)}{_interval(spans, \'model_minus_a\')}</td>",', 'f"<td>{_figure(model - a)}</td>",'),
+    'a bin under 1% given a sentence (q22 pages)': (SHOP_PAGES, '            if holds_share(row["count"], scored):\n', '            if True:\n'),
+    "a bin's share of 1% read as any share on the record page (q22 pages)": (RECORD_FOR_SHOP_PAGES, 'return count >= Fraction(BIN_SHARE) * rows', 'return count > 0'),
+    'the record page without the fine print sentence (q22 pages)': (SHOP_PAGES, '             f"<p>{text(FINE_PRINT_UNREAD)}</p>",\n', '             "",\n'),
+    'late days counted as on time on the record page (q22 pages)': (SHOP_PAGES, '    timely = [seen for seen in frozen if on_time(seen, ledger_days[seen])]\n', '    timely = frozen\n'),
+    "the ledger's late day read as on time on the record page (q22 pages)": (FREEZE_FOR_SHOP_PAGES, '    return at < cutoff(day)\n', '    return True\n'),
+    'the record starting on its first frozen day, late or not (q22 pages)': (SHOP_PAGES, 'f"The record starts on {_day(timely[0])},', 'f"The record starts on {_day(frozen[0])},'),
+    'the files not linked (q22 pages)': (SHOP_PAGES, 'f"<p>{text(FILES_LABEL)}</p>", _files(files)),', 'f"<p>{text(FILES_LABEL)}</p>"),'),
+    'the ledger not first among the files (q22 pages)': (SHOP_PAGES, 'for path in (*ledger, *forecasts, *scores, *others))', 'for path in (*forecasts, *ledger, *scores, *others))'),
+    "a column's days short of price files not shown (q22 pages)": (SHOP_PAGES, '                 _ranges([found.day for found in mine if found.present and found.hole]),\n', '                 "none",\n'),
+    'basket items all linked (q22 pages)': (SHOP_PAGES, 'item_link=lambda code: page_path(code) if code in product_pages else None,', 'item_link=lambda code: page_path(code),'),
+    'the basket page without the formats sentence (q22 pages)': (SHOP_PAGES, 'method_href=f"method.html#{BASKET_SECTION}", note=formats_note())', 'method_href=f"method.html#{BASKET_SECTION}")'),
+    "the frame's note left off the basket's table (q22 pages)": (PAGE_FOR_SHOP_PAGES, '    note = f"<p>{_prose(frame.note)}</p>" if frame is not None and frame.note else ""\n', '    note = ""\n'),
+    "basket.html with the basket's own band (q22 pages)": (PAGE_FOR_SHOP_PAGES, '    return _page(frame.band, words.TITLE,', '    return _page(_band(f"<h1>{_text(words.TITLE)}</h1>", public), words.TITLE,'),
+    "basket.html with the basket's own credit line (q22 pages)": (PAGE_FOR_SHOP_PAGES, "credit = f'<p>{_prose(frame.credit)} <a", 'credit = f\'<p>{_prose(words.credit(date.fromisoformat(public["day"]), public["collected_by"]))} <a'),
+    "basket.html's method link to the basket's own page (q22 pages)": (PAGE_FOR_SHOP_PAGES, '<a href="{_escape(frame.method_href)}">', '<a href="method.html">'),
+    "an item's page link ignored (q22 pages)": (PAGE_FOR_SHOP_PAGES, '        href = None if frame is None else frame.item_link(item.code)\n', '        href = None\n'),
+    "basket.html without the basket's title (q22 pages)": (PAGE_FOR_SHOP_PAGES, '[f"<h1>{_text(words.TITLE)}</h1>", *parts], credit)', 'parts, credit)'),
+    "the basket's method page short of its intro (q22 pages)": (PAGE_FOR_SHOP_PAGES, 'parts = [f"<h1>{_text(words.METHOD_TITLE)}</h1>", *method_parts(basket, exclusions, public)]', 'parts = [f"<h1>{_text(words.METHOD_TITLE)}</h1>", *method_parts(basket, exclusions, public)[1:]]'),
+    "basket.html's band without the date line (q22 pages)": (SHELL_FOR_SHOP_PAGES, 'f\'<p class="dateline">{text(date_line(day))}</p></div></header>\')', 'f\'<p class="dateline"></p></div></header>\')'),
+    "the basket's pages written when not asked (q22 pages)": (BUILD_FOR_SHOP_PAGES, '    if write_pages:\n', '    if True:\n'),
+    'the day file not written when the pages are not asked (q22 pages)': (BUILD_FOR_SHOP_PAGES, '    elif not unchanged:\n        write_day_file(shown, site_dir)\n', '    elif False:\n        write_day_file(shown, site_dir)\n'),
+    'an unchanged day file rewritten when the pages are not asked (q22 pages)': (BUILD_FOR_SHOP_PAGES, '    elif not unchanged:\n', '    else:\n'),
+    "the outcome's day as built, not as shown (q22 pages)": (BUILD_FOR_SHOP_PAGES, 'index_headline(shown, basket), shown,', 'index_headline(shown, basket), public_day(record),'),
+    "the outcome's stores left out not the chain's (q22 pages)": (BUILD_FOR_SHOP_PAGES, '    exclusions = {slug: excluded(stores[slug], slug) for slug in chains}\n', '    exclusions = {slug: [] for slug in chains}\n'),
     # basket: extract
     "extract older file wins": (EXTRACT, "latest = max(named)", "latest = min(named)"),
     "extract first duplicate wins": (EXTRACT, "        latest[row.code] = row", "        latest.setdefault(row.code, row)"),

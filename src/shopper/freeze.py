@@ -96,6 +96,12 @@ def cutoff(day: date) -> datetime:
     return datetime.combine(day + timedelta(days=1), datetime.min.time(), tzinfo=ISRAEL)
 
 
+def on_time(day: date, at: datetime) -> bool:
+    """Whether a day's file stored at `at` (S3's time) counts: before the day's cutoff. The record page reads the
+    ledger's times by it."""
+    return at < cutoff(day)
+
+
 def archive_key(day: date) -> str:
     return f"forecasts/date={day.isoformat()}/forecasts.csv.gz"
 
@@ -123,7 +129,7 @@ def _same(stored: bytes, body: bytes, differs: type[Exception], what: str, day: 
 
 
 def _frozen(day: date, body: bytes, at: datetime, status: str) -> Frozen:
-    return Frozen(day=day, body=body, sha256=hashlib.sha256(body).hexdigest(), frozen_at=at, on_time=at < cutoff(day),
+    return Frozen(day=day, body=body, sha256=hashlib.sha256(body).hexdigest(), frozen_at=at, on_time=on_time(day, at),
                   status=status)
 
 

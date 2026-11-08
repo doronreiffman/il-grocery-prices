@@ -68,7 +68,7 @@ from shopper.words import (ACROSS_HEADING, ALWAYS_SENTENCE, AT_SOME_STORES, BARC
                            gap_sentences, history_sentences, last_across, listed_price, minimum_spend, no_odds_yet,
                            price_history, starts_on, stores_range, targets, unreadable)
 
-__all__ = ["CHAIN_SPAN", "MAX_PAGE", "page_path", "render_product"]
+__all__ = ["CHAIN_SPAN", "MAX_PAGE", "field_conditions", "page_path", "render_product", "running_today"]
 
 MAX_PAGE = 60_000      # bytes a product page may hold (the design's check)
 DAY_WIDTH = 4          # the chart's units a day
@@ -102,8 +102,9 @@ def _span(value: str) -> str:
     return CHAIN_SPAN.format(text(value))
 
 
-def _running(point: Point | None, day: date) -> list[dict]:
-    """The point's promotions running on `day` (P3: started on or before it and ending on or after it)."""
+def running_today(point: Point | None, day: date) -> list[dict]:
+    """The point's promotions running on `day` (P3: started on or before it and ending on or after it); the front
+    page's rows read them so too."""
     if point is None:
         return []
     return [struct for struct in point.promotions if struct["start"] <= day <= struct["end"]]
@@ -115,8 +116,9 @@ def _valid(struct: Mapping) -> Deal | None:
     return deal if deal.valid and deal.price is not None else None
 
 
-def _conditions(struct: Mapping) -> list[str]:
-    """A promotion's conditions from the fields, as HTML, each with its source (P5, S3)."""
+def field_conditions(struct: Mapping) -> list[str]:
+    """A promotion's conditions from the fields, as HTML, each with its source (P5, S3), from a struct's (or a front
+    page row's) `restrictions`, `programmes` and `min_spend`."""
     found = []
     phrase, names = targets(struct["restrictions"]), struct["programmes"]
     if phrase or names:
@@ -138,7 +140,7 @@ def _promotion(struct: Mapping) -> str:
             head += f", {text(buy(deal.buy))}"
         if deal.low is not None and deal.high is not None:
             head += f", {text(stores_range(deal.low, deal.high))}"
-    conditions = "; ".join([*_conditions(struct), text(FINE_PRINT)])
+    conditions = "; ".join([*field_conditions(struct), text(FINE_PRINT)])
     listed = text(MORNING) if struct["wide"] else f"{text(MORNING)}; {text(AT_SOME_STORES)}"
     return f"<li>{head}<small>{conditions}</small><small>{listed}</small></li>"
 
@@ -220,7 +222,7 @@ def _section(key: str, covered: Covered, pair: Pair | None, column_days: Mapping
     if column.slug in promotions_errors:
         parts.append(f'<p class="warn">{text(unreadable(column.slug))}</p>')
     parts.append(_today(key, column_days[(key, day)], point, covered))
-    running = _running(point, day)
+    running = running_today(point, day)
     if running:
         parts.append(f'<ul class="deals">{"".join(_promotion(struct) for struct in running)}</ul>')
     if point is not None and point.next_start is not None:
@@ -262,7 +264,7 @@ def _cell(key: str, pair: Pair | None, column_days: Mapping[tuple[str, date], Co
             return few
         shown = f"₪{money(point.listed)}{few}"
     deals = []
-    for struct in _running(point, day):
+    for struct in running_today(point, day):
         if not struct["wide"]:
             continue
         deal = _valid(struct)

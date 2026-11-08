@@ -24,6 +24,13 @@ def text(value: str) -> str:
     return escape(value, quote=False)
 
 
+def band(day: date, up: str) -> str:
+    """The header band: the site's name linking to the front page, over the date line (`basket.html`'s too, in the
+    basket's frame)."""
+    return (f'<header class="band"><div class="wrap"><a href="{up}index.html">{text(SITE_NAME)}</a>'
+            f'<p class="dateline">{text(date_line(day))}</p></div></header>')
+
+
 def page(title: str, main: str, day: date, collected_by: str, links: Sequence[tuple[str, str]], style: str = "",
          up: str = "../") -> str:
     """A whole page: `title` for the browser's tab (never a chain's text, which no span can hold there), `main` as
@@ -40,8 +47,7 @@ def page(title: str, main: str, day: date, collected_by: str, links: Sequence[tu
 <style>{BASE_STYLE}{style}</style>
 </head>
 <body>
-<header class="band"><div class="wrap"><a href="{up}index.html">{text(SITE_NAME)}</a>\
-<p class="dateline">{text(date_line(day))}</p></div></header>
+{band(day, up)}
 <main>
 {main}
 </main>

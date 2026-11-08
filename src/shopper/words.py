@@ -306,14 +306,25 @@ def _shown(amount: Decimal) -> Decimal:
     return Decimal(money(amount))
 
 
-def _against_median(gap: Gap) -> str:
-    """The deal against the 30-day median, worked from both as shown (the module's docstring)."""
+def shown_below(gap: Gap) -> tuple[Decimal, int] | None:
+    """The deal's gap below the 30-day median as the pages show it: the amount and the whole percent (half up), worked
+    from the median and the deal as shown (the module's docstring); None when the shown deal is not below the shown
+    median. P7's first sentence and the front page's depth column both read it."""
     median, deal = _shown(gap.median30), to_agora(gap.deal)
-    said = f"the 30-day median listed price of ₪{median}"
     amount = median - deal
     if amount <= 0:
+        return None
+    return amount, whole(100 * Fraction(amount) / Fraction(median))
+
+
+def _against_median(gap: Gap) -> str:
+    """The deal against the 30-day median, worked from both as shown (`shown_below`)."""
+    said = f"the 30-day median listed price of ₪{_shown(gap.median30)}"
+    found = shown_below(gap)
+    if found is None:
         return f"not below {said}"
-    return f"₪{amount}, {whole(100 * Fraction(amount) / Fraction(median))}%, below {said}"
+    amount, percent = found
+    return f"₪{amount}, {percent}%, below {said}"
 
 
 def _change(change: Change) -> str:

@@ -34,6 +34,14 @@ and a note says why.
 Hebrew. A Hebrew name is wrapped whole in <span dir="rtl" lang="he">, and so is every run of Hebrew in a
 sentence (a store's name).
 
+The shopper site's frame (`Frame`; the shopper plan's Task 18, its question M (c) and (d) and the second pre-flight's
+S6). The shopper site shows the same index page as `basket.html` in its own frame: with a frame, the header band is
+the frame's (the shopper site's name over its date line) and the basket's title opens the main part; the credit line is
+the frame's, its link the frame's method link; a basket item whose product page the build has links to it
+(`item_link`, None for no page); and the frame's note goes under the item table. Without a frame the page is the
+basket's own, byte for byte as before. The method page's body is `method_parts`, the parts after its heading, so the
+shopper site's method page carries the basket's method in a section of its own, the same parts in the same order.
+
 Revisions. A revised day's public dict has `revised` ({"on": YYYY-MM-DD, "reason": text}) and `revisions`,
 the earlier runs oldest first, each with `totals` by slug (None for a chain without one) and its own
 `revised` (None for the first, the day as first published). The revised line names the latest revision,
@@ -42,7 +50,8 @@ a `revised` key (a day file written before the key was kept) adds no earlier rev
 """
 import json
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from html import escape as _escape
@@ -220,8 +229,22 @@ STYLE = ("\n" + _TOP + _TILES_AND_BARS + _TABLES + _BASKET_TABLES + _FOOTER + _B
          + _NARROW_BASKET + _END)
 
 
-def render_index(public: dict, basket: Basket, exclusions: Mapping[str, Sequence[Store]]) -> str:
-    """The index page of the day `public` holds; `exclusions` the stores each chain leaves out, by slug."""
+@dataclass(frozen=True)
+class Frame:
+    """The shopper site's frame for the index page (the module's docstring): `band` the header band as HTML, `credit`
+    the credit line's text, `item_link` a basket item's page by barcode (None for no page), `method_href` where the
+    method link goes, `note` a sentence under the item table ("" for none)."""
+    band: str
+    credit: str
+    item_link: Callable[[str], str | None]
+    method_href: str
+    note: str = ""
+
+
+def render_index(public: dict, basket: Basket, exclusions: Mapping[str, Sequence[Store]],
+                 frame: Frame | None = None) -> str:
+    """The index page of the day `public` holds; `exclusions` the stores each chain leaves out, by slug; in the shopper
+    site's `frame` when one is given (the module's docstring)."""
     chains = _ordered(public["chains"])
     compare = public["headline"] is not None
     first, second = index_headline(public, basket)
@@ -231,9 +254,12 @@ def render_index(public: dict, basket: Basket, exclusions: Mapping[str, Sequence
         parts.append(f'<p class="revised">{_prose(_revised(public))}</p>')
     parts.append(f'<p class="lede">{_prose(words.PRICES_SENTENCE)}</p>')
     parts.append(_bars(chains, compare))
-    parts.append(_table(public, basket, chains, compare))
+    parts.append(_table(public, basket, chains, compare, frame))
     parts.append(_notes(public, basket, exclusions, chains))
-    return _page(_band(f"<h1>{_text(words.TITLE)}</h1>", public), words.TITLE, parts, _credit(public))
+    if frame is None:
+        return _page(_band(f"<h1>{_text(words.TITLE)}</h1>", public), words.TITLE, parts, _credit(public))
+    credit = f'<p>{_prose(frame.credit)} <a href="{_escape(frame.method_href)}">{_text(words.METHOD_LINK)}</a></p>'
+    return _page(frame.band, words.TITLE, [f"<h1>{_text(words.TITLE)}</h1>", *parts], credit)
 
 
 def index_headline(public: dict, basket: Basket) -> tuple[str, str]:
@@ -248,23 +274,29 @@ def index_headline(public: dict, basket: Basket) -> tuple[str, str]:
 
 
 def render_method(basket: Basket, exclusions: Mapping[str, Sequence[Store]], public: dict) -> str:
-    """The method page: the rules, the basket, the stores left out, the claims not made, the law, reproducing."""
+    """The method page: its heading, then `method_parts`."""
+    parts = [f"<h1>{_text(words.METHOD_TITLE)}</h1>", *method_parts(basket, exclusions, public)]
+    back = f'<a href="index.html">{_text(words.BACK_LINK)}</a>'
+    return _page(_band(back, public), f"{words.METHOD_TITLE} · {words.TITLE}", parts, _credit(public))
+
+
+def method_parts(basket: Basket, exclusions: Mapping[str, Sequence[Store]], public: dict) -> list[str]:
+    """The method page's body after its heading, as HTML parts: the intro, the rules, the basket, the stores left out,
+    the claims not made, the law, reproducing. The shopper site's method page carries them in a section of its own."""
     day = date.fromisoformat(public["day"])
     rules = "".join(f"<li><b>{_text(name)}</b> <span>{_prose(text)}</span></li>" for name, text in words.RULES)
     not_claimed = "".join(f"<li>{_prose(line)}</li>" for line in words.NOT_CLAIMED)
-    parts = [f"<h1>{_text(words.METHOD_TITLE)}</h1>", f'<p class="lede">{_prose(words.METHOD_INTRO)}</p>',
-             _section("<h2>The rules</h2>", f'<ol class="rules">{rules}</ol>'),
-             _section('<h2 id="basket">The basket</h2>', f"<p>{_prose(words.basket_intro(basket))}</p>",
-                      _basket_table(basket)),
-             _section("<h2>Stores left out</h2>",
-                      *(_excluded(slug, exclusions.get(slug, ())) for slug in words.CHAIN_NAMES)),
-             _section("<h2>What this page does not claim</h2>", f"<ul>{not_claimed}</ul>"),
-             _section("<h2>The law</h2>", f"<p>{_prose(words.LAW)}</p>"),
-             _section("<h2>To reproduce this number</h2>",
-                      f"<p>{_prose(words.reproduce(day, public['basket_version'], public['code_sha']))}</p>",
-                      _day_link(day))]
-    back = f'<a href="index.html">{_text(words.BACK_LINK)}</a>'
-    return _page(_band(back, public), f"{words.METHOD_TITLE} · {words.TITLE}", parts, _credit(public))
+    return [f'<p class="lede">{_prose(words.METHOD_INTRO)}</p>',
+            _section("<h2>The rules</h2>", f'<ol class="rules">{rules}</ol>'),
+            _section('<h2 id="basket">The basket</h2>', f"<p>{_prose(words.basket_intro(basket))}</p>",
+                     _basket_table(basket)),
+            _section("<h2>Stores left out</h2>",
+                     *(_excluded(slug, exclusions.get(slug, ())) for slug in words.CHAIN_NAMES)),
+            _section("<h2>What this page does not claim</h2>", f"<ul>{not_claimed}</ul>"),
+            _section("<h2>The law</h2>", f"<p>{_prose(words.LAW)}</p>"),
+            _section("<h2>To reproduce this number</h2>",
+                     f"<p>{_prose(words.reproduce(day, public['basket_version'], public['code_sha']))}</p>",
+                     _day_link(day))]
 
 
 def render_day(public: dict) -> str:
@@ -280,9 +312,14 @@ def build_site(public: dict, basket: Basket, exclusions: Mapping[str, Sequence[S
     (site_dir / "index.html").write_text(render_index(public, basket, exclusions), encoding="utf-8")
     (site_dir / "method.html").write_text(render_method(basket, exclusions, public), encoding="utf-8")
     if write_day:
-        (site_dir / "days").mkdir(exist_ok=True)
-        (site_dir / "days" / f"{public['day']}.json").write_text(render_day(public), encoding="utf-8")
+        write_day_file(public, site_dir)
     (site_dir / MARKER).write_text("", encoding="utf-8")
+
+
+def write_day_file(public: dict, site_dir: Path) -> None:
+    """Write `days/<day>.json` under `site_dir`, the folders made as needed."""
+    (site_dir / "days").mkdir(parents=True, exist_ok=True)
+    (site_dir / "days" / f"{public['day']}.json").write_text(render_day(public), encoding="utf-8")
 
 
 def _page(band: str, title: str, parts: Sequence[str], footer: str) -> str:
@@ -411,8 +448,9 @@ def _lowest(code: str, public: dict, chains: list[tuple[str, dict]], compare: bo
     return {slug for slug, price in prices.items() if price == lowest}
 
 
-def _table(public: dict, basket: Basket, chains: list[tuple[str, dict]], compare: bool) -> str:
-    """One row per basket item, one column per chain: its price and, beneath, its stores' range."""
+def _table(public: dict, basket: Basket, chains: list[tuple[str, dict]], compare: bool, frame: Frame | None) -> str:
+    """One row per basket item, one column per chain: its price and, beneath, its stores' range; in a frame, an item's
+    name linked to its page when it has one, and the frame's note under the table."""
     head = "".join(f'<th scope="col" class="out">{_text(words.CHAIN_NAMES[slug])} †</th>' if not chain["in_ranking"]
                    else f'<th scope="col">{_text(words.CHAIN_NAMES[slug])}</th>' for slug, chain in chains)
     rows = []
@@ -430,7 +468,11 @@ def _table(public: dict, basket: Basket, chains: list[tuple[str, dict]], compare
             mark = " †" if not chain["in_ranking"] else ""
             note = words.range_note(price["low"], price["high"], price["listing"], chain["with_file"])
             found.append(f'<td data-chain="{slug}"{attributes}>₪{price["median"]}{mark}<small>{_text(note)}</small></td>')
-        label = (f"{_text(item.name_en)}<br>{_he(item.name_he)}<small>{_text(words.size_text(item.size))} · "
+        name = _text(item.name_en)
+        href = None if frame is None else frame.item_link(item.code)
+        if href is not None:
+            name = f'<a href="{_escape(href)}">{name}</a>'
+        label = (f"{name}<br>{_he(item.name_he)}<small>{_text(words.size_text(item.size))} · "
                  f"{item.code}</small>" + ("" if counts else "<small>left out today</small>"))
         row_class = "" if counts else ' class="left-out"'
         rows.append(f'<tr data-code="{item.code}"{row_class}><th scope="row">{label}</th>{"".join(found)}</tr>')
@@ -439,9 +481,10 @@ def _table(public: dict, basket: Basket, chains: list[tuple[str, dict]], compare
         totals = "".join(f'<td>₪{chain["total"]}</td>' if chain["total"] is not None else "<td>none</td>"
                          for _, chain in chains)
         foot = f'<tfoot><tr><th scope="row">Total of the items that count</th>{totals}</tr></tfoot>'
+    note = f"<p>{_prose(frame.note)}</p>" if frame is not None and frame.note else ""
     return (f'<section><h2 id="prices">Listed prices by item</h2>{_scroller("prices")}<table class="prices">'
             f'<thead><tr><th scope="col">Item</th>{head}</tr></thead><tbody>{"".join(rows)}</tbody>{foot}</table></div>'
-            "</section>")
+            f"{note}</section>")
 
 
 def _notes(public: dict, basket: Basket, exclusions: Mapping[str, Sequence[Store]],

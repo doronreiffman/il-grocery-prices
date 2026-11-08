@@ -279,12 +279,18 @@ def calibration(summaries: Sequence[DaySummary], column: str | None = None) -> t
     return _rows(bins), None if error is None else _decimal(error)
 
 
+def holds_share(count: int, rows: int) -> bool:
+    """Whether a bin of `count` scored rows holds BIN_SHARE (1%) or more of `rows` (F9; the record page's sentence per
+    bin, F11, reads it too)."""
+    return count >= Fraction(BIN_SHARE) * rows
+
+
 def _off(bins: Sequence[tuple[int, Fraction, int]]) -> list[tuple[int, Fraction, Fraction]]:
     """The bins holding BIN_SHARE or more of the scored rows whose mean and share are more than BIN_OFF apart: each
     its index, its share of the rows and its gap."""
     rows = sum(count for count, _, _ in bins)
     return [(index, Fraction(count, rows), _gap(count, p, ones)) for index, (count, p, ones) in enumerate(bins)
-            if count and count >= Fraction(BIN_SHARE) * rows and _gap(count, p, ones) > Fraction(BIN_OFF)]
+            if count and holds_share(count, rows) and _gap(count, p, ones) > Fraction(BIN_OFF)]
 
 
 def _beats(days: Sequence[_Day], reasons: list[str]) -> bool:

@@ -30,6 +30,13 @@ of `revisions` (its run id, code fingerprint, build time, totals and its own `re
 first published, which is the first entry) and `revised` set to the reason and the Israel date of `now`. So
 every revision's reason stays in the day file: the latest in `revised`, each earlier one in `revisions`.
 
+Pages. The build writes the index and method pages and the marker beside the day file (`basket.page.build_site`).
+With `write_pages` false (the shopper site's run, which renders the basket's page as `basket.html` in its own frame and
+the basket's method inside its method page; the shopper plan's Task 18 and the second pre-flight's S13) it writes
+neither page nor the marker, and still writes `days/<day>.json` unless the published one already holds the numbers.
+Either way the outcome carries the day as the pages show it (`public`) and each chain's stores left out by rule
+(`exclusions`, by slug), for those pages.
+
 Only `main` reads the time of day, and gives it as `now`; the extraction timer feeds the printout alone.
 """
 import argparse
@@ -47,12 +54,12 @@ import duckdb
 from basket.basket_file import DEFAULT_BASKET, BadBasket, load_basket
 from basket.chains import EXCLUDED, SLUGS
 from basket.extract import ExtractReport, extract, table_path
-from basket.page import build_site, index_headline
+from basket.page import build_site, index_headline, write_day_file
 from basket.record import (DayRecord, build_record, code_fingerprint, comparable, manifests_for, public_day,
                            record_json)
 from basket.rules import (MissingTable, apply_filters, chain_day, chain_prices, chain_sizes, open_day, price_basket,
                           stores_with_file_keys)
-from basket.stores import NoStoreList, chain_stores, excluded, included
+from basket.stores import NoStoreList, Store, chain_stores, excluded, included
 from collector.run import new_run_id
 
 ISRAEL = ZoneInfo("Asia/Jerusalem")
@@ -66,19 +73,23 @@ class RevisionNeeded(Exception):
 class BuildOutcome:
     """The run's record and where it was written; `unchanged` when the published day file already held its
     numbers, `revised` when it was rewritten with a reason; each chain's extraction time in seconds, None for a
-    table kept; the index page's two headline lines."""
+    table kept; the index page's two headline lines; the day as the pages show it (the published day file's when
+    unchanged); each chain's stores left out by rule, by slug."""
     record: DayRecord
     unchanged: bool
     revised: bool
     record_path: Path
     extraction_seconds: dict[str, float | None]
     headline_lines: tuple[str, str]
+    public: dict
+    exclusions: dict[str, list[Store]]
 
 
 def build_day(day: date, data_dir: Path, site_dir: Path, basket_path: Path, now: datetime, revise: str | None,
               rebuild: bool, chains: Sequence[str] = SLUGS, min_items: int = 25,
-              collected_by: str | None = None) -> BuildOutcome:
-    """Extract, price and publish the day over `chains`; `now` must carry a time zone."""
+              collected_by: str | None = None, write_pages: bool = True) -> BuildOutcome:
+    """Extract, price and publish the day over `chains`; `now` must carry a time zone. With `write_pages` false only
+    the day file is written (the module's docstring, "Pages")."""
     run_id = new_run_id(now, "basket")  # first: it refuses a naive `now`, which would be read as this machine's zone
     basket = load_basket(basket_path, min_items=min_items)
     raw_dir, tables_dir = data_dir / "raw", data_dir / "tables"
@@ -102,9 +113,13 @@ def build_day(day: date, data_dir: Path, site_dir: Path, basket_path: Path, now:
                           collected_by if collected_by is not None else f"{now.astimezone(ISRAEL):%H:%M}")
     record_path = _write_record(data_dir, record)
     shown, unchanged, revised = _publish(record, site_dir, now, revise)
-    build_site(shown, basket, {slug: excluded(stores[slug], slug) for slug in chains}, site_dir,
-               write_day=not unchanged)
-    return BuildOutcome(record, unchanged, revised, record_path, seconds, index_headline(shown, basket))
+    exclusions = {slug: excluded(stores[slug], slug) for slug in chains}
+    if write_pages:
+        build_site(shown, basket, exclusions, site_dir, write_day=not unchanged)
+    elif not unchanged:
+        write_day_file(shown, site_dir)
+    return BuildOutcome(record, unchanged, revised, record_path, seconds, index_headline(shown, basket), shown,
+                        exclusions)
 
 
 def _table(raw_dir: Path, slug: str, day: date, tables_dir: Path, rebuild: bool) -> tuple[ExtractReport, float | None]:
