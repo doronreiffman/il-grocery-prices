@@ -118,6 +118,7 @@ SHOP_EXTRACT = ("src/shopper/extract.py", ["tests/test_shop_extract.py"])
 SHOP_HISTORY = ("src/shopper/history.py", ["tests/test_history.py"])
 # The covered registry takes a product's size by B7's tie rule over its columns (basket.rules.most_common_size).
 RULES_FOR_SHOP_HISTORY = ("src/basket/rules.py", ["tests/test_history.py"])
+SHOP_MEASURES = ("src/shopper/measures.py", ["tests/test_measures.py"])
 # The items table reads B5, B6, B7, B8 and the rows that count from basket.rules, through a view of its own: its tests
 # must catch a break of any of them (the second pre-flight's S13).
 RULES_FOR_SHOP_ITEMS = ("src/basket/rules.py", ["tests/test_items.py"])
@@ -1397,6 +1398,36 @@ MUTATIONS = {
     'the earliest registry before the day taken (q22 history)': (ARCHIVE, '        latest = max(days)\n', '        latest = min(days)\n'),
     'a key the code never writes taken as a registry (q22 history)': (ARCHIVE, 'if key == kind_key(kind, None, listed, name) and listed < day', 'if listed < day'),
     'the registry put under a chain (q22 history)': (ARCHIVE, '        key = kind_key(kind, None, day, name)\n        self._put_file(', '        key = kind_key(kind, "all", day, name)\n        self._put_file('),
+    # shopper: the measured facts, the gap, the promotion history, the front page's test (q22 P7, P8, front)
+    'median of the 90 days (q22 P7)': (SHOP_MEASURES, 'middle = median(sorted(recent.listed))', 'middle = median(sorted(long.listed))'),
+    'the median taken in day order, not sorted (q22 P7)': (SHOP_MEASURES, 'median(sorted(recent.listed))', 'median(list(recent.listed))'),
+    'percent rounded down (q22 P7)': (SHOP_MEASURES, 'whole = int(abs(value) + Fraction(1, 2))', 'whole = int(abs(value))'),
+    'depth over the deal, not the median (q22 P7)': (SHOP_MEASURES, 'return gap.below / Fraction(gap.median30)', 'return gap.below / gap.deal'),
+    'at or below counted as below (q22 P7)': (SHOP_MEASURES, 'if Fraction(listed) <= deal)', 'if Fraction(listed) < deal)'),
+    'the deal rounded to two places in the days at or below (q22 P7)': (SHOP_MEASURES, 'if Fraction(listed) <= deal)', 'if Fraction(listed) <= round(deal, 2))'),
+    'a gap with no day of records in 30 (q22 P7)': (SHOP_MEASURES, '    if not recent.days:\n        return None\n', '    if False:\n        return None\n'),
+    'the 90-day low from the 30-day window (q22 P7)': (SHOP_MEASURES, 'low90=min(long.listed)', 'low90=min(recent.listed)'),
+    'the 30-day low from the 90-day window (q22 P7)': (SHOP_MEASURES, 'low30=min(recent.listed)', 'low30=min(long.listed)'),
+    'a change before the window counted (q22 P7)': (SHOP_MEASURES, 'if later.listed != earlier.listed and later.day >= first)', 'if later.listed != earlier.listed)'),
+    "a change on the window's first day left out (q22 P7)": (SHOP_MEASURES, 'later.day >= first)', 'later.day > first)'),
+    'the changes read from the 30-day window alone (q22 P7)': (SHOP_MEASURES, '    points = counted(pair, column_days, day, READ_DAYS)\n    first = ', '    points = counted(pair, column_days, day, RECENT_DAYS)\n    first = '),
+    'front page at or below the low (q22 front)': (SHOP_MEASURES, 'deal.price < Fraction(min(long.listed))', 'deal.price <= Fraction(min(long.listed))'),
+    'front page without the twenty days (q22 front)': (SHOP_MEASURES, 'long.days >= MIN_FRONT_DAYS and ', ''),
+    'front page at nineteen days (q22 front)': (SHOP_MEASURES, 'MIN_FRONT_DAYS = 20 ', 'MIN_FRONT_DAYS = 19 '),
+    'front page at twenty-one days (q22 front)': (SHOP_MEASURES, 'MIN_FRONT_DAYS = 20 ', 'MIN_FRONT_DAYS = 21 '),
+    "front page's twenty days of the past 30 (q22 front)": (SHOP_MEASURES, '    long = window(pair, column_days, day, READ_DAYS)\n    return long.days', '    long = window(pair, column_days, day, RECENT_DAYS)\n    return long.days'),
+    'front page over the 30-day low (q22 front)': (SHOP_MEASURES, 'Fraction(min(long.listed))', 'Fraction(min(window(pair, column_days, day, RECENT_DAYS).listed))'),
+    'the deal compared at two places (q22 front)': (SHOP_MEASURES, 'and deal.price < Fraction(', 'and round(deal.price, 2) < Fraction('),
+    'front page on an invalid deal (q22 front)': (SHOP_MEASURES, 'wide and deal.valid and deal.price', 'wide and deal.price'),
+    'front page on a deal at some stores (q22 front)': (SHOP_MEASURES, 'if not (wide and ', 'if not ('),
+    'front page on a day with no record (q22 front)': (SHOP_MEASURES, 'deal.price is not None and today is not None and today.record):', 'deal.price is not None):'),
+    'a hole breaks a run (q22 P8)': (SHOP_MEASURES, '        if not point.on_promotion:\n', '        if not point.on_promotion or (end is not None and start is not None and (point.day - end).days > 1):\n'),
+    'a day whose promotions were not read breaks a run (q22 P8)': (SHOP_MEASURES, '            if not column_days[(pair.column, point.day)].promo_hole]', '            if True]'),
+    'the history over 30 days, not 90 (q22 P8)': (SHOP_MEASURES, '    return [point for point in counted(pair, column_days, day, READ_DAYS)', '    return [point for point in counted(pair, column_days, day, RECENT_DAYS)'),
+    'the last run dropped (q22 P8)': (SHOP_MEASURES, '    if start is not None:\n        found.append(Run(start, end))\n    return found', '    return found'),
+    'a run starting on its last day (q22 P8)': (SHOP_MEASURES, '        if start is None:\n            start = point.day\n', '        start = point.day\n'),
+    'gaps counted with their ends (q22 P8)': (SHOP_MEASURES, '(later.start - earlier.end).days - 1', '(later.start - earlier.end).days'),
+    "days since from the run's start (q22 P8)": (SHOP_MEASURES, '(day - runs[-1].end).days', '(day - runs[-1].start).days'),
     # basket: extract
     "extract older file wins": (EXTRACT, "latest = max(named)", "latest = min(named)"),
     "extract first duplicate wins": (EXTRACT, "        latest[row.code] = row", "        latest.setdefault(row.code, row)"),
