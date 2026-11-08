@@ -42,7 +42,8 @@ per (product, column) by code, then column; `basket.archive.fetch_covered` takes
 The windows (P6, per column). A window of `length` days (30 or 90) is the `length` calendar days ending the day
 before the page's day, counting only the days on which the pair's column has a record and the pair a listed price;
 holes and days not listed are skipped, never filled. It is short when it counts fewer than 20 of 30 or 60 of 90 days
-(ENOUGH); `since` is its first counted day and `listed` the counted days' listed prices, in day order.
+(ENOUGH); `since` is its first counted day and `listed` the counted days' listed prices, in day order. `counted` gives
+the counted days' points themselves, for `shopper.measures`.
 """
 import json
 import tempfile
@@ -344,13 +345,21 @@ def covered(history: History, previous: Path | None, out: Path) -> dict[str, Cov
     return found
 
 
-def window(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: date, length: int) -> Window:
-    """P6's window of `length` days (30 or 90) ending the day before `day`, at the pair's column."""
-    counted = []
+def counted(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: date, length: int) -> list[Point]:
+    """The points P6's window of `length` days (30 or 90) counts, ending the day before `day`, in day order: the days on
+    which the pair's column has a record and the pair a listed price. The one place that rule lives: `window` and
+    `shopper.measures` read it."""
+    points = []
     for back in range(length, 0, -1):
         seen = day - timedelta(days=back)
         found, point = column_days.get((pair.column, seen)), pair.points.get(seen)
         if found is not None and found.record and point is not None and point.listed is not None:
-            counted.append(point)
-    return Window(days=len(counted), since=counted[0].day if counted else None,
-                  listed=tuple(point.listed for point in counted), short=len(counted) < ENOUGH[length])
+            points.append(point)
+    return points
+
+
+def window(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: date, length: int) -> Window:
+    """P6's window of `length` days (30 or 90) ending the day before `day`, at the pair's column."""
+    points = counted(pair, column_days, day, length)
+    return Window(days=len(points), since=points[0].day if points else None,
+                  listed=tuple(point.listed for point in points), short=len(points) < ENOUGH[length])
