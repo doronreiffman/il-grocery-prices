@@ -135,6 +135,15 @@ def test_placeholders_are_left_out_of_the_median(tmp_path):
     assert (rows[(SHELI, A)]["listed"], rows[(SHELI, A)]["listing"]) == (Decimal("11.90"), 1)
 
 
+def test_a_listed_price_at_the_price_tables_limit_is_written(tmp_path):
+    """The prices table holds a store price below ₪10,000,000,000 (basket.extract.PRICE_LIMIT); `listed` holds any
+    median of such prices to the half agora (DECIMAL(13,3))."""
+    _, rows = _run(tmp_path, {"1": [(A, "9999999999.99"), (B, "9999999999.99")], "2": [(A, "9999999999.99"),
+                                                                                      (B, "9999999999.98")]})
+    assert (rows[(SHELI, A)]["listed"], rows[(SHELI, B)]["listed"]) == (Decimal("9999999999.99"),
+                                                                       Decimal("9999999999.985"))
+
+
 def test_internal_codes_get_no_row(tmp_path):
     _, rows = _run(tmp_path, _at(("1", "2"), (A, "5.00"), (INTERNAL, "5.00")))
     assert set(rows) == {(SHELI, A)}
@@ -360,6 +369,21 @@ def test_a_min_qty_the_table_cannot_hold_stops_the_chains_promotions(tmp_path):
     with pytest.raises(PromotionFormatChanged, match=r"MinQty '1\.2345'"):
         _run(tmp_path, _at(("1", "2"), (A, "5.00")), {"1": [odd], "2": [odd]})
     assert not items_path(tmp_path / "tables", SLUG, DAY).exists()
+
+
+def test_a_percent_off_price_the_promotions_table_set_aside_is_not_read(tmp_path):
+    """A percent-off link whose DiscountedPrice at every carrying store is too large for the promotions table's
+    DECIMAL(12,3) has no stores' figures there (Task 5); the deal does not fall back to the link's own price, which the
+    table set aside, so it has no price and no range, and it still counts as on promotion (valid or not)."""
+    links = [_one("87", _item(A, reward="2", rate="20", price="1000000000.00")),
+             _one("88", _item(B, reward="2", rate="20", price="999999999.9999")),
+             _one("89", _item(C, reward="2", rate="20", price="12345678901.00"))]
+    _, rows = _run(tmp_path, LISTED, {"1": links, "2": links})
+    for code in (A, B, C):
+        (struct,) = rows[(SHELI, code)]["promotions"]
+        assert (struct["kind"], struct["price"], struct["price_exact"], struct["low"], struct["high"], struct["valid"],
+                struct["why"]) == ("percent_off", None, None, None, None, False, "no price in the fields"), code
+        assert rows[(SHELI, code)]["on_promotion"] is True
 
 
 def test_a_deal_price_too_large_to_show_keeps_its_fraction(tmp_path):

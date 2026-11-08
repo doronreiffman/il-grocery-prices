@@ -1304,6 +1304,8 @@ MUTATIONS = {
     'texts without listed prices (q22 items)': (SHOP_ITEMS, 'json.dumps(listed, ensure_ascii=False), len(text.stores))', 'json.dumps({}, ensure_ascii=False), len(text.stores))'),
     'texts listed at every column (q22 items)': (SHOP_ITEMS, 'for column, ids in columns.items() if ids & carrying}', 'for column, ids in columns.items()}'),
     "a group's items left out of the texts' fields (q22 items)": (SHOP_ITEMS, 'if link.group is group]}', 'if False]}'),
+    'listed held in DECIMAL(12,3) (q22 P2)': (SHOP_ITEMS, '("listed", "DECIMAL(13,3)")', '("listed", "DECIMAL(12,3)")'),
+    'a percent-off price the promotions table set aside read again (q22 items)': (SHOP_ITEMS, '    if stores is None and link["kind"] == PERCENT_OFF:   # no store\'s price the promotions table could hold\n        item = {**item, "DiscountedPrice": ""}\n', ''),
     'a format change stops the prices (q22 extract)': (SHOP_EXTRACT, '    except (PromotionFormatChanged, BadPriceFile) as refused:\n        error = _refused(', '    except BadPriceFile as refused:\n        error = _refused('),
     'a bad promotion file stops the chain (q22 extract)': (SHOP_EXTRACT, '    except (PromotionFormatChanged, BadPriceFile) as refused:', '    except PromotionFormatChanged as refused:'),
     'a format change writes no items (q22 extract)': (SHOP_EXTRACT, '        items = write_items(tables_dir, slug, day, stores, ids, sub_chains, promo, error, table)\n', '        items = None if error else write_items(tables_dir, slug, day, stores, ids, sub_chains, promo, error, table)\n'),

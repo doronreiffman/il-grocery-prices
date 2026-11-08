@@ -13,8 +13,9 @@ The rows (P1, P2). One per (column, GS1 barcode) listed above ₪0.01 at a store
 count (`basket.rules.apply_filters`: included stores, B2's file-name half, B4's placeholders left out) are joined to the
 day's (store, column) pairs in one view, `column_rows`, whose `chain` field is the column, codes passing the GS1 check
 only (P1: a chain's internal codes are no product). Over that view the basket's own rules give each column its figures,
-with no second copy: `listed` is B5's median over the column's stores listing the code, one price a store, exact (three
-places hold any median of two-place prices), with `low`, `high` and `listing` (`basket.rules.chain_prices`); the size
+with no second copy: `listed` is B5's median over the column's stores listing the code, one price a store, exact
+(DECIMAL(13,3) holds any median of the prices the prices table holds, two places below ₪10,000,000,000), with `low`,
+`high` and `listing` (`basket.rules.chain_prices`); the size
 is B7's most common readable size (`basket.rules.chain_sizes`), as `size_amount` (the amount as plain text, exact
 whatever its places) and `size_kind`, or NULL for none. `name` is the name most of the column's rows give the code, a
 tie going to the longest, then to the first in code-point order. `wide` is B6 per column (`basket.rules.covers`):
@@ -36,9 +37,11 @@ holds one struct per promotion on the item, by start, then by id as a number. Of
 one shown is a link with a kind before a `RewardType` 0 link, then the lowest `GroupID` as a number, then the lowest
 code; an item named only by 0 links has a struct with no kind and no price ("price not read", never on promotion). The
 deal is `shopper.deals.deal` over the link's item fields (the row's `fields` JSON, its "item", S11) against the
-column's `listed`, a percent-off deal at the row's `discounted_median`, `discounted_low` and `discounted_high`. The
-price is written twice: `price_exact`, the `Fraction`'s text ("109/75"), from which `shopper.deals.deal_from_row`
-rebuilds the deal; and `price`, to the agora half up, for the eye only, NULL when it would not fit DECIMAL(12,2).
+column's `listed`, a percent-off deal at the row's `discounted_median`, `discounted_low` and `discounted_high`. A
+percent-off row without them (no carrying store's `DiscountedPrice` the promotions table could hold) has no price:
+its deal never falls back to the link's own `DiscountedPrice`, which that table set aside. The price is written
+twice: `price_exact`, the `Fraction`'s text ("109/75"), from which `shopper.deals.deal_from_row` rebuilds the deal;
+and `price`, to the agora half up, for the eye only, NULL when it would not fit DECIMAL(12,2).
 `buy` is written on every struct. A `MinQty` that DECIMAL(12,3) cannot hold exactly (more than three places, or a
 billion or more) would come back as another `buy`, so `write_items` raises `PromotionFormatChanged` naming the field
 before any table is written, for its caller to treat as a format change of the chain's promotions (P10); none of the
@@ -84,7 +87,7 @@ from basket.units import Size, plain
 from shopper.columns import members, outside, under_floor
 from shopper.deals import StorePrices, deal
 from shopper.promofile import PromotionFormatChanged
-from shopper.promos import PromoReport, PromoText, promotions_path
+from shopper.promos import PERCENT_OFF, PromoReport, PromoText, promotions_path
 from shopper.promotions import in_day
 
 HORIZON = 14                 # days ahead a start is looked for: the design's d + 1 to d + 14
@@ -98,7 +101,7 @@ _STRUCT = ('STRUCT(promotion_id VARCHAR, description VARCHAR, "start" DATE, "end
            "high DECIMAL(12,3), valid BOOLEAN, why VARCHAR, restrictions VARCHAR[], programmes VARCHAR[], "
            "min_spend DECIMAL(12,2), stores INTEGER, wide BOOLEAN)[]")
 COLUMNS = (("column", "VARCHAR"), ("code", "VARCHAR"), ("name", "VARCHAR"), ("size_amount", "VARCHAR"),
-           ("size_kind", "VARCHAR"), ("listed", "DECIMAL(12,3)"), ("low", "DECIMAL(12,2)"), ("high", "DECIMAL(12,2)"),
+           ("size_kind", "VARCHAR"), ("listed", "DECIMAL(13,3)"), ("low", "DECIMAL(12,2)"), ("high", "DECIMAL(12,2)"),
            ("listing", "INTEGER"), ("wide", "BOOLEAN"), ("on_promotion", "BOOLEAN"), ("next_start", "DATE"),
            ("promotions", _STRUCT))
 NULLABLE = ("size_amount", "size_kind", "on_promotion", "next_start", "promotions")
@@ -227,6 +230,8 @@ def _struct(slug: str, link: dict[str, Any], listed: Decimal) -> dict[str, Any]:
     stores = None if link["discounted_median"] is None else StorePrices(
         link["discounted_median"], link["discounted_low"], link["discounted_high"])
     item = link["item"]
+    if stores is None and link["kind"] == PERCENT_OFF:   # no store's price the promotions table could hold
+        item = {**item, "DiscountedPrice": ""}
     found = deal(slug, item, listed, stores)
     return {"promotion_id": link["promotion_id"], "description": link["description"],
             "start": link["start"].isoformat(), "end": link["end"].isoformat(), "kind": link["kind"],
