@@ -39,6 +39,12 @@ SHUFERSAL = ("src/collector/sources/shufersal.py", ["tests/test_shufersal.py"])
 SHUFERSAL_REPLAYED = ("src/collector/sources/shufersal.py", ["tests/test_shufersal.py", "tests/test_replay.py"])
 # The 2026-11-06 replay, which must catch a timed-out page not asked again by itself.
 NOV_6_REPLAY = ("src/collector/sources/shufersal.py", ["tests/test_replay.py::test_the_2026_11_06_pricefull_run_replayed"])
+# The 2026-11-06 Promo polls (q23), which must catch a poll started by R37's rule by themselves.
+PROMO_REPLAY = ("src/collector/run.py", ["tests/test_replay.py::test_a_day_of_shufersal_promo_passes_replayed"])
+# A store republished at a pass's resume point (q23), the only test of that case, which must catch R37's step back left
+# out by itself.
+PROMO_REPUBLISHED = ("src/collector/sources/shufersal.py",
+                     ["tests/test_replay.py::test_a_store_republished_at_the_resume_point_still_completes_the_pass"])
 # Two q24 breaks that pause where the rule has no pause. The older tests in test_shufersal.py build their sources with
 # the default sleep, time.sleep, so under these breaks they would wait for real (10 s a page) before -x reached the q24
 # tests near the end of the file: each names the one test that must catch it by itself.
@@ -72,6 +78,9 @@ RETRY_THREE_HOURS_ON = ("template.yaml", [_T + "test_retry_runs_start_three_hour
 CHECK_LAST = ("template.yaml", [_T + "test_one_check_after_the_last_retry_run_can_have_finished"])
 ALL_KINDS = ("template.yaml", [_T + "test_each_chain_has_runs_of_each_mode_over_the_kinds_it_collects"])
 HANDLER_EVENTS = ("template.yaml", [_T + "test_every_event_is_one_the_handler_takes"])
+NO_POLL_DURING_EXTRACTION = ("template.yaml", [_T + "test_no_poll_is_in_flight_while_the_extractions_run"])
+POLL_SWITCH = ("template.yaml", [_T + "test_every_schedule_runs_on_time_in_israel_and_follows_the_switch"])
+POLLED_CHAINS = ("src/collector/chains.py", [_T + "test_the_chains_that_poll_are_the_chains_with_update_kinds"])
 BASKET_TEMPLATE = ("template.yaml", ["tests/test_basket_template.py"])
 # The basket function's rules, each named for the one test in test_basket_template.py that must catch it by itself.
 _B = "tests/test_basket_template.py::"
@@ -112,8 +121,13 @@ CANDIDATES_MAIN = ("src/basket/candidates.py", ["tests/test_candidates.py::test_
 _RUN_TAKEN = ('        if self.result.pages:  # first: a row of another day, a repeat or one never downloaded was still listed\n'
               '            page = self.result.pages[-1]\n'
               '            page["taken_through"] = page["last"] if item.ends_page else item.name.raw\n')
-_RUN_DAY_FILTER = ("        if item.name.day != self.day or item.name.kind not in self.kinds:\n"
-                   "            return\n")
+# The day filter is the kind filter, then the other-day count (q23): `_RUN_KIND_FILTER + _RUN_OTHER_DAY`.
+_RUN_KIND_FILTER = ("        if item.name.kind not in self.kinds:\n"
+                    "            return\n")
+_RUN_OTHER_DAY = ("        if item.name.day != self.day:\n"
+                  "            self._other_day(item)\n"
+                  "            return\n")
+_RUN_DAY_FILTER = _RUN_KIND_FILTER + _RUN_OTHER_DAY
 _RUN_TO_DOWNLOAD = ("        name = stored_name(item)\n"
                     "        if name in self.seen:\n"
                     "            return  # listed again while the listing was read: the first counts\n"
@@ -139,6 +153,10 @@ MUTATIONS = {
     "sub-chain read as the store": (NAMES, "    sub_chain = groups[0] if len(groups) == 2 else None", "    sub_chain = groups[-1]"),
     "price file without a store accepted": (NAMES, "    else:\n        return None\n    sub_chain = groups[0]", "    else:\n        store = None\n    sub_chain = groups[0]"),
     "text after the name accepted": (NAMES, "_REST.fullmatch(name, prefix.end())", "_REST.match(name, prefix.end())"),
+    # names: the hour in a name, which the update day's by_hour counts by (q23)
+    "the minute read as the hour (q23 names)": (NAMES, r"(?P<hour>\d{2})\d{2,}", r"\d{2}(?P<hour>\d{2})\d*"),
+    "store 039's hour not read (q23 names)": (NAMES, r'r"-\d{8}-?(?P<hour>', r'r"-\d{8}-(?P<hour>'),
+    "an hour past 23 kept (q23 names)": (NAMES, "    return hour if hour and int(hour) <= 23 else None", "    return hour or None"),
     # payload
     "HTML accepted as a file": (PAYLOAD, "    if looks_like_html(data):", "    if False:"),
     "empty file accepted": (PAYLOAD, "    if not data:", "    if False:"),
@@ -209,8 +227,8 @@ MUTATIONS = {
     "a timeout not an HttpError (q24 timeout)": (HTTP, "class HttpTimeout(HttpError):", "class HttpTimeout(Exception):"),
     "a timeout not chained from its cause (q24 timeout)": (HTTP, 'failed: {exc}") from exc', 'failed: {exc}")'),
     # chains
-    "a sixth chain added": (CHAINS, '    Chain("yochananof", "Yochananof", "ncr", NCR_URL, username="yohananof"),\n', '    Chain("yochananof", "Yochananof", "ncr", NCR_URL, username="yohananof"),\n    Chain("extra", "Extra", "carrefour", "https://example.org"),\n'),
-    "a chain dropped": (CHAINS, '    Chain("carrefour", "Carrefour", "carrefour", "https://prices.carrefour.co.il"),\n', ""),
+    "a sixth chain added": (CHAINS, '    Chain("yochananof", "Yochananof", "ncr", NCR_URL, username="yohananof", polled=("Price", "Promo")),\n', '    Chain("yochananof", "Yochananof", "ncr", NCR_URL, username="yohananof", polled=("Price", "Promo")),\n    Chain("extra", "Extra", "carrefour", "https://example.org"),\n'),
+    "a chain dropped": (CHAINS, '    Chain("carrefour", "Carrefour", "carrefour", "https://prices.carrefour.co.il", polled=("Price", "Promo")),\n', ""),
     "a chain filed under its name, not its slug": (CHAINS, "{chain.slug: chain for chain in (", "{chain.name: chain for chain in ("),
     "a chain's name changed": (CHAINS, '"Osher Ad"', '"osherad"'),
     "a chain on the wrong portal": (CHAINS, 'Chain("osherad", "Osher Ad", "ncr"', 'Chain("osherad", "Osher Ad", "shufersal"'),
@@ -225,9 +243,14 @@ MUTATIONS = {
     "the NCR portal over http": (CHAINS, 'NCR_URL = "https://url.publishedprices.co.il"', 'NCR_URL = "http://url.publishedprices.co.il"'),
     "Rami Levy's username in the wrong case": (CHAINS, 'username="RamiLevi"', 'username="ramilevi"'),
     "Yochananof's username spelled as its slug": (CHAINS, 'username="yohananof"', 'username="yochananof"'),
-    "Osher Ad without a username": (CHAINS, 'NCR_URL, username="osherad"),', "NCR_URL),"),
-    "a username on a portal with no login": (CHAINS, '"https://prices.carrefour.co.il"),', '"https://prices.carrefour.co.il", username="carrefour"),'),
+    "Osher Ad without a username": (CHAINS, 'NCR_URL, username="osherad", polled=', "NCR_URL, polled="),
+    "a username on a portal with no login": (CHAINS, '"https://prices.carrefour.co.il", polled=', '"https://prices.carrefour.co.il", username="carrefour", polled='),
     "Chain not frozen": (CHAINS, "@dataclass(frozen=True)\nclass Chain:", "@dataclass\nclass Chain:"),
+    # chains: the update kinds each chain's poll runs read (q23)
+    "a quick chain that does not poll (q23 chains)": (CHAINS, 'username="RamiLevi", polled=("Price", "Promo")),', 'username="RamiLevi"),'),
+    "a full kind among the polled (q23 chains)": (CHAINS, '"https://prices.carrefour.co.il", polled=("Price", "Promo")),',
+                                                  '"https://prices.carrefour.co.il", polled=("PriceFull", "Price", "Promo")),'),
+    "chains poll their update files by default (q23 chains)": (CHAINS, "    polled: tuple[str, ...] = ()\n", '    polled: tuple[str, ...] = ("Price", "Promo")\n'),
     "gov.il citation dropped": (CHAINS, "https://www.gov.il/he/pages/cpfta_prices_regulations", "the gov.il page"),
     "citation without its update date": (CHAINS, "(updated 12.08.2026)", "()"),
     # chains: the adapter each chain gets (ruling R1)
@@ -482,19 +505,20 @@ MUTATIONS = {
     "check key without check-": (STORE, '/check-{run_id}.json"', '/{run_id}.json"'),
     "state key outside state/": (STORE, 'f"state/{slug}.json"', 'f"{slug}.json"'),
     # run: the brief's five
-    "clock date instead of file date": (RUN, "        if item.name.day != self.day or", "        if _utc(self.now()).date() != self.day or"),
+    "clock date instead of file date": (RUN, "        if item.name.day != self.day:", "        if _utc(self.now()).date() != self.day:"),
     "stored files fetched again": (RUN, "        if name in self.stored:\n            return\n", ""),
     "no latch on block": (RUN, '            self.store.write_state(self.slug, {"stopped": True,', '            (self.slug, {"stopped": True,'),
     "timeout guard removed": (RUN, "            if self._short_of_time():\n                if problem is None:", "            if False:\n                if problem is None:"),
     "manifest skipped on error": (RUN, "        store.put_record(manifest_key(", "        result.error is None and store.put_record(manifest_key("),
     # run: choosing that day's files
-    "older files selected": (RUN, "        if item.name.day != self.day or", "        if item.name.day > self.day or"),
-    "kinds not filtered again": (RUN, " or item.name.kind not in self.kinds:", ":"),
-    "unknown kinds accepted": (RUN, "    if not kinds or not set(kinds) <= set(chain.kinds):", "    if not kinds:"),
-    "no kinds accepted": (RUN, "    if not kinds or not set(kinds) <= set(chain.kinds):", "    if not set(kinds) <= set(chain.kinds):"),
-    "kinds the chain does not collect accepted": (RUN, "set(kinds) <= set(chain.kinds)", "set(kinds) <= {'Stores', 'PriceFull', 'PromoFull', 'Price', 'Promo'}"),
+    "older files selected": (RUN, "        if item.name.day != self.day:", "        if item.name.day > self.day:"),
+    "kinds not filtered again": (RUN, _RUN_KIND_FILTER, ""),
+    "unknown kinds accepted": (RUN, "    if not kinds or not set(kinds) <= set(allowed):", "    if not kinds:"),
+    "no kinds accepted": (RUN, "    if not kinds or not set(kinds) <= set(allowed):", "    if not set(kinds) <= set(allowed):"),
+    "kinds the chain does not collect accepted": (RUN, "set(kinds) <= set(allowed)", "set(kinds) <= {'Stores', 'PriceFull', 'PromoFull', 'Price', 'Promo'}"),
     "kinds not recorded (R4)": (RUN, "RunResult(chain.slug, run_id, mode, day, list(kinds))", "RunResult(chain.slug, run_id, mode, day, [])"),
-    "stored name taken from the listing, not the link (R16)": (RUN, "        name = stored_name(item)\n", "        name = item.name.raw\n"),
+    "stored name taken from the listing, not the link (R16)": (RUN, "        name = stored_name(item)\n        if name in self.seen:\n",
+                                                               "        name = item.name.raw\n        if name in self.seen:\n"),
     "stored name keeps the link's query (R16)": (RUN, '    return urllib.parse.urlsplit(item.url).path.rsplit("/", 1)[-1]', '    return item.url.rsplit("/", 1)[-1]'),
     "skipped names not listed": (RUN, "        self.result.listed.append(name)\n        if name in self.stored:\n            return\n",
                                  "        if name in self.stored:\n            return\n        self.result.listed.append(name)\n"),
@@ -514,7 +538,7 @@ MUTATIONS = {
     "listing HTTP error escapes": (RUN, "        except HttpError as exc:  # not read again", "        except ZeroDivisionError as exc:  # not read again"),
     "listing HTTP error not recorded as an error": (RUN, '            self._stop(f"listing failed: {exc}")', "            raise _Stop"),
     # run: a paged listing, where each kind starts and the pages it reads (ruling R37)
-    "earlier manifests not read (q21 run)": (RUN, "        starts = {kind: start_for(earlier, kind, self.stored) for kind in self.kinds}\n", "        starts = {}\n"),
+    "earlier manifests not read (q21 run)": (RUN, "        starts = {kind: rule(earlier, kind, self.stored) for kind in self.kinds}\n", "        starts = {}\n"),
     "starts read for a source that does not page (q21 run)": (RUN, "        if not isinstance(self.source, PagedSource):\n            return {}\n" + _RUN_READ_EARLIER,
                                                               _RUN_READ_EARLIER + "        if not isinstance(self.source, PagedSource):\n            return {}\n"),
     "another chain's manifests read (q21 run)": (RUN, 'prefix = manifest_key(self.day, self.slug, "").removesuffix(".json")', 'prefix = manifest_key(self.day, "", "").removesuffix("-.json")'),
@@ -547,6 +571,20 @@ MUTATIONS = {
         "            self._stop(OUT_OF_TIME)\n"),
     "the failed tries left out of the manifest (q24 run)": (RUN, '| {"day": result.day.isoformat(), "code_sha": code_sha}',
                                                             '| {"day": result.day.isoformat(), "code_sha": code_sha, "timeouts": []}'),
+    # run: a poll run held to the chain's polled kinds, other days' names counted, a paged poll's start (q23)
+    "a poll held to the morning's kinds (q23 run)": (RUN, '    allowed = chain.polled if mode == "poll" else chain.kinds\n', "    allowed = chain.kinds\n"),
+    "a main or retry run held to the polled kinds (q23 run)": (RUN, '    allowed = chain.polled if mode == "poll" else chain.kinds\n', "    allowed = chain.polled\n"),
+    "a refused poll's kinds named as the kinds the chain collects (q23 run)": (RUN, "{'polls' if mode == 'poll' else 'collects'}", "collects"),
+    "the run's own day counted in other_days (q23 run)": (RUN, _RUN_OTHER_DAY, "        self._other_day(item)\n        if item.name.day != self.day:\n            return\n"),
+    "other_days left empty (q23 run)": (RUN, "        self.result.other_days[day] = self.result.other_days.get(day, 0) + 1\n", ""),
+    "a name listed twice counted twice in other_days (q23 run)": (RUN, "        if name in self.others:\n            return  # listed again: counted once\n", ""),
+    "kinds not asked for counted in other_days (q23 run)": (RUN, _RUN_KIND_FILTER + _RUN_OTHER_DAY, _RUN_OTHER_DAY + _RUN_KIND_FILTER),
+    "other_days left out of the manifest (q23 run)": (RUN, '| {"day": result.day.isoformat(), "code_sha": code_sha}',
+                                                      '| {"day": result.day.isoformat(), "code_sha": code_sha, "other_days": {}}'),
+    "a poll started by R37's rule (q23 run)": (RUN, '        rule = pass_start if self.result.mode == "poll" else start_for\n', "        rule = start_for\n"),
+    "a poll started by R37's rule, the Promo replay alone (q23 replay)": (PROMO_REPLAY, '        rule = pass_start if self.result.mode == "poll" else start_for\n', "        rule = start_for\n"),
+    "no step back, the republish replay alone (q23 replay)": (PROMO_REPUBLISHED, "        while at > 2 and record.first > start.furthest:", "        while False:"),
+    "a full kind started by the passes rule (q23 run)": (RUN, '        rule = pass_start if self.result.mode == "poll" else start_for\n', "        rule = pass_start\n"),
     # run: blocks and the latch
     "stopped chain collected": (RUN, '        if store.read_state(chain.slug).get("stopped"):', "        if False:"),
     "any state read as stopped": (RUN, 'if store.read_state(chain.slug).get("stopped"):', "if store.read_state(chain.slug):"),
@@ -614,14 +652,14 @@ MUTATIONS = {
     "missing files not alerted": (CHECK, '    if missing:\n        alerts.append(Alert(slug, "missing"', '    if False:\n        alerts.append(Alert(slug, "missing"'),
     "an alert per missing file": (CHECK, '    if missing:\n        alerts.append(Alert(slug, "missing", _missing_text(slug, day, missing)))',
                                   '    for name in missing:\n        alerts.append(Alert(slug, "missing", _missing_text(slug, day, [name])))'),
-    "every missing name in the alert": (CHECK, "{', '.join(missing[:MAX_NAMES])}{tail}", "{', '.join(missing)}{tail}"),
+    "every missing name in the alert": (CHECK, "{', '.join(names[:MAX_NAMES])}{tail}", "{', '.join(names)}{tail}"),
     "the record holds only ten missing names": (CHECK, '        "missing": missing,', '        "missing": missing[:MAX_NAMES],'),
     "only the retry's names checked": (CHECK, 'listed = {name for manifest in manifests for name in manifest["listed"]}',
                                        'listed = {name for manifest in manifests if manifest["mode"] == "retry" for name in manifest["listed"]}'),
     "missing judged against another day's files": (CHECK, "    stored = store.stored_names(slug, day)\n", "    stored = store.stored_names(slug, day - timedelta(days=1))\n"),
     "manifests of every day read": (CHECK, '    prefix = manifest_key(day, "", "").rsplit("/", 1)[0] + "/"', '    prefix = "manifests/"'),
-    "a chain reads every chain's manifests": (CHECK, "_check_chain(store, slug, day, manifests.get(slug, []), expected)",
-                                              "_check_chain(store, slug, day, [m for ms in manifests.values() for m in ms], expected)"),
+    "a chain reads every chain's manifests": (CHECK, 'for manifest in manifests.get(slug, []) if manifest["mode"] in MORNING]',
+                                              'for manifest in [m for ms in manifests.values() for m in ms] if manifest["mode"] in MORNING]'),
     "the check ignores the kinds it is given": (CHECK, "(kinds or {}).get(slug, KINDS)", "KINDS"),
     "a chain left out of kinds held to none": (CHECK, "(kinds or {}).get(slug, KINDS)", "(kinds or {}).get(slug, ())"),
     "uncovered kinds read from all five, not the chain's": (CHECK, "    uncovered = [kind for kind in kinds if kind not in covered]", "    uncovered = [kind for kind in KINDS if kind not in covered]"),
@@ -631,7 +669,7 @@ MUTATIONS = {
     "a state that is not stopped alerts": (CHECK, 'if state.get("stopped") and not state.get("alerted"):', 'if not state.get("alerted"):'),
     "stopped state not marked alerted": (CHECK, '                store.write_state(alert.chain, state | {"alerted": True})', "                pass"),
     "stopped state replaced, not updated": (CHECK, 'store.write_state(alert.chain, state | {"alerted": True})', 'store.write_state(alert.chain, {"alerted": True})'),
-    "check_day marks the state itself (R26)": (CHECK, "        alerts += chain_alerts\n    return alerts, {", "        alerts += chain_alerts\n    mark_alerted(store, alerts)\n    return alerts, {"),
+    "check_day marks the state itself (R26)": (CHECK, "    alerts = morning + update_alerts\n", "    alerts = morning + update_alerts\n    mark_alerted(store, alerts)\n"),
     "chains with other alerts marked alerted (R26)": (CHECK, '        if alert.kind == "stopped":\n', "        if True:\n"),
     "a chain cleared since the check marked alerted (R26)": (CHECK, '            if state.get("stopped"):\n                store.write_state(alert.chain', "            if True:\n                store.write_state(alert.chain"),
     "stopped alert without its reason": (CHECK, "{state.get('since')}: {state.get('reason')}. ", "{state.get('since')}. "),
@@ -707,6 +745,28 @@ MUTATIONS = {
     "not read in full alerts on a chain with no page records (R37)": (CHECK, " and has_pages(manifests, kind)", ""),
     "a full kind the chain does not collect judged (R37)": (CHECK, "            if kind in kinds and has_pages(manifests, kind)", "            if has_pages(manifests, kind)"),
     "the pages never read left out of the sentence (R37)": (CHECK, 'f"the {kind} list was not read in full: {unread(manifests, kind)}"', 'f"the {kind} list was not read in full"'),
+    # check: the morning judged from main and retry runs only (q23); a blocked poll silencing R35's or R37's reason is
+    # pinned by test_a_blocked_poll_never_silences_the_mornings_reasons, which no single break can fail
+    "the morning judgement reads the polls (q23 morning)": (CHECK, ' if manifest["mode"] in MORNING]', "]"),
+    # check: the update day, the day before judged the next morning (q23, ruling R39)
+    "the update day judged on the check's own day (q23 update day)": (CHECK, "judge_update_day(store, polled, day - timedelta(days=1))", "judge_update_day(store, polled, day)"),
+    "every chain judged, polled or not (q23 update day)": (CHECK, "judge_update_day(store, polled, day - timedelta(days=1))",
+                                                           'judge_update_day(store, dict.fromkeys(slugs, ("Price", "Promo")), day - timedelta(days=1))'),
+    "the update day judged with no polled given (q23 update day)": (CHECK, "    if polled is not None:\n        update_alerts, update_day = judge_update_day(store, polled, ",
+                                                                    "    if True:\n        update_alerts, update_day = judge_update_day(store, polled or {}, "),
+    "the update day's alerts left out of the record (q23 update day)": (CHECK, '"alerts": [asdict(alert) for alert in alerts]}', '"alerts": [asdict(alert) for alert in morning]}'),
+    "the update day's alerts before the morning's (q23 update day)": (CHECK, "    alerts = morning + update_alerts\n", "    alerts = update_alerts + morning\n"),
+    "a name the morning listed reported again (q23 update day)": (CHECK, ' - stored_names - listed_by_morning)', " - stored_names)"),
+    "a name stored since still missing (q23 update day)": (CHECK, 'poll["failed"]} - stored_names - listed_by_morning)', 'poll["failed"]} - listed_by_morning)'),
+    "a name a poll never tried emailed (q23 update day)": (CHECK, 'for name in poll["failed"]} - stored_names', 'for name in [*poll["failed"], *poll["not_attempted"]]} - stored_names'),
+    "not_tried left at zero (q23 update day)": (CHECK, '"not_tried": {kind: len(_of_kind(untried, kind)) for kind in kinds},', '"not_tried": {kind: 0 for kind in kinds},'),
+    "a missing name counted in not_tried too (q23 update day)": (CHECK, " - stored_names - set(unstored)", " - stored_names"),
+    "an open pass taken as read in full (q23 update day)": (CHECK, "if all(one.read_by is None for one in cut[kind])]", "if all(one.read_by is None and not one.open for one in cut[kind])]"),
+    "no failed alert for a chain without page records (q23 update day)": (CHECK, "unread_kinds = [kind for kind in kinds if all(",
+                                                                          "unread_kinds = [kind for kind in kinds if has_pages(manifests, kind) and all("),
+    "the failed alert sent beside a block (q23 update day)": (CHECK, '    if any(poll["blocked"] for poll in polls):  # the stopped alert covers the day (as R35)\n        unread_kinds = []\n', ""),
+    "a pass a page out of order ended left out of the record (q23 update day)": (CHECK, "for one in cut if one.read_by is None and one.out_of_order]", "for one in cut if False]"),
+    "by_hour over every kind (q23 update day)": (CHECK, "for name in _of_kind(stored_names, kind))", "for name in stored_names)"),
     # pages: the day's readings of a kind joined across runs (R37)
     "a blocked run counted (R37 join)": (PAGES, 'if kind in manifest["kinds"] and not manifest["blocked"]]', 'if kind in manifest["kinds"]]'),
     "a legacy run with an error read in full (R37 join)": (PAGES, 'if not manifest.get("pages") and not manifest["error"]}', 'if not manifest.get("pages")}'),
@@ -748,6 +808,24 @@ MUTATIONS = {
     "a detour for the resume page (q21 resume)": (PAGES, 'if page < furthest["page"])', 'if page <= furthest["page"])'),
     "a stored file given a detour (q21 resume)": (PAGES, ' for listed in manifest["listed"] if listed not in stored]', ' for listed in manifest["listed"]]'),
     "a stored name located with its .gz (q21 resume)": (PAGES, '    failed = [listed.removesuffix(".gz") for listed', "    failed = [listed for listed"),
+    # pages: an update kind's poll runs cut into passes, and a poll's start from the open pass (q23, ruling R39)
+    "passes in run-id order (q23 passes)": (PAGES, '    runs.sort(key=lambda manifest: datetime.fromisoformat(manifest["listing_read_at"]))', "    pass"),
+    "a pass read in full not cut (q23 passes)": (PAGES, "        if read_by is not None or out_of_order:", "        if out_of_order:"),
+    "the run after a complete reading joins the completed pass (q23 passes)": (PAGES, "        read_by = read_in_full(current, kind)",
+                                                                               "        read_by = read_in_full(current[:-1], kind)"),
+    "a page out of order does not end its pass (q23 passes)": (PAGES, "        if read_by is not None or out_of_order:", "        if read_by is not None:"),
+    "the day's poll runs given to the start, not the open pass (q23 passes)": (PAGES, "        return start_for(cut[-1].runs, kind, stored)",
+                                                                               "        return start_for([run for one in cut for run in one.runs], kind, stored)"),
+    "an open pass not resumed (q23 passes)": (PAGES, "    if cut and cut[-1].open:", "    if False:"),
+    "a fresh pass after a full reading takes detours (q23 passes)": (PAGES, "    if cut and cut[-1].open:", "    if cut:"),
+    "blocked runs kept in the passes (q23 passes)": (PAGES, '            and not manifest["blocked"] and manifest["listing_read_at"] is not None]',
+                                                     '            and manifest["listing_read_at"] is not None]'),
+    "runs of every mode in the passes (q23 passes)": (PAGES, 'if manifest["mode"] == "poll" and kind in manifest["kinds"]', 'if kind in manifest["kinds"]'),
+    "runs of another kind in the passes (q23 passes)": (PAGES, 'if manifest["mode"] == "poll" and kind in manifest["kinds"]', 'if manifest["mode"] == "poll"'),
+    "a run that never read the listing kept in the passes (q23 passes)": (PAGES, ' and manifest["listing_read_at"] is not None]', "]"),
+    "a pass ended by a page out of order counted open (q23 passes)": (PAGES, "        return self.read_by is None and not self.out_of_order",
+                                                                      "        return self.read_by is None"),
+    "a pass read in full counted open (q23 passes)": (PAGES, "        return self.read_by is None and not self.out_of_order", "        return not self.out_of_order"),
     # handler: main and retry
     "day in UTC": (HANDLER, "    day = now.astimezone(ISRAEL).date()", "    day = now.astimezone(timezone.utc).date()"),
     "naive now accepted by the handler": (HANDLER, '    if now.tzinfo is None or now.utcoffset() is None:\n        raise ValueError("now must carry a time zone")',
@@ -775,7 +853,7 @@ MUTATIONS = {
     "unblock clears every chain": (HANDLER, "    deps.store.write_state(chain.slug, {})", "    [deps.store.write_state(slug, {}) for slug in CHAINS]"),
     # handler: the check, its email and its ping
     "check of one chain only": (HANDLER, "check_day(deps.store, list(CHAINS), day,", 'check_day(deps.store, ["shufersal"], day,'),
-    "the check given no chain's kinds": (HANDLER, ", kinds={slug: c.kinds for slug, c in CHAINS.items()})", ")"),
+    "the check given no chain's kinds": (HANDLER, ", kinds={slug: c.kinds for slug, c in CHAINS.items()},", ","),
     "email without alerts": (HANDLER, "    if alerts:\n        deps.publish(subject, body)", "    if True:\n        deps.publish(subject, body)"),
     "alerts logged on a quiet morning": (HANDLER, "    if alerts:\n        subject, body = message(day, alerts, key)", "    if True:\n        subject, body = message(day, alerts, key)"),
     "check record written only with alerts": (HANDLER, "    deps.store.put_record(key, json.dumps(record, sort_keys=True, indent=1).encode(), now)\n    if alerts:\n",
@@ -799,7 +877,8 @@ MUTATIONS = {
     # handler: the config
     "a chain's Http not given the chain's timeout": (HANDLER, "Http(cfg.user_agent, timeout=CHAINS[slug].timeout)", "Http(cfg.user_agent)"),
     "User-Agent not checked by the config": (HANDLER, 'user_agent=check_user_agent(env["USER_AGENT"])', 'user_agent=env["USER_AGENT"]'),
-    "alert topic and ping URL not required": (HANDLER, 'REQUIRED = ("BUCKET", "USER_AGENT", "ALERT_TOPIC_ARN", "HEALTHCHECK_URL")', 'REQUIRED = ("BUCKET", "USER_AGENT")'),
+    "alert topic and ping URL not required": (HANDLER, 'REQUIRED = ("BUCKET", "USER_AGENT", "ALERT_TOPIC_ARN", "HEALTHCHECK_URL", "POLL_SCHEDULE_STATE")',
+                                              'REQUIRED = ("BUCKET", "USER_AGENT", "POLL_SCHEDULE_STATE")'),
     "a blank variable accepted": (HANDLER, 'if not env.get(name, "").strip()]', "if name not in env]"),
     "RETENTION_DAYS ignored": (HANDLER, 'retention_days=int(env.get("RETENTION_DAYS", RETENTION_DAYS))', "retention_days=RETENTION_DAYS"),
     "RETENTION_DAYS default not ten years": (HANDLER, 'env.get("RETENTION_DAYS", RETENTION_DAYS)', 'env.get("RETENTION_DAYS", 365)'),
@@ -829,6 +908,30 @@ MUTATIONS = {
     "store retention not the config's": (HANDLER, "S3Store(s3, cfg.bucket, cfg.retention_days)", "S3Store(s3, cfg.bucket)"),
     "production ping unidentified": (HANDLER, "ping=partial(ping, user_agent=ping_user_agent(cfg.user_agent)),", 'ping=partial(ping, user_agent=""),'),
     "production code_sha not the package's": (HANDLER, "        code_sha=CODE_SHA,\n    )", '        code_sha="",\n    )'),
+    # handler: the poll mode, the poll switch and a poll's stopped email (q23)
+    "poll not a collecting mode (q23 handler)": (HANDLER, 'COLLECTING = ("main", "retry", "poll")', 'COLLECTING = ("main", "retry")'),
+    "a poll without kinds takes the chain's (q23 handler)": (HANDLER, '        raise ValueError(f"a poll event names its kinds (event {event!r})")\n',
+                                                             '        event = event | {"kinds": chain.polled}\n'),
+    "the poll switch not required (q23 handler)": (HANDLER, '"HEALTHCHECK_URL", "POLL_SCHEDULE_STATE")', '"HEALTHCHECK_URL")'),
+    "the switch read as on for any value (q23 handler)": (HANDLER, 'polls_on=polls == "ENABLED")', "polls_on=True)"),
+    "a poll switch that is neither ENABLED nor DISABLED accepted (q23 handler)": (
+        HANDLER, "        if polls not in POLL_STATES:\n            raise ValueError(f\"POLL_SCHEDULE_STATE must be {' or '.join(POLL_STATES)}, not {polls!r}\")\n", ""),
+    "the update day judged with the switch off (q23 handler)": (HANDLER, 'if cfg.polls_on or event.get("update_day") is True else None', "if True else None"),
+    "a manual check's update_day ignored (q23 handler)": (HANDLER, 'if cfg.polls_on or event.get("update_day") is True else None', "if cfg.polls_on else None"),
+    "an update_day that is not true taken as asked (q23 handler)": (HANDLER, 'event.get("update_day") is True else None', 'event.get("update_day") else None'),
+    "a chain that does not poll judged (q23 handler)": (HANDLER, "for slug, c in CHAINS.items() if c.polled}", "for slug, c in CHAINS.items()}"),
+    "the update day judged over the morning's kinds (q23 handler)": (HANDLER, "{slug: c.polled for slug, c in CHAINS.items() if c.polled}",
+                                                                     "{slug: c.kinds for slug, c in CHAINS.items() if c.polled}"),
+    "a poll's email sent for a latch cleared or alerted since (q23 handler)": (HANDLER, '    if not state.get("stopped") or state.get("alerted"):\n        return\n', ""),
+    "the poll's stopped email not sent (q23 handler)": (HANDLER, "    deps.publish(subject, body)\n    mark_alerted(deps.store, [alert])", "    mark_alerted(deps.store, [alert])"),
+    "the chain marked alerted before the email (q23 handler)": (HANDLER, "    deps.publish(subject, body)\n    mark_alerted(deps.store, [alert])",
+                                                                "    mark_alerted(deps.store, [alert])\n    deps.publish(subject, body)"),
+    "the poll's chain never marked alerted (q23 handler)": (HANDLER, "mark_alerted(deps.store, [alert])  # only now", "pass  # only now"),
+    "the poll's stopped email not logged before it is sent (q23 handler)": (HANDLER, '    log.warning("%s\\n%s", subject, body)  # logged first: the email can still fail',
+                                                                            "    pass  # logged first: the email can still fail"),
+    "every collecting run that stops a chain emails (q23 handler)": (HANDLER, '    if mode == "poll" and result.blocked and result.blocked != STOPPED_EARLIER:',
+                                                                     "    if result.blocked and result.blocked != STOPPED_EARLIER:"),
+    "a poll of a chain stopped earlier emails (q23 handler)": (HANDLER, "result.blocked and result.blocked != STOPPED_EARLIER:", "result.blocked:"),
     # template: the three the plan names
     "schedule enabled by default": (TEMPLATE, "  ScheduleState:\n    Type: String\n    Default: DISABLED\n", "  ScheduleState:\n    Type: String\n    Default: ENABLED\n"),
     "delete allowed": (TEMPLATE, "                - s3:PutObjectRetention\n              Resource:\n", "                - s3:PutObjectRetention\n                - s3:DeleteObject\n              Resource:\n"),
@@ -911,6 +1014,31 @@ MUTATIONS = {
     "a chain with no main run": (ALL_KINDS, "Input: '{\"mode\": \"main\", \"chain\": \"yochananof\"}'", "Input: '{\"mode\": \"main\", \"chain\": \"osherad\"}'"),
     "a chain the code does not know": (HANDLER_EVENTS, "Input: '{\"mode\": \"main\", \"chain\": \"carrefour\"}'", "Input: '{\"mode\": \"main\", \"chain\": \"victory\"}'"),
     "the check given a chain": (HANDLER_EVENTS, "Input: '{\"mode\": \"check\"}'", "Input: '{\"mode\": \"check\", \"chain\": \"shufersal\"}'"),
+    # template: the poll switch (q23)
+    "the poll switch on by default (q23 template)": (TEMPLATE, "  PollScheduleState:\n    Type: String\n    Default: DISABLED\n",
+                                                     "  PollScheduleState:\n    Type: String\n    Default: ENABLED\n"),
+    "the poll switch takes any value (q23 template)": (TEMPLATE, "    AllowedValues: [ENABLED, DISABLED]\n    Description: The update-file polls through the day",
+                                                       "    Description: The update-file polls through the day"),
+    "the function not told the poll switch (q23 template)": (TEMPLATE, "          POLL_SCHEDULE_STATE: !Ref PollScheduleState\n", ""),
+    # template: the polls (q23). Each Input repeats 6 or 7 times, so a text to break that quotes one names its cron line.
+    "a poll moved into the extractions' window (q23 template)": (NO_POLL_DURING_EXTRACTION, '"cron(20 12 * * ? *)"', '"cron(10 12 * * ? *)"'),
+    "a poll still running when the extractions start (q23 template)": (NO_POLL_DURING_EXTRACTION, '"cron(20 12 * * ? *)"', '"cron(50 11 * * ? *)"'),
+    "a poll on the morning's switch (q23 template)": (
+        POLL_SWITCH, '"cron(20 14 * * ? *)"\n            ScheduleExpressionTimezone: Asia/Jerusalem\n            Input: \'{"mode": "poll", "chain": "ramilevy", "kinds": ["Price", "Promo"]}\'\n            State: !Ref PollScheduleState',
+        '"cron(20 14 * * ? *)"\n            ScheduleExpressionTimezone: Asia/Jerusalem\n            Input: \'{"mode": "poll", "chain": "ramilevy", "kinds": ["Price", "Promo"]}\'\n            State: !Ref ScheduleState'),
+    "a morning run on the poll switch (q23 template)": (POLL_SWITCH, "Input: '{\"mode\": \"main\", \"chain\": \"ramilevy\"}'\n            State: !Ref ScheduleState",
+                                                        "Input: '{\"mode\": \"main\", \"chain\": \"ramilevy\"}'\n            State: !Ref PollScheduleState"),
+    "a poll of a full kind (q23 template)": (
+        HANDLER_EVENTS, '"cron(5 13 * * ? *)"\n            ScheduleExpressionTimezone: Asia/Jerusalem\n            Input: \'{"mode": "poll", "chain": "carrefour", "kinds": ["Price", "Promo"]}\'',
+        '"cron(5 13 * * ? *)"\n            ScheduleExpressionTimezone: Asia/Jerusalem\n            Input: \'{"mode": "poll", "chain": "carrefour", "kinds": ["PriceFull", "Promo"]}\''),
+    "a poll without its kinds (q23 template)": (
+        HANDLER_EVENTS, '"cron(50 14 * * ? *)"\n            ScheduleExpressionTimezone: Asia/Jerusalem\n            Input: \'{"mode": "poll", "chain": "osherad", "kinds": ["Price", "Promo"]}\'',
+        '"cron(50 14 * * ? *)"\n            ScheduleExpressionTimezone: Asia/Jerusalem\n            Input: \'{"mode": "poll", "chain": "osherad"}\''),
+    "two NCR polls 10 minutes apart (q23 template)": (ONE_HOST_AT_A_TIME, '"cron(35 12 * * ? *)"', '"cron(30 12 * * ? *)"'),
+    "a chain's polls 10 minutes apart (q23 template)": (ONE_RUN_AT_A_TIME, '"cron(5 15 * * ? *)"', '"cron(15 13 * * ? *)"'),
+    "two polls in one minute (q23 template)": (ONE_MINUTE_EACH, '"cron(5 17 * * ? *)"', '"cron(50 16 * * ? *)"'),
+    "Shufersal polled before its schedules (q23 template)": (POLLED_CHAINS, '\n          kinds=("Stores", "PriceFull", "PromoFull")),',
+                                                             '\n          kinds=("Stores", "PriceFull", "PromoFull"), polled=("Price", "Promo")),'),
     # the operations doc
     "a manual collecting run started synchronously": (OPERATIONS, "--invocation-type Event --payload '{\"mode\": \"main\", \"chain\": \"ramilevy\"}'", "--payload '{\"mode\": \"main\", \"chain\": \"ramilevy\"}'"),
     "an aws command in the doc without the project profile": (OPERATIONS, "aws logs tail /il-grocery-prices/collector --follow --since 10m --profile flights-sam --region il-central-1", "aws logs tail /il-grocery-prices/collector --follow --since 10m --region il-central-1"),
@@ -926,6 +1054,15 @@ MUTATIONS = {
     "a manual run for a day that is no date": (OPERATIONS, "\"chain\": \"shufersal\", \"day\": \"2026-11-02\"", "\"chain\": \"shufersal\", \"day\": \"2026-11-31\""),
     "a manual basket run collected by another time": (OPERATIONS, "\"collected_by\": \"12:03\"}' --cli-read-timeout", "\"collected_by\": \"12:30\"}' --cli-read-timeout"),
     "a manual basket run's day misspelled": (OPERATIONS, "{\"mode\": \"basket\", \"day\":", "{\"mode\": \"basket\", \"dya\":"),
+    "a poll's row at another time in the doc (q23 doc)": (OPERATIONS, "| 12:20 | Rami Levy, update files", "| 12:25 | Rami Levy, update files"),
+    "a chain's manual poll missing from the doc (q23 doc)": (OPERATIONS, "--payload '{\"mode\": \"poll\", \"chain\": \"yochananof\", \"kinds\": [\"Price\", \"Promo\"]}'",
+                                                             "--payload '{\"mode\": \"poll\", \"chain\": \"osherad\", \"kinds\": [\"Price\", \"Promo\"]}'"),
+    "a manual poll started synchronously (q23 doc)": (OPERATIONS, "--invocation-type Event --payload '{\"mode\": \"poll\", \"chain\": \"carrefour\"",
+                                                      "--payload '{\"mode\": \"poll\", \"chain\": \"carrefour\""),
+    "the manual update-day check's field misspelled in the doc (q23 doc)": (OPERATIONS, "'{\"mode\": \"check\", \"update_day\": true}'",
+                                                                            "'{\"mode\": \"check\", \"update_dya\": true}'"),
+    "the manual update-day check asks with a string in the doc (q23 doc)": (OPERATIONS, "'{\"mode\": \"check\", \"update_day\": true}'",
+                                                                            "'{\"mode\": \"check\", \"update_day\": \"true\"}'"),
     # site template: the bucket
     "public access unblocked": (SITE_TEMPLATE, "      PublicAccessBlockConfiguration:\n        BlockPublicAcls: true\n        BlockPublicPolicy: true\n        IgnorePublicAcls: true\n        RestrictPublicBuckets: true\n", ""),
     "site bucket public policies allowed": (SITE_TEMPLATE, "        RestrictPublicBuckets: true", "        RestrictPublicBuckets: false"),

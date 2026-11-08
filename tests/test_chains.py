@@ -55,9 +55,10 @@ def test_shufersal_waits_60_s_for_an_answer_and_the_others_30():
 
 
 def test_shufersal_collects_its_store_list_and_full_files_and_the_others_every_kind():
-    """Owner, 2026-11-01: Shufersal's update files come out every hour and its listing pages take about
-    25 s each, so its morning runs take the store list and the full files only; the update files wait
-    for a polling run (docs/operations.md, "What runs when")."""
+    """Owner, 2026-11-01: Shufersal's listing pages take about 25 s each, so its morning runs take the
+    store list and the full files only; its update files wait for poll runs (docs/update-files.md). How
+    often it publishes them is not known: the one record, 2026-11-01, shows batches stamped across stores
+    at about 03:00 and about 10:00 (docs/operations.md, "What runs when")."""
     assert {slug: c.kinds for slug, c in CHAINS.items()} == {
         "shufersal": ("Stores", "PriceFull", "PromoFull"), "ramilevy": KINDS, "osherad": KINDS,
         "carrefour": KINDS, "yochananof": KINDS}
@@ -65,6 +66,26 @@ def test_shufersal_collects_its_store_list_and_full_files_and_the_others_every_k
 
 def test_kinds_default_to_all_five():
     assert Chain("x", "X", "carrefour", "https://example.org").kinds == KINDS
+
+
+def test_the_four_quick_chains_poll_their_update_files_and_shufersal_not_yet():
+    """Design, section 1 and rollout step 2: the four quick chains' polls read both update kinds; Shufersal's `polled`
+    stays empty until its passes are scheduled (rollout step 3)."""
+    assert {slug: c.polled for slug, c in CHAINS.items()} == {
+        "shufersal": (), "ramilevy": ("Price", "Promo"), "osherad": ("Price", "Promo"),
+        "carrefour": ("Price", "Promo"), "yochananof": ("Price", "Promo")}
+
+
+def test_polled_defaults_to_empty():
+    """A chain polls nothing until its poll schedules are deployed."""
+    assert Chain("x", "X", "carrefour", "https://example.org").polled == ()
+
+
+def test_every_chains_polled_kinds_are_update_kinds_in_their_usual_order():
+    """A poll reads the update kinds only: no full file is collected through the day (design, section 1)."""
+    for chain in CHAINS.values():
+        assert set(chain.polled) <= {"Price", "Promo"}, chain.slug
+        assert list(chain.polled) == [kind for kind in KINDS if kind in chain.polled], chain.slug
 
 
 def test_every_chains_kinds_are_known_kinds_in_their_usual_order():
@@ -82,7 +103,8 @@ def test_username_defaults_to_none():
 
 
 def test_no_password_anywhere_on_chain():
-    assert [f.name for f in fields(Chain)] == ["slug", "name", "portal", "base_url", "username", "timeout", "kinds"]
+    assert [f.name for f in fields(Chain)] == ["slug", "name", "portal", "base_url", "username", "timeout", "kinds",
+                                               "polled"]
     for chain in CHAINS.values():
         assert [a for a in dir(chain) if "pass" in a.lower() or "pwd" in a.lower()] == []
 

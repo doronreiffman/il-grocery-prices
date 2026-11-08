@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from collector.names import KINDS, FileName, parse_file_name
+from collector.names import KINDS, FileName, hour_of, parse_file_name
 
 FIXTURES = Path(__file__).parent / "fixtures"
 CHAIN_IDS = {"shufersal": "7290027600007", "ncr": "7290058140886", "carrefour": "7290055700007",
@@ -117,3 +117,19 @@ def test_non_ascii_digits_do_not_parse(name):
 def test_non_ascii_letters_that_fold_to_a_kind_do_not_parse(name):
     """Unicode case-folding matches these to a kind's letters; they must read as no name, not raise."""
     assert parse_file_name(name) is None
+
+
+@pytest.mark.parametrize("name, hour", [
+    ("Price7290058140886-001-722-20261101-071016.gz", "07"),  # NCR: -YYYYMMDD-HHMMSS
+    ("Price7290055700007-001-012-20261031-110008.gz", "11"),  # Carrefour
+    ("Promo7290027600007-001-001-20261106-095959", "09"),  # Shufersal's batch stamp, listed without .gz
+    ("price7290058140886-039-202611011002.gz", "10"),  # Rami Levy's store 039: -YYYYMMDDHHMM
+    ("Stores7290027600007-000-20261031-020.gz", None),  # Shufersal's store list: a time of three digits
+    ("Price7290058140886-001-099-20261031.gz", None),  # no time after the date
+    ("Price7290058140886-001-099-20261031-250000.gz", None),  # no hour 25
+    ("notes.txt", None),  # not a published name
+])
+def test_hour_of_reads_each_portals_time(name, hour):
+    """Review focus 5: the hour in every portal's name shape, two digits; None when it cannot be read, so the check
+    counts the name under "unknown" instead of dropping it."""
+    assert hour_of(name) == hour

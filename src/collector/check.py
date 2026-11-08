@@ -1,7 +1,8 @@
 """The morning check: what each chain listed that day and did not store, which chains are stopped,
-and which runs failed (docs/collector.md, "How a morning runs", steps 4 and 5, and "Alerts").
+and which runs failed (docs/collector.md, "How a morning runs", steps 4 and 5, and "Alerts"); and,
+when asked, the update files of the day before (ruling R39, below).
 
-For each chain, from that day's manifests (every run's, main and retry alike) and the bucket:
+For each chain, from that day's manifests of its main and retry runs (MORNING) and the bucket:
 
 - missing: names any of the manifests listed that are not stored (a conflict copy counts as its
   original) → one `missing` alert for the chain, with the count and up to ten names; the check
@@ -66,15 +67,45 @@ For each chain, from that day's manifests (every run's, main and retry alike) an
   none the latest stored in the seven days before. Store numbers are compared as numbers
   (Shufersal's ids are unpadded, names pad them); ids that are not numbers are left out. No store
   list, one that names no stores, or one that cannot be read makes the ratio "unknown".
+
+The morning reads main and retry runs only. A poll run of the same day can stop on time with names
+listed and not yet stored, which a later poll takes, so a poll's names never reach `missing`, `listed`
+or `manifests`; `stored` counts every stored name, a poll's files included. Rulings R4, R31 and R35 to
+R37 read the same runs, so a poll's block never silences R35's or R37's reason: those are dropped only
+when a retry run was blocked.
+
+The update day (ruling R39; docs/update-files.md, section 5). Given `polled` (the chains whose polls
+are on, each with the update kinds its polls read), the check of a day also judges the day before,
+from every manifest of that day, polls included, and the names stored that day, and writes it into its
+own record as `update_day`; its alerts follow the morning's. Each chain's, in this order:
+
+- missing: names a poll run tried and failed (`failed`) that are still not stored and that no main or
+  retry run of that day listed (those were judged by that day's own check and are never reported
+  twice) → one `missing` alert, with the count and up to ten names.
+- failed: an update kind no pass read in full that day (collector.pages.passes): for Shufersal, a pass
+  whose pages joined up; for a chain without page records, a poll run that ended with no error and was
+  not blocked, as R36 reads it. A day no poll ran fails too, so a lost schedule shows → one `failed`
+  alert naming the lists. Left out when a poll run of the day was blocked: the stopped alert covers
+  it (as R35).
+
+A name a poll listed and never tried because the run stopped on time (`not_attempted`) is counted, not
+emailed: the day's last run of a kind can leave such names, and the next pass is the next day's. The
+count (`not_tried`, per kind: such names not stored and not missing) is the measure of what the time
+rule costs. The record also holds each poll's outcome (`polls`), each kind's passes (`passes`: the
+runs that read each complete one, the runs of each that a page out of order ended unread, and the open
+one with what of the list it has not read), and `by_hour`, the day's stored files of each update kind
+counted by the hour in their names (collector.names.hour_of; "unknown" where it cannot be read), the
+measure of each chain's rhythm.
 """
 import json
-from collections.abc import Mapping
+from collections import Counter
+from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass
 from datetime import date, timedelta
 from typing import Literal
 
-from collector.names import KINDS, parse_file_name
-from collector.pages import has_pages, read_in_full, unread
+from collector.names import KINDS, hour_of, parse_file_name
+from collector.pages import Pass, has_pages, passes, read_in_full, unread
 from collector.run import OUT_OF_TIME
 from collector.store import manifest_key, raw_key
 from collector.storelist import store_ids
@@ -83,6 +114,7 @@ MAX_NAMES = 10  # names a missing alert quotes; the check record holds all of th
 LOOKBACK_DAYS = 7  # days before the check's day searched for a store list when that day has none
 UNKNOWN = "unknown"
 FULL_KINDS = ("PriceFull", "PromoFull")  # each must be listed by some run of the day (ruling R35)
+MORNING = ("main", "retry")  # the modes of the runs the morning is judged from; a poll's day is judged the next morning
 
 
 @dataclass
@@ -92,21 +124,45 @@ class Alert:
     text: str
 
 
-def check_day(store, slugs: list[str], day: date,
-              kinds: Mapping[str, tuple[str, ...]] | None = None) -> tuple[list[Alert], dict]:
-    """The alerts for `day` and the check record: per chain, the listed and stored counts, the
-    missing names, whether it is stopped, why its runs failed, the retry runs short of time that are
-    not failed runs (rulings R36 and R37), the runs that read each full kind in full (ruling R37), and
-    its coverage. `kinds` gives the kinds a chain collects; a chain it leaves out is held to all five.
-    Reads only."""
+def check_day(store, slugs: list[str], day: date, kinds: Mapping[str, tuple[str, ...]] | None = None,
+              polled: Mapping[str, tuple[str, ...]] | None = None) -> tuple[list[Alert], dict]:
+    """The alerts for `day` and the check record: per chain, from its main and retry runs (MORNING), the
+    listed and stored counts, the missing names, whether it is stopped, why its runs failed, the retry
+    runs short of time that are not failed runs (rulings R36 and R37), the runs that read each full kind
+    in full (ruling R37), and its coverage. `kinds` gives the kinds a chain collects; a chain it leaves
+    out is held to all five. With `polled` (each chain whose polls are on, with the update kinds they
+    read), the record's `update_day` is the day before judged by judge_update_day, and its alerts follow
+    the morning's; without it, `update_day` is null. Reads only."""
     manifests = _manifests(store, day)
-    alerts: list[Alert] = []
+    morning: list[Alert] = []
     chains = {}
     for slug in slugs:
         expected = (kinds or {}).get(slug, KINDS)
-        chain_alerts, chains[slug] = _check_chain(store, slug, day, manifests.get(slug, []), expected)
+        runs = [manifest for manifest in manifests.get(slug, []) if manifest["mode"] in MORNING]
+        chain_alerts, chains[slug] = _check_chain(store, slug, day, runs, expected)
+        morning += chain_alerts
+    update_alerts: list[Alert] = []
+    update_day = None
+    if polled is not None:
+        update_alerts, update_day = judge_update_day(store, polled, day - timedelta(days=1))
+    alerts = morning + update_alerts
+    return alerts, {"day": day.isoformat(), "chains": chains, "update_day": update_day,
+                    "alerts": [asdict(alert) for alert in alerts]}
+
+
+def judge_update_day(store, polled: Mapping[str, tuple[str, ...]], day: date) -> tuple[list[Alert], dict]:
+    """The update day `day` judged (ruling R39), for each chain in `polled` with the update kinds its polls read, from
+    that day's manifests (every mode) and stored names: the alerts, chains in `polled`'s order, and the record's
+    `update_day`, `{"day": "YYYY-MM-DD", "chains": {slug: section}}`. Reads only. It judges every chain it is handed,
+    so check_day's caller (collector.handler) hands only the chains whose `polled` is set, and only while the poll
+    switch is on or the check event asks for the update day."""
+    manifests = _manifests(store, day)
+    alerts: list[Alert] = []
+    chains = {}
+    for slug, kinds in polled.items():
+        chain_alerts, chains[slug] = _judge_updates(store, slug, day, manifests.get(slug, []), kinds)
         alerts += chain_alerts
-    return alerts, {"day": day.isoformat(), "chains": chains, "alerts": [asdict(alert) for alert in alerts]}
+    return alerts, {"day": day.isoformat(), "chains": chains}
 
 
 def mark_alerted(store, alerts: list[Alert]) -> None:
@@ -118,6 +174,12 @@ def mark_alerted(store, alerts: list[Alert]) -> None:
             state = store.read_state(alert.chain)
             if state.get("stopped"):
                 store.write_state(alert.chain, state | {"alerted": True})
+
+
+def stopped_alert(slug: str, state: dict) -> Alert:
+    """The `stopped` alert for a chain whose state says stopped: since when and why (ruling R26)."""
+    return Alert(slug, "stopped", f"{slug} is stopped since {state.get('since')}: {state.get('reason')}. "
+                                  "Nothing is fetched from it until an unblock run clears it.")
 
 
 def _manifests(store, day: date) -> dict[str, list[dict]]:
@@ -141,8 +203,7 @@ def _check_chain(store, slug: str, day: date, manifests: list[dict],
         alerts.append(Alert(slug, "missing", _missing_text(slug, day, missing)))
     state = store.read_state(slug)
     if state.get("stopped") and not state.get("alerted"):
-        alerts.append(Alert(slug, "stopped", f"{slug} is stopped since {state.get('since')}: {state.get('reason')}. "
-                                             "Nothing is fetched from it until an unblock run clears it."))
+        alerts.append(stopped_alert(slug, state))
     excused = _short_of_time(manifests, missing)
     failure = _failure(manifests, kinds, excused)
     if failure:
@@ -163,9 +224,14 @@ def _check_chain(store, slug: str, day: date, manifests: list[dict],
 
 def _missing_text(slug: str, day: date, missing: list[str]) -> str:
     count = f"{len(missing)} file{'s' if len(missing) != 1 else ''}"
-    more = len(missing) - MAX_NAMES
+    return f"{slug}: {count} listed for {day.isoformat()} and not stored: {_quoted(missing)}."
+
+
+def _quoted(names: list[str]) -> str:
+    """The first MAX_NAMES of `names`, and how many more; the check record holds them all."""
+    more = len(names) - MAX_NAMES
     tail = f", and {more} more (the check record lists them all)" if more > 0 else ""
-    return f"{slug}: {count} listed for {day.isoformat()} and not stored: {', '.join(missing[:MAX_NAMES])}{tail}."
+    return f"{', '.join(names[:MAX_NAMES])}{tail}"
 
 
 def _short_of_time(manifests: list[dict], missing: list[str]) -> list[dict]:
@@ -197,7 +263,7 @@ def _seen_by_others(manifests: list[dict], retry: dict) -> bool:
     return set(retry["listed"]) <= seen
 
 
-def _of_kind(names: list[str], kind: str) -> set[str]:
+def _of_kind(names: Iterable[str], kind: str) -> set[str]:
     """The names of `kind`, the kind read from each name."""
     return {name for name in names if (parsed := parse_file_name(name)) and parsed.kind == kind}
 
@@ -240,6 +306,65 @@ def _not_read_in_full(manifests: list[dict], retries: list[dict], kinds: tuple[s
         return []
     return [f"the {kind} list was not read in full: {unread(manifests, kind)}" for kind in FULL_KINDS
             if kind in kinds and has_pages(manifests, kind) and read_in_full(manifests, kind) is None]
+
+
+def _judge_updates(store, slug: str, day: date, manifests: list[dict],
+                   kinds: tuple[str, ...]) -> tuple[list[Alert], dict]:
+    """The chain's update-day alerts and its section of the record (ruling R39): see the module's docstring."""
+    polls = [manifest for manifest in manifests if manifest["mode"] == "poll"]
+    stored_names = store.stored_names(slug, day)
+    listed_by_morning = {name for manifest in manifests if manifest["mode"] in MORNING for name in manifest["listed"]}
+    unstored = sorted({name for poll in polls for name in poll["failed"]} - stored_names - listed_by_morning)
+    untried = {name for poll in polls for name in poll["not_attempted"]} - stored_names - set(unstored)
+    cut = {kind: passes(manifests, kind) for kind in kinds}
+    unread_kinds = [kind for kind in kinds if all(one.read_by is None for one in cut[kind])]
+    if any(poll["blocked"] for poll in polls):  # the stopped alert covers the day (as R35)
+        unread_kinds = []
+    alerts = [Alert(slug, "missing", _unstored_text(slug, day, unstored))] if unstored else []
+    if unread_kinds:
+        alerts.append(Alert(slug, "failed", _unread_text(slug, day, unread_kinds)))
+    section = {
+        "polls": [{"run_id": poll["run_id"], "kinds": poll["kinds"], "listed": len(poll["listed"]),
+                   "stored": len(poll["files"]), "failed": len(poll["failed"]),
+                   "not_attempted": len(poll["not_attempted"]), "error": poll["error"], "blocked": poll["blocked"]}
+                  for poll in polls],
+        "passes": {kind: _passes_record(cut[kind], kind) for kind in kinds},
+        "missing": unstored,
+        "not_tried": {kind: len(_of_kind(untried, kind)) for kind in kinds},
+        "by_hour": {kind: _by_hour(stored_names, kind) for kind in kinds},
+        "failed": unread_kinds or None,
+    }
+    return alerts, section
+
+
+def _passes_record(cut: list[Pass], kind: str) -> dict:
+    """The day's passes over `kind`'s list: the runs that read each complete one, the runs of each a page out of order
+    ended unread, and the open one, with what of the list it has not read (None without page records)."""
+    last = cut[-1] if cut and cut[-1].open else None
+    return {
+        "complete": [one.read_by for one in cut if one.read_by is not None],
+        "out_of_order": [[run["run_id"] for run in one.runs]
+                         for one in cut if one.read_by is None and one.out_of_order],
+        "open": None if last is None else {"runs": [run["run_id"] for run in last.runs],
+                                           "unread": unread(last.runs, kind) if has_pages(last.runs, kind) else None},
+    }
+
+
+def _by_hour(stored_names: set[str], kind: str) -> dict[str, int]:
+    """The day's stored names of `kind` counted by the hour in each (collector.names.hour_of), "unknown" where it cannot
+    be read, in key order."""
+    hours = Counter(hour_of(name) or UNKNOWN for name in _of_kind(stored_names, kind))
+    return dict(sorted(hours.items()))
+
+
+def _unstored_text(slug: str, day: date, names: list[str]) -> str:
+    count = f"{len(names)} update file{'s' if len(names) != 1 else ''}"
+    return f"{slug}: {count} a poll run tried on {day.isoformat()} and did not store: {_quoted(names)}."
+
+
+def _unread_text(slug: str, day: date, kinds: list[str]) -> str:
+    lists = f"the {' and '.join(kinds)} list{'s' if len(kinds) > 1 else ''}"
+    return f"{slug}: no poll run read {lists} in full on {day.isoformat()}."
 
 
 def _coverage(store, slug: str, day: date, stored: set[str]) -> dict:

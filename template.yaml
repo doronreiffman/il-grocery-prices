@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: Collects, every morning, the price files five Israeli supermarket chains publish under the food-competition law, into a write-once S3 bucket.
+Description: Collects, every morning, the price files five Israeli supermarket chains publish under the food-competition law, and, while its polls are switched on, four of the chains' update files through the day, into a write-once S3 bucket.
 
 Parameters:
   UserAgent:
@@ -25,6 +25,11 @@ Parameters:
     Default: DISABLED
     AllowedValues: [ENABLED, DISABLED]
     Description: Start DISABLED to test the stack with manual runs; redeploy with ENABLED to go live.
+  PollScheduleState:
+    Type: String
+    Default: DISABLED
+    AllowedValues: [ENABLED, DISABLED]
+    Description: The update-file polls through the day, and the next morning's check of them, on or off apart from the morning's runs; start DISABLED and run each chain's poll by hand first.
   SiteBucketName:
     Type: String
     Description: The site stack's bucket (its output SiteBucketName), where the basket run puts the pages and day files.
@@ -97,6 +102,7 @@ Resources:
           ALERT_TOPIC_ARN: !Ref AlertTopic
           HEALTHCHECK_URL: !Ref HealthcheckUrl
           RETENTION_DAYS: "3650"
+          POLL_SCHEDULE_STATE: !Ref PollScheduleState
       Policies:
         - Statement:
             # Raw files, manifests and check records: written once and locked. Each put sets its
@@ -146,6 +152,12 @@ Resources:
       # kinds; the check starts at 11:48, 15 minutes after the last retry run (Osher Ad's, 11:18) can
       # have finished, for its manifest write and the schedulers' lag. No flexible window and no
       # Scheduler retries.
+      # The update-file polls (docs/update-files.md, section 2) read the update kinds only (Price and Promo), through
+      # the day, on a switch of their own, PollScheduleState: every two hours from 12:20 and once more at 23:20, the
+      # three NCR chains 15 minutes apart on their shared host and Carrefour after them. None is in flight while the
+      # basket's extractions run (12:03 to 12:18): the design's concurrency spacing, written when the account's Lambda
+      # quota in il-central-1 read 5, kept as approved though the quota read 400 on 2026-11-07 (aws lambda
+      # get-account-settings). Shufersal's passes come later (docs/update-files.md, section 7).
       Events:
         MainShufersalStores:
           Type: ScheduleV2
@@ -298,6 +310,249 @@ Resources:
             ScheduleExpressionTimezone: Asia/Jerusalem
             Input: '{"mode": "check"}'
             State: !Ref ScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        PollRamiLevy1220:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(20 12 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "poll", "chain": "ramilevy", "kinds": ["Price", "Promo"]}'
+            State: !Ref PollScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        PollYochananof1235:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(35 12 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "poll", "chain": "yochananof", "kinds": ["Price", "Promo"]}'
+            State: !Ref PollScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        PollOsherAd1250:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(50 12 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "poll", "chain": "osherad", "kinds": ["Price", "Promo"]}'
+            State: !Ref PollScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        PollCarrefour1305:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(5 13 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "poll", "chain": "carrefour", "kinds": ["Price", "Promo"]}'
+            State: !Ref PollScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        PollRamiLevy1420:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(20 14 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "poll", "chain": "ramilevy", "kinds": ["Price", "Promo"]}'
+            State: !Ref PollScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        PollYochananof1435:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(35 14 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "poll", "chain": "yochananof", "kinds": ["Price", "Promo"]}'
+            State: !Ref PollScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        PollOsherAd1450:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(50 14 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "poll", "chain": "osherad", "kinds": ["Price", "Promo"]}'
+            State: !Ref PollScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        PollCarrefour1505:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(5 15 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "poll", "chain": "carrefour", "kinds": ["Price", "Promo"]}'
+            State: !Ref PollScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        PollRamiLevy1620:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(20 16 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "poll", "chain": "ramilevy", "kinds": ["Price", "Promo"]}'
+            State: !Ref PollScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        PollYochananof1635:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(35 16 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "poll", "chain": "yochananof", "kinds": ["Price", "Promo"]}'
+            State: !Ref PollScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        PollOsherAd1650:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(50 16 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "poll", "chain": "osherad", "kinds": ["Price", "Promo"]}'
+            State: !Ref PollScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        PollCarrefour1705:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(5 17 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "poll", "chain": "carrefour", "kinds": ["Price", "Promo"]}'
+            State: !Ref PollScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        PollRamiLevy1820:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(20 18 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "poll", "chain": "ramilevy", "kinds": ["Price", "Promo"]}'
+            State: !Ref PollScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        PollYochananof1835:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(35 18 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "poll", "chain": "yochananof", "kinds": ["Price", "Promo"]}'
+            State: !Ref PollScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        PollOsherAd1850:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(50 18 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "poll", "chain": "osherad", "kinds": ["Price", "Promo"]}'
+            State: !Ref PollScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        PollCarrefour1905:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(5 19 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "poll", "chain": "carrefour", "kinds": ["Price", "Promo"]}'
+            State: !Ref PollScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        PollRamiLevy2020:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(20 20 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "poll", "chain": "ramilevy", "kinds": ["Price", "Promo"]}'
+            State: !Ref PollScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        PollYochananof2035:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(35 20 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "poll", "chain": "yochananof", "kinds": ["Price", "Promo"]}'
+            State: !Ref PollScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        PollOsherAd2050:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(50 20 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "poll", "chain": "osherad", "kinds": ["Price", "Promo"]}'
+            State: !Ref PollScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        PollCarrefour2105:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(5 21 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "poll", "chain": "carrefour", "kinds": ["Price", "Promo"]}'
+            State: !Ref PollScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        PollRamiLevy2220:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(20 22 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "poll", "chain": "ramilevy", "kinds": ["Price", "Promo"]}'
+            State: !Ref PollScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        PollYochananof2235:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(35 22 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "poll", "chain": "yochananof", "kinds": ["Price", "Promo"]}'
+            State: !Ref PollScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        PollOsherAd2250:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(50 22 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "poll", "chain": "osherad", "kinds": ["Price", "Promo"]}'
+            State: !Ref PollScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        PollCarrefour2305:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(5 23 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "poll", "chain": "carrefour", "kinds": ["Price", "Promo"]}'
+            State: !Ref PollScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        PollRamiLevy2320:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(20 23 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "poll", "chain": "ramilevy", "kinds": ["Price", "Promo"]}'
+            State: !Ref PollScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        PollYochananof2335:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(35 23 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "poll", "chain": "yochananof", "kinds": ["Price", "Promo"]}'
+            State: !Ref PollScheduleState
+            FlexibleTimeWindow: {Mode: "OFF"}
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        PollOsherAd2350:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "cron(50 23 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Jerusalem
+            Input: '{"mode": "poll", "chain": "osherad", "kinds": ["Price", "Promo"]}'
+            State: !Ref PollScheduleState
             FlexibleTimeWindow: {Mode: "OFF"}
             RetryPolicy: {MaximumRetryAttempts: 0}
   # Created before the function, under its own name, so the first run can't race CloudFormation

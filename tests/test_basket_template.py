@@ -198,13 +198,13 @@ def test_role_prefixes_are_the_codes_keys(basket_statements):
 # --- the parameters ---
 
 
-def test_parameters_are_the_eight_and_only_the_two_switches_have_defaults(template):
+def test_parameters_are_the_nine_and_only_the_three_switches_have_defaults(template):
     """The site's bucket and distribution and the basket's ping URL are given at deploy, as the collector's are."""
     parameters = template["Parameters"]
-    assert set(parameters) == {"UserAgent", "AlertEmail", "HealthcheckUrl", "ScheduleState",
+    assert set(parameters) == {"UserAgent", "AlertEmail", "HealthcheckUrl", "ScheduleState", "PollScheduleState",
                                "SiteBucketName", "SiteDistributionId", "BasketHealthcheckUrl", "BasketScheduleState"}
     assert sorted(name for name, parameter in parameters.items() if "Default" in parameter) == [
-        "BasketScheduleState", "ScheduleState"]
+        "BasketScheduleState", "PollScheduleState", "ScheduleState"]
     assert {parameter["Type"] for parameter in parameters.values()} == {"String"}
 
 

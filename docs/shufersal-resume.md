@@ -28,6 +28,7 @@ The list's order makes a fix possible: in every Shufersal run from 2026-11-03 to
 ## Non-goals
 
 - No schedule change, no new runs, no change to other chains, no change to the 60 s socket timeout or the 90 s time rule.
+  Since then (owner, 2026-11-05), Shufersal's update kinds are to be read through the day by poll runs of their own (scheduled at the rollout's step 3), and such a poll starts from its kind's current pass instead ([update-files.md](update-files.md), section 3; ruling R39 in [collector-plan.md](collector-plan.md)).
 - No retry of a single slow page (considered and not chosen by the owner on 2026-11-05: at 60 s a page it would not have saved that morning). Decided next, on 2026-11-06: the owner chose a retry on top of the resume, a listing page that times out asked for again, up to two more times ([shufersal-page-retry.md](shufersal-page-retry.md), ruling R38 in [collector-plan.md](collector-plan.md)).
 - No sort parameter added to Shufersal's request: the request stays as it is, and the order is checked instead.
 
@@ -52,6 +53,8 @@ Before reading a kind, a Shufersal run reads the day's earlier Shufersal manifes
 - **A failed file earlier on the list:** if a name an earlier run listed is not stored and sits on an earlier page than where the run would start (from the earlier run's `pages`), the run reads that page first, once, so the file is tried again as it would be today, then goes on to its start page. Call (builder check): a detour, not a restart there, so a file that fails every time cannot pull every later run back to its page. This holds for a fresh pass too: the detour comes before page 1.
 - **Already read in full:** the run starts a fresh pass at page 1, as every run does today. This is the retry's job: files published after the first pass.
 - **No usable record:** no earlier run of the kind that day, earlier manifests without `pages` (before this change), or any earlier page of the kind that day recorded `in_order: false`: the run starts at page 1, as today.
+
+Update kinds (`Price`, `Promo`), read through the day by poll runs, start from their current pass instead: this rule over the open pass's runs alone, or a fresh pass from page 1 ([update-files.md](update-files.md), section 3; ruling R39).
 
 Call: the run loop reads the manifests and hands the adapter a start point per kind (the detour pages, the start page and the furthest name taken); paging stays in the Shufersal adapter, which reports each page it reads; the run loop owns the page records, since only it knows how far into a page it got. The builder may place it otherwise if the tests read the same.
 

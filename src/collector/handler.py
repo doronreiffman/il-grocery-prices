@@ -1,22 +1,37 @@
 """The Lambda's entry point: one invocation per chain and mode (docs/collector.md, "How a morning
-runs", and "Alerts"). EventBridge Scheduler sends the first three events; the owner sends unblock.
+runs", and "Alerts"; docs/update-files.md for the polls). EventBridge Scheduler sends main, retry,
+poll and the plain check; the owner sends unblock, and a check that asks for the update day.
 
     {"mode": "main", "chain": "<slug>", "kinds": [...]}    collect the chain's files for the Israel date
     {"mode": "retry", "chain": "<slug>", "kinds": [...]}   the same, hours later: what is still not stored
+    {"mode": "poll", "chain": "<slug>", "kinds": [...]}    the same through the day, for update kinds it polls
     {"mode": "check"}                                      check every chain's day, email any alerts, ping
+    {"mode": "check", "update_day": true}                  the same, and the day before's update files judged
     {"mode": "unblock", "chain": "<slug>"}                 clear the chain's stopped latch
 
-`kinds` is optional: the chain's kinds when absent (Shufersal's three, the others' five). The day is
-the Israel calendar date when the invocation starts. main and retry never email: their errors are
-logged and the check judges what they left. The check writes its record whatever it finds, sends one
-email only when there are alerts, marks the stopped chains it named as alerted once that email has
-gone (ruling R26), then pings healthchecks.io; a failed ping is logged, not raised. If the check
-itself fails, the email included, nothing is marked and nothing pings, and healthchecks.io emails
-about the missing ping. The ping's User-Agent names the project and its URL, never the contact email
-(ruling R27).
+`kinds` is optional for main and retry: the chain's kinds when absent (Shufersal's three, the others'
+five). A poll event must name its kinds, some of the chain's `polled` (a default would hand Shufersal
+both update kinds in one run). The day is the Israel calendar date when the invocation starts. main
+and retry never email: their errors are logged and the check judges what they left. A poll run that
+stops a chain (it latched it: blocked, and not "stopped earlier") emails the chain's stopped alert at
+once, since after an afternoon or evening poll the next check is the next day's, after that morning's
+runs have done nothing; the chain is marked alerted once that email has gone (ruling R26), so the
+check does not send it again. If the email fails, the invocation fails and nothing is marked, and the
+check sends it. No other collecting run emails, and a poll of a chain stopped earlier sends nothing:
+that stop is the check's to alert.
 
-Environment: BUCKET, USER_AGENT, ALERT_TOPIC_ARN, HEALTHCHECK_URL (each required), RETENTION_DAYS
-(default 3650).
+The check writes its record whatever it finds, sends one email only when there are alerts, marks the
+stopped chains it named as alerted once that email has gone (ruling R26), then pings healthchecks.io;
+a failed ping is logged, not raised. If the check itself fails, the email included, nothing is marked
+and nothing pings, and healthchecks.io emails about the missing ping. The ping's User-Agent names the
+project and its URL, never the contact email (ruling R27). While the poll switch is on, or when the
+check event's `update_day` is true (the JSON value true, nothing else), the check also judges the day
+before's update files for the chains whose `polled` is set (ruling R39; collector.check.judge_update_day)
+and its alerts go in the same email; otherwise the record's `update_day` is null.
+
+Environment: BUCKET, USER_AGENT, ALERT_TOPIC_ARN, HEALTHCHECK_URL, POLL_SCHEDULE_STATE (each
+required; the poll switch, ENABLED or DISABLED, as template.yaml's PollScheduleState sets it),
+RETENTION_DAYS (default 3650).
 """
 import hashlib
 import json
@@ -33,10 +48,10 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from collector.chains import CHAINS, Chain, source_for
-from collector.check import Alert, check_day, mark_alerted
+from collector.check import Alert, check_day, mark_alerted, stopped_alert
 from collector.http import Http, build_opener, check_user_agent
-from collector.run import collect_chain, new_run_id
-from collector.store import RETENTION_DAYS, S3Store, check_key
+from collector.run import STOPPED_EARLIER, collect_chain, new_run_id
+from collector.store import RETENTION_DAYS, S3Store, check_key, manifest_key
 
 # INFO on the package's logger itself, so the runs' summaries reach CloudWatch whatever level the
 # runtime gives the root logger (ruling R28); the records go to the runtime's handler on the root.
@@ -44,8 +59,9 @@ logging.getLogger("collector").setLevel(logging.INFO)
 log = logging.getLogger(__name__)
 
 ISRAEL = ZoneInfo("Asia/Jerusalem")
-REQUIRED = ("BUCKET", "USER_AGENT", "ALERT_TOPIC_ARN", "HEALTHCHECK_URL")
-COLLECTING = ("main", "retry")
+REQUIRED = ("BUCKET", "USER_AGENT", "ALERT_TOPIC_ARN", "HEALTHCHECK_URL", "POLL_SCHEDULE_STATE")
+POLL_STATES = ("ENABLED", "DISABLED")  # the poll switch's values: template.yaml's PollScheduleState
+COLLECTING = ("main", "retry", "poll")
 SUBJECT_LIMIT = 100  # SNS takes a subject of fewer than 100 characters
 PING_TIMEOUT = 10  # seconds
 _PROJECT_URL = re.compile(r"\+https://[^\s;()@]+")
@@ -72,15 +88,19 @@ class Config:
     alert_topic_arn: str
     healthcheck_url: str
     retention_days: int
+    polls_on: bool = False  # the poll switch: the check judges the update day while it is on
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> "Config":
         missing = [name for name in REQUIRED if not env.get(name, "").strip()]
         if missing:
             raise ValueError(f"missing environment variables: {', '.join(missing)}")
+        polls = env["POLL_SCHEDULE_STATE"]
+        if polls not in POLL_STATES:
+            raise ValueError(f"POLL_SCHEDULE_STATE must be {' or '.join(POLL_STATES)}, not {polls!r}")
         return cls(bucket=env["BUCKET"], user_agent=check_user_agent(env["USER_AGENT"]),
                    alert_topic_arn=env["ALERT_TOPIC_ARN"], healthcheck_url=env["HEALTHCHECK_URL"],
-                   retention_days=int(env.get("RETENTION_DAYS", RETENTION_DAYS)))
+                   retention_days=int(env.get("RETENTION_DAYS", RETENTION_DAYS)), polls_on=polls == "ENABLED")
 
 
 @dataclass
@@ -104,10 +124,11 @@ def run(cfg: Config, event: dict, deps: Deps, now: datetime) -> dict:
         raise ValueError("now must carry a time zone")
     mode = event.get("mode") if isinstance(event, dict) else None
     if mode not in (*COLLECTING, "check", "unblock"):
-        raise ValueError(f"the event's mode must be main, retry, check or unblock, not {mode!r} (event {event!r})")
+        raise ValueError(f"the event's mode must be main, retry, poll, check or unblock, not {mode!r} "
+                         f"(event {event!r})")
     day = now.astimezone(ISRAEL).date()
     if mode == "check":
-        summary = _check(cfg, deps, day, now)
+        summary = _check(cfg, event, deps, day, now)
     elif mode == "unblock":
         summary = _unblock(_chain(event), deps)
     else:
@@ -124,6 +145,8 @@ def _chain(event: dict) -> Chain:
 
 
 def _collect(chain: Chain, event: dict, mode: str, deps: Deps, day: date, now: datetime) -> dict:
+    if mode == "poll" and "kinds" not in event:  # a default of `polled` would hand Shufersal both kinds in one run
+        raise ValueError(f"a poll event names its kinds (event {event!r})")
     kinds = tuple(event["kinds"]) if "kinds" in event else chain.kinds
     run_id = new_run_id(now, mode)
     result = collect_chain(chain, source_for(chain), deps.http_for(chain.slug), deps.store, day, run_id, mode,
@@ -134,9 +157,25 @@ def _collect(chain: Chain, event: dict, mode: str, deps: Deps, day: date, now: d
         log.error("%s blocked: %s", chain.slug, result.blocked)
     if result.error:
         log.error("%s run %s stopped: %s", chain.slug, run_id, result.error)
+    if mode == "poll" and result.blocked and result.blocked != STOPPED_EARLIER:  # this run latched the chain
+        _stopped_by_poll(chain.slug, deps, day, run_id)
     return {"mode": mode, "chain": chain.slug, "day": day.isoformat(), "run_id": run_id, "kinds": result.kinds,
             "listed": len(result.listed), "stored": len(result.files), "failed": len(result.failed),
             "not_attempted": len(result.not_attempted), "blocked": result.blocked, "error": result.error}
+
+
+def _stopped_by_poll(slug: str, deps: Deps, day: date, run_id: str) -> None:
+    """Email the stopped alert of a chain a poll run just latched, at once: after an afternoon or evening poll the next
+    check is the next day's. The chain is marked alerted only once the email has gone (ruling R26); a failed email is
+    raised and marks nothing, so the check sends it. A latch cleared since, or already alerted, sends nothing."""
+    state = deps.store.read_state(slug)
+    if not state.get("stopped") or state.get("alerted"):
+        return
+    alert = stopped_alert(slug, state)
+    subject, body = poll_message(day, alert, manifest_key(day, slug, run_id))
+    log.warning("%s\n%s", subject, body)  # logged first: the email can still fail
+    deps.publish(subject, body)
+    mark_alerted(deps.store, [alert])  # only now: a failed email leaves the chain to the check (R26)
 
 
 def _clock(start: datetime, time_left: Callable[[], float]) -> Callable[[], datetime]:
@@ -145,8 +184,12 @@ def _clock(start: datetime, time_left: Callable[[], float]) -> Callable[[], date
     return lambda: start + timedelta(seconds=left_at_start - time_left())
 
 
-def _check(cfg: Config, deps: Deps, day: date, now: datetime) -> dict:
-    alerts, record = check_day(deps.store, list(CHAINS), day, kinds={slug: c.kinds for slug, c in CHAINS.items()})
+def _check(cfg: Config, event: dict, deps: Deps, day: date, now: datetime) -> dict:
+    # The update day while the polls are on, or when a manual check asks (rollout step 2); only chains that poll.
+    polled = ({slug: c.polled for slug, c in CHAINS.items() if c.polled}
+              if cfg.polls_on or event.get("update_day") is True else None)
+    alerts, record = check_day(deps.store, list(CHAINS), day, kinds={slug: c.kinds for slug, c in CHAINS.items()},
+                               polled=polled)
     run_id = new_run_id(now, "check")
     key = check_key(day, run_id)
     if alerts:
@@ -175,6 +218,15 @@ def message(day: date, alerts: list[Alert], record_key: str) -> tuple[str, str]:
     lines = [f"The check of {day.isoformat()} (Israel date) found {count}:", ""]
     lines += [f"- {alert.text}" for alert in alerts]
     lines += ["", f"The check record: {record_key}"]
+    return subject, "\n".join(lines)
+
+
+def poll_message(day: date, alert: Alert, manifest_key: str) -> tuple[str, str]:
+    """A poll run's stopped email: the subject names the chain (SNS's 100 characters hold every chain's), the body
+    holds the check's stopped alert and the run's manifest."""
+    subject = f"il-grocery-prices {day.isoformat()}: {alert.chain} stopped by a poll run"
+    lines = [f"A poll run of {day.isoformat()} (Israel date) stopped a chain:", "", f"- {alert.text}", "",
+             f"The run's manifest: {manifest_key}"]
     return subject, "\n".join(lines)
 
 

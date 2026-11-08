@@ -6,7 +6,8 @@ MemoryStore, which keeps S3Store's rules. Bodies are whole gzips holding the fix
 fixtures' UTF-16 XML), since check_payload unzips each one in full. FakePagedSource is FakeSource as a
 paged adapter (Shufersal's), reporting the pages it reads and the page requests that timed out. Three tests run
 the real Shufersal adapter over test_shufersal's fake network, where a listed name and its link's last segment
-differ.
+differ. The last section (q23) holds a poll run to the kinds its chain polls, counts the names of other days and
+starts a paged poll from its pass.
 """
 import dataclasses
 import functools
@@ -26,12 +27,14 @@ from botocore.exceptions import ClientError
 from collector.chains import CHAINS
 from collector.http import Blocked, Http, HttpError, build_opener
 from collector.names import KINDS, parse_file_name
+from collector.pages import start_for
 from collector.sources import (Listed, ListingUnreadable, OutOfTime, PagedSource, PageRead, PageTimeout, Start,
                                never_short)
 from collector.sources.shufersal import ShufersalSource
 from collector.store import MemoryStore, manifest_key, raw_key
 from collector.run import RunResult, collect_chain, manifest_bytes, new_run_id, stored_name
-from test_pages import A, A_STORED, ALL_STORED, B, DAY as PAGES_DAY, gz, name, run as earlier_run
+from test_pages import (A, A_STORED, ALL_STORED, B, DAY as PAGES_DAY, P1, P2, P3, PROMO_STORED, gz, name,
+                        run as earlier_run)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 UA = "il-grocery-prices/0.1 (+https://github.com/example/il-grocery-prices; owner@example.org)"
@@ -163,9 +166,10 @@ class NoNetwork(urllib.request.BaseHandler):
 HTTP = Http(UA, opener=build_opener(NoNetwork()), sleep=lambda seconds: None)
 
 
-def collect(source, store=None, kinds=KINDS, clock=None, mode="main", day=DAY, http=HTTP, run_id=RUN_ID):
+def collect(source, store=None, kinds=KINDS, clock=None, mode="main", day=DAY, http=HTTP, run_id=RUN_ID,
+            chain=CHAIN):
     store = MemoryStore() if store is None else store
-    result = collect_chain(CHAIN, source, http, store, day, run_id, mode, kinds,
+    result = collect_chain(chain, source, http, store, day, run_id, mode, kinds,
                            clock or Clock(), lambda: NOW, CODE_SHA)
     return result, store
 
@@ -751,7 +755,7 @@ def test_manifest_bytes():
         "listing_read_at": NOW_UTC, "listed": [PROMO, PRICE],
         "files": {PROMO: {"outcome": "stored", "size": 3, "sha256": "ab"}},
         "failed": {PRICE: "timed out"}, "not_attempted": [], "unparsed": 2, "blocked": None, "error": None,
-        "pages": [], "timeouts": [], "code_sha": CODE_SHA,
+        "pages": [], "timeouts": [], "other_days": {}, "code_sha": CODE_SHA,
     }
     assert list(record) == sorted(record)
     assert list(record["files"][PROMO]) == sorted(record["files"][PROMO])
@@ -1133,3 +1137,91 @@ def test_the_real_shufersal_adapter_records_the_tries():
     assert set(stored_bodies(store)) == {listed + ".gz" for listed in names(1) + names(2)}
     assert sleeps == [10.0] * 3
     assert result.blocked is None
+
+
+# ---- poll runs and other days (q23) ----
+
+POLLING = dataclasses.replace(CHAIN, polled=("Price", "Promo"))  # every kind in the morning, both update kinds polled
+MORNING_ONLY = dataclasses.replace(CHAIN, kinds=("Stores", "PriceFull", "PromoFull"), polled=("Price", "Promo"))
+AFTER_MIDNIGHT = "Price7290027600007-001-030-20261101-000500.gz"
+AFTER_MIDNIGHT_2 = "Price7290027600007-001-031-20261101-000500.gz"
+
+
+def raw_keys(store):
+    return [key for key in store.objects if key.startswith("raw/")]
+
+
+@pytest.mark.parametrize("chain, mode, kinds, taken", [
+    pytest.param(POLLING, "poll", ("Price",), True, id="a poll of a kind the chain polls"),
+    pytest.param(POLLING, "poll", ("Price", "Promo"), True, id="a poll of both"),
+    pytest.param(POLLING, "poll", ("PriceFull",), False, id="a poll of a full kind"),
+    pytest.param(CHAIN, "poll", ("Price",), False, id="a poll of a chain that polls nothing"),
+    pytest.param(POLLING, "main", ("Price",), True, id="a main run of a kind the chain collects"),
+    pytest.param(POLLING, "retry", ("PriceFull",), True, id="a retry run of a kind the chain collects"),
+    pytest.param(MORNING_ONLY, "main", ("Price",), False, id="a main run of a kind the chain only polls"),
+    pytest.param(MORNING_ONLY, "poll", ("PromoFull",), False, id="a poll of a kind the chain only collects"),
+])
+def test_a_poll_asks_only_for_the_kinds_its_chain_polls(chain, mode, kinds, taken):
+    """Design, section 1: a poll run may ask only for kinds in the chain's `polled`, a main or retry run only for kinds
+    in its `kinds`. A refusal comes before anything is read or written, and says which of the two it held the run
+    to."""
+    source = FakeSource([item(UPDATE), item(PRICE)])
+    store = MemoryStore()
+    if taken:
+        result, _ = collect(source, store=store, kinds=kinds, mode=mode, chain=chain)
+        assert source.listing_calls == [(HTTP, kinds)]
+        assert (result.mode, manifest(store)["kinds"]) == (mode, list(kinds))
+        return
+    with pytest.raises(ValueError, match="kinds") as refused:
+        collect(source, store=store, kinds=kinds, mode=mode, chain=chain)
+    assert ("polls" if mode == "poll" else "collects") in str(refused.value)
+    assert source.listing_calls == [] and store.objects == {}
+
+
+def test_names_of_other_days_are_counted_per_day():
+    """Design, section 1: `other_days` counts, for each date other than the run's, the distinct names of the kinds
+    asked for that the listing gave; none of them is listed or fetched, and a kind not asked for is not counted."""
+    other_kind = "Price7290027600007-001-030-20261030-090000.gz"
+    source = FakeSource([item(PRICE), item(YESTERDAY), item(YESTERDAY), item(TOMORROW), item(CLOSED_IN_MAY),
+                         item(other_kind)])
+    result, store = collect(source, kinds=("PriceFull",))
+    assert result.other_days == {"2026-05-12": 1, "2026-10-30": 1, "2026-11-01": 1}
+    assert manifest(store)["other_days"] == {"2026-05-12": 1, "2026-10-30": 1, "2026-11-01": 1}
+    assert result.listed == [PRICE] and source.downloaded == [PRICE]
+    assert raw_keys(store) == [raw_key(SLUG, DAY, PRICE)]
+
+
+def test_names_dated_after_midnight_are_counted_not_taken():
+    """Review focus 1: Osher Ad's 23:50 poll runs to 00:05. The names dated the next day are counted under that day,
+    never listed and never stored under the run's day; the next morning's main run takes them."""
+    source = FakeSource([item(UPDATE), item(AFTER_MIDNIGHT), item(AFTER_MIDNIGHT_2)])
+    result, store = collect(source, kinds=("Price",), mode="poll", chain=POLLING)
+    assert result.other_days == {"2026-11-01": 2} and manifest(store)["other_days"] == {"2026-11-01": 2}
+    assert result.listed == [UPDATE] and source.downloaded == [UPDATE]
+    assert raw_keys(store) == [f"raw/chain=shufersal/date=2026-10-31/{UPDATE}"]
+
+
+def test_other_days_is_empty_when_every_name_is_the_days():
+    result, store = collect(FakeSource([item(PRICE), item(PROMO), item(UPDATE), item(STORES)]))
+    assert result.other_days == {} and manifest(store)["other_days"] == {}
+    assert result.listed == [PRICE, PROMO, UPDATE, STORES]
+
+
+def test_a_poll_starts_where_its_pass_stands():
+    """Ruling R39: a paged poll starts from its current pass (collector.pages.pass_start). The 10:30 pass read the
+    Promo list in full and the 15:10 pass stopped on page 12, so the next poll resumes there; R37 over the whole day
+    would start it at page 1."""
+    source = FakePagedSource([])
+    store = stored_day(PAGES_DAY, [P1, P2, P3], PROMO_STORED)
+    collect(source, store=store, kinds=("Promo",), mode="poll", day=PAGES_DAY, chain=POLLING)
+    assert source.starts == {"Promo": Start(page=12, furthest=name(221, "Promo"))}
+
+
+def test_a_full_kinds_start_is_r37s_with_polls_beside():
+    """A main run of a full kind starts by ruling R37 over the day's manifests as before; the day's Promo polls beside
+    it change nothing."""
+    stored = A_STORED | PROMO_STORED
+    source = FakePagedSource([])
+    collect(source, store=stored_day(PAGES_DAY, [A, P1, P2, P3], stored), kinds=("PriceFull",), day=PAGES_DAY)
+    assert source.starts == {"PriceFull": start_for([A], "PriceFull", stored)}
+    assert start_for([A], "PriceFull", stored) == Start(page=12, furthest=name(221))  # a resume: not a fresh pass

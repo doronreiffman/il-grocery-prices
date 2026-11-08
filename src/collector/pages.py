@@ -41,7 +41,25 @@ Where a run starts reading a kind follows from the same records (docs/shufersal-
 
 A manifest's page record is `dataclasses.asdict` of a `collector.sources.PageRead` with `taken_through`: the last name
 the run took from the page, as listed (without `.gz`), or None. Names compare as plain strings.
+
+Ruling R39: an update kind (`Price`, `Promo`) is read several times a day, by poll runs (docs/update-files.md, section
+3), so its day is cut into passes, each a reading of its own:
+
+- The runs that make a kind's passes are its poll runs that were not blocked and read the listing, in the order they
+  read it (`listing_read_at`, never the run id, whose time is UTC); a blocked run's pages, in order or not, are not
+  seen.
+- Each run joins the current pass. After it joins, the pass ends when the pass's own runs read the kind in full, as
+  R37 reads them (a run without page records that ended with no error reads it on its own), or when this run recorded
+  a page of the kind out of order; the next run begins a new pass. The runs left at the end make the last pass, open.
+- A poll run starts from the last pass: when it is open, R37's start over that pass's runs alone (a resume at its
+  furthest page, detours to its failed files' pages); otherwise a fresh pass from page 1, with no detour.
+
+So a page out of order costs one pass, not the day. R37's functions are unchanged and read the full kinds as before:
+each reads only the runs that cover the kind it is asked about, and only that kind's pages.
 """
+from dataclasses import dataclass
+from datetime import datetime
+
 from collector.sources import Start
 
 BEFORE = (0, "")  # before every name: where a block from page 1 starts, and where a reading starts
@@ -109,6 +127,50 @@ def start_for(manifests: list[dict], kind: str, stored: set[str]) -> Start:
 def has_pages(manifests: list[dict], kind: str) -> bool:
     """Whether any manifest of the day recorded a page of `kind`."""
     return any(_records(manifest, kind) for manifest in manifests)
+
+
+@dataclass
+class Pass:
+    """One reading of an update kind's list by the day's poll runs (ruling R39)."""
+
+    runs: list[dict]  # the pass's poll manifests, in listing_read_at order
+    read_by: list[str] | None  # read_in_full(runs, kind): the runs that read the list in full; None when it did not
+    out_of_order: bool  # its last run recorded a page of the kind out of order
+
+    @property
+    def open(self) -> bool:
+        """Not read in full and not ended by a page out of order: the pass the next run carries on."""
+        return self.read_by is None and not self.out_of_order
+
+
+def passes(manifests: list[dict], kind: str) -> list[Pass]:
+    """The day's passes over update kind `kind`'s list (ruling R39), in order: its poll runs that were not blocked and
+    read the listing, in the order they read it, cut after each run that completes its pass's reading or records a
+    page of the kind out of order. The runs left at the end make the last pass, open."""
+    runs = [manifest for manifest in manifests if manifest["mode"] == "poll" and kind in manifest["kinds"]
+            and not manifest["blocked"] and manifest["listing_read_at"] is not None]
+    runs.sort(key=lambda manifest: datetime.fromisoformat(manifest["listing_read_at"]))  # aware, UTC
+    cut: list[Pass] = []
+    current: list[dict] = []
+    for manifest in runs:
+        current.append(manifest)
+        read_by = read_in_full(current, kind)  # the pass's own runs: an earlier pass's reading is done with
+        out_of_order = _out_of_order([manifest], kind) is not None
+        if read_by is not None or out_of_order:
+            cut.append(Pass(current, read_by, out_of_order))
+            current = []
+    if current:
+        cut.append(Pass(current, None, False))
+    return cut
+
+
+def pass_start(manifests: list[dict], kind: str, stored: set[str]) -> Start:
+    """Where a poll run starts reading update kind `kind` (ruling R39), from the day's earlier manifests and the names
+    stored that day (`<name>.gz`): R37's start over the last pass's runs alone when that pass is open."""
+    cut = passes(manifests, kind)
+    if cut and cut[-1].open:
+        return start_for(cut[-1].runs, kind, stored)
+    return Start()  # a fresh pass: no pass yet, or the last read in full or ended by a page out of order
 
 
 def _counted(manifests: list[dict], kind: str) -> list[dict]:

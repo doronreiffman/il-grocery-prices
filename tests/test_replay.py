@@ -9,12 +9,17 @@ pace and the 90 s rule give: expected, not measured.
 
 2026-11-06's 05:00Z PriceFull run is replayed the same way (docs/shufersal-page-retry.md, "2026-11-06 replayed"): 22
 pages, page 7 timing out once and then served, at the pace that design works out; its counts are expected too.
+
+A day of Shufersal `Promo` polls on 2026-11-06 is replayed too (docs/update-files.md, section 3, "What a pass of two
+runs gives"; ruling R39): 22 pages, four poll runs making two passes of two runs, and, apart, a store republishing the
+resume page's first row between a pass's two runs. The day is synthetic and its counts are expected too.
 """
+import dataclasses
 import itertools
 from datetime import date, datetime, timezone
 
 from collector.chains import CHAINS
-from collector.check import Alert, check_day
+from collector.check import Alert, check_day, judge_update_day
 from collector.run import OUT_OF_TIME, collect_chain
 from collector.sources.shufersal import CATEGORY, ShufersalSource
 from collector.store import MemoryStore
@@ -248,3 +253,150 @@ def test_the_2026_11_06_pricefull_run_replayed():
         Alert("shufersal", "failed", "shufersal: the day's runs fell short: no retry run covered PriceFull; the "
               "PriceFull list was not read in full: pages 13 to 22 never read, page 12 read in part."),
     ]
+
+
+# ---- 2026-11-06's Shufersal Promo polls (q23) ----
+
+POLLING = dataclasses.replace(CHAIN, polled=("Price", "Promo"))  # Shufersal's own `polled` is empty for now
+POLL_DAY, PROMO_PAGES, DAYS_ROWS = date(2026, 11, 6), 22, 13  # a Friday; rows 1 to 13 of each page are dated that day
+POLL_PACE = (42.0, 0.5)  # seconds a listing page, seconds a download
+MORNING = "095959"  # every name's stamp until 14:59:59
+AFTERNOON = {i: "145959" for i in range(1, ROWS * PROMO_PAGES, ROWS)}  # rows 1, 21, ..., 421: published at 14:59:59
+POLL_1, POLL_2 = "083000Z-poll-e001", "084500Z-poll-e002"  # 10:30 and 10:45 in Israel (UTC+2)
+POLL_3, POLL_4 = "131000Z-poll-e003", "132500Z-poll-e004"  # 15:10 and 15:25 in Israel
+
+
+def promo_name(i, stamp=MORNING):
+    """Row i (1 to 440) of 2026-11-06's Promo list, as listed: in name order, page p holding rows 20(p-1)+1 to 20p;
+    rows 1 to 13 of each page are dated the day, rows 14 to 20 the day before."""
+    dated = "20261106" if (i - 1) % ROWS < DAYS_ROWS else "20261105"
+    return f"Promo7290027600007-001-{i:03d}-{dated}-{stamp}"
+
+
+def promo_poll(store, run_id, republished=None):
+    """One poll run of Promo into `store`, from 900 s left, at 42 s a listing page and 0.5 s a download, every pager
+    naming page 22. `republished` maps each row whose store published again after 09:59:59 to its new stamp. The run's
+    result, the listing pages it asked for, its seconds left at the end."""
+    clock = Clock(900.0)
+    per_page, per_download = POLL_PACE
+    stamps = republished or {}
+    cat = CATEGORY["Promo"]
+
+    def listing_page(p):
+        rows = range(ROWS * (p - 1) + 1, ROWS * p + 1)
+        text = page(cat, [promo_name(i, stamps.get(i, MORNING)) for i in rows], last=PROMO_PAGES)
+
+        def respond(req):
+            clock.left -= per_page
+            return served(text)(req)
+        return respond
+
+    def download(req):
+        clock.left -= per_download
+        return gz()(req)
+
+    def pause(seconds):
+        clock.left -= seconds
+
+    routes = {listing_url(cat, p): listing_page(p) for p in range(1, PROMO_PAGES + 1)}
+    # `limit` only keeps a listing that never ends from hanging the test: every page twice and every row's file
+    http, portal = connect(routes, files=download, limit=2 * PROMO_PAGES + PROMO_PAGES * ROWS)
+    at = datetime(2026, 11, 6, int(run_id[:2]), int(run_id[2:4]), int(run_id[4:6]), tzinfo=timezone.utc)
+    source = ShufersalSource(now=lambda: at, timer=lambda: -clock.left, sleep=pause)
+    result = collect_chain(POLLING, source, http, store, POLL_DAY, run_id, "poll", ("Promo",), clock, lambda: at,
+                           CODE_SHA)
+    return result, listing_pages(portal), clock.left
+
+
+def outcome(result, asked, left):
+    """A poll run as the replay's table gives it: the listing pages it asked for, its error, its seconds left, how many
+    names it listed and stored, the names it never tried and its other days' names."""
+    return asked, result.error, left, len(result.listed), len(result.files), result.not_attempted, result.other_days
+
+
+def update_day(store):
+    """2026-11-06 judged as the next morning's check judges its update day, Promo the one kind polled: the alerts, and
+    Shufersal's section of the record."""
+    alerts, record = judge_update_day(store, {"shufersal": ("Promo",)}, POLL_DAY)
+    assert record["day"] == "2026-11-06"
+    return alerts, record["chains"]["shufersal"]
+
+
+def test_a_day_of_shufersal_promo_passes_replayed():
+    """2026-11-06's Promo polls (docs/update-files.md, section 3, "What a pass of two runs gives"; ruling R39). The
+    10:30 run reads to page 17 and stops on time; the 10:45 run resumes the pass at page 17 and reads to page 22, so the
+    two read the list in full. At 14:59:59 the store of each page's first row publishes again. The 15:10 run starts a
+    fresh pass, the first being complete, and stops on time at page 20; the 15:25 run resumes it there and completes it.
+    The day and its pace are synthetic, shaped like that design's pass of two runs: every count here is expected, not
+    measured.
+
+    The arithmetic: a morning page with its 13 files costs 48.5 s, so page 17 starts with 124 s left and ends with 82,
+    under 90 before row 321's download; the second run starts at page 17 (the open pass's furthest name, row 321),
+    reading page 1 (42 s, its files stored), page 17 and its 13 files (48.5 s), then pages 18 to 22 (5 x 48.5). In the
+    afternoon a page holds one new file (42.5 s): page 20 starts with 92.5 s left and ends with 50.5; the fourth run
+    reads page 1 (42), page 20 (42.5) and pages 21 and 22 (2 x 42.5)."""
+    store = MemoryStore()
+    first = promo_poll(store, POLL_1)
+    second = promo_poll(store, POLL_2)
+    third = promo_poll(store, POLL_3, AFTERNOON)
+
+    # The table: listing pages asked, error, seconds left, names listed, stored, never tried, other days' names.
+    assert outcome(*first) == (list(range(1, 18)), OUT_OF_TIME, 82.0, 209, 208, [promo_name(321) + ".gz"],
+                               {"2026-11-05": 112})
+    assert outcome(*second) == ([1, *range(17, 23)], None, 567.0, 91, 78, [], {"2026-11-05": 49})
+    # The first pass was read in full, so the third run starts a fresh one from page 1.
+    assert outcome(*third) == (list(range(1, 21)), OUT_OF_TIME, 50.5, 248, 19, [promo_name(381, "145959") + ".gz"],
+                               {"2026-11-05": 133})
+
+    alerts, chain = update_day(store)
+    assert alerts == []
+    assert chain["passes"]["Promo"] == {
+        "complete": [[POLL_1, POLL_2]], "out_of_order": [],
+        "open": {"runs": [POLL_3], "unread": "pages 21 to 22 never read, page 20 read in part"}}
+    assert chain["not_tried"] == {"Promo": 1}
+
+    # The fourth run resumes the open pass at page 20, where the third stopped.
+    fourth = promo_poll(store, POLL_4, AFTERNOON)
+    assert outcome(*fourth) == ([1, 20, 21, 22], None, 730.5, 52, 3, [], {"2026-11-05": 28})
+    every_record = [record for result, _, _ in (first, second, third, fourth) for record in result.pages]
+    assert all(record["in_order"] and record["last_page"] == PROMO_PAGES for record in every_record)
+
+    alerts, chain = update_day(store)
+    assert alerts == []
+    assert chain["passes"]["Promo"] == {"complete": [[POLL_1, POLL_2], [POLL_3, POLL_4]], "out_of_order": [],
+                                        "open": None}
+    assert (chain["not_tried"], chain["missing"], chain["failed"]) == ({"Promo": 0}, [], None)
+    assert chain["by_hour"] == {"Promo": {"09": 286, "14": 22}}
+    mornings = {promo_name(i) + ".gz" for i in range(1, ROWS * PROMO_PAGES + 1) if (i - 1) % ROWS < DAYS_ROWS}
+    afternoons = {promo_name(i, stamp) + ".gz" for i, stamp in AFTERNOON.items()}
+    assert store.stored_names("shufersal", POLL_DAY) == mornings | afternoons
+
+
+def test_a_store_republished_at_the_resume_point_still_completes_the_pass():
+    """A store republishes the resume page's first row between a pass's two runs (docs/update-files-plan.md, Review
+    Focus 2). The 10:30 run, as above, stops before row 321's download; at 10:44:59 row 321's store publishes again,
+    so page 17's first name now sorts after the furthest name the pass took (row 321's 09:59:59 name). The 10:45 run
+    reads page 1, then page 17, steps back to page 16 (R37's step back) and gives page 16's rows, then reads page 17
+    again and on to page 22. The pass is complete with no alert, and the 09:59:59 file, replaced before any run took
+    it, is counted in `not_tried`, never emailed. Synthetic, as above: every count is expected, not measured.
+
+    The arithmetic: page 1, page 17 stepped back from and page 16 (its files stored) cost 42 s each and leave 774 s;
+    page 17 again with its 13 files, the new one among them, and pages 18 to 22, 48.5 s each, leave 483."""
+    store = MemoryStore()
+    first, first_pages, _ = promo_poll(store, POLL_1)
+    assert (first_pages, first.error, first.not_attempted) == (list(range(1, 18)), OUT_OF_TIME,
+                                                               [promo_name(321) + ".gz"])
+
+    second, asked, left = promo_poll(store, POLL_2, {321: "104459"})
+    assert asked == [1, 17, 16, 17, 18, 19, 20, 21, 22]
+    assert (second.error, second.blocked, left) == (None, None, 483.0)
+    # Page 17, stepped back from, gives no row; every page is in order, page 17 after page 16 included.
+    assert [record["taken_through"] is None for record in second.pages] == [False, True] + [False] * 7
+    assert all(record["in_order"] for record in second.pages)
+    assert len(second.files) == 78 and promo_name(321, "104459") + ".gz" in second.files
+
+    alerts, chain = update_day(store)
+    assert alerts == []
+    assert chain["passes"]["Promo"] == {"complete": [[POLL_1, POLL_2]], "out_of_order": [], "open": None}
+    assert (chain["not_tried"], chain["missing"], chain["failed"]) == ({"Promo": 1}, [], None)
+    assert chain["by_hour"] == {"Promo": {"09": 285, "10": 1}}

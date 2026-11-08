@@ -14,6 +14,10 @@ A name with two groups before the date carries the sub-chain, then the store. Wi
 A name is ASCII (ruling R20): a name that parses goes into a download link, and urllib fails on a
 non-ASCII path outside Http's handling. Without re.ASCII, `\\d` takes other scripts' digits and
 case-folding reads `ſ` (long s) as an s and `ı` (dotless i) as an i.
+
+The hour in a name (`hour_of`) is what the check's record counts each day's update files by (ruling R39): the time
+after the date, or store 039's time run on into it. A name whose hour cannot be read is counted as unknown, never
+dropped.
 """
 import datetime
 import re
@@ -33,6 +37,8 @@ _REST = re.compile(
     r"(?:\.gz|\.xml)?",
     re.IGNORECASE | re.ASCII,
 )
+# The time after the date: `-HHMMSS`, or store 039's `HHMM` run on into the date; four digits or more.
+_TIME = re.compile(r"-\d{8}-?(?P<hour>\d{2})\d{2,}(?:\.gz|\.xml)?\Z", re.IGNORECASE | re.ASCII)
 
 
 @dataclass(frozen=True)
@@ -70,3 +76,12 @@ def parse_file_name(name: str) -> FileName | None:
         return None
     return FileName(raw=name, kind=kind, chain_id=rest["chain"], store=store, day=day,
                     sub_chain=sub_chain)
+
+
+def hour_of(name: str) -> str | None:
+    """The hour of the time in a published name, two digits ("00" to "23"): from `-YYYYMMDD-HHMMSS`, or from store 039's
+    `-YYYYMMDDHHMM`. None for anything that is not a published name, a name with no time of four digits or more after
+    its date (Shufersal's Stores names carry three), or an hour past 23."""
+    clock = _TIME.search(name) if parse_file_name(name) else None
+    hour = clock and clock["hour"]
+    return hour if hour and int(hour) <= 23 else None
