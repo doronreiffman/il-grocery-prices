@@ -8,10 +8,11 @@
 
    Pieces. search/pieces.json lists the keys of the index pieces; a key is the hex of the first character's code point
    ("05e9"), or of its first two ("05e9-05de") for a letter split in two levels. A query goes to the piece of its first
-   character, or of its first two when the letter is split, so it needs two characters before it is searched. A piece
-   is a list of entries [barcode, title as published, normalised title, other normalised names...]; the products whose
-   longest name starts with the query's letters are in it, and a query matches an entry when any of its names holds
-   it. At most 50 entries are shown, in name order.
+   character, or of its first two when the letter is split, so it needs two characters, counted after normalising (a
+   typed quote or space does not count), before it is searched. A piece is a list of entries [barcode, title as
+   published, normalised title, other normalised names...]; the products whose longest name starts with the query's
+   letters are in it, and a query matches an entry when any of its names holds it. At most 50 entries are shown, in
+   name order.
 
    Barcodes. A query of 8 to 14 ASCII digits is a barcode; with its leading zeros stripped it is the page p/<barcode>.html,
    and the script asks for that page with HEAD. Anything but 200 means the site has no page for it (the bucket answers a
@@ -118,7 +119,7 @@ function start() {
     if (code) {
       const response = await fetch("p/" + code + ".html", { method: "HEAD" });
       if (response.status !== 200) return "<p>" + NO_PAGE + "</p>";
-      return "<p>" + link(code, "Open the page for barcode " + escapeHtml(code)) + "</p>";
+      return "<p>" + link(code, "Open the page for barcode " + code) + "</p>";   // code: ASCII digits (barcodeOf)
     }
     const query = normalize(raw);
     if (Array.from(query).length < 2) return "";

@@ -54,7 +54,9 @@ def _read(files):
     ("שלום", "שלומ"),
     ("Coca COLA zero", "coca cola zero"),    # Latin is lower-cased
     ("ÉCLAIR Noir", "éclair noir"),
-    ("  שוקולד \t חלב\n\u00a0 מריר ", "שוקולד חלב מריר"),   # spaces collapse; tab, newline and no-break space are spaces
+    ("  שוקולד \t חלב\n\r\u00a0 מריר ", "שוקולד חלב מריר"),   # spaces collapse; every kind of space is one
+    ("a\tb", "a b"), ("a\nb", "a b"), ("a\rb", "a b"), ("a\u00a0b", "a b"),
+    ("it's", "its"), ('say "hi"', "say hi"),   # spaces collapse; tab, newline and no-break space are spaces
     ('א " ב', "א ב"),                         # a quote between spaces leaves one space
     ("5% שמן 1.5L", "5% שמנ 1.5l"),          # digits and signs stay
     ("", ""),

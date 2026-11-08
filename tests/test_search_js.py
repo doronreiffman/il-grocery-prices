@@ -39,7 +39,7 @@ def _entry(code, title, *names):
 
 NAMES = [
     "קוטג' תנובה 5%", 'גר"ם', "צ\u05f3יפס", "מ\u05f4ל", "\u05da\u05dd\u05df\u05e3\u05e5", "שלום עולם", "Coca COLA", "ÉCLAIR",
-    "  spaces   everywhere  ", "tab\tnewline\nnbsp\u00a0end", "", "   ", "5% שמן 1.5L", 'א " ב', "İSTANBUL", "ΑΣ ΣΑΣ",
+    "  spaces   everywhere  ", "tab\tnewline\ncr\rnbsp\u00a0end", "", "   ", "5% שמן 1.5L", 'א " ב', "İSTANBUL", "ΑΣ ΣΑΣ",
     "ß ẞ", "ǅ", "🍫 שוקולד", "שוקולד מריר 70%", "חלב 3% 1 ליטר", "ילד'ים", "MIXED שפה Mixed", "פ\u05f4ץ ף ץ", "ﬁsh",
     "א\u05b0ב", "a\u200bb", "a\ufeffb", "x\x1fy", "ＡＢＣ ａｂｃ",
 ]
@@ -205,3 +205,20 @@ def test_a_list_that_cannot_be_fetched_says_so_and_is_fetched_again_on_the_next_
     second = _page([{"value": "שמ"}, {"value": "שמר"}], responses)   # the first key fails, the second asks again
     assert 'href="p/7290000000008.html"' in second["html"]
     assert [r["url"] for r in second["requests"]].count("search/pieces.json") == 2
+
+
+def test_a_title_and_a_code_are_escaped_in_the_results():
+    entry = ["7290&\"<x>'1", "<b>A&B \"q\" it's</b>", "<b>a&b qq its</b>"]
+    responses = {"search/pieces.json": {"status": 200, "body": ["0061"]},
+                 "search/0061.json": {"status": 200, "body": [entry]}}
+    html = _page([{"value": "a&b"}], responses)["html"]
+    code, title = "7290&amp;&quot;&lt;x&gt;&#39;1", "&lt;b&gt;A&amp;B &quot;q&quot; it&#39;s&lt;/b&gt;"
+    assert html == (f'<ul><li><a href="p/{code}.html"><span class="as-listed" lang="he" dir="rtl">{title}</span></a> '
+                    f"<small>{code}</small></li></ul>")
+
+
+@pytest.mark.parametrize("typed", ["ש ", "ש'", '"ש"', " ש", "ש\u00a0"])
+def test_the_two_characters_are_counted_after_normalising(typed):
+    found = _page([{"value": typed}], {"search/pieces.json": {"status": 200, "body": ["05e9"]}})
+    assert found["requests"] == [{"url": "search/pieces.json", "method": "GET"}]   # one letter and a mark is one letter
+    assert found["html"] == ""
