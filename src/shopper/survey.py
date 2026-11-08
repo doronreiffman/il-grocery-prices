@@ -64,7 +64,7 @@ import duckdb
 from basket.barcode import normalize
 from basket.chains import EXCLUDED, SLUGS
 from basket.extract import DayFile, day_files
-from basket.rules import apply_filters, chain_prices, open_day, stores_with_file_keys
+from basket.rules import apply_filters, chain_prices, open_day, store_prices_sql, stores_with_file_keys
 from basket.stores import chain_stores, included
 from shopper.promofile import PromotionRead, Tally, read_promotions
 from shopper.promotions import date_part, number
@@ -327,9 +327,8 @@ class _Measure:
         """Each percent-off link's outcome against the day's median price, and against the store's own price."""
         codes = sorted({code for _, code, _, _ in self.percent_off})
         medians = {code: price.median for (_, code), price in chain_prices(con, codes).items()}
-        own = dict(((store, code), price) for store, code, price in con.execute(
-            "SELECT store, code_norm, min(price) FROM rows WHERE code_norm IN (SELECT unnest(?::VARCHAR[])) "
-            "GROUP BY store, code_norm", [[normalize(code) for code in codes]]).fetchall())
+        own = {(store, code): price for _, code, store, price, _ in con.execute(
+            store_prices_sql(), [[normalize(code) for code in codes]]).fetchall()}
         found = Counter({outcome: 0 for outcome in OUTCOMES})
         found["with_store_price"] = found["agrees_with_store_price"] = 0
         for store, code, rate_text, price_text in self.percent_off:

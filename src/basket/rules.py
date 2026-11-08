@@ -179,20 +179,29 @@ def stores_with_file(con: duckdb.DuckDBPyConnection, included: dict[str, set[str
     return {chain: len(stores) for chain, stores in stores_with_file_keys(con, included, excluded_sub_chains).items()}
 
 
+def store_prices_sql(rows: str = "rows", codes: bool = True) -> str:
+    """B5's one price a store, as SQL over the view `rows`: per (chain, normalized code, store) listed in it, the
+    store's lowest price (`price`) and how many of its rows list the code (`codes`: more than one is a double-coded
+    store). With `codes`, only the normalized codes of one bound list parameter (`?`); without, every code."""
+    where = " WHERE code_norm IN (SELECT unnest(?::VARCHAR[]))" if codes else ""
+    return (f"SELECT chain, code_norm, store, min(price) AS price, count(*) AS codes FROM {rows}{where}"
+            " GROUP BY chain, code_norm, store")
+
+
 def chain_prices(con: duckdb.DuckDBPyConnection, codes: Sequence[str]) -> dict[tuple[str, str], ChainPrice]:
     """Per (chain, normalized code) listed in `rows`: the chain's price for the item (B5), one price a store."""
-    found = con.execute("""
+    found = con.execute(f"""
         SELECT chain, code_norm, list(price ORDER BY price, store), count(*), count(*) FILTER (WHERE codes > 1)
-        FROM (SELECT chain, code_norm, store, min(price) AS price, count(*) AS codes FROM rows
-              WHERE code_norm IN (SELECT unnest(?::VARCHAR[])) GROUP BY chain, code_norm, store)
+        FROM ({store_prices_sql()})
         GROUP BY chain, code_norm ORDER BY chain, code_norm
     """, [[normalize(code) for code in codes]]).fetchall()
-    return {(chain, code): ChainPrice(_median(prices), prices[0], prices[-1], listing, double_coded)
+    return {(chain, code): ChainPrice(median(prices), prices[0], prices[-1], listing, double_coded)
             for chain, code, prices, listing, double_coded in found}
 
 
-def _median(ordered: list[Decimal]) -> Decimal:
-    """The middle value of `ordered`, or the mean of its two middle values."""
+def median(ordered: list[Decimal]) -> Decimal:
+    """B5's median: the middle value of `ordered` (sorted, not empty), or the mean of its two middle values, in
+    Decimal."""
     middle = len(ordered) // 2
     if len(ordered) % 2:
         return ordered[middle]

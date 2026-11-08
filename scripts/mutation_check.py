@@ -101,6 +101,11 @@ SHOP_SURVEY = ("src/shopper/survey.py", ["tests/test_survey.py"])
 SHOP_PROMOTIONS = ("src/shopper/promotions.py", ["tests/test_promotions.py"])
 SHOP_DEALS = ("src/shopper/deals.py", ["tests/test_deals.py"])
 SHOP_COLUMNS = ("src/shopper/columns.py", ["tests/test_columns.py"])
+SHOP_PROMOS = ("src/shopper/promos.py", ["tests/test_promos.py"])
+# The promotions table reads each store's latest promotion file through basket.extract.day_files, and a store's own price
+# through basket.rules.store_prices_sql: its tests must catch a break of either.
+EXTRACT_FOR_SHOP_PROMOS = ("src/basket/extract.py", ["tests/test_promos.py"])
+RULES_FOR_SHOP_PROMOS = ("src/basket/rules.py", ["tests/test_promos.py"])
 # Carrefour's hand-kept store table lives in basket.chains, beside EXCLUDED; the column tests must catch a change to it.
 CHAINS_FOR_SHOP_COLUMNS = ("src/basket/chains.py", ["tests/test_columns.py"])
 # The survey reads each store's latest promotion file through basket.extract.day_files, which its tests must catch too.
@@ -1222,6 +1227,34 @@ MUTATIONS = {
     "store groups not largest first (q22 columns)": (SHOP_SURVEY, "key=lambda group: (-len(group), _by_number(group[0])))", "key=lambda group: _by_number(group[0]))"),
     "a group's stores ordered as text (q22 columns)": (SHOP_SURVEY, "def _by_number(store: str) -> tuple[int, str]:\n    return int(store), store\n", "def _by_number(store: str) -> tuple[int, str]:\n    return 0, store\n"),
     "a counted store without a promotion file grouped (q22 columns)": (SHOP_SURVEY, "group_measure(not_coupons, counted & with_file)", "group_measure(not_coupons, counted)"),
+    # shopper: the day's promotions table, a row per column, promotion, group and item code (q22 promotions table)
+    'stores counted per file, not per store (q22 promotions table)': (SHOP_PROMOS, 'SELECT col, promotion_id, group_id, code, count(DISTINCT store) AS stores,', 'SELECT col, promotion_id, group_id, code, count(*) AS stores,'),
+    "wide at a third of the column's stores (q22 promotions table)": (SHOP_PROMOS, 'k.stores * 2 >= n.counted AS wide', 'k.stores * 3 >= n.counted AS wide'),
+    "wide over the chain's counted stores, not the column's (q22 promotions table)": (SHOP_PROMOS, 'k.stores * 2 >= n.counted AS wide', 'k.stores * 2 >= (SELECT count(*) FROM store_columns) AS wide'),
+    'a store not counted read (q22 promotions table)': (SHOP_PROMOS, '        else:\n            passed.append(day_file.name)\n', '        else:\n            to_read.append(day_file)\n'),
+    'a counted store in no column read (q22 promotions table)': (SHOP_PROMOS, '            outside_files.append(day_file.name)\n', '            to_read.append(day_file)\n'),
+    'an earlier file of a store read (q22 promotions table)': (EXTRACT_FOR_SHOP_PROMOS, '        files.append(named[latest])\n', '        files.extend(named.values())\n'),
+    "a file's records counted before its end (q22 promotions table)": (SHOP_PROMOS, '    records = list(read_promotions(', '    records = iter(read_promotions('),
+    'expired promotions kept (q22 promotions table)': (SHOP_PROMOS, '        if end < day:\n', '        if False:\n'),
+    'future promotions dropped (q22 promotions table)': (SHOP_PROMOS, '        if end < day:\n', '        if end < day or start > day:\n'),
+    'zero links dropped (q22 promotions table)': (SHOP_PROMOS, '        for link in record.links:\n', '        for link in [one for one in record.links if one.item["RewardType"] != "0"]:\n'),
+    "a 12 promotion's other links kept (q22 promotions table)": (SHOP_PROMOS, '            read.counts[DROPPED[reason]] += 1\n            read.counts["dropped_links"] += len(record.links)\n            continue\n', '            record = PromotionRead(record.fields, record.groups, tuple(link for link in record.links if link.item["RewardType"] not in ("6", "12")))\n'),
+    'rows told apart by their store (q22 promotions table)': (SHOP_PROMOS, '        FROM held\n        GROUP BY col, promotion_id, group_id, code\n', '        FROM held\n        GROUP BY col, promotion_id, group_id, code, store\n'),
+    'rows told apart by their fields (q22 promotions table)': (SHOP_PROMOS, '        FROM held\n        GROUP BY col, promotion_id, group_id, code\n', '        FROM held\n        GROUP BY col, promotion_id, group_id, code, promotion_variant, item_variant\n'),
+    'the variant of the highest store on a tie (q22 promotions table)': (SHOP_PROMOS, 'ORDER BY carrying DESC, first_store, ', 'ORDER BY carrying DESC, first_store DESC, '),
+    "the stores' median over every store, not those carrying the link (q22 promotions table)": (SHOP_PROMOS, 'JOIN held h ON h.col = k.col AND h.promotion_id = k.promotion_id AND h.group_id = k.group_id AND h.code = k.code\n', 'JOIN held h ON h.col = k.col AND h.promotion_id = k.promotion_id AND h.group_id = k.group_id\n'),
+    "agreement against the median, not the store's own price (q22 promotions table)": (SHOP_PROMOS, '                agreeing = sum(1 for price, rate, own in held if own is not None and _agrees(price, own, rate))\n', '                agreeing = sum(1 for price, rate, own in held if own is not None and _agrees(price, median(sorted(o for _, _, o in held if o is not None)), rate))\n'),
+    'min spend from the first group (q22 promotions table)': (SHOP_PROMOS, '    amount = min_spend(record.groups)\n', '    amount = min_spend(record.groups[:1])\n'),
+    'the codes of a kept promotion not checked (q22 promotions table)': (SHOP_PROMOS, '        check_codes(slug, record)\n', ''),
+    "a store's highest DiscountedPrice taken (q22 promotions table)": (SHOP_PROMOS, '(known[0] is None or price < known[0])', '(known[0] is None or price > known[0])'),
+    'a store price too large for the table read (q22 promotions table)': (SHOP_PROMOS, '    if amount is None or abs(amount) >= STORE_PRICE_LIMIT or abs(_three(amount)) >= STORE_PRICE_LIMIT:\n', '    if amount is None:\n'),
+    'a min spend too large for the table written (q22 promotions table)': (SHOP_PROMOS, '        raise PromotionFormatChanged(f"MinPurchaseAmount {amount} does not fit the table")\n', '        pass\n'),
+    "promotion stores counted as the link's (q22 promotions table)": (SHOP_PROMOS, 'CAST(s.promotion_stores AS INTEGER) AS promotion_stores', 'CAST(k.stores AS INTEGER) AS promotion_stores'),
+    'promotion files counted over every counted store (q22 promotions table)': (SHOP_PROMOS, 'promo_files={column: len(stores & with_file)', 'promo_files={column: len(stores)'),
+    'texts told apart by their id only (q22 promotions table)': (SHOP_PROMOS, '        key = (promotion_id, promotion["PromotionDescription"], promotion["PromotionStartDateTime"],\n               promotion["PromotionEndDateTime"])\n', '        key = next((known for known in read.texts if known[0] == promotion_id), (promotion_id, promotion["PromotionDescription"], promotion["PromotionStartDateTime"], promotion["PromotionEndDateTime"]))\n'),
+    "a text's store listed per copy (q22 promotions table)": (SHOP_PROMOS, '        if not carrying or carrying[-1] != store:\n', '        if True:\n'),
+    'store prices filtered without codes (q22 promotions table)': (RULES_FOR_SHOP_PROMOS, '" WHERE code_norm IN (SELECT unnest(?::VARCHAR[]))" if codes else ""', '" WHERE code_norm IN (SELECT unnest(?::VARCHAR[]))"'),
+    'store prices from another view than the one named (q22 promotions table)': (RULES_FOR_SHOP_PROMOS, 'count(*) AS codes FROM {rows}{where}', 'count(*) AS codes FROM rows{where}'),
     # basket: extract
     "extract older file wins": (EXTRACT, "latest = max(named)", "latest = min(named)"),
     "extract first duplicate wins": (EXTRACT, "        latest[row.code] = row", "        latest.setdefault(row.code, row)"),
@@ -1301,7 +1334,7 @@ MUTATIONS = {
     "rules store keys sorted as text": (RULES, "sorted(stores, key=lambda store: (int(store), store))", "sorted(stores)"),
     "rules Be rows kept when the list includes the store": (RULES, "AND NOT EXISTS (SELECT 1 FROM excluded_sub_chains x WHERE x.chain = p.chain AND x.sub_chain = p.sub_chain)", "AND true"),
     "rules median takes the lower middle": (RULES, "return (ordered[middle - 1] + ordered[middle]) / 2", "return ordered[middle - 1]"),
-    "rules a double-coded store weighs twice": (RULES, "GROUP BY chain, code_norm, store)", "GROUP BY chain, code_norm, store, code)"),
+    "rules a double-coded store weighs twice": (RULES, '" GROUP BY chain, code_norm, store")', '" GROUP BY chain, code_norm, store, code")'),
     "rules a double-coded store at its higher price": (RULES, "min(price) AS price", "max(price) AS price"),
     "rules coverage guard at a third": (RULES, "listing[day.slug] * 2 >= day.with_file", "listing[day.slug] * 3 >= day.with_file"),
     "rules size guard ignores a chain": (RULES, "sizes.get((day.slug, code)) for day in ranking}", "sizes.get((day.slug, code)) for day in ranking[:-1]}"),

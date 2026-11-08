@@ -35,7 +35,7 @@ import csv
 import json
 import tempfile
 import time
-from collections.abc import Iterable, Iterator
+from collections.abc import Collection, Iterable, Iterator, Sequence
 from dataclasses import asdict, dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -172,39 +172,49 @@ def write_table(rows: Iterable[Row], out: Path) -> int:
         csv_path = Path(temp) / "rows.csv"
         count = _write_csv(rows, csv_path)
         with duck.connect() as con:
-            con.execute(_copy_sql(csv_path, out))
+            con.execute(copy_sql(csv_path, out))
     return count
 
 
 def _write_csv(rows: Iterable[Row], path: Path) -> int:
+    return write_csv(((row.store, row.sub_chain, row.code, row.code_norm, row.gs1, row.name, row.price, row.quantity,
+                       row.unit, row.unit_of_measure, row.updated, row.file) for row in rows), path, COLUMNS)
+
+
+def write_csv(rows: Iterable[Sequence[object]], path: Path, columns: Sequence[tuple[str, str]]) -> int:
+    """Write `rows` (each a value per column of `columns`) to the CSV `path` as `copy_sql` reads it: a header of the
+    column names, every field quoted, None as "", True and False as "true" and "false"; the number of rows."""
     count = 0
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f, quoting=csv.QUOTE_ALL)
-        writer.writerow([name for name, _ in COLUMNS])
+        writer.writerow([name for name, _ in columns])
         for row in rows:
-            writer.writerow((row.store, row.sub_chain, row.code, row.code_norm, "true" if row.gs1 else "false",
-                             row.name, row.price, row.quantity, row.unit, row.unit_of_measure, row.updated,
-                             row.file))  # None is written as ""
-            count += 1
+            writer.writerow(["true" if value is True else "false" if value is False else value for value in row])
+            count += 1  # None is written as ""
     return count
 
 
-def _copy_sql(csv_path: Path, out: Path) -> str:
-    """Every CSV column read as text, a quoted "" kept as text; then each column cast to its type."""
-    read_as_text = ", ".join(f"'{name}': 'VARCHAR'" for name, _ in COLUMNS)
-    selected = ", ".join(_typed(name, kind) for name, kind in COLUMNS)
-    return (f"COPY (SELECT {selected} FROM read_csv({_sql_text(csv_path)}, columns = {{{read_as_text}}}, "
+def copy_sql(csv_path: Path, out: Path, columns: Sequence[tuple[str, str]] = COLUMNS,
+             nullable: Collection[str] = NULLABLE) -> str:
+    """SQL copying the CSV `write_csv` wrote into the Parquet file `out`: every CSV column read as text, a quoted ""
+    kept as text; then each column cast to its type, "" read as NULL in the `nullable` columns only, and a list
+    column (a type ending in "[]") read from its JSON text."""
+    read_as_text = ", ".join(f"'{name}': 'VARCHAR'" for name, _ in columns)
+    selected = ", ".join(_typed(name, kind, nullable) for name, kind in columns)
+    return (f"COPY (SELECT {selected} FROM read_csv({sql_text(csv_path)}, columns = {{{read_as_text}}}, "
             f"header = true, delim = ',', quote = '\"', escape = '\"', allow_quoted_nulls = false)) "
-            f"TO {_sql_text(out)} (FORMAT parquet)")
+            f"TO {sql_text(out)} (FORMAT parquet)")
 
 
-def _typed(name: str, kind: str) -> str:
-    """The column cast to its type; "" is NULL in a column that may be None."""
-    text = f"NULLIF({name}, '')" if name in NULLABLE else name
-    return f"CAST({text} AS {kind}) AS {name}"
+def _typed(name: str, kind: str, nullable: Collection[str]) -> str:
+    """The column cast to its type; "" is NULL in a column that may be None; a list through JSON."""
+    text = f"NULLIF(\"{name}\", '')" if name in nullable else f'"{name}"'
+    if kind.endswith("[]"):
+        text = f"CAST({text} AS JSON)"
+    return f'CAST({text} AS {kind}) AS "{name}"'
 
 
-def _sql_text(path: Path) -> str:
+def sql_text(path: Path) -> str:
     """A path as an SQL string literal."""
     return "'" + str(path).replace("'", "''") + "'"
 
