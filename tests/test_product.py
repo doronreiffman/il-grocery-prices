@@ -226,7 +226,7 @@ def test_p9_has_nine_cells_in_name_order_without_rank_words():
     assert heads == [column.name for column in COLUMNS]
     found = dict(cells)
     assert "Listed price ₪11.90" in found[DEAL] and "Deal price ₪7.90 per unit" in found[DEAL]
-    assert "club members only" in found[DEAL] and MORNING in found[DEAL]
+    assert f"club members only, {FROM_FIELDS}; {FINE_PRINT}" in found[DEAL] and MORNING in found[DEAL]
     assert "Listed price ₪11.50" in found[RAMI] and "Deal price" not in found[RAMI]
     for column in (SHELI, CITY, MARKET):
         assert found[column] == NOT_LISTED
@@ -243,9 +243,13 @@ def test_p9_marks_a_cells_conditions_in_the_sections_words():
              _struct("5.00", wide=False, promotion_id="3")]
     page = _render(_covered({DEAL: "שם"}), {DEAL: _pair(DEAL, _listed(), promotions=deals)})
     cell = dict(CELL.findall(re.search(r'<section class="across">(.*?)</section>', page, re.DOTALL).group(1)))[DEAL]
-    assert "Deal price ₪7.90 per unit; club members only, and some customers only; minimum spend ₪150.00" in cell
-    assert PRICE_NOT_READ in cell
-    assert "₪5.00" not in cell and "תוכנית" not in cell
+    # fix round 1: each condition with its source and each deal with the fine print, in the section's own words
+    # (the design's "Always": the source of every condition; step one: "fine print not read" beside every promotion)
+    assert (f"<small>Deal price ₪7.90 per unit; club members only, and some customers only, {FROM_FIELDS}; minimum "
+            f"spend ₪150.00, {FROM_FIELDS}; {FINE_PRINT}</small>") in cell
+    assert f"<small>{PRICE_NOT_READ}; {FINE_PRINT}</small>" in cell
+    assert cell.count(FINE_PRINT) == 2                                  # one for each wide deal
+    assert "₪5.00" not in cell and "תוכנית" not in cell                # the programmes' names are the section's
     assert cell.count(MORNING) == 1
 
 
@@ -354,6 +358,27 @@ def test_a_hole_day_shows_too_few_files_and_no_listed_price_claim():
     assert re.search(r'<p class="today">(.*?)</p>', sheli).group(1) == f'<span class="few">{too_few(5, STORES)}</span>'
     assert NOT_LISTED not in sheli
 
+
+def test_a_hole_day_says_no_last_listed_across():
+    """Fix round 1 (the review's Important 1): on a hole the few files cannot tell whether the product is listed across
+    the column today, so the section never says when it last was, whether those files list it or not."""
+    covered, pairs = _typical()
+    registry = Covered(code=CODE, title=covered.title, names=covered.names, size=covered.size,
+                       first_covered=covered.first_covered, last_wide={DEAL: back(1), RAMI: back(1)})
+    listed = {day: point for day, point in pairs[DEAL].points.items()}
+    listed[DAY] = Point(day=DAY, listed=Decimal("11.90"), low=Decimal("11.90"), high=Decimal("12.90"), listing=5,
+                        wide=True, on_promotion=False, next_start=None, promotions=())   # all 5 stores with a file
+    holed = _days(holes=[(DEAL, DAY), (RAMI, DAY)])
+    gone = {day: point for day, point in pairs[RAMI].points.items() if day != DAY}
+    sections = _sections(_render(registry, {DEAL: Pair(column=DEAL, code=CODE, points=listed),
+                                            RAMI: Pair(column=RAMI, code=CODE, points=gone)}, column_days=holed))
+    for column in (DEAL, RAMI):
+        assert too_few(5, STORES) in sections[column]
+        assert "last listed across" not in sections[column], column
+    assert "stores ₪11.90 to ₪12.90, 5 of 5 list it" in sections[DEAL]
+    # on a day with records it is said as before
+    assert last_across(RAMI, back(1)) in _sections(_render(registry, {DEAL: pairs[DEAL], RAMI: Pair(
+        column=RAMI, code=CODE, points=gone)}))[RAMI]
 
 def test_each_promotion_today_with_its_conditions_from_the_fields():
     """P4, P5, S3: the deal price, buy N, the stores' range for percent off; the restrictions by `targets` from the
