@@ -24,7 +24,7 @@ Built by Doron Reiffman ([LinkedIn](https://www.linkedin.com/in/doronreiffman)).
 | Price rows read | 5,140,268 on 2 November 2026 |
 | Basket | 32 products, matched by barcode |
 | Kept for | 10 years, write-once (S3 Object Lock) |
-| Tests | 1,447 (99.8% coverage), plus 1,174 planted bugs, all caught |
+| Tests | 1,467 (99.8% coverage), plus 1,202 planted bugs, all caught |
 | Cost | about $1 to $3 a month in the first year, about $1 to $3 more for the update files through the day (an estimate; a check of its arithmetic gives $0.90 to $3.70), plus about $0.10 to $0.90 for the basket (about $3.50 at worst) |
 
 ## Why
@@ -57,7 +57,7 @@ All times are Israel time.
 - **Alerts for missing data, not for errors.** Errors that recover by themselves stay in the logs. The 11:48 check emails when a file a chain listed is still not stored after the retry run, when a chain is stopped, or when a retry run failed. While the polls are on, it also judges the day before's update files, and emails when a file a poll listed is still not stored, tried or never reached, or no poll read a chain's list that day; a poll that stops a chain emails at once. If no check reports at all, a dead-man check on healthchecks.io emails instead, and the basket run has a dead-man check of its own. [docs/operations.md](docs/operations.md#what-runs-when)
 - **A number anyone can reproduce.** The barcodes and the rules are published, and the pricing rules run as DuckDB SQL, each with tests of its own. Every build writes a private record naming the basket version and a fingerprint of the code. A published day changes only with a dated reason shown on its page, the earlier figures kept beside it. [docs/headline-basket.md](docs/headline-basket.md#the-number-rules)
 - **Claims no stronger than the evidence.** The page says "listed price" and "before promotions", never "cheapest chain", "you'll pay" or "at the till". A check before every upload refuses a page that uses a banned phrase or lacks the credit line. [docs/headline-basket.md](docs/headline-basket.md#words), [docs/terms.md](docs/terms.md)
-- **Tests that are themselves tested.** 1,447 tests covering 99.8% of the collector's and the basket's code, and 1,174 deliberate bugs that a [script](scripts/mutation_check.py) plants one at a time to prove a test catches each (as of 7 November 2026). CI runs both on every push, along with a lint of the AWS templates. Template tests pin the settings safety depends on: the archive's lock, the functions' permissions, the schedules.
+- **Tests that are themselves tested.** 1,467 tests covering 99.8% of the collector's and the basket's code, and 1,202 deliberate bugs that a [script](scripts/mutation_check.py) plants one at a time to prove a test catches each (as of 8 November 2026). CI runs both on every push, along with a lint of the AWS templates. Template tests pin the settings safety depends on: the archive's lock, the functions' permissions, the schedules.
 - **Cheap, boring infrastructure.** About $1 to $3 a month for the collector in its first year, about $1 to $3 more for the update files through the day (averaged over the year; a check of the arithmetic gives $0.90 to $3.70, and the first weeks' measurements replace both), about $0.10 to $0.90 more for the basket (about $3.50 at worst), and under $0.05 for the site, each estimate written down with its sources. [docs/operations.md](docs/operations.md#cost), [docs/headline-basket.md](docs/headline-basket.md#cost-monthly-estimates)
 
 ## What's next
