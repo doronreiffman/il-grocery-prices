@@ -121,21 +121,36 @@ CANDIDATES_MAIN = ("src/basket/candidates.py", ["tests/test_candidates.py::test_
 _RUN_TAKEN = ('        if self.result.pages:  # first: a row of another day, a repeat or one never downloaded was still listed\n'
               '            page = self.result.pages[-1]\n'
               '            page["taken_through"] = page["last"] if item.ends_page else item.name.raw\n')
-# The day filter is the kind filter, then the other-day count (q23): `_RUN_KIND_FILTER + _RUN_OTHER_DAY`.
+# The day filter is the kind filter, then the other-day count (q23): `_RUN_KIND_FILTER + _RUN_OTHER_DAY`, the first two
+# steps of `_listed`, the sorting the take and a poll's read after its time stop share (q26).
 _RUN_KIND_FILTER = ("        if item.name.kind not in self.kinds:\n"
-                    "            return\n")
+                    "            return None\n")
 _RUN_OTHER_DAY = ("        if item.name.day != self.day:\n"
                   "            self._other_day(item)\n"
-                  "            return\n")
-_RUN_DAY_FILTER = _RUN_KIND_FILTER + _RUN_OTHER_DAY
-_RUN_TO_DOWNLOAD = ("        name = stored_name(item)\n"
-                    "        if name in self.seen:\n"
-                    "            return  # listed again while the listing was read: the first counts\n"
-                    "        self.seen.add(name)\n"
-                    "        self.result.listed.append(name)\n"
-                    "        if name in self.stored:\n"
-                    "            return\n"
-                    "        body = self._fetch(item, name)\n")
+                  "            return None\n")
+# The rest of the take (q26): `_listed`'s call and its None return, the skip of a name stored before, the download.
+_RUN_LISTED = "        name = self._listed(item)\n"
+_RUN_SKIP = ("        if name is None or name in self.stored:\n"
+             "            return\n")
+_RUN_TO_DOWNLOAD = _RUN_LISTED + _RUN_SKIP + "        body = self._fetch(item, name)\n"
+_RUN_STORED = ("        if body is not None:\n"
+               "            self._store(name, body)\n")
+# The run's stop (q26): its handler's first line, the test for reading on after a poll's time stop, the call.
+_RUN_STOP = "        except _Stop:  # `unparsed` stays 0, drained or not: this loop did not read the listing to its end (R13)\n"
+_RUN_DRAIN_IF = ('            if (self.result.error == OUT_OF_TIME and self.result.mode == "poll" and listing is not None\n'
+                 "                    and not isinstance(self.source, PagedSource)):  # a paged listing's page records stay as taken\n")
+_RUN_DRAIN_CALL = "                self._drain(listing)  # ruling R40\n"
+# The drain's read of a row and what it may meet (q26), for the break that puts a latch's failure under the catch-all.
+_RUN_DRAIN_NEXT = ("            try:\n"
+                   "                item = next(listing)\n"
+                   "            except (StopIteration, OutOfTime):  # the end, or an adapter's own request short of time\n"
+                   "                return\n"
+                   "            except Blocked as block:\n"
+                   "                try:\n"
+                   "                    self._latch(str(block))  # a latch not written raises past the handler below, its error kept\n"
+                   "                except _Stop:\n"
+                   "                    return\n"
+                   "            except Exception as exc:\n")
 _RUN_READ_EARLIER = ('        prefix = manifest_key(self.day, self.slug, "").removesuffix(".json")  # this chain\'s runs of the day\n'
                      "        earlier = [json.loads(record) for record in self.store.read_records(prefix)]\n")
 
@@ -506,7 +521,7 @@ MUTATIONS = {
     "state key outside state/": (STORE, 'f"state/{slug}.json"', 'f"{slug}.json"'),
     # run: the brief's five
     "clock date instead of file date": (RUN, "        if item.name.day != self.day:", "        if _utc(self.now()).date() != self.day:"),
-    "stored files fetched again": (RUN, "        if name in self.stored:\n            return\n", ""),
+    "stored files fetched again": (RUN, _RUN_SKIP, "        if name is None:\n            return\n"),
     "no latch on block": (RUN, '            self.store.write_state(self.slug, {"stopped": True,', '            (self.slug, {"stopped": True,'),
     "timeout guard removed": (RUN, "            if self._short_of_time():\n                if problem is None:", "            if False:\n                if problem is None:"),
     "manifest skipped on error": (RUN, "        store.put_record(manifest_key(", "        result.error is None and store.put_record(manifest_key("),
@@ -520,9 +535,10 @@ MUTATIONS = {
     "stored name taken from the listing, not the link (R16)": (RUN, "        name = stored_name(item)\n        if name in self.seen:\n",
                                                                "        name = item.name.raw\n        if name in self.seen:\n"),
     "stored name keeps the link's query (R16)": (RUN, '    return urllib.parse.urlsplit(item.url).path.rsplit("/", 1)[-1]', '    return item.url.rsplit("/", 1)[-1]'),
-    "skipped names not listed": (RUN, "        self.result.listed.append(name)\n        if name in self.stored:\n            return\n",
-                                 "        if name in self.stored:\n            return\n        self.result.listed.append(name)\n"),
-    "a name listed twice fetched again": (RUN, "        if name in self.seen:\n            return  #", "        if False:\n            return  #"),
+    "skipped names not listed": (RUN, "        self.seen.add(name)\n        self.result.listed.append(name)\n",
+                                 "        self.seen.add(name)\n        if name in self.stored:\n            return None\n"
+                                 "        self.result.listed.append(name)\n"),
+    "a name listed twice fetched again": (RUN, "        if name in self.seen:\n            return None  #", "        if False:\n            return None  #"),
     # run: the listing
     "listing read before the files are fetched (R16)": (RUN, "            listing = iter(self.source.listing(self.http, self.kinds, self._short_of_time, **paged))", "            listing = iter(list(self.source.listing(self.http, self.kinds, self._short_of_time, **paged)))"),
     "listing read twice": (RUN, "            listing = iter(self.source.listing(self.http, self.kinds, self._short_of_time, **paged))",
@@ -531,7 +547,8 @@ MUTATIONS = {
     "unparsed not recorded (R13)": (RUN, "            self.result.unparsed = self.source.unparsed  #", "            pass  #"),
     "unparsed read before the listing is used up (R13)": (RUN, "                self._take(item)\n                self._check_time()\n            self.result.unparsed = self.source.unparsed  # final only now: it resets on the first next()\n",
                                                           "                self.result.unparsed = self.source.unparsed\n                self._take(item)\n                self._check_time()\n"),
-    "unparsed taken from an unfinished listing (R13)": (RUN, "        except _Stop:\n            pass", "        except _Stop:\n            self.result.unparsed = self.source.unparsed"),
+    "unparsed taken from an unfinished listing (R13)": (RUN, _RUN_STOP + _RUN_DRAIN_IF,
+                                                        _RUN_STOP + "            self.result.unparsed = self.source.unparsed\n" + _RUN_DRAIN_IF),
     "block in the listing escapes": (RUN, "        except Blocked as block:\n            self._latch(str(block))", "        except ZeroDivisionError as block:\n            self._latch(str(block))"),
     "unreadable listing escapes (R23)": (RUN, "        except ListingUnreadable as exc:\n", "        except ZeroDivisionError as exc:\n"),
     "unreadable listing not recorded as an error (R23)": (RUN, '            self._stop(f"listing unreadable: {exc}")\n        except OutOfTime:', "            raise _Stop\n        except OutOfTime:"),
@@ -546,9 +563,11 @@ MUTATIONS = {
                                                "        earlier = [json.loads(record) for day in (date.fromordinal(self.day.toordinal() - 1), self.day)"
                                                " for record in self.store.read_records(manifest_key(day, self.slug, \"\").removesuffix(\".json\"))]\n"),
     "taken through not recorded (q21 run)": (RUN, '            page["taken_through"] = page["last"] if item.ends_page else item.name.raw\n', ""),
-    "taken through recorded after the day filter (q21 run)": (RUN, _RUN_TAKEN + _RUN_DAY_FILTER, _RUN_DAY_FILTER + _RUN_TAKEN),
-    "taken through recorded after the download (q21 run)": (RUN, _RUN_TAKEN + _RUN_DAY_FILTER + _RUN_TO_DOWNLOAD,
-                                                            _RUN_DAY_FILTER + _RUN_TO_DOWNLOAD + _RUN_TAKEN),
+    "taken through recorded after the day filter (q21 run)": (RUN, _RUN_TAKEN + _RUN_LISTED + _RUN_SKIP,
+                                                              _RUN_LISTED + "        if name is None:\n            return\n" + _RUN_TAKEN
+                                                              + "        if name in self.stored:\n            return\n"),
+    "taken through recorded after the download (q21 run)": (RUN, _RUN_TAKEN + _RUN_TO_DOWNLOAD + _RUN_STORED,
+                                                            _RUN_TO_DOWNLOAD + _RUN_STORED + _RUN_TAKEN),
     "taken through set on a page before the latest (q21 run)": (RUN, "            page = self.result.pages[-1]\n", "            page = self.result.pages[0]\n"),
     "ends_page ignored (q21 run)": (RUN, 'page["taken_through"] = page["last"] if item.ends_page else item.name.raw', 'page["taken_through"] = item.name.raw'),
     "a page recorded taken before a row is given (q21 run)": (RUN, '| {"taken_through": None})', '| {"taken_through": read.last})'),
@@ -575,7 +594,7 @@ MUTATIONS = {
     "a poll held to the morning's kinds (q23 run)": (RUN, '    allowed = chain.polled if mode == "poll" else chain.kinds\n', "    allowed = chain.kinds\n"),
     "a main or retry run held to the polled kinds (q23 run)": (RUN, '    allowed = chain.polled if mode == "poll" else chain.kinds\n', "    allowed = chain.polled\n"),
     "a refused poll's kinds named as the kinds the chain collects (q23 run)": (RUN, "{'polls' if mode == 'poll' else 'collects'}", "collects"),
-    "the run's own day counted in other_days (q23 run)": (RUN, _RUN_OTHER_DAY, "        self._other_day(item)\n        if item.name.day != self.day:\n            return\n"),
+    "the run's own day counted in other_days (q23 run)": (RUN, _RUN_OTHER_DAY, "        self._other_day(item)\n        if item.name.day != self.day:\n            return None\n"),
     "other_days left empty (q23 run)": (RUN, "        self.result.other_days[day] = self.result.other_days.get(day, 0) + 1\n", ""),
     "a name listed twice counted twice in other_days (q23 run)": (RUN, "        if name in self.others:\n            return  # listed again: counted once\n", ""),
     "kinds not asked for counted in other_days (q23 run)": (RUN, _RUN_KIND_FILTER + _RUN_OTHER_DAY, _RUN_OTHER_DAY + _RUN_KIND_FILTER),
@@ -585,6 +604,45 @@ MUTATIONS = {
     "a poll started by R37's rule, the Promo replay alone (q23 replay)": (PROMO_REPLAY, '        rule = pass_start if self.result.mode == "poll" else start_for\n', "        rule = start_for\n"),
     "no step back, the republish replay alone (q23 replay)": (PROMO_REPUBLISHED, "        while at > 2 and record.first > start.furthest:", "        while False:"),
     "a full kind started by the passes rule (q23 run)": (RUN, '        rule = pass_start if self.result.mode == "poll" else start_for\n', "        rule = pass_start\n"),
+    # run: a poll's time stop reads the rest of a listing that does not page, taking nothing, and a fault met there
+    # never reads as a time stop (q26, ruling R40)
+    "a main or retry run drained (q26 drain)": (RUN, 'OUT_OF_TIME and self.result.mode == "poll" and listing', "OUT_OF_TIME and listing"),
+    "a poll's time stop not drained (q26 drain)": (RUN, _RUN_DRAIN_CALL, "                pass\n"),
+    "a drained name stored before put in not_attempted (q26 drain)": (RUN, "            if name is not None and name not in self.stored:\n",
+                                                                      "            if name is not None:\n"),
+    "the drain downloads and stores (q26 drain)": (RUN,
+        "            if name is not None and name not in self.stored:\n                self.result.not_attempted.append(name)\n",
+        "            if name is not None and name not in self.stored:\n"
+        "                self._store(name, self.source.download(self.http, item))\n"),
+    "the drain lists every row (q26 drain)": (RUN, "            name = self._listed(item)\n",
+                                              "            name = stored_name(item)\n            self.result.listed.append(name)\n"),
+    "any stop drains (q26 drain)": (RUN, "            if (self.result.error == OUT_OF_TIME and self.result.mode", "            if (self.result.mode"),
+    "a paged listing drained (q26 drain)": (RUN, " and listing is not None\n                    and not isinstance(self.source, PagedSource)):",
+                                            " and listing is not None):"),
+    "OutOfTime in the drain escapes (q26 drain)": (RUN, "            except (StopIteration, OutOfTime):", "            except StopIteration:"),
+    "a stop before the listing drained (q26 drain)": (RUN, ' and self.result.mode == "poll" and listing is not None\n',
+                                                      ' and self.result.mode == "poll"\n'),
+    "a fault in the drain left as a time stop (q26 drain)": (RUN,
+        '                self.result.error = f"unexpected error: {type(exc).__name__}: {exc}"\n                raise\n',
+        "                raise\n"),
+    "a block in the drain not latched (q26 drain)": (RUN, "            except Blocked as block:\n                try:\n",
+                                                     "            except ZeroDivisionError as block:\n                try:\n"),
+    "a latch not written in the drain swallowed (q26 drain)": (RUN, "                except _Stop:\n                    return\n",
+                                                               "                except Exception:\n                    return\n"),
+    "a latch not written in the drain rewritten by its catch-all (q26 drain)": (RUN, _RUN_DRAIN_NEXT,
+        "            try:\n"
+        "                try:\n"
+        "                    item = next(listing)\n"
+        "                except Blocked as block:\n"
+        "                    try:\n"
+        "                        self._latch(str(block))\n"
+        "                    except _Stop:\n"
+        "                        return\n"
+        "            except (StopIteration, OutOfTime):\n"
+        "                return\n"
+        "            except Exception as exc:\n"),
+    "unparsed read after a drain (q26 drain)": (RUN, _RUN_DRAIN_CALL,
+                                                _RUN_DRAIN_CALL + "                self.result.unparsed = self.source.unparsed\n"),
     # run: blocks and the latch
     "stopped chain collected": (RUN, '        if store.read_state(chain.slug).get("stopped"):', "        if False:"),
     "any state read as stopped": (RUN, 'if store.read_state(chain.slug).get("stopped"):', "if store.read_state(chain.slug):"),
