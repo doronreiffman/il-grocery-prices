@@ -50,10 +50,11 @@ A ping that fails is logged as a warning naming its kind (start, success or fail
 never hangs on healthchecks.io. The ping URL is a secret: no part of it reaches the log, the error's text included.
 
 The extract mode never pings. A chain whose prices extraction failed, or whose run Lambda killed (memory over the
-function's, or the timeout: then nothing goes up), shows in the basket run as a missing table. A run stopped in a
-later step (the store list, the promotions, the items table) has put its prices table, so the basket run reads the
-chain as before, a chain with no store list refused by it as always; the failure shows as a missing items table once
-the site run reads the items tables, and until then nothing pings for it.
+function's, or the timeout: then nothing goes up), shows in the basket run as a missing table, unless an earlier run of
+the day put one (a put adds or replaces; nothing deletes). A run stopped in a later step has put its prices table, so
+the basket run reads the chain as before: a chain with no store list it refuses as always, its /fail ping naming
+NoStoreList; a run stopped in the promotions or the items table shows as a missing items table once the site run reads
+the items tables (again unless an earlier run of the day put one), and until then nothing pings for it.
 
 Environment: BUCKET (the archive bucket), SITE_BUCKET (the site stack's bucket: refused unless its name starts with
 SITE_BUCKET_PREFIX, so the archive bucket is never taken for it), DISTRIBUTION_ID, HEALTHCHECK_URL, USER_AGENT (each
