@@ -39,8 +39,9 @@ written only when every one of its kind's files is there (`fetch_table` the pric
 table).
 
 The shopper site's run reads more. Its history (`fetch_history`) is each chain's items table of the day and of the
-`shopper.history.READ_DAYS` (90) days before it, never a later day's, each fetched whole or not at all: a day missing
-is an extraction that never ran, which `shopper.history.load` reads as a hole (the day's own as MissingTable). Its
+`shopper.history.READ_DAYS` (90) days before it, never a later day's, each fetched whole or not at all: a day with
+none (the chain's extraction did not run, or stopped before its items table) is what `shopper.history.load` reads as
+a hole (the day's own as MissingTable). Its
 covered registry of the day before (`fetch_covered`) is the latest `tables/covered/date=<d>/covered.parquet` of a day
 before the run's, found by listing `tables/covered/`, since a run may have missed days; the run's own registry goes
 back plain (`put_covered`), replaced by a re-run of the day as every table is.

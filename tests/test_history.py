@@ -102,7 +102,7 @@ def test_a_missing_earlier_table_is_a_hole_in_each_of_the_chains_columns(tmp_pat
     for day in (DAY, back(2)):
         _table(tmp_path, SHUF, day, [_row(DEAL, A)])
         _table(tmp_path, RAMI, day, [_row(RAMI, A)])
-    _table(tmp_path, RAMI, back(3), [_row(RAMI, A)])   # Shufersal's extraction of that day never ran
+    _table(tmp_path, RAMI, back(3), [_row(RAMI, A)])   # no Shufersal items table: its extraction did not run or stopped
     history = load(tmp_path, DAY, [SHUF, RAMI])
     for key in SHUF_COLUMNS:
         found = history.column_days[(key, back(3))]

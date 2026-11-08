@@ -7,7 +7,8 @@ What is read. The site run for day d reads each chain's items table (`shopper.it
 days before it, d - 90 to d: P6's 90-day window ends the day before d, and d itself is the page's day. A table of a
 later day is never read, whatever the folder holds. A table is its `items.parquet` with its `report.json`; one without
 the other is none. The day's own is required (MissingTable, naming the chain and the path, as a missing prices table
-stops the basket run); a missing earlier one is an extraction that never ran.
+stops the basket run); a missing earlier one means no items table that day: the chain's extraction did not run, or
+stopped before its items table (no store list, say, after its prices table went up, or any other failure).
 
 Column-days. Every column of each chain read (`shopper.columns.columns_of`) has a `ColumnDay` for each of the 91
 days, from its chain's report of that day: whether the table was there (`present`), whether the column is a hole that
