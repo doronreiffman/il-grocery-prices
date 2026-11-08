@@ -19,8 +19,9 @@ its column and its chain (`data-column`, `data-chain`), headed with the column's
   chain's price files", the stores' range beneath it labelled as the stores' (`basket.words.range_note`), never as a
   listed price; "not listed today" when the column's files do not list it. On a hole (S1: files from fewer than half
   the column's stores) `basket.words.too_few` comes first and no listed price is claimed: the median is shown as from
-  too few files, and a product those files do not list is not said to be unlisted. When the product is not listed
-  across the column today, the last day it was (`last_across`, the registry's), if there is one.
+  too few files, and a product those files do not list is not said to be unlisted. On a day with records, when the
+  product is not listed across the column, the last day it was (`last_across`, the registry's), if there is one; a
+  hole says nothing of it, since its few files cannot tell whether today is across.
 - Each promotion running today (P3: started on or before the day, ending on or after it, by the items table's dates),
   rebuilt by `shopper.deals.deal_from_row` (S11): its deal price, a unit's or a kilogram's (P4), "buy N" for "N for ₪M",
   the stores' range for percent off; or "price not read" alone when the deal is not valid, never a price beside it
@@ -42,8 +43,9 @@ listed across the column marked beneath (P8's days: `shopper.measures.promotion_
 
 P9's row: "Today at each column, in name order", a cell for each of the nine columns, listing the product or not: its
 listed price today or "not listed today" (on a hole, the price under `too_few`, or `too_few` alone), and the deal price
-of each wide promotion today ("price not read" when not valid) with its conditions marked in the section's words
-(`targets`, the minimum spend). Sorted by name, never by price; no ranking word.
+of each wide promotion today ("price not read" when not valid) with its conditions in the section's words, each with
+its source (the programmes' names left to the section), and "fine print not read". Sorted by name, never by price;
+no ranking word.
 
 No script. The page is a pure function of its inputs: the same bytes whatever order the mappings come in.
 """
@@ -116,11 +118,13 @@ def _valid(struct: Mapping) -> Deal | None:
     return deal if deal.valid and deal.price is not None else None
 
 
-def field_conditions(struct: Mapping) -> list[str]:
+def field_conditions(struct: Mapping, programmes: bool = True) -> list[str]:
     """A promotion's conditions from the fields, as HTML, each with its source (P5, S3), from a struct's (or a front
-    page row's) `restrictions`, `programmes` and `min_spend`."""
+    page row's) `restrictions`, `programmes` and `min_spend`; every programme's name in the chain's span, unless
+    `programmes` is False (P9's cells leave the names to the section)."""
     found = []
-    phrase, names = targets(struct["restrictions"]), struct["programmes"]
+    phrase = targets(struct["restrictions"])
+    names = struct["programmes"] if programmes else []
     if phrase or names:
         programmes = f"({', '.join(_span(name) for name in names)})" if names else ""
         found.append(f"{' '.join(part for part in (text(phrase), programmes) if part)}, {text(FROM_FIELDS)}")
@@ -146,8 +150,8 @@ def _promotion(struct: Mapping) -> str:
 
 
 def _today(key: str, today: ColumnDay, point: Point | None, covered: Covered) -> str:
-    """The section's today: the listed price and its range, a hole's too few files, or not listed; and when the
-    product is not listed across the column today, the last day it was."""
+    """The section's today: the listed price and its range, a hole's too few files, or not listed; and, on a day
+    with records when the product is not listed across the column, the last day it was."""
     stores = "" if point is None else (
         f"<small>{text(range_note(money(point.low), money(point.high), point.listing, today.with_file))}</small>")
     if today.record:
@@ -156,7 +160,7 @@ def _today(key: str, today: ColumnDay, point: Point | None, covered: Covered) ->
         few = f'<span class="few">{text(too_few(today.with_file, today.included))}</span>'
         shown = few if point is None else f"{few} ₪{money(point.listed)}{stores}"
     last = covered.last_wide.get(key)
-    if not (today.record and point is not None and point.wide) and last is not None:
+    if today.record and not (point is not None and point.wide) and last is not None:   # a hole cannot tell
         shown += f"<small>{text(last_across(key, last))}</small>"
     return f'<p class="today">{shown}</p>'
 
@@ -271,10 +275,8 @@ def _cell(key: str, pair: Pair | None, column_days: Mapping[tuple[str, date], Co
         said = PRICE_NOT_READ if deal is None else deal_price(deal.price, deal.per)
         if deal is not None and deal.buy != 1:
             said += f", {buy(deal.buy)}"
-        marks = [targets(struct["restrictions"])] if struct["restrictions"] else []
-        if struct["min_spend"] is not None:
-            marks.append(minimum_spend(struct["min_spend"]))
-        deals.append(f"<small>{text('; '.join([said, *marks]))}</small>")
+        conditions = field_conditions(struct, programmes=False)       # the section's words, each with its source
+        deals.append(f"<small>{'; '.join([text(said), *conditions, text(FINE_PRINT)])}</small>")
     if deals:
         deals.append(f"<small>{text(MORNING)}</small>")
     return shown + "".join(deals)
