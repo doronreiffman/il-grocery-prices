@@ -301,7 +301,8 @@ def test_the_method_page_lists_each_column_its_stores_and_the_stores_in_none():
     assert "No column" in _method(_columns(under_floor=[]))
     assert "Rami Levy, Osher Ad and Yochananof are each shown as one format, whole." in page
     intro = re.search(r'<section id="columns"><h2>What a column is</h2><p>(.*?)</p>', page).group(1)
-    assert f"each of their formats with at least {FLOOR} included stores is a column of its own" in intro
+    assert (f"each of their formats with at least {FLOOR} included stores on the store lists of 7 November 2026 is a "
+            "column of its own (the floor below; the smaller ones then are in no column)") in intro   # re-review, N2
     assert "every measure on the front, product and record pages is a column's" in intro
     assert "The headline basket, in its section below, takes each chain's median instead." in intro
     assert "each format is a column of its own" not in intro and "every measure here" not in intro      # review, 3
@@ -460,6 +461,8 @@ def test_the_record_pages_tables_say_they_count_the_days_scored_so_far():
                           "Days with a scored forecast"]
     assert "Days frozen on time" not in page and "Days late, not counted" not in page
     assert "Forecasts frozen on 46 days, from 1 December 2026 to 15 January 2027: 46 on time, 0 late." in page
+    assert SCORED_SO_FAR.startswith("Each column's tables below count only")
+    assert SCORED_SO_FAR not in _record() and "<table" not in scorecard_section(scorecard([]))    # re-review, N1
 
 
 def test_the_record_page_shows_calibration_and_a_sentence_per_bin_of_one_percent_or_more():

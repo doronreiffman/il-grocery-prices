@@ -114,9 +114,9 @@ CONDITIONS = {
                     f"scored forecasts off by more than {BIN_OFF}"),
 }
 TOO_FEW = "too few days"
-SCORED_SO_FAR = (f"The tables below count only the days whose forecasts file has been scored so far: a day's file is "
-                 f"scored {HORIZON} days after it is frozen, so the latest days frozen are not in them yet (the days "
-                 "frozen are counted further down).")
+SCORED_SO_FAR = ("Each column's tables below count only the days whose forecasts file has been scored so far: a "
+                 f"day's file is scored {HORIZON} days after it is frozen, so the latest days frozen are not in them "
+                 "yet (the days frozen are counted further down).")
 FILES_LABEL = ("These files are this site's test records of its forecasts, published so that anyone can check them; "
                "they are not advice.")
 # The method page: Shufersal's formats in no column on the fixed day, named where the design names them
@@ -306,12 +306,13 @@ def render_front(rows: Iterable[FrontRow], counts: Counts, day: date, collected_
 
 COLUMN_INTRO = ("A column is a store format this site shows as its own unit. Shufersal's and Carrefour's formats carry "
                 "different promotions and list different prices (measured on the files of 5 and 7 November 2026), so "
-                f"each of their formats with at least {FLOOR} included stores is a column of its own (the floor below; "
-                "the smaller ones are in no column), and every measure on the front, product and record pages is a "
-                "column's: which products are covered, listed prices, promotions listed across a column, the history, "
-                "the forecasts and the record. The headline basket, in its section below, takes each chain's median "
-                f"instead. {joined([CHAIN_NAMES[slug] for slug in SLUGS if len(columns_of(slug)) == 1])} are each "
-                "shown as one format, whole.")
+                f"each of their formats with at least {FLOOR} included stores on the store lists of {_day(FIXED_ON)} "
+                "is a column of its own (the floor below; the smaller ones then are in no column), and every measure "
+                "on the front, product and record pages is a column's: which products are covered, listed prices, "
+                "promotions listed across a column, the history, the forecasts and the record. The headline basket, "
+                "in its section below, takes each chain's median instead. "
+                f"{joined([CHAIN_NAMES[slug] for slug in SLUGS if len(columns_of(slug)) == 1])} are each shown as one "
+                "format, whole.")
 COLUMNS_FIXED = (f"The {_NINE} columns are fixed in the code for target version {TARGET_VERSION}. A format of a "
                  f"chain split into formats is a column when it had at least {FLOOR} included stores on the store "
                  f"lists of {_day(FIXED_ON)}; a chain shown whole is a column whatever its size. A column whose stores "
@@ -709,7 +710,9 @@ def scorecard_section(scorecard: dict) -> str:
              f"{text(force['model_version'])}, target {text(force['target_version'])}.</p>",
              f"<p>Intervals: a moving-block bootstrap over the scored days, blocks of {boot['block']} scored days, "
              f"{boot['draws']:,} draws, seed {boot['seed']}, {boot['level']}% intervals; none under {boot['min_days']} "
-             "scored days.</p>", f"<p>{text(SCORED_SO_FAR)}</p>"]
+             "scored days.</p>"]
+    if any(found["versions"] for found in columns.values()):        # only above a column's tables
+        parts.append(f"<p>{text(SCORED_SO_FAR)}</p>")
     if not any(version["all"]["scored"] for found in columns.values() for version in found["versions"]):
         parts.append(f"<p><b>{text(NOTHING_SCORED)}</b></p>")
     for key, found in columns.items():
