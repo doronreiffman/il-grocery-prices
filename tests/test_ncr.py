@@ -199,6 +199,8 @@ def test_logs_in_then_lists_one_request_at_a_time():
     assert portal.requested == []  # nothing until the first item is asked for
     next(listing)
     assert portal.requested == THROUGH_THE_LISTING
+    list(listing)
+    assert portal.requested == THROUGH_THE_LISTING  # none after the first row: a stopped poll reads on (ruling R40)
 
 
 @pytest.mark.parametrize("slug", ["ramilevy", "osherad", "yochananof"])

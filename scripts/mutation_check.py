@@ -447,6 +447,8 @@ MUTATIONS = {
     "NCR kinds filter ignored": (NCR, "            elif name.kind in kinds:", "            else:"),
     "NCR names not checked": (NCR, 'checked_name(fname, f"the NCR listing, entry {number}")', '__import__("collector.names").names.parse_file_name(fname)'),
     "NCR names checked only as they are given": (NCR, "                listed.append(Listed(name, DOWNLOAD + fname))\n        yield from listed\n", "                yield Listed(name, DOWNLOAD + fname)\n"),
+    # ncr: an adapter that does not page makes no request after its first row (q26, ruling R40; Carrefour's below)
+    "an NCR request between rows (q26 adapters)": (NCR, "        yield from listed\n", "        for item in listed:\n            yield item\n            http.get(LOGIN_PAGE)\n"),
     "NCR unparsed names not counted": (NCR, "                self.unparsed += 1", "                pass"),
     "NCR unparsed count carried over from the last listing": (NCR, "        self.unparsed = 0\n        file_page", "        file_page"),
     "NCR download returns nothing": (NCR, "        return http.get(item.url).body", '        return b""'),
@@ -465,6 +467,7 @@ MUTATIONS = {
     "Carrefour file without a name read": (CARREFOUR, "        if not isinstance(name, str):", "        if False:"),
     "Carrefour names not checked": (CARREFOUR, 'checked_name(name, f"the Carrefour page, file {number}")', '__import__("collector.names").names.parse_file_name(name)'),
     "Carrefour names checked only as they are given": (CARREFOUR, '                listed.append(Listed(parsed, f"{BASE_URL}/{folder}/{name}"))\n        yield from listed\n', '                yield Listed(parsed, f"{BASE_URL}/{folder}/{name}")\n'),
+    "a Carrefour request between rows (q26 adapters)": (CARREFOUR, "        yield from listed\n", '        for item in listed:\n            yield item\n            http.get(f"{BASE_URL}/")\n'),
     "Carrefour unparsed names not counted": (CARREFOUR, "                self.unparsed += 1", "                pass"),
     "Carrefour unparsed count carried over from the last listing": (CARREFOUR, "        self.unparsed = 0\n        text", "        text"),
     "Carrefour download returns nothing": (CARREFOUR, "        return http.get(item.url).body", '        return b""'),
