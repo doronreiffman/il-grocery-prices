@@ -17,9 +17,10 @@ The gap (P7). With no day of records in the past 30 there is none (`gap` gives N
 - `low30` and `low90`: the lowest listed price of each window; `at_or_below`: the days of the 90 on which the item was
   listed at or below the deal. The listed price is the shelf price, before promotions.
 - `changes`: each pair of consecutive counted days of the 90-day window whose listed prices differ, with the later of
-  the two in the 30-day window; its day is the later one. The earlier may lie before the window, so a rise on the
-  window's first day shows. A day skipped between the two (a hole) does not hide a change; it is dated the day the new
-  price is seen.
+  the two in the 30-day window; its day is the later one, its `since` the earlier. The earlier may lie before the
+  window, so a rise on the window's first day shows. A day skipped between the two (a hole) does not hide a change;
+  it is dated the day the new price is seen, and `since` keeps the last day the old one was seen, so the words can
+  give both days when the change lies somewhere between them (Task 9's review).
 
 The deal is a `Fraction`, and every comparison reads it exactly (the pre-flight's S6): 3 for ₪4.34 is 1.4466... a
 unit, below a listed ₪1.45, though its two places say 1.45.
@@ -37,6 +38,9 @@ that day). A day skipped neither extends nor breaks a run: a hole, a day on whic
 whose promotions were not read (`ColumnDay.promo_hole`: the chain's promotions failed or fewer than half the counted
 stores had a promotion file) say nothing about promotions, which is not the same as none. Such a day is not one of the
 days with records that `promotion_days` counts either. A day on record, listed and off promotion breaks the run.
+`promotion_points` gives the days the history reads, and `promoted_today` reads the page's day itself the same way
+(None when the history would not count it or its promotions were not read), so the words can tell a run seen to the
+window's last day read from one that ended there.
 `gaps` counts the calendar days strictly between one run's end and the next one's start; `days_since` the days from the
 last run's end to the page's day.
 """
@@ -56,8 +60,10 @@ RECENT_DAYS = 30        # P7's short window: the median and the changes
 
 @dataclass(frozen=True)
 class Change:
-    """A change in the listed price: the day it is first seen and the prices before and after."""
+    """A change in the listed price: the day it is first seen, the last day the price before it was seen (`since`) and
+    the prices before and after."""
     day: date
+    since: date
     before: Decimal
     after: Decimal
 
@@ -93,7 +99,7 @@ def _whole(value: Fraction) -> int:
 def _changes(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: date) -> tuple[Change, ...]:
     points = counted(pair, column_days, day, READ_DAYS)
     first = day - timedelta(days=RECENT_DAYS)
-    return tuple(Change(day=later.day, before=earlier.listed, after=later.listed)
+    return tuple(Change(day=later.day, since=earlier.day, before=earlier.listed, after=later.listed)
                  for earlier, later in zip(points, points[1:])
                  if later.listed != earlier.listed and later.day >= first)
 
@@ -128,7 +134,7 @@ def on_front(deal: Deal, wide: bool, pair: Pair, column_days: Mapping[tuple[str,
     return long.days >= MIN_FRONT_DAYS and deal.price < Fraction(min(long.listed))
 
 
-def _promotion_points(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: date) -> list[Point]:
+def promotion_points(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: date) -> list[Point]:
     """The 90-day window's counted points on whose day the column's promotions were read."""
     return [point for point in counted(pair, column_days, day, READ_DAYS)
             if not column_days[(pair.column, point.day)].promo_hole]
@@ -138,7 +144,7 @@ def runs(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: dat
     """The runs on promotion over P6's 90-day window, in day order (the module's docstring)."""
     found: list[Run] = []
     start = end = None
-    for point in _promotion_points(pair, column_days, day):
+    for point in promotion_points(pair, column_days, day):
         if not point.on_promotion:
             if start is not None:
                 found.append(Run(start, end))
@@ -164,5 +170,12 @@ def days_since(runs: Sequence[Run], day: date) -> int | None:
 
 def promotion_days(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: date) -> tuple[int, int]:
     """(the days on a wide promotion, the days with records whose promotions were read), over the 90-day window."""
-    points = _promotion_points(pair, column_days, day)
+    points = promotion_points(pair, column_days, day)
     return sum(1 for point in points if point.on_promotion), len(points)
+
+
+def promoted_today(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: date) -> bool | None:
+    """Whether the pair is on a wide promotion on `day` itself, read as `promotion_points` reads a day of the window;
+    None when that rule would not read it (no record at the column, no listed price, its promotions not read)."""
+    seen = promotion_points(pair, column_days, day + timedelta(days=1))
+    return seen[-1].on_promotion if seen and seen[-1].day == day else None

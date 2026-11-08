@@ -64,7 +64,6 @@ are read in the items' order and joined to them as they are written, so a chain'
 otherwise, as `basket.rules.open_day` raises), and so must its promotions table when promotions were read.
 """
 import json
-import math
 import tempfile
 from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence, Set
@@ -85,7 +84,7 @@ from basket.rules import (ChainPrice, apply_filters, chain_day, chain_prices, ch
 from basket.stores import Store
 from basket.units import Size, plain
 from shopper.columns import members, outside, under_floor
-from shopper.deals import StorePrices, deal
+from shopper.deals import StorePrices, deal, to_agora
 from shopper.promofile import PromotionFormatChanged
 from shopper.promos import PERCENT_OFF, PromoReport, PromoText, promotions_path
 from shopper.promotions import in_day
@@ -170,13 +169,15 @@ def _text(value: Decimal | None) -> str | None:
 
 
 def _two(price: Fraction | None) -> str | None:
-    """The deal price to the agora, half up, for the eye; None for none, or when it would not fit DECIMAL(12,2)."""
+    """The deal price for the eye (`shopper.deals.to_agora`, to the agora half up) as text; None for none, or when it
+    would not fit DECIMAL(12,2)."""
     if price is None:
         return None
-    cents = math.floor(abs(price) * 100 + Fraction(1, 2))
+    shown = to_agora(price)
+    cents = abs(shown.scaleb(2))
     if cents >= MAX_CENTS:
         return None
-    return format(Decimal(-cents if price < 0 else cents).scaleb(-2), "f")
+    return format(shown, "f")
 
 
 def _buy(buy: Decimal, item: Mapping[str, str]) -> str:

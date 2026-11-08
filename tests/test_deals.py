@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from shopper.deals import Deal, StorePrices, agrees, deal, deal_from_row
+from shopper.deals import Deal, StorePrices, agrees, deal, deal_from_row, to_agora
 from shopper.promofile import PromotionFormatChanged, Tally, read_promotions
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -173,3 +173,14 @@ def test_a_field_of_an_exponent_no_chain_writes_is_not_read(text):
         assert (found.price, found.valid, found.why) == unread
     rate = deal("carrefour", _item(CARREFOUR, "900002", DiscountRate=text), Decimal("5.50"), _same("5.50"))
     assert (rate.valid, rate.why) == (False, "the rate and the price disagree")
+
+
+def test_the_deal_for_the_eye_is_to_the_agora_half_up_from_the_exact_price():
+    """`to_agora`: the one rule for writing a deal price (a Fraction) to two places (the pre-flight's S6): half up, a tie
+    away from zero, read from the exact price, never from a rounded one. The items table and the words both write it."""
+    assert to_agora(Fraction("4.34") / 3) == Decimal("1.45")            # 1.4466...
+    assert to_agora(Fraction(10, 3)) == Decimal("3.33")                 # 3.3333...
+    assert to_agora(Fraction("1.445")) == Decimal("1.45")               # a tie goes up
+    assert to_agora(Fraction("1.4449999")) == Decimal("1.44")
+    assert to_agora(Fraction("-1.445")) == Decimal("-1.45")             # and away from zero below it
+    assert str(to_agora(Fraction("7.9"))) == "7.90" and str(to_agora(Fraction(0))) == "0.00"

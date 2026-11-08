@@ -30,9 +30,11 @@ Then, for every kind, the deal is valid only when its price is above ₪0.01 and
 ends exclusive; per kilogram when weighed). With no listed price there is nothing to check against, so no deal is
 valid. A deal that is not valid keeps any price it read, so a page can show it, says why, and is never ranked.
 The price is a `Fraction` and every check reads it exactly (the pre-flight's S6): 3 for ₪0.04 is 1/75 of a shekel,
-above the floor, though it would round to ₪0.01. Two places are only for writing it out (Task 6), and a deal read
-back from the items table takes its price from the fraction's text (`deal_from_row`, the pre-flight's S11).
+above the floor, though it would round to ₪0.01. Two places are only for writing it out (`to_agora`: to the agora,
+half up, from the exact price; the items table and the site's words both write it so), and a deal read back from the
+items table takes its price from the fraction's text (`deal_from_row`, the pre-flight's S11).
 """
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
@@ -125,6 +127,12 @@ def deal(slug: str, item: Mapping[str, str], listed: Decimal | None, stores: Sto
     if amount is None or quantity is None:
         return Deal(None, per, _ONE if quantity is None else quantity, None, None, False, _NO_PRICE)
     return _checked(Fraction(amount) / Fraction(quantity), per, quantity, None, None, listed, False)
+
+
+def to_agora(price: Fraction) -> Decimal:
+    """`price` to the agora, half up (a tie away from zero), read from the exact value: the deal price for the eye."""
+    cents = math.floor(abs(price) * 100 + Fraction(1, 2))
+    return Decimal(-cents if price < 0 else cents).scaleb(-2)
 
 
 def deal_from_row(struct: Mapping[str, Any]) -> Deal:

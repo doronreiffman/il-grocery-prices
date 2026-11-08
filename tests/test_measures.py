@@ -10,7 +10,7 @@ from fractions import Fraction
 from shopper.deals import Deal
 from shopper.history import ColumnDay, Pair, Point, Window, window
 from shopper.measures import (MIN_FRONT_DAYS, Change, Gap, Run, days_since, depth, gap, gaps, on_front,
-                              promotion_days, runs)
+                              promoted_today, promotion_days, promotion_points, runs)
 
 DAY = date(2026, 11, 20)
 DEAL, SHELI = "shufersal-deal", "shufersal-sheli"
@@ -71,7 +71,8 @@ def test_the_designs_example():
         deal=Fraction(79, 10), median30=Decimal("11.90"), below=Fraction(4), percent=34, low30=Decimal("10.90"),
         low90=Decimal("10.90"), at_or_below=0, window30=window(pair, column_days, DAY, 30),
         window90=window(pair, column_days, DAY, 90),
-        changes=(Change(day=date(2026, 10, 28), before=Decimal("10.90"), after=Decimal("11.90")),))
+        changes=(Change(day=date(2026, 10, 28), since=date(2026, 10, 27), before=Decimal("10.90"),
+                        after=Decimal("11.90")),))
     assert (found.window30.days, found.window30.since, found.window30.short) == (30, date(2026, 10, 21), False)
     assert (found.window90.days, found.window90.since, found.window90.short) == (90, date(2026, 8, 22), False)
 
@@ -154,8 +155,8 @@ def test_changes_are_the_30_day_windows_own():
               **listed_from(16, 30, "12.00"),                                      # a change on day 30: the window's first
               **listed_from(1, 15, "9.50")}                                        # a change on day 15
     found = _gap("7.90", listed)
-    assert found.changes == (Change(day=back(30), before=Decimal("11.00"), after=Decimal("12.00")),
-                             Change(day=back(15), before=Decimal("12.00"), after=Decimal("9.50")))
+    assert found.changes == (Change(day=back(30), since=back(31), before=Decimal("11.00"), after=Decimal("12.00")),
+                             Change(day=back(15), since=back(16), before=Decimal("12.00"), after=Decimal("9.50")))
     assert _gap("7.90", listed_from(1, 90, "10.00")).changes == ()
 
 
@@ -163,7 +164,9 @@ def test_a_change_across_a_hole_is_dated_the_day_it_is_seen():
     listed = {back(5): "10.90", back(4): "99.00", back(3): "11.90", back(2): "11.90"}
     pair = _pair(DEAL, listed)
     found = gap(Fraction("7.90"), pair, _days(DEAL, listed, holes=[back(4)]), DAY)
-    assert found.changes == (Change(day=back(3), before=Decimal("10.90"), after=Decimal("11.90")),)
+    # the record day before it is kept too (Task 9's review): the new price is first seen on day 3, the old one last
+    # on day 5, so the change lies somewhere between, and the words never pin it to day 3 alone
+    assert found.changes == (Change(day=back(3), since=back(5), before=Decimal("10.90"), after=Decimal("11.90")),)
     # a price spelled with another number of places is the same price
     spelled = {back(2): "10.9", back(1): "10.90"}
     assert gap(Fraction("7.90"), _pair(DEAL, spelled), _days(DEAL, spelled), DAY).changes == ()
@@ -303,3 +306,28 @@ def test_gaps_and_days_since():
     assert gaps([]) == []
     assert days_since([], date(2026, 12, 6)) is None
     assert days_since(near, date(2026, 11, 20)) == 0
+
+
+def test_the_days_whose_promotions_were_read():
+    """`promotion_points`: the 90-day window's counted days whose promotions were read, in day order, the one place
+    the words find a run's neighbours (Task 9's review, runs at the window's ends)."""
+    listed = listed_from(1, 6, "10.00")
+    pair = _pair(DEAL, listed, unread=[back(4)])
+    column_days = _days(DEAL, listed, holes=[back(2)], promo_holes=[back(4)])
+    assert [point.day for point in promotion_points(pair, column_days, DAY)] == [back(6), back(5), back(3), back(1)]
+
+
+def test_today_is_read_as_the_history_reads_a_day():
+    """`promoted_today`: on a wide promotion on the page's day itself (True or False), or None when the history would
+    not count the day (no record at the column, no listed price) or its promotions were not read."""
+    listed = {**listed_from(1, 5, "10.00"), DAY: "10.00"}
+    on = _pair(DEAL, listed, promoted=[DAY])
+    assert promoted_today(on, _days(DEAL, listed), DAY) is True
+    assert promoted_today(_pair(DEAL, listed), _days(DEAL, listed), DAY) is False
+    assert promoted_today(on, _days(DEAL, listed, holes=[DAY]), DAY) is None             # a hole today
+    assert promoted_today(on, _days(DEAL, listed, promo_holes=[DAY]), DAY) is None       # promotions not read today
+    assert promoted_today(on, _days(DEAL, listed_from(1, 5, "10.00")), DAY) is None      # no column-day today
+    # yesterday on promotion is no reading of today: not listed today, or another column's day
+    yesterday = _pair(DEAL, listed_from(1, 5, "10.00"), promoted=[back(1)])
+    assert promoted_today(yesterday, _days(DEAL, listed), DAY) is None
+    assert promoted_today(on, _days(SHELI, listed), DAY) is None
