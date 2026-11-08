@@ -287,6 +287,25 @@ def test_a_store_price_too_large_for_the_table_is_no_price(tmp_path):
         (2, Decimal("4.00"), Decimal("4.00"), Decimal("4.00"))]
 
 
+@pytest.mark.parametrize("rate, price", [("1E+30", "4.40"), ("-1E+30", "4.40"), ("100", "0.00")],
+                         ids=["huge", "huge below zero", "a hundred"])
+def test_a_rate_not_above_0_and_below_100_never_agrees(tmp_path, rate, price):
+    # the deal check's own bound (question C): a figure from 1E+30 would not even compute, and 100% off agrees with
+    # nothing, though its figure, 0.00, is the price
+    files = {_name("1"): _file("1", _promotion("64", _group(items=[_item(A, "2", rate=rate, price=price)])))}
+    _, rows = _run(tmp_path, files, {"shufersal-sheli": {"1"}}, priced={"1": [(A, "5.50")]})
+    assert _keys(rows, "with_store_price", "agrees_with_store") == [(1, 0)]
+
+
+def test_a_store_price_of_a_tiny_exponent_is_staged_short(tmp_path):
+    # written out in full, 1E-3000000 is a field of 3 MB, past what the CSV reader takes on a line
+    files = {_name("1"): _file("1", _promotion("65", _group(items=[_item(price="1E-3000000")]))),
+             _name("2"): _file("2", _promotion("65", _group(items=[_item(price="4.00")])))}
+    _, rows = _run(tmp_path, files, {"shufersal-sheli": {"1", "2"}})
+    assert _keys(rows, "discounted_median", "discounted_low", "discounted_high") == [
+        (Decimal("2.000"), Decimal("0.000"), Decimal("4.000"))]
+
+
 def test_an_expired_promotion_is_counted_and_a_future_one_kept(tmp_path):
     promotions = [_promotion("70", end="2026-11-06"), _promotion("71", end="2026-11-07"),
                   _promotion("72", start="2026-11-08"), _promotion("73", start="2026-11-07")]

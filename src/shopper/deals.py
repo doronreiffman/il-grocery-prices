@@ -12,7 +12,8 @@ kilogram. By the link's kind (`shopper.promotions.kind`):
 - Percent off (2) is the stores' own figure: the median of the column's counted stores' `DiscountedPrice` on the
   link, its lowest and highest kept and shown as P2 shows the listed range. The rate is the check: the price agrees
   when `DiscountRate` is above 0 and below 100 and the price is within ₪0.01 of the column's median listed price ×
-  (1 − rate/100) rounded half up to agorot (`agrees`, the one such rule; Task 5 applies it to each store's own price).
+  (1 − rate/100) rounded half up to agorot (`rate_agrees` and its `agrees`, the one such rule; Task 5 applies it
+  to each store's own price).
   The design first computed the price from the rate and kept `DiscountedPrice` as the check; the survey's shelf links
   of 7 November (coupons out) found `DiscountedPrice` to be each store's own price after the rate (Shufersal 240,777
   of 241,320, Carrefour all 13,664 with a store price), so S4 (the owner, 2026-11-08) turned them round. Checked so,
@@ -74,9 +75,13 @@ def agrees(price: Decimal, base: Decimal, rate: Decimal) -> bool:
     return abs(price - figure) <= AGREE
 
 
-def _rate_agrees(item: Mapping[str, str], price: Decimal, listed: Decimal) -> bool:
-    rate = number(item["DiscountRate"])
-    return rate is not None and 0 < rate < 100 and agrees(price, listed, rate)
+def rate_agrees(text: str, price: Decimal, base: Decimal) -> bool:
+    """Question C's percent-off check: the `DiscountRate` as published (`text`) reads as a number above 0 and below 100,
+    and `price` agrees with `base` at that rate (`agrees`). The deal checks it against the column's median listed price,
+    Task 5 measures it against each store's own; the bound comes first, so a rate such as 1E+30, whose figure would not
+    compute, never agrees."""
+    rate = number(text)
+    return rate is not None and 0 < rate < 100 and agrees(price, base, rate)
 
 
 def _checked(price: Fraction, per: str, buy: Decimal, low: Decimal | None, high: Decimal | None,
@@ -109,7 +114,7 @@ def deal(slug: str, item: Mapping[str, str], listed: Decimal | None, stores: Sto
         if stores is None:
             return Deal(None, per, _ONE, None, None, False, _NO_PRICE)
         price = Fraction(stores.median)
-        disagrees = listed is not None and not _rate_agrees(item, stores.median, listed)
+        disagrees = listed is not None and not rate_agrees(item["DiscountRate"], stores.median, listed)
         return _checked(price, per, _ONE, stores.low, stores.high, listed, disagrees)
     quantity: Decimal | None = _ONE
     if found == "n_for_m":

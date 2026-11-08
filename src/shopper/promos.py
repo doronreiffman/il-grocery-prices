@@ -13,8 +13,8 @@ inside it, only by its name.
 What is kept. A file's records are taken whole before any of them counts: with the chain's known field sets
 (`shopper.promotions.KNOWN_FIELDS`) a changed root is refused only at `</Root>`, after the file's promotions were read,
 so a file refused there leaves none of its promotions counted. Every promotion read is counted, each copy in each
-store's file. Coupons are dropped as read (`keep`), their links counted. Every promotion `keep` keeps has its codes checked
-(`check_codes`); one holding a `RewardType` 6 or 12 link is dropped whole, its links counted, as a gift or a basket
+store's file. Coupons are dropped as read (`keep`), their links counted. Every promotion `keep` keeps has its codes
+checked (`check_codes`); one holding a `RewardType` 6 or 12 link is dropped whole, its links counted, as a gift or a basket
 reward (`not_shelf`, S2: its "N for ₪M" links are that reward's terms); one that ended before the day is counted and
 dropped; one that starts after the day is kept and counted (F2 forecasts from it); `RewardType` 0 links are kept with
 no kind (S2: never a price effect, Task 6 shows them as "price not read"). A format change (`PromotionFormatChanged`)
@@ -38,11 +38,13 @@ the table's DECIMAL(12,2) stops the chain as an unreadable one does, since it co
 
 The stores' figures. `discounted_median`, `discounted_low` and `discounted_high` are B5's median (`basket.rules.median`)
 and range of the carrying stores' `DiscountedPrice` on the link, one price a store (its lowest, if its file lists the
-link twice), written to three places half up; a price that is no number, or too large for DECIMAL(12,3), is none.
+link twice), written to three places half up; a price that is no number, or too large for DECIMAL(12,3), is none,
+and a price is staged in its short form (1E-3000000, not three million digits).
 For percent off (S4, measured, never a gate), `with_store_price` counts the carrying stores whose rows in the day's
 prices table list the code (B5's one price a store, `basket.rules.store_prices_sql`, over the rows that count),
-and `agrees_with_store` those of them whose `DiscountedPrice` is within ₪0.01 of that store's own price x (1 − rate/100)
-rounded half up (`shopper.deals.agrees`, the one such rule); NULL for every other kind. `stores` counts the column's
+and `agrees_with_store` those of them whose rate is above 0 and below 100 and whose `DiscountedPrice` is within ₪0.01
+of that store's own price x (1 − rate/100) rounded half up (`shopper.deals.rate_agrees`, the deal's own check, so a
+rate such as 1E+30 never agrees); NULL for every other kind. `stores` counts the column's
 counted stores whose latest file links that promotion to that code, each once however often its file lists it;
 `promotion_stores` those carrying the promotion at all; `counted` the column's counted stores, with a promotion file
 or not; `wide` is `stores` x 2 ≥ `counted` (P3 per column: half the column's counted stores).
@@ -74,7 +76,7 @@ from basket.barcode import is_gs1, normalize
 from basket.chains import EXCLUDED
 from basket.extract import DayFile, copy_sql, day_files, sql_text, write_csv
 from basket.rules import apply_filters, median, open_day, store_prices_sql
-from shopper.deals import agrees
+from shopper.deals import rate_agrees
 from shopper.promofile import PromotionFormatChanged, PromotionRead, Tally, read_promotions
 from shopper.promotions import KNOWN_FIELDS, check_codes, dates, keep, kind, min_spend, not_shelf, number, target
 
@@ -254,8 +256,9 @@ def _read_file(slug: str, day: date, day_file: DayFile, read: _Read) -> None:
                               item["bIsWeighted"] == "1", group_json, item_json))
             if found == PERCENT_OFF and code_norm is not None:
                 read.percent_off.add(code_norm)
+            price = _store_price(item["DiscountedPrice"])
             links.append((store, int(store), read.seq, promotion_id, group["GroupID"], code, code_norm,
-                          promotion_variant, item_variant, _text(_store_price(item["DiscountedPrice"])),
+                          promotion_variant, item_variant, None if price is None else str(price),
                           item["DiscountRate"]))
             read.seq += 1
     for name, rows in (("links", links), ("carriers", carriers), ("promotions", promotions), ("items", items)):
@@ -264,8 +267,7 @@ def _read_file(slug: str, day: date, day_file: DayFile, read: _Read) -> None:
 
 
 def _agrees(price: Decimal | None, own: Decimal, rate: str) -> bool:
-    found = number(rate)
-    return price is not None and found is not None and agrees(price, own, found)
+    return price is not None and rate_agrees(rate, price, own)
 
 
 def _figures(result: duckdb.DuckDBPyConnection) -> Iterator[tuple]:

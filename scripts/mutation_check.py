@@ -106,6 +106,8 @@ SHOP_PROMOS = ("src/shopper/promos.py", ["tests/test_promos.py"])
 # through basket.rules.store_prices_sql: its tests must catch a break of either.
 EXTRACT_FOR_SHOP_PROMOS = ("src/basket/extract.py", ["tests/test_promos.py"])
 RULES_FOR_SHOP_PROMOS = ("src/basket/rules.py", ["tests/test_promos.py"])
+# The stores' agreement takes the deal's own rate check (shopper.deals.rate_agrees): its tests must catch the bound lost.
+DEALS_FOR_SHOP_PROMOS = ("src/shopper/deals.py", ["tests/test_promos.py"])
 SHOP_ITEMS = ("src/shopper/items.py", ["tests/test_items.py"])
 # The items table reads B5, B6, B7, B8 and the rows that count from basket.rules, through a view of its own: its tests
 # must catch a break of any of them (the second pre-flight's S13).
@@ -1196,7 +1198,7 @@ MUTATIONS = {
     "n for m read as m times n (q22 P4)": (SHOP_DEALS, "Fraction(amount) / Fraction(quantity), per,", "Fraction(amount) * Fraction(quantity), per,"),
     "percent off from the variant's price, not the stores' median (q22 P4)": (SHOP_DEALS, "        if stores is None and amount is not None:\n", "        if amount is not None:\n"),
     "percent off computed from the rate (q22 P4)": (SHOP_DEALS, "        price = Fraction(stores.median)\n", '        price = Fraction(stores.median) if listed is None or number(item["DiscountRate"]) is None else Fraction(listed) * (100 - Fraction(number(item["DiscountRate"]))) / 100\n'),
-    "the rate not checked (q22 P4)": (SHOP_DEALS, "        disagrees = listed is not None and not _rate_agrees(item, stores.median, listed)\n", "        disagrees = False\n"),
+    "the rate not checked (q22 P4)": (SHOP_DEALS, '        disagrees = listed is not None and not rate_agrees(item["DiscountRate"], stores.median, listed)\n', "        disagrees = False\n"),
     "agreement within a shekel (q22 P4)": (SHOP_DEALS, "    return abs(price - figure) <= AGREE\n", "    return abs(price - figure) <= 1\n"),
     "agreement against the unrounded figure (q22 P4)": (SHOP_DEALS, "    figure = (base * (100 - rate) / 100).quantize(AGREE, rounding=ROUND_HALF_UP)\n", "    figure = base * (100 - rate) / 100\n"),
     "agreement rounded half to even (q22 P4)": (SHOP_DEALS, ".quantize(AGREE, rounding=ROUND_HALF_UP)", ".quantize(AGREE)"),
@@ -1301,6 +1303,8 @@ MUTATIONS = {
     'texts without listed prices (q22 items)': (SHOP_ITEMS, 'json.dumps(listed, ensure_ascii=False), len(text.stores))', 'json.dumps({}, ensure_ascii=False), len(text.stores))'),
     'texts listed at every column (q22 items)': (SHOP_ITEMS, 'for column, ids in columns.items() if ids & carrying}', 'for column, ids in columns.items()}'),
     "a group's items left out of the texts' fields (q22 items)": (SHOP_ITEMS, 'if link.group is group]}', 'if False]}'),
+    "the rate's bound left out of the stores' agreement (q22 promotions table)": (DEALS_FOR_SHOP_PROMOS, 'rate is not None and 0 < rate < 100 and agrees(price, base, rate)', 'rate is not None and agrees(price, base, rate)'),
+    'a store price staged in its full digits (q22 promotions table)': (SHOP_PROMOS, 'None if price is None else str(price),', 'None if price is None else format(price, "f"),'),
     # basket: extract
     "extract older file wins": (EXTRACT, "latest = max(named)", "latest = min(named)"),
     "extract first duplicate wins": (EXTRACT, "        latest[row.code] = row", "        latest.setdefault(row.code, row)"),
