@@ -159,7 +159,8 @@ _RUN_READ_EARLIER = ('        prefix = manifest_key(self.day, self.slug, "").rem
                      "        earlier = [json.loads(record) for record in self.store.read_records(prefix)]\n")
 # NCR's listing as it stands: every name read and checked, then given (q26). And a rewrite that reads the directory answer
 # by answer, checking each answer's names and giving its rows before it asks for the next: the rows after a poll's time
-# stop would then wait on requests the drain cannot make.
+# stop would then wait on requests the drain cannot make. The rewrite also leaves out `_fnames` and `_read_through`: the
+# token and `cd` checks, R34's re-read, R21's refusal of a repeat, the zero-total check and each answer's log line.
 _NCR_LISTED = ("        listed = []\n"
                "        for number, fname in enumerate(_fnames(http, file_page, self.username, short_of_time), 1):\n"
                '            name = checked_name(fname, f"the NCR listing, entry {number}")\n'
