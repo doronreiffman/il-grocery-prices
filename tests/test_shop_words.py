@@ -1,9 +1,12 @@
-"""The site's words (`shopper.words`; the plan's Task 15): the design's "Words", "What a visitor sees", P6 to P8, P10, F10
-and the amendment's "Words"; the plan's questions J, K, M (f) and O; the first pre-flight's S10, the second's S7, N4,
-N7 and N23; and Task 9's review rulings on P8's count, a change's dates and the runs at the window's ends.
+"""The site's words (`shopper.words`; the plan's Task 15): the design's "Words", "What a visitor sees", P6 to P8, P10,
+F10 and the amendment's "Words"; the plan's questions J, K, M (f) and O; the first pre-flight's S10, the second's S7,
+N4, N7 and N23; Task 9's review rulings on P8's count, a change's dates and the runs at the window's ends; and Task
+15's review rulings (fix round 1) on the shown figures, the bounds beside a gap in the records, the column in P8 and
+"before today".
 
-The design's quoted sentences are read from docs/shopper-site.md (and the plan's answers from docs/shopper-site-plan.md),
-so a change on either side shows. The pairs and column-days are built as tests/test_measures.py builds them."""
+The design's quoted sentences are read from docs/shopper-site.md (and the plan's answers from
+docs/shopper-site-plan.md), so a change on either side shows. The pairs and column-days are built as
+tests/test_measures.py builds them."""
 import re
 from datetime import date, timedelta
 from fractions import Fraction
@@ -90,6 +93,10 @@ def test_the_lists_are_the_designs_verbatim():
     assert f'"{FINE_PRINT}"' in DESIGN and FINE_PRINT.startswith(always[6] + ":")
     # S7: one fixed sentence holds the four, so every product page carries them, a product listed nowhere today too
     assert all(phrase in ALWAYS_SENTENCE for phrase in ALWAYS)
+    # true of a product page's prices with the stores left out by rule (Deal's online store 413, Express's 779), which
+    # the method page names (fix round 1, ruling 5); in the site's public words, no "column"
+    assert "apart from the stores left out by rule" in ALWAYS_SENTENCE and METHOD_TITLE in ALWAYS_SENTENCE
+    assert "column" not in ALWAYS_SENTENCE
     never = _quoted(_line(DESIGN, "Never: "))
     basket_part = never[:never.index("the chain charges") + 1]
     assert set(basket_part) <= set(BASKET_NEVER)                        # the basket's list, whole, first
@@ -186,7 +193,7 @@ def test_column_words():
         "(as Shufersal Deal, Shufersal Express and Shufersal Sheli list it)")
     with pytest.raises(ValueError):
         as_listed([])
-    assert across("shufersal-deal") == "listed across Shufersal Deal"       # the design's "listed chain-wide", per column
+    assert across("shufersal-deal") == "listed across Shufersal Deal"   # the design's "listed chain-wide", by column
     assert across("ramilevy") == "listed across Rami Levy"
     assert last_across("carrefour-city", date(2026, 11, 3)) == "last listed across Carrefour City on 3 November 2026"
     assert last_across("yochananof", date(2027, 1, 1)) == "last listed across Yochananof on 1 January 2027"
@@ -212,25 +219,31 @@ def test_the_short_sentences():
 
 # P7
 
+BEFORE = "before today"
+ACROSS = "a promotion listed across Shufersal Deal"
+
+
 def test_p7_sentences_for_the_designs_example():
-    """The design's example on Task 9's history: so "of the 90 days with records" (the first pre-flight's S10)."""
+    """The design's example on Task 9's history: so "of the 90 days with records" (the first pre-flight's S10), each
+    window's count said to be of the days before today (fix round 1, ruling 4)."""
     assert "₪4.00, 34%, below the 30-day median listed price of ₪11.90" in DESIGN
     assert gap_sentences(_gap("7.90", _example())) == (
-        "Deal price ₪7.90: ₪4.00, 34%, below the 30-day median listed price of ₪11.90 (of the 30 days with records).",
-        "The lowest listed price was ₪10.90 over the past 30 days and ₪10.90 over the past 90; listed at ₪7.90 or less "
-        "on 0 of the 90 days with records.",
+        "Deal price ₪7.90: ₪4.00, 34%, below the 30-day median listed price of ₪11.90 (of the 30 days with records "
+        "before today).",
+        "The lowest listed price was ₪10.90 over the 30 days before today and ₪10.90 over the 90; listed at ₪7.90 or "
+        "less on 0 of the 90 days with records before today.",
         "The listed price rose from ₪10.90 to ₪11.90 on 28 October 2026.")
     # a deal not below the median, or equal to it
     above = gap_sentences(_gap("12.50", _example()))
     assert above[0] == ("Deal price ₪12.50: not below the 30-day median listed price of ₪11.90 (of the 30 days with "
-                        "records).")
-    assert above[1].endswith("listed at ₪12.50 or less on 90 of the 90 days with records.")
+                        "records before today).")
+    assert above[1].endswith("listed at ₪12.50 or less on 90 of the 90 days with records before today.")
     assert gap_sentences(_gap("11.90", _example()))[0].startswith("Deal price ₪11.90: not below the 30-day median ")
     # the lows of each window, and a median of three places written to the agora, half up (₪1.445 is ₪1.45)
     raised = {**listed_from(61, 90, "7.00"), **listed_from(1, 60, "11.90")}
     assert gap_sentences(_gap("7.90", raised))[1] == (
-        "The lowest listed price was ₪11.90 over the past 30 days and ₪7.00 over the past 90; listed at ₪7.90 or less "
-        "on 30 of the 90 days with records.")
+        "The lowest listed price was ₪11.90 over the 30 days before today and ₪7.00 over the 90; listed at ₪7.90 or "
+        "less on 30 of the 90 days with records before today.")
     assert gap_sentences(_gap("1.00", {back(2): "1.44", back(1): "1.45"}))[0].startswith(
         "Deal price ₪1.00: ₪0.45, 31%, below the 30-day median listed price of ₪1.45 ")
 
@@ -240,22 +253,22 @@ def test_p7_and_p8_with_a_short_window():
     listed = listed_from(1, 5, "10.00")                                   # 15 to 19 November
     assert gap_sentences(_gap("7.90", listed)) == (
         "Deal price ₪7.90: ₪2.10, 21%, below the 30-day median listed price of ₪10.00 (of the 5 days of records since "
-        "15 November 2026).",
-        "The lowest listed price was ₪10.00 over the past 30 days and ₪10.00 over the past 90; listed at ₪7.90 or less "
-        "on 0 of the 5 days of records since 15 November 2026.",
-        "The listed price did not change on the 5 days of records since 15 November 2026.")
+        "15 November 2026 before today).",
+        "The lowest listed price was ₪10.00 over the 30 days before today and ₪10.00 over the 90; listed at ₪7.90 or "
+        "less on 0 of the 5 days of records since 15 November 2026 before today.",
+        "The listed price did not change on the 5 days of records since 15 November 2026 before today.")
     assert _history(listed, promoted=[back(2), back(1)], today=False) == (
-        f"On a promotion on 2 of the 5 days of records since 15 November 2026, {MORNING}.",
-        "Run: 18 to 19 November 2026.",
+        f"On {ACROSS} on 2 of the 5 days of records since 15 November 2026 before today, {MORNING}.",
+        "Run before today: 18 to 19 November 2026.",
         "The last run ended on 19 November 2026, 1 day ago.")
     one = gap_sentences(_gap("7.90", {back(1): "10.00"}))
-    assert one[0].endswith("(of the 1 day of records since 19 November 2026).")
+    assert one[0].endswith("(of the 1 day of records since 19 November 2026 before today).")
     # 25 of 30 days with records is no short 30-day window, but every day of the 30 is not known
     holed = gap_sentences(_gap("7.90", listed_from(1, 30, "10.00"), holes=[back(n) for n in range(1, 6)]))
-    assert holed[0].endswith("(of the 25 days with records).")
-    assert holed[2] == "The listed price did not change on the 25 days with records of the past 30."
+    assert holed[0].endswith("(of the 25 days with records before today).")
+    assert holed[2] == "The listed price did not change on the 25 days with records of the 30 before today."
     full = gap_sentences(_gap("7.90", listed_from(1, 30, "10.00")))
-    assert full[2] == "The listed price did not change in the past 30 days."
+    assert full[2] == "The listed price did not change in the 30 days before today."
 
 
 def test_p7_changes_in_order_and_across_a_hole():
@@ -274,25 +287,45 @@ def test_p7_changes_in_order_and_across_a_hole():
         "The listed price fell from ₪11.90 (17 November 2026) to ₪10.90 (19 November 2026).")
 
 
-def test_p7_figures_for_a_deal_of_more_than_two_places():
-    """A deal price is written to the agora, half up, from its exact value (S6); the count of days at or below it reads
-    the exact value (Task 9). So when the figure rounds up, "at ₪1.45 or less" would take in a listed ₪1.45 the count
-    leaves out: the sentence says "below ₪1.45". A gap under half an agora is "less than ₪0.01"."""
-    up = gap_sentences(_gap(Fraction("4.34") / 3, listed_from(1, 30, "1.45")))      # 1.4466...
-    assert up[0] == ("Deal price ₪1.45: less than ₪0.01, 0%, below the 30-day median listed price of ₪1.45 (of the 30 "
-                     "days with records).")
-    assert up[1] == ("The lowest listed price was ₪1.45 over the past 30 days and ₪1.45 over the past 90; listed below "
-                     "₪1.45 on 0 of the 30 days of records since 21 October 2026.")
-    down = gap_sentences(_gap(Fraction(10, 3), listed_from(1, 30, "3.33")))         # 3.3333...
-    assert down[0].startswith("Deal price ₪3.33: not below the 30-day median listed price of ₪3.33 ")
-    assert down[1].endswith("listed at ₪3.33 or less on 30 of the 30 days of records since 21 October 2026.")
+def test_a_change_the_shown_figures_do_not_show_is_not_stated():
+    """Fix round 1, ruling 2 (the review's Important 3): a median of ₪1.445 is shown ₪1.45, so its move to ₪1.45 is
+    no change in the figures shown, and "rose from ₪1.45 to ₪1.45" is never said."""
+    assert gap_sentences(_gap("1.00", {back(3): "1.445", back(2): "1.45", back(1): "1.45"}))[2] == (
+        "The listed price did not change on the 3 days of records since 17 November 2026 before today.")
+    assert gap_sentences(_gap("1.00", {back(3): "1.44", back(2): "1.445", back(1): "1.45"}))[2] == (
+        "The listed price rose from ₪1.44 to ₪1.45 on 18 November 2026.")
+
+
+def test_p7_figures_are_the_shown_figures():
+    """Fix round 1, ruling 2 (the review's Important 3 and Minor 1): the gap and its percent are worked from the shown
+    median and the shown deal price, and the days at or below are counted on the shown figures, so the page agrees with
+    itself; the exact price still ranks and decides the front page (shopper.measures), never stated."""
+    # 3 for ₪10.01 is 3.3366... a unit, shown ₪3.34; a median of ₪3.335 is shown ₪3.34 too
+    probe = gap_sentences(_gap(Fraction("10.01") / 3, listed_from(1, 30, "3.335")))
+    assert probe[0].startswith("Deal price ₪3.34: not below the 30-day median listed price of ₪3.34 ")
+    assert probe[1] == ("The lowest listed price was ₪3.34 over the 30 days before today and ₪3.34 over the 90; listed "
+                        "at ₪3.34 or less on 30 of the 30 days of records since 21 October 2026 before today.")
+    # a deal of ₪1.445, shown ₪1.45, against ₪1.50: ₪0.05 and 3%, not the exact gap's ₪0.06 and 4%
+    assert gap_sentences(_gap("1.445", listed_from(1, 30, "1.50")))[0] == (
+        "Deal price ₪1.45: ₪0.05, 3%, below the 30-day median listed price of ₪1.50 (of the 30 days with records "
+        "before today).")
+    # 3 for ₪4.34 (1.4466...) against a listed ₪1.45: equal as shown, so not below it, and listed at it on every day
+    up = gap_sentences(_gap(Fraction("4.34") / 3, listed_from(1, 30, "1.45")))
+    assert up[0].startswith("Deal price ₪1.45: not below the 30-day median listed price of ₪1.45 ")
+    assert up[1].endswith("listed at ₪1.45 or less on 30 of the 30 days of records since 21 October 2026 before today.")
+    # 3 for ₪10 (3.3333...), shown ₪3.33, against a median of ₪3.335 shown ₪3.34: ₪0.01 below, and no day at or below
+    down = gap_sentences(_gap(Fraction(10, 3), listed_from(1, 30, "3.335")))
+    assert down[0].startswith("Deal price ₪3.33: ₪0.01, 0%, below the 30-day median listed price of ₪3.34 ")
+    assert down[1].endswith(
+        "listed at ₪3.33 or less on 0 of the 30 days of records since 21 October 2026 before today.")
 
 
 # P8
 
 def test_p8_sentences_in_the_designs_forms():
     """Page day 6 December 2026; 87 days with records (three days of the 90 the product is not listed); on promotion
-    from 3 to 9 and from 24 to 30 November, 12 days listed of them; off promotion today."""
+    from 3 to 9 and from 24 to 30 November, 12 days listed of them; off promotion today. P8 names the column, as the
+    amendment's "Words" do (fix round 1, ruling 3)."""
     page_day = date(2026, 12, 6)
     window = [page_day - timedelta(days=n) for n in range(90, 0, -1)]
     not_listed = {date(2026, 10, 15), date(2026, 11, 5), date(2026, 11, 26)}
@@ -300,20 +333,28 @@ def test_p8_sentences_in_the_designs_forms():
     promoted = [day for day in listed if date(2026, 11, 3) <= day <= date(2026, 11, 9)
                 or date(2026, 11, 24) <= day <= date(2026, 11, 30)]
     assert _history(listed, promoted, today=False, page_day=page_day, extra_days=not_listed) == (
-        f"On a promotion on 12 of the 87 days with records, {MORNING}.",
-        "Runs: 3 to 9 November 2026; 24 to 30 November 2026.",
+        f"On {ACROSS} on 12 of the 87 days with records before today, {MORNING}.",
+        "Runs before today: 3 to 9 November 2026; 24 to 30 November 2026.",
         "Days between runs: 14.",
         "The last run ended on 30 November 2026, 6 days ago.")
-    assert _history(listed, today=False, page_day=page_day, extra_days=not_listed) == (
-        "No promotion listed in the 87 days with records.",)
+
+
+def test_p8_never_denies_a_promotion_at_some_stores():
+    """The review's Important 4: a promotion carried by fewer than half the column's stores is no run, so P8 says no
+    promotion was listed across the column, never that none was listed."""
+    assert _history(listed_from(1, 90, "10.00"), today=False) == (
+        "No promotion listed across Shufersal Deal in the 90 days with records before today.",)
+    sheli = history_sentences(_pair("shufersal-sheli", listed_from(1, 90, "10.00")),
+                              _days("shufersal-sheli", listed_from(1, 90, "10.00")), DAY)
+    assert sheli == ("No promotion listed across Shufersal Sheli in the 90 days with records before today.",)
 
 
 def test_p8_runs_and_the_days_between_them():
     listed = listed_from(1, 90, "10.00")
     promoted = [back(n) for n in (30, 29, 28, 20, 19, 18, 5, 4)]
     assert _history(listed, promoted, today=False) == (
-        f"On a promotion on 8 of the 90 days with records, {MORNING}.",
-        "Runs: 21 to 23 October 2026; 31 October to 2 November 2026; 15 to 16 November 2026.",
+        f"On {ACROSS} on 8 of the 90 days with records before today, {MORNING}.",
+        "Runs before today: 21 to 23 October 2026; 31 October to 2 November 2026; 15 to 16 November 2026.",
         "Days between runs: 7; 12.",
         "The last run ended on 16 November 2026, 4 days ago.")
 
@@ -325,16 +366,16 @@ def test_p8_counts_the_days_with_records_p7_counts():
     promoted = [back(n) for n in range(1, 6)]
     found = _history(listed, promoted, unread=[back(3)], today=False)
     assert found == (
-        f"On a promotion on 4 of the 6 days of records since 14 November 2026 (promotions could not be read on 1), "
-        f"{MORNING}.",
-        "Run: 15 to 19 November 2026.",
+        f"On {ACROSS} on 4 of the 6 days of records since 14 November 2026 before today (promotions could not be read "
+        f"on 1), {MORNING}.",
+        "Run before today: 15 to 19 November 2026.",
         "The last run ended on 19 November 2026, 1 day ago.")
-    same = "of the 6 days of records since 14 November 2026"
+    same = "of the 6 days of records since 14 November 2026 before today"
     assert same in gap_sentences(_gap("7.90", listed))[0] and same in found[0]
     # none on promotion, some days not read: the count, not "no promotion listed"
     assert _history(listed_from(1, 5, "10.00"), unread=[back(2), back(1)]) == (
-        f"On a promotion on 0 of the 5 days of records since 15 November 2026 (promotions could not be read on 2), "
-        f"{MORNING}.",)
+        f"On {ACROSS} on 0 of the 5 days of records since 15 November 2026 before today (promotions could not be read "
+        f"on 2), {MORNING}.",)
 
 
 def test_p8_on_promotion_today():
@@ -342,47 +383,92 @@ def test_p8_on_promotion_today():
     on promotion: today is said, and the history is worded as before today."""
     listed = listed_from(1, 90, "10.00")
     assert _history(listed, [back(n) for n in range(1, 11)], today=True) == (
-        f"On a promotion today, {MORNING}.",
-        f"Before today: on a promotion on 10 of the 90 days with records, {MORNING}.",
+        f"On {ACROSS} today, {MORNING}.",
+        f"On {ACROSS} on 10 of the 90 days with records before today, {MORNING}.",
         "Run before today: 10 to 19 November 2026.")
     assert _history(listed, today=True) == (
-        f"On a promotion today, {MORNING}.",
-        "Before today: no promotion listed in the 90 days with records.")
+        f"On {ACROSS} today, {MORNING}.",
+        "No promotion listed across Shufersal Deal in the 90 days with records before today.")
     # the run seen to 17 November, the two days after it holes: before today it may have gone on
     found = _history(listed, [back(n) for n in range(3, 11)], holes=[back(2), back(1)], today=True)
-    assert found[1:] == (f"Before today: on a promotion on 8 of the 88 days with records, {MORNING}.",
+    assert found[1:] == (f"On {ACROSS} on 8 of the 88 days with records before today, {MORNING}.",
                          "Run before today: from 10 November 2026 to 17 November 2026 or later.")
-    assert _history({}, today=True) == (f"On a promotion today, {MORNING}.",)
+    # a run that ended before the days off promotion that led to today's: still no end said beside today's promotion
+    assert _history(listed, [back(n) for n in range(5, 11)], today=True) == (
+        f"On {ACROSS} today, {MORNING}.",
+        f"On {ACROSS} on 6 of the 90 days with records before today, {MORNING}.",
+        "Run before today: 10 to 15 November 2026.")
+    assert _history({}, today=True) == (f"On {ACROSS} today, {MORNING}.",)
     assert _history({}) == ()
 
 
 def test_p8_runs_at_the_windows_ends():
     """Ruling 3 (b): a run seen from the window's first day read may have started earlier; and its mirror, a run seen
-    to the last day read when today's state is not known, may go on."""
+    to the last day read when today's state is not known, may go on, and then no end is said."""
     listed = listed_from(1, 90, "10.00")
     first = [back(n) for n in range(85, 91)]                              # 22 to 27 August, the window's first days
     assert _history(listed, first, today=False) == (
-        f"On a promotion on 6 of the 90 days with records, {MORNING}.",
-        "Run: from 22 August 2026 or earlier to 27 August 2026.",
+        f"On {ACROSS} on 6 of the 90 days with records before today, {MORNING}.",
+        "Run before today: from 22 August 2026 or earlier to 27 August 2026.",
         "The last run ended on 27 August 2026, 85 days ago.")
     # the window's first day a hole: the run seen from the first day read
     assert _history(listed, first, holes=[back(90)], today=False)[1] == (
-        "Run: from 23 August 2026 or earlier to 27 August 2026.")
+        "Run before today: from 23 August 2026 or earlier to 27 August 2026.")
     last = [back(n) for n in range(1, 6)]                                 # 15 to 19 November
     for today in (None, "unread", "hole"):
         assert _history(listed, last, today=today) == (
-            f"On a promotion on 5 of the 90 days with records, {MORNING}.",
-            "Run: from 15 November 2026 to 19 November 2026 or later.")
-    assert _history(listed, last, today=False)[1:] == ("Run: 15 to 19 November 2026.",
+            f"On {ACROSS} on 5 of the 90 days with records before today, {MORNING}.",
+            "Run before today: from 15 November 2026 to 19 November 2026 or later.")
+    assert _history(listed, last, today=False)[1:] == ("Run before today: 15 to 19 November 2026.",
                                                        "The last run ended on 19 November 2026, 1 day ago.")
     # an open run beside a pinned one: only the end the files cannot pin is said open
     assert _history(listed, [*first, back(5), back(4)], today=False)[1:3] == (
-        "Runs: from 22 August 2026 or earlier to 27 August 2026; 15 to 16 November 2026.", "Days between runs: 79.")
+        "Runs before today: from 22 August 2026 or earlier to 27 August 2026; 15 to 16 November 2026.",
+        "Days between runs: 79.")
     assert _history(listed, [*first, back(2), back(1)])[1:] == (
-        "Runs: from 22 August 2026 or earlier to 27 August 2026; from 18 November 2026 to 19 November 2026 or later.",
+        "Runs before today: from 22 August 2026 or earlier to 27 August 2026; from 18 November 2026 to 19 November "
+        "2026 or later.",
         "Days between runs: 82.")
     whole = [back(n) for n in range(1, 91)]
-    assert _history(listed, whole)[1] == "Run: from 22 August 2026 or earlier to 19 November 2026 or later."
+    assert _history(listed, whole)[1] == (
+        "Run before today: from 22 August 2026 or earlier to 19 November 2026 or later.")
+
+
+def test_an_end_beside_a_gap_in_the_records_is_a_bound():
+    """Fix round 1, ruling 1 (the review's Important 1): off promotion today, but the two days before it holes, so the
+    run seen to 17 November may have run to 19 November: its end is "or later", its days ago "at most"."""
+    listed = listed_from(1, 90, "10.00")
+    promoted = [back(n) for n in range(3, 11)]
+    assert _history(listed, promoted, holes=[back(2), back(1)], today=False) == (
+        f"On {ACROSS} on 8 of the 88 days with records before today, {MORNING}.",
+        "Run before today: from 10 November 2026 to 17 November 2026 or later.",
+        "The last run ended on 17 November 2026 or later, at most 3 days ago.")
+    # an unread day beside the end is a bound too, and a day read after it says the run did end
+    assert _history(listed, promoted, unread=[back(2)])[1:] == (
+        "Run before today: from 10 November 2026 to 17 November 2026 or later.",
+        "The last run ended on 17 November 2026 or later, at most 3 days ago.")
+    # a day the product is not listed is no reading of it either
+    unlisted = {day: price for day, price in listed.items() if day != back(2)}
+    assert _history(unlisted, promoted, today=False, extra_days=[back(2)])[2] == (
+        "The last run ended on 17 November 2026 or later, at most 3 days ago.")
+
+
+def test_run_edges_and_the_days_between_runs_beside_a_gap_are_bounds():
+    """Fix round 1, ruling 1 (the review's Important 2): mid-window, a hole after one run's end and an unread day before
+    the next one's start leave both edges and the days between them unpinned."""
+    listed = listed_from(1, 90, "10.00")
+    promoted = [back(n) for n in (30, 29, 28, 20, 19, 18)]
+    assert _history(listed, promoted, unread=[back(21)], holes=[back(27)], today=False) == (
+        f"On {ACROSS} on 6 of the 89 days with records before today (promotions could not be read on 1), {MORNING}.",
+        "Runs before today: from 21 October 2026 to 23 October 2026 or later; from 31 October 2026 or earlier to 2 "
+        "November 2026.",
+        "Days between runs: at most 7.",
+        "The last run ended on 2 November 2026, 18 days ago.")
+    # one edge unpinned is enough: here only the next run's start, the day before it not read
+    assert _history(listed, promoted, unread=[back(21)], today=False)[2] == "Days between runs: at most 7."
+    # each gap is said alone: a pinned one beside a bound one
+    three = [*promoted, back(5), back(4)]
+    assert _history(listed, three, holes=[back(27)], today=False)[2] == "Days between runs: at most 7; 12."
 
 
 # Every sentence
@@ -392,11 +478,15 @@ def _every_sentence() -> list[str]:
     gaps = [_gap("7.90", _example()), _gap("12.50", _example()), _gap("7.90", listed_from(1, 5, "10.00")),
             _gap(Fraction("4.34") / 3, listed_from(1, 30, "1.45")), _gap(Fraction(10, 3), listed_from(1, 30, "3.33")),
             _gap("7.90", {back(5): "10.90", back(4): "99.00", back(3): "11.90"}, holes=[back(4)]),
-            _gap("7.90", {back(3): "11.90", back(1): "10.90"})]
+            _gap("7.90", {back(3): "11.90", back(1): "10.90"}), _gap("1.445", listed_from(1, 30, "1.50")),
+            _gap(Fraction("10.01") / 3, listed_from(1, 30, "3.335")),
+            _gap(Fraction(10, 3), listed_from(1, 30, "3.335"))]
     histories = [_history(listed, [back(n) for n in (30, 29, 20, 5)], today=False),
                  _history(listed, [back(n) for n in range(1, 11)], today=True), _history(listed, today=True),
                  _history(listed, [back(n) for n in range(85, 91)], unread=[back(40)], today=None),
-                 _history(listed_from(1, 5, "10.00"), unread=[back(1)])]
+                 _history(listed_from(1, 5, "10.00"), unread=[back(1)]),
+                 _history(listed, [back(n) for n in (30, 29, 28, 20, 19, 18)], unread=[back(21)], holes=[back(27)],
+                          today=False)]
     slugs = list(CHAIN_NAMES)
     return [SITE_NAME, FRONT_TITLE, FRONT_RULE, GAP_HEADING, HISTORY_HEADING, METHOD_TITLE, RECORD_TITLE,
             ALWAYS_SENTENCE, FROM_FIELDS, FROM_TEXT, FINE_PRINT, PRICE_NOT_READ, AT_SOME_STORES,

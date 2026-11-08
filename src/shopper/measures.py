@@ -92,7 +92,7 @@ class Run:
     end: date
 
 
-def _whole(value: Fraction) -> int:
+def whole(value: Fraction) -> int:
     """`value` as a whole number, half up: a tie goes away from zero."""
     whole = int(abs(value) + Fraction(1, 2))
     return whole if value >= 0 else -whole
@@ -114,7 +114,7 @@ def gap(deal: Fraction, pair: Pair, column_days: Mapping[tuple[str, date], Colum
     long = window(pair, column_days, day, READ_DAYS)
     middle = median(sorted(recent.listed))
     below = Fraction(middle) - deal
-    return Gap(deal=deal, median30=middle, below=below, percent=_whole(100 * below / Fraction(middle)),
+    return Gap(deal=deal, median30=middle, below=below, percent=whole(100 * below / Fraction(middle)),
                low30=min(recent.listed), low90=min(long.listed),
                at_or_below=sum(1 for listed in long.listed if Fraction(listed) <= deal),
                window30=recent, window90=long, changes=_changes(pair, column_days, day))
