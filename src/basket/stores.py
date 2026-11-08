@@ -13,7 +13,8 @@ are filtered again by the sub-chain in their file name, which wins over the list
 
 Which list. A day's store list is the `Stores` file in that day's folder whose name says that day,
 the greatest stored name if there are several; else that of the latest earlier day that has one. A
-conflict copy is read by its published name.
+conflict copy is read by its published name. A chain with no list on or before the day is refused with
+NoStoreList (`chain_stores`): its included stores are not known.
 """
 import gzip
 import xml.etree.ElementTree as ET
@@ -30,6 +31,10 @@ from collector.store import published_name
 
 STORE_ID_TAGS = ("StoreID", "StoreId")
 SUB_CHAIN_TAGS = ("SubChainID", "SubChainId")
+
+
+class NoStoreList(Exception):
+    """A chain has no store list on or before the day, so its included stores are not known."""
 
 
 @dataclass(frozen=True)
@@ -99,6 +104,15 @@ def day_store_list(raw_dir: Path, slug: str, day: date) -> tuple[bytes, date] | 
         if names:
             return (folder / max(names)).read_bytes(), listed_day
     return None
+
+
+def chain_stores(raw_dir: Path, slug: str, day: date) -> tuple[list[Store], date]:
+    """The stores of the chain's store list for the day (`day_store_list`) and the day the list is from; NoStoreList
+    when neither that day nor an earlier one has one."""
+    found = day_store_list(raw_dir, slug, day)
+    if found is None:
+        raise NoStoreList(f"no store list for chain {slug!r} on or before {day.isoformat()} under {raw_dir}")
+    return read_stores(found[0]), found[1]
 
 
 def is_store_list(name: str, day: date) -> bool:

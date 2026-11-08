@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from basket.build import NoStoreList
 from basket.extract import extract
+from basket.stores import NoStoreList
 from shopper.survey import BIG_COUPON, carried_by_half, main, survey
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -328,9 +328,17 @@ def test_the_read_is_timed_and_its_peak_memory_given(tmp_path):
     assert (found["chain"], found["day"]) == ("ramilevy", "2026-11-01")
 
 
-def test_main_prints_json_per_chain(tmp_path, capsys):
+def test_main_prints_json_per_chain_and_no_promotion_text(tmp_path, capsys):
     _day(tmp_path, "ramilevy", RAMI_DAY, RAMI, {"731": "001"}, {_rami_name("731"): RAMI_LEVY.read_bytes()})
     main(["--data", str(tmp_path), "--day", "2026-11-01", "--chain", "ramilevy"])
-    printed = json.loads(capsys.readouterr().out)
+    out = capsys.readouterr().out
+    printed = json.loads(out)
     assert (printed["chain"], printed["promotions"]) == ("ramilevy", 3)
-    assert printed["samples"]["ClubID"]["0"][0] == "מבצע לדוגמה 1"  # printed for the eye, as written
+    assert "samples" not in printed and "מבצע לדוגמה" not in out  # the archive's texts only when asked
+
+
+def test_main_prints_the_texts_for_the_eye_only_when_asked(tmp_path, capsys):
+    _day(tmp_path, "ramilevy", RAMI_DAY, RAMI, {"731": "001"}, {_rami_name("731"): RAMI_LEVY.read_bytes()})
+    main(["--data", str(tmp_path), "--day", "2026-11-01", "--chain", "ramilevy", "--samples"])
+    printed = json.loads(capsys.readouterr().out)
+    assert printed["samples"]["ClubID"]["0"][0] == "מבצע לדוגמה 1"  # as written

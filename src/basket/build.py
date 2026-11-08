@@ -10,7 +10,7 @@ Extract. A chain's table is extracted from its raw files unless it is there alre
 and no rebuild is asked; a table kept is not read again, and its counts come from its report. Each
 extraction is timed for the printout; no number of the record reads the clock.
 
-Basket. Each chain's store list (`basket.stores.day_store_list`) gives its included stores (B2), the M of
+Basket. Each chain's store list (`basket.stores.chain_stores`) gives its included stores (B2), the M of
 B8; a chain with no list on or before the day stops the build with NoStoreList. The rules price the basket
 over the chains' tables (B3 to B9), and the placeholder rows (B4) are counted per chain over its included
 stores.
@@ -52,7 +52,7 @@ from basket.record import (DayRecord, build_record, code_fingerprint, comparable
                            record_json)
 from basket.rules import (MissingTable, apply_filters, chain_day, chain_prices, chain_sizes, open_day, price_basket,
                           stores_with_file_keys)
-from basket.stores import Store, day_store_list, excluded, included, read_stores
+from basket.stores import NoStoreList, chain_stores, excluded, included
 from collector.run import new_run_id
 
 ISRAEL = ZoneInfo("Asia/Jerusalem")
@@ -60,10 +60,6 @@ ISRAEL = ZoneInfo("Asia/Jerusalem")
 
 class RevisionNeeded(Exception):
     """The rebuilt day's numbers differ from the published day file, and no reason was given (B12)."""
-
-
-class NoStoreList(Exception):
-    """A chain has no store list on or before the day, so its included stores are not known."""
 
 
 @dataclass(frozen=True)
@@ -90,7 +86,7 @@ def build_day(day: date, data_dir: Path, site_dir: Path, basket_path: Path, now:
     seconds: dict[str, float | None] = {}
     for slug in chains:
         reports[slug], seconds[slug] = _table(raw_dir, slug, day, tables_dir, rebuild)
-    stores = {slug: _stores(raw_dir, slug, day) for slug in chains}
+    stores = {slug: chain_stores(raw_dir, slug, day)[0] for slug in chains}
     included_stores = {slug: included(stores[slug], slug) for slug in chains}
     sub_chains = {slug: EXCLUDED[slug].sub_chains for slug in chains}
     codes = [item.code for item in basket.items]
@@ -121,14 +117,6 @@ def _table(raw_dir: Path, slug: str, day: date, tables_dir: Path, rebuild: bool)
     started = time.perf_counter()
     found = extract(raw_dir, slug, day, tables_dir)
     return found, time.perf_counter() - started
-
-
-def _stores(raw_dir: Path, slug: str, day: date) -> list[Store]:
-    """The chain's store list for the day, or NoStoreList."""
-    found = day_store_list(raw_dir, slug, day)
-    if found is None:
-        raise NoStoreList(f"no store list for chain {slug!r} on or before {day.isoformat()} under {raw_dir}")
-    return read_stores(found[0])
 
 
 def _placeholders(con: duckdb.DuckDBPyConnection, chains: Sequence[str]) -> dict[str, int]:

@@ -17,7 +17,8 @@ What is measured, over every file read (each store's copy of a promotion counts)
 - per `RewardType`, the links that carry a `DiscountedPrice` and those that carry a `DiscountRate` (P3's "no price
   effect" is a `RewardType` 0 link with neither);
 - up to five distinct `PromotionDescription`s per value of each of those six fields, in the order first seen, for the
-  eye: they are printed, never written to a file, and never quoted in the repo beyond a word or two;
+  eye: `survey` returns them, and the command prints them only with `--samples`, to be read at the terminal (never
+  redirected, piped or saved to any file, and never quoted beyond a word or two);
 - the distinct texts, one per (id, description, start, end) as the reader would take them;
 - the promotions listed before their start (the start's date after the day; dates are compared by their date part
   only, as P3 does), by how many days ahead, those ended before the day, and the promotions whose start or end does
@@ -37,7 +38,7 @@ What is measured, over every file read (each store's copy of a promotion counts)
   price that day;
 - the seconds the survey took and the process's peak memory (`resource.getrusage`).
 
-    PYTHONPATH=src python -m shopper.survey --data data --day 2026-11-07 [--chain shufersal]
+    PYTHONPATH=src python -m shopper.survey --data data --day 2026-11-07 [--chain shufersal] [--samples]
 """
 import argparse
 import json
@@ -54,11 +55,10 @@ from pathlib import Path
 import duckdb
 
 from basket.barcode import normalize
-from basket.build import NoStoreList
 from basket.chains import EXCLUDED, SLUGS
 from basket.extract import DayFile, day_files
 from basket.rules import apply_filters, chain_prices, open_day, stores_with_file_keys
-from basket.stores import day_store_list, included, read_stores
+from basket.stores import chain_stores, included
 from shopper.promofile import PromotionRead, Tally, read_promotions
 
 KIND = "PromoFull"
@@ -317,10 +317,7 @@ def _sets(counted: Counter, every: set[str] | None, unit: str) -> list[dict]:
 def survey(raw_dir: Path, tables_dir: Path, slug: str, day: date) -> dict:
     """The chain's promotion files of the day, measured (the module's docstring); nothing is written."""
     started = time.perf_counter()
-    listed = day_store_list(raw_dir, slug, day)
-    if listed is None:
-        raise NoStoreList(f"no store list for chain {slug!r} on or before {day.isoformat()} under {raw_dir}")
-    stores = read_stores(listed[0])
+    stores, listed_on = chain_stores(raw_dir, slug, day)
     included_ids = included(stores, slug)
     sub_chain_of = {store.id: store.sub_chain for store in stores if store.id in included_ids}
     files, passed_over = day_files(raw_dir, slug, day, kind=KIND)
@@ -346,7 +343,7 @@ def survey(raw_dir: Path, tables_dir: Path, slug: str, day: date) -> dict:
     union = {level: set().union(*counted_sets) if (counted_sets := measure.element_sets[level]) else set()
              for level in LEVELS}
     return {
-        "chain": slug, "day": day.isoformat(), "store_list_of": listed[1].isoformat(),
+        "chain": slug, "day": day.isoformat(), "store_list_of": listed_on.isoformat(),
         "stores": {"included": len(included_ids), "counted": len(counted), "with_promotion_file": len(with_file),
                    "counted_with_promotion_file": len(with_file & counted)},
         "files": measure.files, "passed_over": passed_over,
@@ -404,9 +401,13 @@ def main(argv: Iterable[str] | None = None) -> None:
     parser.add_argument("--data", type=Path, required=True)
     parser.add_argument("--day", type=date.fromisoformat, required=True)
     parser.add_argument("--chain", choices=SLUGS)
+    parser.add_argument("--samples", action="store_true",
+                        help="also print up to five promotion texts per code, for the eye at the terminal only")
     args = parser.parse_args(None if argv is None else list(argv))
     for slug in [args.chain] if args.chain else SLUGS:
         found = survey(args.data / "raw", args.data / "tables", slug, args.day)
+        if not args.samples:
+            del found["samples"]  # the archive's texts are printed only when asked
         print(json.dumps(found, ensure_ascii=False, indent=1, sort_keys=True), flush=True)
 
 

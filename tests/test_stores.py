@@ -6,7 +6,8 @@ from pathlib import Path
 import pytest
 
 from basket.chains import EXCLUDED, SLUGS, Exclusion
-from basket.stores import Store, day_store_list, excluded, included, read_stores
+from basket import build
+from basket.stores import NoStoreList, Store, chain_stores, day_store_list, excluded, included, read_stores
 
 FIXTURES = Path(__file__).parent / "fixtures"
 DAY = date(2026, 11, 2)
@@ -138,6 +139,20 @@ def test_day_store_list_reads_only_names_of_the_folders_day(tmp_path):
         ("2026-11-02", "Stores7290027600007-000-20261103-020.gz"): b"named nov 3",
     })
     assert day_store_list(raw, "shufersal", DAY) == (b"nov 1", date(2026, 11, 1))
+
+
+def test_chain_stores_reads_the_list_and_gives_its_day(tmp_path):
+    raw = raw_tree(tmp_path, {("2026-11-01", "Stores7290027600007-000-20261101-020.gz"): SHUFERSAL_LIST,
+                              ("2026-11-02", "PriceFull7290027600007-001-030-20261102-040000.gz"): b"price"})
+    assert chain_stores(raw, "shufersal", DAY) == (SHUFERSAL_STORES, date(2026, 11, 1))  # the latest earlier day's
+
+
+def test_chain_stores_without_a_list_on_or_before_the_day_is_refused_naming_the_chain(tmp_path):
+    raw = raw_tree(tmp_path, {("2026-11-03", "Stores7290027600007-000-20261103-020.gz"): SHUFERSAL_LIST})
+    with pytest.raises(NoStoreList) as refused:
+        chain_stores(raw, "shufersal", DAY)
+    assert str(refused.value) == f"no store list for chain 'shufersal' on or before 2026-11-02 under {raw}"
+    assert build.NoStoreList is NoStoreList  # the build refuses a chain with the same error
 
 
 def test_every_stores_fixture_reads():

@@ -384,7 +384,7 @@ The promotion survey (`src/shopper/survey.py`) read each included store's latest
 PYTHONPATH=src .venv/bin/python -m shopper.survey --data data --day 2026-11-07
 ```
 
-It prints one JSON document per chain. The up to five promotion texts it prints per code are for the eye: none is written to a file or quoted here. The figures are 7 November's; 5 November's are in brackets where given. On 5 November the archive holds price files from 214 of Shufersal's 319 included stores, so that day's Shufersal figures cover two thirds of the chain.
+It prints one JSON document per chain, and no promotion text. With `--samples` it also prints up to five texts per code, for the eye: run it so at the terminal only, its output never redirected, piped or saved; none is quoted here. The figures are 7 November's; 5 November's are in brackets where given. On 5 November the archive holds price files from 214 of Shufersal's 319 included stores, so that day's Shufersal figures cover two thirds of the chain.
 
 **Files.** The stores counted are P2's: included, with a price file that counts that day.
 
@@ -407,7 +407,7 @@ The files of stores not included were passed over unread: Shufersal's 99 (96 nam
 - `IsGiftItem`: Shufersal "" and 0.5 to 6.5; Rami Levy "" and 1 to 10; Osher Ad "" and 1 to 10 and 12; Carrefour "" and 1 to 8 and 10; Yochananof "" and 0.5, 2.0, 3.0, 4.0. Where set, it equals the link's `MinQty` (both days) on 100% of Osher Ad's links, 98.6% of Carrefour's, 93.3% of Rami Levy's, every one of Shufersal's 1.5 to 6.5 (0.5 never), and none of Yochananof's. Read with the texts, it is the deal's quantity ("N for ₪M", or kilograms of a weighed deal) at every chain, never a gift marker.
 - `AdditionalIsCoupon` 0 and 1 (Osher Ad 0 only); `DiscountType` "", 0 and 1 (Osher Ad "" and 1, Yochananof "" and 0); `bIsWeighted` 0 and 1.
 
-**Minimum spend** (`MinPurchaseAmount` above zero, by the group's place in its promotion, 7 November): Shufersal on 8,331 first groups and 2,050 second groups; Rami Levy on 6,079 first groups (75.00 on 5,650), none of its second groups; Carrefour on 104 first groups; Yochananof on 652 second groups only (its first groups leave it empty); Osher Ad none. No group without items carries one.
+**Minimum spend** (`MinPurchaseAmount` above zero, by the group's place in its promotion): Shufersal on 8,331 first groups (5,664), 2,050 second groups (1,594) and 2 each of third and fourth groups (the same), those of its 2 promotions of four groups; Rami Levy on 6,079 first groups (6,672; 75.00 on 5,650 of 7 November's), none of its second groups; Carrefour on 104 first groups (3,128), none of its second or third groups; Yochananof on 652 second groups (653) and none of its first groups, which leave it empty; Osher Ad on none. No group without items carries one.
 
 **Chain-wide** (P3: carried by at least half the counted stores). By promotion id, and by item code: the codes a promotion that is no coupon links at a counted store, and those on a link (promotion, group, item code) at least half the counted stores carry.
 
