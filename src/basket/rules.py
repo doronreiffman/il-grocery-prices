@@ -232,11 +232,12 @@ def chain_sizes(con: duckdb.DuckDBPyConnection, codes: Sequence[str] | None,
         size = normal_size(quantity, unit)
         if size is not None:
             sizes[size] += count
-    return {key: _most_common(sizes) for key, sizes in counted.items()}
+    return {key: most_common_size(sizes) for key, sizes in counted.items()}
 
 
-def _most_common(sizes: Counter[Size]) -> Size | None:
-    """The size with the most rows, a tie to the smaller amount; None for no size."""
+def most_common_size(sizes: Counter[Size]) -> Size | None:
+    """The size with the most rows, a tie to the smaller amount; None for no size. (The shopper site's covered
+    registry counts columns with it, `shopper.history`.)"""
     return min(sizes, key=lambda size: (-sizes[size], size.amount, size.kind), default=None)
 
 

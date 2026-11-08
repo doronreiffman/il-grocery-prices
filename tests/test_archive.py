@@ -21,6 +21,7 @@ from basket.archive import (
     table_key,
 )
 from basket.extract import table_path
+from shopper.history import READ_DAYS, covered_path
 from shopper.items import items_path, texts_path
 from shopper.promos import promotions_path
 from basket.stores import day_store_list
@@ -37,6 +38,7 @@ PROMO = "PromoFull7290058140886-001-722-20261102-001016.gz"
 PROMO_LOWER = "promofull7290058140886-001-002-20261102-001500.gz"  # the Mac's parse reads a name in any case
 STORES = "Stores7290058140886-000-20261102-050500.xml"
 PRICE_DAY_BEFORE = "PriceFull7290058140886-001-723-20261101-231500.gz"  # in the day's folder, named the day before
+PARQUET, JSON = "application/vnd.apache.parquet", "application/json"
 
 
 def days_back(n: int) -> date:
@@ -235,6 +237,7 @@ def test_kind_key_names_each_kind():
     assert Path(kind_key("promotions", SLUG, DAY, "promotions.parquet")) == promotions_path(Path("tables"), SLUG, DAY)
     assert Path(kind_key("items", SLUG, DAY, "items.parquet")) == items_path(Path("tables"), SLUG, DAY)
     assert Path(kind_key("promotions", SLUG, DAY, "texts.parquet")) == texts_path(Path("tables"), SLUG, DAY)
+    assert Path(kind_key("covered", None, DAY, "covered.parquet")) == covered_path(Path("tables"), DAY)
 
 
 def test_put_tables_puts_the_files_present(tmp_path):
@@ -266,6 +269,87 @@ def test_put_tables_puts_the_files_present(tmp_path):
                                                            for name in TABLES["promotions"]]
     assert fake.objects[kind_key("promotions", SLUG, DAY, "texts.parquet")][0] == b"PAR4"
     assert MemoryArchive().put_tables(SLUG, DAY, tmp_path / "nothing") == []
+
+
+def put_items(archive, slug: str, day: date, body: bytes = b"PAR1") -> None:
+    archive._put_plain(kind_key("items", slug, day, "items.parquet"), body, PARQUET)
+    archive._put_plain(kind_key("items", slug, day, "report.json"), b'{"day": "%s"}' % day.isoformat().encode(), JSON)
+
+
+def tree(folder: Path) -> dict[str, bytes]:
+    """Every file under `folder`, by its path there."""
+    return {path.relative_to(folder).as_posix(): path.read_bytes() for path in sorted(folder.rglob("*"))
+            if path.is_file()} if folder.is_dir() else {}
+
+
+def test_fetch_items_needs_both_files(archive, tmp_path):
+    tables = tmp_path / "tables"
+    archive._put_plain(kind_key("items", SLUG, DAY, "items.parquet"), b"PAR1", PARQUET)
+    assert archive.fetch_items(SLUG, DAY, tables) is False
+    assert not tables.exists()
+
+    alone = MemoryArchive()
+    alone._put_plain(kind_key("items", SLUG, DAY, "report.json"), b"{}", JSON)
+    assert alone.fetch_items(SLUG, DAY, tables) is False
+    assert not tables.exists()
+
+    archive._put_plain(kind_key("items", SLUG, DAY, "report.json"), b'{"slug": "ramilevy"}', JSON)
+    assert archive.fetch_items(SLUG, DAY, tables) is True
+    assert local_files(items_path(tables, SLUG, DAY).parent) == {"items.parquet": b"PAR1",
+                                                                 "report.json": b'{"slug": "ramilevy"}'}
+
+
+def test_fetch_history_takes_each_chains_items_tables_of_the_day_and_the_ninety_before(archive, tmp_path):
+    tables = tmp_path / "tables"
+    for back in (-1, 0, 1, READ_DAYS, READ_DAYS + 1):   # day + 1, the day, day - 1, day - 90, day - 91
+        put_items(archive, SLUG, DAY - timedelta(days=back), b"PAR %d" % back)
+    put_items(archive, "shufersal", DAY)
+    put_items(archive, "yochananof", days_back(READ_DAYS))
+    archive._put_plain(kind_key("items", "osherad", days_back(5), "report.json"), b"{}", JSON)   # its table missing
+    archive._put_plain(kind_key("prices", "carrefour", days_back(5), "report.json"), b"{}", JSON)   # another kind
+    keys = archive.fetch_history(DAY, tables)
+    read = [("ramilevy", DAY), ("ramilevy", days_back(1)), ("ramilevy", days_back(READ_DAYS)), ("shufersal", DAY),
+            ("yochananof", days_back(READ_DAYS))]
+    assert keys == sorted(kind_key("items", slug, day, "items.parquet") for slug, day in read)
+    assert set(tree(tables)) == {kind_key("items", slug, day, name).removeprefix("tables/")
+                                 for slug, day in read for name in TABLES["items"]}
+    assert items_path(tables, SLUG, days_back(READ_DAYS)).read_bytes() == b"PAR %d" % READ_DAYS
+    assert MemoryArchive().fetch_history(DAY, tmp_path / "none") == []
+    assert not (tmp_path / "none").exists()
+
+
+def test_fetch_covered_takes_the_latest_registry_before_the_day(archive, tmp_path):
+    def put(day: date) -> None:
+        archive._put_plain(kind_key("covered", None, day, "covered.parquet"), day.isoformat().encode(), PARQUET)
+
+    tables = tmp_path / "tables"
+    assert archive.fetch_covered(DAY, tables) is None
+    assert not tables.exists()
+    for day in (days_back(9), days_back(3), DAY, DAY + timedelta(days=2)):
+        put(day)
+    archive._put_plain(kind_key("covered", None, days_back(1), "notes.json"), b"{}", JSON)   # not a registry
+    archive._put_plain("tables/covered/date=20261101/covered.parquet", b"x", PARQUET)   # not a key the code writes
+    archive._put_plain("tables/covered/date=soon/covered.parquet", b"x", PARQUET)   # nor a day
+    assert archive.fetch_covered(DAY, tables) == days_back(3)
+    assert tree(tables) == {"covered/date=2026-10-30/covered.parquet": b"2026-10-30"}
+    assert covered_path(tables, days_back(3)).read_bytes() == b"2026-10-30"
+    put(days_back(1))
+    assert archive.fetch_covered(DAY, tmp_path / "later") == days_back(1)
+    assert MemoryArchive().fetch_covered(DAY + timedelta(days=1), tmp_path / "none") is None
+
+
+def test_put_covered_puts_the_days_registry_plain(tmp_path):
+    fake = FakeS3()
+    archive = S3Archive(fake, "bucket")
+    path = covered_path(tmp_path, DAY)
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"PAR1")
+    key = archive.put_covered(DAY, tmp_path)
+    assert key == "tables/covered/date=2026-11-02/covered.parquet"
+    assert fake.calls == [("put_object", {"Bucket": "bucket", "Key": key, "Body": b"PAR1", "ContentType": PARQUET})]
+    path.write_bytes(b"PAR2")   # a re-run of the day replaces it
+    archive.put_covered(DAY, tmp_path)
+    assert fake.objects[key][0] == b"PAR2"
 
 
 def test_put_basket_record_is_write_once_and_locked(archive, tmp_path):
@@ -323,6 +407,15 @@ def test_no_method_ever_deletes(tmp_path):
     call("put_tables", SLUG, DAY, tmp_path / "out")
     call("put_tables", SLUG, DAY, tmp_path / "out")
     call("fetch_table", SLUG, DAY, tmp_path / "in")
+    put_items(archive, SLUG, DAY)
+    call("fetch_items", SLUG, DAY, tmp_path / "in")
+    call("fetch_history", DAY, tmp_path / "in")
+    registry = covered_path(tmp_path / "out", days_back(1))
+    registry.parent.mkdir(parents=True)
+    registry.write_bytes(b"PAR1")
+    call("put_covered", days_back(1), tmp_path / "out")
+    call("put_covered", days_back(1), tmp_path / "out")
+    call("fetch_covered", DAY, tmp_path / "in")
     call("put_basket_record", record, NOW)
     call("put_basket_record", record, NOW)
     record.write_text(json.dumps({"day": "2026-11-02", "run_id": "093000Z-basket-ab12", "other": 1}))

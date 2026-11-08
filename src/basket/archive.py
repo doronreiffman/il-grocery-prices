@@ -13,6 +13,7 @@ and puts back, beside the collector's keys:
     tables/prices/chain=<slug>/date=<day>/              prices.parquet and report.json, plain
     tables/promotions/chain=<slug>/date=<day>/          promotions.parquet, texts.parquet and report.json, plain
     tables/items/chain=<slug>/date=<day>/               items.parquet and report.json, plain
+    tables/covered/date=<day>/                          covered.parquet, the shopper site's registry, plain
     basket/date=<day>/basket-<run id>.json              the run's record, write-once and locked
 
 A table's key is its file's path under the tables folder (`kind_key`; `table_key` is the prices table's): the kind,
@@ -33,7 +34,16 @@ Mac. The store list is the greatest name of the day that
 `basket.stores.is_store_list` accepts (B2), read from a list of the day's whole folder (an S3 prefix matches in one
 case only, and that parse reads a name in any case), else that of each earlier day in turn, back to 13 days before
 the day: S3 has no cheap "latest folder before", and a chain with no store list for two weeks is the
-collector's problem, which the build refuses as NoStoreList. A table is fetched whole or not at all.
+collector's problem, which the build refuses as NoStoreList. A table is fetched whole or not at all: its files are
+written only when every one of its kind's files is there (`fetch_table` the prices table, `fetch_items` the items
+table).
+
+The shopper site's run reads more. Its history (`fetch_history`) is each chain's items table of the day and of the
+`shopper.history.READ_DAYS` (90) days before it, never a later day's, each fetched whole or not at all: a day missing
+is an extraction that never ran, which `shopper.history.load` reads as a hole (the day's own as MissingTable). Its
+covered registry of the day before (`fetch_covered`) is the latest `tables/covered/date=<d>/covered.parquet` of a day
+before the run's, found by listing `tables/covered/`, since a run may have missed days; the run's own registry goes
+back plain (`put_covered`), replaced by a re-run of the day as every table is.
 
 The day is ready once the collector's check has written a record under `checks/date=<day>/`
 (`day_checked`): the check is the morning's last run.
@@ -46,10 +56,11 @@ import json
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from basket.extract import table_path
+from basket.chains import SLUGS
 from basket.stores import is_store_list
 from collector.names import parse_file_name
 from collector.store import MemoryStore, S3Store, check_key, manifest_key, published_name, raw_key
+from shopper.history import READ_DAYS
 
 STORE_LIST_LOOKBACK_DAYS = 14
 # Each kind of table a chain's extraction writes for a day, and its files, in the order they go up.
@@ -57,6 +68,7 @@ TABLES = {"prices": ("prices.parquet", "report.json"),
           "promotions": ("promotions.parquet", "texts.parquet", "report.json"),
           "items": ("items.parquet", "report.json")}
 TABLE_FILES = TABLES["prices"]
+COVERED = ("covered", "covered.parquet")   # the shopper site's registry: its kind, with no chain, and its file
 _CONTENT_TYPES = {".parquet": "application/vnd.apache.parquet", ".json": "application/json"}
 
 
@@ -81,6 +93,11 @@ def _stored_name(key: str) -> str:
 
 def _day_folder(raw_dir: Path, slug: str, day: date) -> Path:
     return raw_dir / f"chain={slug}" / f"date={day.isoformat()}"
+
+
+def _local(tables_dir: Path, key: str) -> Path:
+    """A table's file under `tables_dir`: the path its key names, less its "tables/"."""
+    return tables_dir.joinpath(*key.split("/")[1:])
 
 
 class _Archive:
@@ -142,16 +159,59 @@ class _Archive:
         return len(keys)
 
     def fetch_table(self, slug: str, day: date, tables_dir: Path) -> bool:
-        """Write the chain's table and report of the day beside `table_path`; False, writing nothing, when
-        either is missing."""
-        folder = table_path(tables_dir, slug, day).parent
-        bodies = {name: self._get(table_key(slug, day, name)) for name in TABLE_FILES}
+        """Write the chain's prices table and report of the day beside `basket.extract.table_path`; False, writing
+        nothing, when either is missing."""
+        return self._fetch_whole("prices", slug, day, tables_dir)
+
+    def fetch_items(self, slug: str, day: date, tables_dir: Path) -> bool:
+        """Write the chain's items table and report of the day beside `shopper.items.items_path`; False, writing
+        nothing, when either is missing."""
+        return self._fetch_whole("items", slug, day, tables_dir)
+
+    def _fetch_whole(self, kind: str, slug: str, day: date, tables_dir: Path) -> bool:
+        """Write each of the kind's files (TABLES) of the chain's day at the path its key names under `tables_dir`;
+        False, writing nothing, when any is missing."""
+        bodies = {key: self._get(key) for key in (kind_key(kind, slug, day, name) for name in TABLES[kind])}
         if None in bodies.values():
             return False
-        folder.mkdir(parents=True, exist_ok=True)
-        for name, body in bodies.items():
-            (folder / name).write_bytes(body)
+        for key, body in bodies.items():
+            path = _local(tables_dir, key)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(body)
         return True
+
+    def fetch_history(self, day: date, tables_dir: Path) -> list[str]:
+        """Write each chain's items table of the day and of the READ_DAYS days before it, those whole in the archive;
+        the keys of the items tables written, sorted."""
+        keys = []
+        for slug in SLUGS:
+            for back in range(READ_DAYS + 1):
+                read_day = day - timedelta(days=back)
+                if self.fetch_items(slug, read_day, tables_dir):
+                    keys.append(kind_key("items", slug, read_day, TABLES["items"][0]))
+        return sorted(keys)
+
+    def fetch_covered(self, day: date, tables_dir: Path) -> date | None:
+        """Write the latest covered registry of a day before `day` at the path its key names under `tables_dir`; its
+        day, or None, writing nothing, when there is none."""
+        kind, name = COVERED
+        prefix = kind_key(kind, None, day, name).rsplit("date=", 1)[0]   # tables/covered/
+        days = []
+        for key in self._keys(prefix):
+            try:
+                listed = date.fromisoformat(key[len(prefix):].split("/", 1)[0].removeprefix("date="))
+            except ValueError:
+                continue
+            if key == kind_key(kind, None, listed, name) and listed < day:   # a registry, as this code names one
+                days.append(listed)
+        if not days:
+            return None
+        latest = max(days)
+        key = kind_key(kind, None, latest, name)
+        path = _local(tables_dir, key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(self.read_raw(key))
+        return latest
 
     def put_tables(self, slug: str, day: date, tables_dir: Path) -> list[str]:
         """Put the chain's tables of the day from under `tables_dir`, each file at the path its key names there:
@@ -160,11 +220,22 @@ class _Archive:
         for kind, names in TABLES.items():
             for name in names:
                 key = kind_key(kind, slug, day, name)
-                path = tables_dir.joinpath(*key.split("/")[1:])  # the key less its "tables/"
+                path = _local(tables_dir, key)
                 if path.is_file():
-                    self._put_plain(key, path.read_bytes(), _CONTENT_TYPES[path.suffix])
+                    self._put_file(key, path)
                     keys.append(key)
         return keys
+
+    def put_covered(self, day: date, tables_dir: Path) -> str:
+        """Put the day's covered registry from under `tables_dir`, at the path its key names there, plain; the key."""
+        kind, name = COVERED
+        key = kind_key(kind, None, day, name)
+        self._put_file(key, _local(tables_dir, key))
+        return key
+
+    def _put_file(self, key: str, path: Path) -> None:
+        """Put a table's file plain, its content type by its suffix: a re-run replaces it."""
+        self._put_plain(key, path.read_bytes(), _CONTENT_TYPES[path.suffix])
 
     def put_basket_record(self, path: Path, now: datetime) -> str:
         """Put the run's record under the key its day and run id give, write-once and locked; the key.

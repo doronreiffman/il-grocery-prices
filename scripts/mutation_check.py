@@ -115,6 +115,9 @@ PROMOTIONS_FOR_SHOP_PROMOS = ("src/shopper/promotions.py", ["tests/test_promos.p
 PROMOTIONS_FOR_SHOP_ITEMS = ("src/shopper/promotions.py", ["tests/test_items.py"])
 SHOP_ITEMS = ("src/shopper/items.py", ["tests/test_items.py"])
 SHOP_EXTRACT = ("src/shopper/extract.py", ["tests/test_shop_extract.py"])
+SHOP_HISTORY = ("src/shopper/history.py", ["tests/test_history.py"])
+# The covered registry takes a product's size by B7's tie rule over its columns (basket.rules.most_common_size).
+RULES_FOR_SHOP_HISTORY = ("src/basket/rules.py", ["tests/test_history.py"])
 # The items table reads B5, B6, B7, B8 and the rows that count from basket.rules, through a view of its own: its tests
 # must catch a break of any of them (the second pre-flight's S13).
 RULES_FOR_SHOP_ITEMS = ("src/basket/rules.py", ["tests/test_items.py"])
@@ -1361,6 +1364,39 @@ MUTATIONS = {
     "the rate's bound left out of the stores' agreement (q22 promotions table)": (DEALS_FOR_SHOP_PROMOS, 'rate is not None and 0 < rate < 100 and agrees(price, base, rate)', 'rate is not None and agrees(price, base, rate)'),
     'the copies not sorted by row (q22 promotions table)': (SHOP_PROMOS, '        ORDER BY k.col, k.promotion_id, k.group_id, k.code, h.store_number, h.seq\n', ''),
     "each row's copies gathered as an ordered list (q22 promotions table)": (SHOP_PROMOS, '        SELECT k.col, k.promotion_id, k.group_id, k.code, i.kind, h.store, h.price, h.rate, h.own\n        FROM keyed k\n        JOIN chosen ch ON ch.col = k.col AND ch.promotion_id = k.promotion_id AND ch.group_id = k.group_id\n                      AND ch.code = k.code\n        JOIN read_parquet({staged["items"]}) i ON i.variant = ch.item_variant\n        JOIN held h ON h.col = k.col AND h.promotion_id = k.promotion_id AND h.group_id = k.group_id AND h.code = k.code\n        ORDER BY k.col, k.promotion_id, k.group_id, k.code, h.store_number, h.seq\n', '        SELECT col, promotion_id, group_id, code, kind, unnest(copies, recursive := true)\n        FROM (SELECT k.col, k.promotion_id, k.group_id, k.code, i.kind, list({{\'store\': h.store, \'price\': h.price, \'rate\': h.rate, \'own\': h.own}} ORDER BY h.store_number, h.seq) AS copies\n        FROM keyed k\n        JOIN chosen ch ON ch.col = k.col AND ch.promotion_id = k.promotion_id AND ch.group_id = k.group_id\n                      AND ch.code = k.code\n        JOIN read_parquet({staged["items"]}) i ON i.variant = ch.item_variant\n        JOIN held h ON h.col = k.col AND h.promotion_id = k.promotion_id AND h.group_id = k.group_id AND h.code = k.code\n        GROUP BY ALL) ORDER BY col, promotion_id, group_id, code\n'),
+    # shopper: history and coverage, 90 days read, the covered registry, the windows (q22 history, P1, P6)
+    "the day's own table optional (q22 history)": (SHOP_HISTORY, '                if read_day == day:\n', '                if False:\n'),
+    'a missing earlier table read as no promotion (q22 history)': (SHOP_HISTORY, 'present=False, hole=True, promo_hole=True,', 'present=False, hole=True, promo_hole=False,'),
+    "a column's hole read as its chain's (q22 history)": (SHOP_HISTORY, 'hole=found["hole"],', 'hole=any(other["hole"] for other in report["columns"].values()),'),
+    'a later day read (q22 history)': (SHOP_HISTORY, '        for back in range(READ_DAYS + 1):\n', '        for back in range(-1, READ_DAYS + 1):\n'),
+    'ninety days read, not ninety-one (q22 history)': (SHOP_HISTORY, '        for back in range(READ_DAYS + 1):\n', '        for back in range(READ_DAYS):\n'),
+    'the pairs by column, not by code (q22 history)': (SHOP_HISTORY, 'FROM items ORDER BY code, "column", day', 'FROM items ORDER BY "column", code, day'),
+    'covered needs every column (q22 P1)': (SHOP_HISTORY, 'if any(day is not None for day in days):', 'if all(day is not None for day in days):'),
+    'covered on a hole day (q22 P1)': (SHOP_HISTORY, 'SELECT i.*, r.day IS NOT NULL AS record', 'SELECT i.*, true AS record'),
+    'the registry not carried (q22 P1)': (SHOP_HISTORY, '    if previous is not None:\n        carried, first = _read_registry(previous)\n', '    if False:\n        carried, first = _read_registry(previous)\n'),
+    "a column's last wide day overwritten by another's (q22 P1)": (SHOP_HISTORY, 'last_wide={column: listing.last_wide for column, listing in columns.items()', 'last_wide={column: max(other.last_wide for other in columns.values() if other.last_wide is not None) for column, listing in columns.items()'),
+    "a column's last wide day from the read alone (q22 P1)": (SHOP_HISTORY, 'wide = [day for day in (before.last_wide, now.last_wide) if day is not None]', 'wide = [day for day in (now.last_wide,) if day is not None]'),
+    'first covered the latest wide day of a column (q22 P1)': (SHOP_HISTORY, 'min(day) FILTER (WHERE wide AND record) AS first_wide', 'max(day) FILTER (WHERE wide AND record) AS first_wide'),
+    "first covered taken from the read over the registry's earlier day (q22 P1)": (SHOP_HISTORY, 'first[code] = min(day for day in (first.get(code), *days) if day is not None)', 'first[code] = min(day for day in days if day is not None)'),
+    "a column's name from its earliest day listed (q22 history)": (SHOP_HISTORY, 'max(day) AS last_listed', 'min(day) AS last_listed'),
+    "a column's registry name kept over a later listing (q22 history)": (SHOP_HISTORY, 'latest = now if now.last_listed >= before.last_listed else before', 'latest = before'),
+    'the title the shortest name (q22 history)': (SHOP_HISTORY, '(-len(name), name)', '(len(name), name)'),
+    "the title's tie to the last in code-point order (q22 history)": (SHOP_HISTORY, '(-len(name), name)', '(-len(name), tuple(-ord(c) for c in name))'),
+    'the size of the first column stating one, not of most columns (q22 history)': (SHOP_HISTORY, 'size = most_common_size(Counter(listing.size for listing in columns.values() if listing.size is not None))', 'size = next((listing.size for listing in columns.values() if listing.size is not None), None)'),
+    "the registry's size tie to the larger amount (q22 history)": (RULES_FOR_SHOP_HISTORY, '(-sizes[size], size.amount, size.kind)', '(-sizes[size], -size.amount, size.kind)'),
+    'a hole day counted (q22 P6)': (SHOP_HISTORY, '        return self.present and not self.hole\n', '        return self.present\n'),
+    'the window takes the day itself (q22 P6)': (SHOP_HISTORY, 'for back in range(length, 0, -1):', 'for back in range(length - 1, -1, -1):'),
+    'a short 30-day window at 21 (q22 P6)': (SHOP_HISTORY, 'ENOUGH = {30: 20, 90: 60}', 'ENOUGH = {30: 21, 90: 60}'),
+    'a short 90-day window at 61 (q22 P6)': (SHOP_HISTORY, 'ENOUGH = {30: 20, 90: 60}', 'ENOUGH = {30: 20, 90: 61}'),
+    'a window day without a listed price counted (q22 P6)': (SHOP_HISTORY, 'found is not None and found.record and point is not None and point.listed is not None', 'found is not None and found.record'),
+    "the history's keys unsorted (q22 history)": (ARCHIVE, 'TABLES["items"][0]))\n        return sorted(keys)', 'TABLES["items"][0]))\n        return keys'),
+    'the items fetched as the prices table (q22 history)': (ARCHIVE, 'return self._fetch_whole("items", slug, day, tables_dir)', 'return self._fetch_whole("prices", slug, day, tables_dir)'),
+    'the history fetched for ninety days, not ninety-one (q22 history)': (ARCHIVE, '            for back in range(READ_DAYS + 1):\n', '            for back in range(READ_DAYS):\n'),
+    "a later day's items table fetched for the history (q22 history)": (ARCHIVE, '            for back in range(READ_DAYS + 1):\n', '            for back in range(-1, READ_DAYS + 1):\n'),
+    "the day's own registry taken as the one before (q22 history)": (ARCHIVE, 'listed < day:   # a registry', 'listed <= day:   # a registry'),
+    'the earliest registry before the day taken (q22 history)': (ARCHIVE, '        latest = max(days)\n', '        latest = min(days)\n'),
+    'a key the code never writes taken as a registry (q22 history)': (ARCHIVE, 'if key == kind_key(kind, None, listed, name) and listed < day', 'if listed < day'),
+    'the registry put under a chain (q22 history)': (ARCHIVE, '        key = kind_key(kind, None, day, name)\n        self._put_file(', '        key = kind_key(kind, "all", day, name)\n        self._put_file('),
     # basket: extract
     "extract older file wins": (EXTRACT, "latest = max(named)", "latest = min(named)"),
     "extract first duplicate wins": (EXTRACT, "        latest[row.code] = row", "        latest.setdefault(row.code, row)"),
@@ -1578,7 +1614,7 @@ MUTATIONS = {
     "archive price files of another kind fetched": (ARCHIVE, 'parsed.kind not in kinds', 'parsed.kind not in (*kinds, "Stores")'),
     "archive price file of another day fetched": (ARCHIVE, " or parsed.day != day", ""),
     "archive conflict copy not fetched": (ARCHIVE, "parse_file_name(published_name(_stored_name(key)))", "parse_file_name(_stored_name(key))"),
-    "archive price file keys unsorted": (ARCHIVE, "return sorted(keys)", "return keys"),
+    "archive price file keys unsorted": (ARCHIVE, "            keys.append(key)\n        return sorted(keys)", "            keys.append(key)\n        return keys"),
     "archive raw file written under its published name": (ARCHIVE, "            name = _stored_name(key)\n", "            name = published_name(key)\n"),
     "archive store list looked for one day only": (ARCHIVE, "STORE_LIST_LOOKBACK_DAYS = 14", "STORE_LIST_LOOKBACK_DAYS = 1"),
     "archive store list looked for a day too far back": (ARCHIVE, "range(STORE_LIST_LOOKBACK_DAYS)", "range(STORE_LIST_LOOKBACK_DAYS + 1)"),
@@ -1587,13 +1623,13 @@ MUTATIONS = {
     "archive store list's oldest name taken": (ARCHIVE, "name = max(names)", "name = min(names)"),
     "archive store list written under the asked day": (ARCHIVE, "folder = _day_folder(raw_dir, slug, listed_day)", "folder = _day_folder(raw_dir, slug, day)"),
     "archive every chain's manifests fetched": (ARCHIVE, 'manifest_key(day, slug, "").removesuffix(".json")', 'manifest_key(day, slug, "").rsplit("/", 1)[0]'),
-    "archive table's parquet written without its report": (ARCHIVE, "        if None in bodies.values():\n            return False\n        folder.mkdir(parents=True, exist_ok=True)\n        for name, body in bodies.items():\n            (folder / name).write_bytes(body)\n",
-                                                           "        folder.mkdir(parents=True, exist_ok=True)\n        for name, body in bodies.items():\n            if body is not None:\n                (folder / name).write_bytes(body)\n        if None in bodies.values():\n            return False\n"),
-    "archive table without its parquet taken": (ARCHIVE, "if None in bodies.values():", 'if bodies["report.json"] is None:'),
+    "archive table's parquet written without its report": (ARCHIVE, "        if None in bodies.values():\n            return False\n        for key, body in bodies.items():\n            path = _local(tables_dir, key)\n            path.parent.mkdir(parents=True, exist_ok=True)\n            path.write_bytes(body)\n",
+                                                           "        for key, body in bodies.items():\n            if body is not None:\n                path = _local(tables_dir, key)\n                path.parent.mkdir(parents=True, exist_ok=True)\n                path.write_bytes(body)\n        if None in bodies.values():\n            return False\n"),
+    "archive table without its parquet taken": (ARCHIVE, "if None in bodies.values():", "if list(bodies.values())[-1] is None:"),
     "archive table put locked": (ARCHIVE, "self._put_plain(key, path.read_bytes(), _CONTENT_TYPES[path.suffix])", "self._put_locked(key, path.read_bytes(), None, _CONTENT_TYPES[path.suffix])"),
     "archive table content types swapped": (ARCHIVE, '{".parquet": "application/vnd.apache.parquet", ".json": "application/json"}', '{".parquet": "application/json", ".json": "application/vnd.apache.parquet"}'),
-    "archive a delete before a table put": (ARCHIVE, "                    self._put_plain(key, path.read_bytes(), _CONTENT_TYPES[path.suffix])\n",
-                                            '                    getattr(self, "client", None) and self.client.delete_object(Bucket=self.bucket, Key=key)\n                    self._put_plain(key, path.read_bytes(), _CONTENT_TYPES[path.suffix])\n'),
+    "archive a delete before a table put": (ARCHIVE, "        self._put_plain(key, path.read_bytes(), _CONTENT_TYPES[path.suffix])\n",
+                                            '        getattr(self, "client", None) and self.client.delete_object(Bucket=self.bucket, Key=key)\n        self._put_plain(key, path.read_bytes(), _CONTENT_TYPES[path.suffix])\n'),
     "archive record put plain": (ARCHIVE, "self.put_record(key, body, now)", 'self._put_plain(key, body, "application/json")'),
     # basket: site (step two)
     "site day file always put": (SITE, "        if with_day:\n", "        if True:\n"),
