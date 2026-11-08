@@ -20,8 +20,9 @@ kind.
 
 P5, the conditions the fields give. Minimum spend is the largest `MinPurchaseAmount` above zero over every group of
 the promotion, the item-less groups and the `RewardType` 0 group included, since that is where the files put it
-(never on the group with the deal, in the promotions that hold a 0 group). Restrictions come from `ClubID`, read by
-its form, each form the survey saw read by one rule (S3): a bare "0" and "()" are none; a bare code 1 to 3 is that
+(never on the group with the deal, in the promotions that hold a 0 group); an amount that does not read is a format
+change, since read as none it would show the deal without its condition. Restrictions come from `ClubID`, read by its
+form, each form the survey saw read by one rule (S3): a bare "0" and "()" are none; a bare code 1 to 3 is that
 restriction, with no name; "N - label" (Shufersal, Yochananof) is read by its leading code only, 0 none and 1 to 3 by
 RESTRICTIONS (question K's codes: 1 club, 2 the chain's card, 3 other), the label the programme's name when the code
 is not 0; and the list (Rami Levy, Carrefour), `N=name` terms joined by `|` and `&` inside parentheses, is read term
@@ -249,6 +250,14 @@ def in_day(promotion: Mapping[str, str], day: date) -> bool:
 
 
 def min_spend(groups: Iterable[Mapping[str, str]]) -> Decimal | None:
-    """The largest `MinPurchaseAmount` above zero over every group, or None (S2)."""
-    amounts = [amount for group in groups if (amount := number(group["MinPurchaseAmount"])) is not None and amount > 0]
+    """The largest `MinPurchaseAmount` above zero over every group, or None (S2); P10 on an amount that does not read,
+    since read as none it would show a deal without its condition."""
+    amounts = []
+    for group in groups:
+        text = group["MinPurchaseAmount"]
+        amount = number(text)
+        if amount is None and text != "":
+            raise PromotionFormatChanged(f"MinPurchaseAmount {text!r} is not an amount")
+        if amount is not None and amount > 0:
+            amounts.append(amount)
     return max(amounts) if amounts else None

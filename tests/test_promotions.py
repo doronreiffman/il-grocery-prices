@@ -228,3 +228,10 @@ def test_min_spend_from_any_group():
     assert min_spend([_group("1", "75.00"), _group("2", "50.00")]) == Decimal("75.00")
     assert min_spend([_group("1", "0.00"), _group("2")]) is None
     assert min_spend([]) is None
+
+
+@pytest.mark.parametrize("amount", ["75,00", "₪75"])
+def test_an_unreadable_min_spend_is_a_format_change(amount):
+    with pytest.raises(PromotionFormatChanged) as refused:  # read as none, a ₪75 basket would show as no condition
+        min_spend([_group("1"), _group("2", amount)])
+    assert str(refused.value) == f"MinPurchaseAmount {amount!r} is not an amount"

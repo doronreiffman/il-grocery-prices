@@ -203,7 +203,8 @@ def _check(name: str, level: str, tags: set[str], known: FieldSets | None, tally
     if known is not None:
         expected = getattr(known, level)
         if frozenset(tags) not in expected:
-            nearest = min(expected, key=lambda one: (len(one ^ tags), sorted(one)))
+            # A level with no known set refuses every element, all its tags added.
+            nearest = min(expected, key=lambda one: (len(one ^ tags), sorted(one)), default=frozenset())
             added = tags - set().union(*expected)
             raise PromotionFormatChanged(f"{name}: {level} fields changed: added {sorted(added)}, "
                                          f"missing {sorted(nearest - tags)}")

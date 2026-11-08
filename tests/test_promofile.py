@@ -187,6 +187,14 @@ def test_an_element_may_carry_any_of_its_levels_sets():
     assert str(refused.value) == f"{name}: item fields changed: added [], missing ['MaxQty']"
 
 
+def test_a_level_with_no_known_set_refuses_every_element():
+    known = dataclasses.replace(_own_sets(SHUFERSAL), group=frozenset())  # no group carries a known set
+    with pytest.raises(PromotionFormatChanged) as refused:
+        _records(SHUFERSAL.name, SHUFERSAL.read_bytes(), known=known)
+    added = ['DiscountType', 'GroupID', 'MinPurchaseAmount', 'PromotionItems']
+    assert str(refused.value) == f"{SHUFERSAL.name}: group fields changed: added {added}, missing []"
+
+
 def test_text_is_stripped_and_an_empty_element_is_empty():
     promotion = ("<Promotion><PromotionID>\r\n  900001 </PromotionID><Remarks /><ClubID>  </ClubID>"
                  "<AdditionalIsCoupon>0</AdditionalIsCoupon><Groups><Group><GroupID> 1\r\n</GroupID>"
