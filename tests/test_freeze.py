@@ -31,6 +31,7 @@ from shopper.freeze import (
     scores_archive_key,
     scores_site_key,
     site_key,
+    utc_text,
 )
 from test_store import lock_of
 
@@ -315,6 +316,18 @@ def test_the_ledger_refuses_another_line_for_a_day():
     for changed in (other_file, other_time):
         with pytest.raises(ValueError, match="2026-11-07"):
             ledger(held, changed)
+
+
+def test_a_records_time_is_utc_to_the_second_and_never_naive():
+    assert utc_text(datetime(2026, 11, 7, 12, 33, tzinfo=ISRAEL)) == "2026-11-07T10:33:00Z"
+    assert utc_text(datetime(2026, 11, 7, 10, 33, 0, 999_999, tzinfo=timezone.utc)) == "2026-11-07T10:33:00Z"
+    with pytest.raises(ValueError, match="time zone"):
+        utc_text(datetime(2026, 11, 7, 10, 33))
+    # the ledger takes its line's time from it: a naive time is refused there too, not read as this machine's
+    naive = Frozen(day=DAY, body=b"a", sha256=sha(b"a"), frozen_at=datetime(2026, 11, 7, 10, 33), on_time=True,
+                   status="frozen")
+    with pytest.raises(ValueError, match="time zone"):
+        ledger(None, naive)
 
 
 def test_a_late_day_gets_its_line_with_its_late_time():

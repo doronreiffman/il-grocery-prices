@@ -123,6 +123,8 @@ SHOP_RECORD = ("src/shopper/record.py", ["tests/test_record_numbers.py"])
 # Scoring reads each outcome, its holes and its evidence from shopper.forecast.outcome (Task 10): the scoring tests must
 # catch a break of the rules they rest on.
 FORECAST_FOR_SHOP_SCORE = ("src/shopper/forecast.py", ["tests/test_score.py"])
+# The summary writes its time by the ledger's rule (shopper.freeze.utc_text): the scoring tests must catch it broken.
+FREEZE_FOR_SHOP_SCORE = ("src/shopper/freeze.py", ["tests/test_score.py"])
 # The covered registry takes a product's size by B7's tie rule over its columns (basket.rules.most_common_size).
 RULES_FOR_SHOP_HISTORY = ("src/basket/rules.py", ["tests/test_history.py"])
 SHOP_MEASURES = ("src/shopper/measures.py", ["tests/test_measures.py"])
@@ -1523,7 +1525,9 @@ MUTATIONS = {
     'a stored file refused past the cutoff (q22 F6)': (SHOP_FREEZE, '        stored = self.frozen(day)\n        if stored is not None:\n            _same(', '        stored = None if self.now >= cutoff(day) else self.frozen(day)\n        if stored is not None:\n            _same('),
     'the ledger rewritten (q22 F6)': (SHOP_FREEZE, '    return published + (line + "\\n").encode()\n', '    return LEDGER_HEADER + (line + "\\n").encode()\n'),
     "the ledger's hash of the CSV, not the published bytes (q22 F6)": (SHOP_FREEZE, 'sha256=hashlib.sha256(body).hexdigest(), frozen_at=at', 'sha256=hashlib.sha256(gzip.decompress(body)).hexdigest(), frozen_at=at'),
-    "the ledger's time not in UTC (q22 F6)": (SHOP_FREEZE, 'frozen.frozen_at.astimezone(timezone.utc).strftime', 'frozen.frozen_at.astimezone(ISRAEL).strftime'),
+    "the ledger's time not in UTC (q22 F6)": (SHOP_FREEZE, 'return at.astimezone(timezone.utc).strftime', 'return at.astimezone(ISRAEL).strftime'),
+    "the ledger takes a naive time (q22 F6)": (SHOP_FREEZE, '    if at.utcoffset() is None:\n        raise ValueError("a record', '    if False:\n        raise ValueError("a record'),
+    "the ledger's time with a part of a second (q22 F6)": (SHOP_FREEZE, '.strftime("%Y-%m-%dT%H:%M:%SZ")', '.isoformat().replace("+00:00", "Z")'),
     "the ledger's time without its Z (q22 F6)": (SHOP_FREEZE, '"%Y-%m-%dT%H:%M:%SZ"', '"%Y-%m-%dT%H:%M:%S"'),
     'the ledger without its header (q22 F6)': (SHOP_FREEZE, '        return LEDGER_HEADER + (line + "\\n").encode()\n', '        return (line + "\\n").encode()\n'),
     'a published ledger without its header extended (q22 F6)': (SHOP_FREEZE, '    if not published.startswith(LEDGER_HEADER):\n', '    if False:\n'),
@@ -1551,7 +1555,9 @@ MUTATIONS = {
     'scored at d + 13 (q22 F7)': (SHOP_SCORE, '    last = day - timedelta(days=HORIZON)\n', '    last = day - timedelta(days=HORIZON - 1)\n'),
     'a scored day scored again (q22 F7)': (SHOP_SCORE, 'if t <= last and t not in scored)', 'if t <= last)'),
     "scored before day t + 14's tables (q22 F7)": (SHOP_SCORE, '    if last > history.day:\n', '    if last > history.day + timedelta(days=1):\n'),
-    'a window not read scored (q22 F7)': (SHOP_SCORE, '    if first < history.day - timedelta(days=READ_DAYS):\n', '    if first < history.day - timedelta(days=READ_DAYS + 1):\n'),
+    'a window not read scored (q22 F7)': (SHOP_SCORE, 'return t + timedelta(days=1) >= day - timedelta(days=READ_DAYS)', 'return t + timedelta(days=1) >= day - timedelta(days=READ_DAYS + 1)'),
+    'a day past the read listed as due (q22 F7)': (SHOP_SCORE, ' if reaches(t, day)]', ']'),
+    'a day past the read not listed apart (q22 F7)': (SHOP_SCORE, ' if not reaches(t, day)]', ' if False]'),
     'a frozen file of another target scored (q22 F7)': (SHOP_SCORE, '    if targets - {TARGET_VERSION}:\n', '    if False:\n'),
     'an item no longer listed left out of the file (q22 F7)': (SHOP_SCORE, '        key = (row[0], row[1])\n', '        key = (row[0], row[1])\n        if key not in results:\n            continue\n'),
     "the scores rows out of the frozen file's order (q22 F7)": (SHOP_SCORE, '    for row in rows:\n        key = (row[0], row[1])\n', '    for row in reversed(rows):\n        key = (row[0], row[1])\n'),
@@ -1574,8 +1580,9 @@ MUTATIONS = {
     'a day of two versions summarized (q22 F7)': (SHOP_SCORE, '    if len(versions) > 1:\n', '    if False:\n'),
     'a late day summarized as on time (q22 F7)': (SHOP_SCORE, 'on_time=frozen.on_time, model_version', 'on_time=True, model_version'),
     "a summary's sums read back as floats (q22 F7)": (SHOP_SCORE, 'sq_model=Decimal(held["sq_model"])', 'sq_model=float(held["sq_model"])'),
-    'a naive frozen time written (q22 F7)': (SHOP_SCORE, '    if at.utcoffset() is None:\n        raise', '    if False:\n        raise'),
-    "the summary's time not in UTC (q22 F7)": (SHOP_SCORE, 'at.astimezone(timezone.utc).isoformat()', 'at.isoformat()'),
+    'a naive frozen time written (q22 F7)': (FREEZE_FOR_SHOP_SCORE, '    if at.utcoffset() is None:\n        raise ValueError("a record', '    if False:\n        raise ValueError("a record'),
+    "the summary's time not in UTC (q22 F7)": (FREEZE_FOR_SHOP_SCORE, 'return at.astimezone(timezone.utc).strftime', 'return at.astimezone(ISRAEL).strftime'),
+    "the summary's time with a part of a second (q22 F7)": (FREEZE_FOR_SHOP_SCORE, '.strftime("%Y-%m-%dT%H:%M:%SZ")', '.isoformat().replace("+00:00", "Z")'),
     'five holes scored (q22 F7)': (FORECAST_FOR_SHOP_SCORE, '    if holes > MAX_HOLES:\n', '    if holes > MAX_HOLES + 1:\n'),
     'the latest evidence day (q22 F7)': (FORECAST_FOR_SHOP_SCORE, 'if first is None and point is not None and point.on_promotion:', 'if point is not None and point.on_promotion:'),
     'a hole read from the chain, not the column (q22 F7)': (FORECAST_FOR_SHOP_SCORE, '    found = column_days.get((column, day))\n    return found is None', '    found = column_days.get((column, day))\n    found = next((c for c in column_days.values() if found and c.day == day and c.slug == found.slug and not c.record), found)\n    return found is None'),
@@ -1594,6 +1601,7 @@ MUTATIONS = {
     'a summary put write-once (q22 F7)': (ARCHIVE, '        self._put_file(key, summary_path(tables_dir, day))\n', '        self._put_locked(key, summary_path(tables_dir, day).read_bytes(), None, "application/json")\n'),
     'the summary key under a chain (q22 F7)': (ARCHIVE, '    kind, name = SCORED\n    return kind_key(kind, None, day, name)\n', '    kind, name = SCORED\n    return kind_key(kind, "all", day, name)\n'),
     'summaries returned as raw JSON (q22 F7)': (ARCHIVE, '            found.append(read_summary(body))\n', '            found.append(json.loads(body))\n'),
+    'a summary put without its scores file (q22 F7)': (ARCHIVE, '        if self.last_modified(scores_archive_key(day)) is None:\n            raise', '        if False:\n            raise'),
     'a summary not written to the work folder (q22 F7)': (ARCHIVE, '            path.write_bytes(body)\n            found.append', '            found.append'),
     # shopper: the record's numbers: the Brier scores, the block bootstrap, calibration (q22 F8), the gate (q22 F9)
     # and the scorecard (q22 F11), per column

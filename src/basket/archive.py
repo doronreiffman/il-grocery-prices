@@ -58,10 +58,11 @@ aware time), which tests fix.
 
 Scoring (F7). A day's scores file (`put_scores`) is put as the forecasts file is: write-once and locked, as gzip, the
 freezer saying whether a stored one and a new one are the same scores. Its summary (`shopper.score.summary_json`) is
-derived and goes up plain from the work folder (`put_summary`); the build puts it after the scores file (Tasks 19 and
-23). A day is scored once its summary is in the archive (`scored_days`), so a run that stopped between the two leaves
-the day due, and the next build meets the same scores file. `fetch_summaries` writes every summary into the work
-folder and returns them, read through `shopper.score.read_summary`, as `DaySummary` objects (the first pre-flight's
+derived and goes up plain from the work folder (`put_summary`), only once the day's scores file is in the archive (a
+ValueError before: the build puts it after the scores file, Tasks 19 and 23). A day is scored once its summary is in the
+archive (`scored_days`), so a run that stopped between the two leaves the day due (within the read's reach:
+`shopper.score.due`), and the next build meets the same scores file. `fetch_summaries` writes every summary into the
+work folder and returns them, read through `shopper.score.read_summary`, as `DaySummary` objects (the first pre-flight's
 N17), earliest first.
 
 The day is ready once the collector's check has written a record under `checks/date=<day>/`
@@ -277,7 +278,8 @@ class _Archive:
 
     def put_scores(self, day: date, body: bytes, now: datetime) -> str:
         """Put the day's scores file under its key, write-once and locked as a record is, as gzip; the key. The same
-        bytes again are the same put retried; other bytes under the key are AlreadyStored. `now` must carry a time zone."""
+        bytes again are the same put retried; other bytes under the key are AlreadyStored. `now` must carry a time
+        zone."""
         key = scores_archive_key(day)
         self.put_record(key, body, now, content_type="application/gzip")
         return key
@@ -287,7 +289,11 @@ class _Archive:
         return self._days_with(summary_key)
 
     def put_summary(self, day: date, tables_dir: Path) -> str:
-        """Put the day's scoring summary from under `tables_dir` (`shopper.score.summary_path`), plain; the key."""
+        """Put the day's scoring summary from under `tables_dir` (`shopper.score.summary_path`), plain; the key. A
+        ValueError, putting nothing, when the archive holds no scores file for the day: a summary goes up only after
+        its scores file, so a day `scored_days` lists has one."""
+        if self.last_modified(scores_archive_key(day)) is None:
+            raise ValueError(f"no scores file for {day.isoformat()} in the archive: its summary goes up after it")
         key = summary_key(day)
         self._put_file(key, summary_path(tables_dir, day))
         return key

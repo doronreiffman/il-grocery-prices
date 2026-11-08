@@ -19,7 +19,7 @@ import pytest
 
 from basket.archive import MemoryArchive
 from shopper.forecast import FILE_FIELDS, MAX_HOLES, Forecast, forecasts_csv
-from shopper.freeze import ISRAEL, ArchiveFreezer, Frozen
+from shopper.freeze import ISRAEL, ArchiveFreezer, Frozen, ledger
 from shopper.history import READ_DAYS, History, Pair, load
 from shopper.items import HORIZON
 from shopper.score import (
@@ -28,6 +28,8 @@ from shopper.score import (
     ColumnSummary,
     DaySummary,
     due,
+    out_of_reach,
+    reaches,
     read_summary,
     scores_csv,
     summarize,
@@ -138,6 +140,22 @@ def test_a_scored_day_is_never_due_again_and_an_unfrozen_one_never_due():
     assert due([T], [T], BUILD + timedelta(days=3)) == []
     assert due([], [T], BUILD) == []
     assert due([T, on(1)], [on(1)], BUILD + timedelta(days=1)) == [T]
+    assert out_of_reach([T], [T], on(200)) == [] and out_of_reach([], [], on(200)) == []
+
+
+def test_a_day_past_the_reads_reach_is_listed_apart_and_nothing_raises():
+    frozen = [T, on(1), on(2)]
+    # the build of T + 92 reads from T + 2: T's window starts on T + 1, before the read, so it can no longer be scored
+    assert due(frozen, [], on(READ_DAYS + 2)) == [on(1), on(2)]
+    assert out_of_reach(frozen, [], on(READ_DAYS + 2)) == [T]
+    # the build of T + 91 still reads T's whole window: due, and nothing out of reach
+    assert due(frozen, [], on(READ_DAYS + 1)) == frozen and out_of_reach(frozen, [], on(READ_DAYS + 1)) == []
+    # long after, every unscored day is listed apart, oldest first, and a scored one is in neither list
+    assert out_of_reach(reversed(frozen), [on(1)], on(400)) == [T, on(2)] and due(frozen, [on(1)], on(400)) == []
+    assert (reaches(T, on(READ_DAYS + 1)), reaches(T, on(READ_DAYS + 2))) == (True, False)
+    # and what `due` gives, scores_csv scores: the edge of the read is no refusal
+    frozen_t = _frozen(SAME_ROWS)
+    scores_csv(frozen_t, _Read(SAME_DAYS, SAME_PAIRS, day=on(READ_DAYS + 1)))
 
 
 # The scores file
@@ -293,7 +311,7 @@ def test_the_summary_recomputes_from_the_published_file():
                            lines[1] + ",1,0,2026-12-02,7,,day and PromotionID",
                            lines[2] + ",0,0,,,,",
                            lines[3] + ",,5,,,more than 4 holes,"]) + "\n"
-    copy = gzip.compress(published.encode(), compresslevel=1)   # an outsider's copy, other gzip bytes
+    copy = gzip.compress(published.encode(), compresslevel=1, mtime=0)   # an outsider's copy, other gzip bytes
     assert gzip.decompress(copy) == gzip.decompress(scores)
     assert summarize(copy, frozen) == summarize(scores, frozen) == SAME_SUMMARY
     # and from the bytes the archive holds once they are put
@@ -371,6 +389,14 @@ def test_a_summarys_time_is_written_in_utc_and_a_naive_one_refused():
     with pytest.raises(ValueError, match="time zone"):
         summary_json(DaySummary(day=T, frozen_at=datetime(2026, 11, 30, 10, 40, 5), on_time=True, model_version="1",
                                 target_version="1", by_column={}))
+
+
+def test_a_summarys_time_is_its_ledger_lines():
+    at = datetime(2026, 11, 30, 10, 40, 5, 250_000, tzinfo=timezone.utc)   # a time with a part of a second
+    frozen = _frozen([], at=at)
+    written = json.loads(summary_json(summarize(scores_csv(frozen, _Read(_days(DEAL), [])), frozen)))["frozen_at"]
+    assert written == "2026-11-30T10:40:05Z"                                 # to the second, as the ledger
+    assert ledger(None, frozen).decode().splitlines()[1].endswith("," + written)
 
 
 def test_the_summary_path():

@@ -29,7 +29,9 @@ freezer (`put_scores`), at `scores/date=<day>/scores.csv.gz` in the archive (`sc
 bytes, on the site at `scores/<day>.csv.gz` (`scores_site_key`): write-once and locked like the forecasts
 (`basket.archive`'s `put_scores`), and compared the same way when one is already stored: the same rows return the
 stored bytes, which are the ones the site publishes; other rows raise `ScoresDiffer`, naming the day and both SHA-256s,
-and nothing is written. There is no cutoff: scoring needs no clock, so a day missed is scored by a later build.
+and nothing is written. There is no cutoff: scoring needs no clock, so a day missed is scored by a later build, as
+long as that build's 90-day read still holds the day's whole window (`shopper.score.due`); a day past that reach is
+listed apart and left unscored, without stopping the build (`shopper.score.out_of_reach`).
 
 The Mac's `ReadOnlyFreezer` writes nothing (question D): it reads the files `scripts/sync.sh` brought into
 `<data dir>/forecasts/date=<day>/` and returns the synced file as "same", or None for a day it holds none of. It does
@@ -38,14 +40,14 @@ AWS CLI sets on a download to the object's time in S3, to the second (`ProvideLa
 `awscli/customizations/s3/subscribers.py`, read in awscli 2.34.9; the same fact `--exact-timestamps` relies on in
 `scripts/sync.sh`).
 
-The ledger (Call 17). `forecasts/ledger.csv` on the site gains one line a day, `<day>,<SHA-256 of the file's gzip bytes>,
-<S3's time, UTC, ISO with a Z>`, and only grows: `ledger` returns the published ledger's bytes with the day's line
-after them, so anyone who kept an earlier copy can see a changed line. The day's line already there is left as it is
-(a rerun); another line for the day is refused (ValueError). A late day has its line too, with its late time. A published
-ledger that does not start with the header line, or does not end in a newline, is refused (ValueError) rather than
-extended: an empty file would get a first line and no header, and a last line without its newline would have the new
-line joined to it, damage a check that only looks for the published bytes at the start would let through. The upload
-check (Task 21) refuses a ledger that does not begin with the published one's bytes.
+The ledger (Call 17). `forecasts/ledger.csv` on the site gains one line a day, `<day>,<SHA-256 of the file's gzip
+bytes>,<S3's time, UTC to the second, ISO with a Z>` (`utc_text`), and only grows: `ledger` returns the published
+ledger's bytes with the day's line after them, so anyone who kept an earlier copy can see a changed line. The day's line
+already there is left as it is (a rerun); another line for the day is refused (ValueError). A late day has its line too,
+with its late time. A published ledger that does not start with the header line, or does not end in a newline, is
+refused (ValueError) rather than extended: an empty file would get a first line and no header, and a last line without
+its newline would have the new line joined to it, damage a check that only looks for the published bytes at the start
+would let through. The upload check (Task 21) refuses a ledger that does not begin with the published one's bytes.
 """
 import gzip
 import hashlib
@@ -77,6 +79,16 @@ class Frozen:
     frozen_at: datetime
     on_time: bool
     status: str
+
+
+def utc_text(at: datetime) -> str:
+    """An aware time as the records write it: in UTC, to the second (a finer part is dropped), ISO with a Z, as in
+    "2026-11-07T10:33:00Z". The ledger's line keeps this form (F6, Task 12's bytes), and so does the scoring summary
+    (`shopper.score.summary_json`), so a day's summary carries its ledger line's time. A naive time is a ValueError:
+    `astimezone` would read it as this machine's own time (the Mac's is Israel's, CI's UTC)."""
+    if at.utcoffset() is None:
+        raise ValueError("a record's time must carry a time zone")
+    return at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def cutoff(day: date) -> datetime:
@@ -179,8 +191,7 @@ def ledger(published: bytes | None, frozen: Frozen) -> bytes:
     """The published ledger (None: there is none yet) with the day's line after it when it is not there; the day's line
     there already is left as it is, and another line for the day is a ValueError, as is a published ledger that does not
     start with LEDGER_HEADER or does not end in a newline."""
-    at = frozen.frozen_at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    line = f"{frozen.day.isoformat()},{frozen.sha256},{at}"
+    line = f"{frozen.day.isoformat()},{frozen.sha256},{utc_text(frozen.frozen_at)}"
     if published is None:
         return LEDGER_HEADER + (line + "\n").encode()
     if not published.startswith(LEDGER_HEADER):

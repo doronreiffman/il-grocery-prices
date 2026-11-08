@@ -4,9 +4,13 @@ Task 13, the first pre-flight's S9 and N17 and the second's B1).
 
 Which days. The build of day d scores each day t whose forecasts are frozen (`basket.archive`'s `frozen_days`), that is
 not scored yet (no summary in the archive: `scored_days`) and whose window has closed, t at most d - 14 (HORIZON):
-day t + 14's tables exist by then, so the outcomes are known (Call 14). `due` lists them, oldest first. Scoring needs
-no clock, so a day whose build did not run is scored by the next one. A day frozen late is scored too, and its summary
-says it was not frozen on time: the gate counts only days frozen on time (F6, F9).
+day t + 14's tables exist by then, so the outcomes are known (Call 14). Scoring needs no clock, so a day whose build
+did not run is scored by a later one, as long as that build's read still holds the day's whole window: day t + 1 at
+most READ_DAYS (90) days before the build's day, so up to the build of t + 91 (`reaches`). `due` lists those days,
+oldest first. A day past that reach can no longer be scored from the build's read: `out_of_reach` lists it apart, oldest
+first, for the build to report, and nothing stops; it stays without a summary, so a longer read could still score it.
+A day frozen late is scored too, and its summary says it was not frozen on time: the gate counts only days frozen on
+time (F6, F9).
 
 The scores file (F7, Call 21). One file per frozen day, for every column: each row of the frozen file as it stands (its
 fields `shopper.forecast.FILE_FIELDS`, the probabilities as their six-decimal strings), then SCORE_FIELDS:
@@ -29,11 +33,11 @@ The rows keep the frozen file's order (by column, then barcode); the CSV is gzip
 same rows give the same bytes. It goes to `scores/date=<t>/scores.csv.gz` in the archive, once and locked
 (`shopper.freeze.ArchiveFreezer.put_scores`), and with the archive's bytes to `scores/<t>.csv.gz` on the site. A row's
 pair is the history's for its column and barcode; an item the history holds no row of at all (no longer listed) is
-scored on its column's days alone, its outcome 0 unless the window holds more than 4 holes. The history must
-hold the whole window: day t + 14 at most the history's day (else the outcome is not known yet, and `outcome` would
-read the days not yet there as holes) and day t + 1 at least READ_DAYS (90) before it (else the window was not read):
-a ValueError otherwise, since a scores file is never rewritten. The target is version 1's (TARGET_VERSION): a frozen
-file naming another is refused, since its outcome would be another target's.
+scored on its column's days alone, its outcome 0 unless the window holds more than 4 holes. The history must hold the
+whole window: day t + 14 at most the history's day (else the outcome is not known yet, and `outcome` would read the days
+not yet there as holes) and day t + 1 at most READ_DAYS (90) days before it (`reaches`; else the window was not read): a
+ValueError otherwise, since a scores file is never rewritten; `due` never lists such a day. The target is version 1's
+(TARGET_VERSION): a frozen file naming another is refused, since its outcome would be another target's.
 
 The summary. Per day and per column (S1), its counts and sums from the published scores file alone, so anyone holding it
 can recompute them: the forecasts, the scored, the unscored, the scored with outcome 1, the sums of (p - outcome)² over
@@ -49,7 +53,8 @@ file it was made from: its rows must begin with that file's rows (a ValueError e
 
 `summary_json` writes a summary for `tables/scored/date=<t>/summary.json` (`summary_path` under the work folder's
 tables; plain and derived like every table, the same file again from the same scores file): the sums as exact decimal
-text, the time in UTC with a Z. `read_summary` reads it back as written.
+text, the time as the ledger's line writes it (`shopper.freeze.utc_text`: UTC to the second, with a Z), so a summary's
+time is its day's ledger time. `read_summary` reads it back as written.
 """
 import csv
 import gzip
@@ -57,12 +62,12 @@ import io
 import json
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
 from shopper.forecast import FILE_FIELDS, MAX_HOLES, TARGET_VERSION, Outcome, outcome
-from shopper.freeze import Frozen
+from shopper.freeze import Frozen, utc_text
 from shopper.history import READ_DAYS, History, Pair
 from shopper.items import HORIZON
 
@@ -100,12 +105,28 @@ class DaySummary:
     by_column: dict[str, ColumnSummary]
 
 
-def due(frozen_days: Iterable[date], scored_days: Iterable[date], day: date) -> list[date]:
-    """The frozen days the build of `day` scores (the module's docstring): t at most day - 14, not scored; oldest
-    first."""
+def reaches(t: date, day: date) -> bool:
+    """Whether the build of `day` reads day t's window from its first day: t + 1 at most READ_DAYS before the day."""
+    return t + timedelta(days=1) >= day - timedelta(days=READ_DAYS)
+
+
+def _closed(frozen_days: Iterable[date], scored_days: Iterable[date], day: date) -> list[date]:
+    """The frozen days not scored whose window has closed by `day` (t at most day - 14), oldest first."""
     scored = set(scored_days)
     last = day - timedelta(days=HORIZON)
     return sorted(t for t in set(frozen_days) if t <= last and t not in scored)
+
+
+def due(frozen_days: Iterable[date], scored_days: Iterable[date], day: date) -> list[date]:
+    """The frozen days the build of `day` scores (the module's docstring): t at most day - 14, not scored, its window
+    within the build's read; oldest first."""
+    return [t for t in _closed(frozen_days, scored_days, day) if reaches(t, day)]
+
+
+def out_of_reach(frozen_days: Iterable[date], scored_days: Iterable[date], day: date) -> list[date]:
+    """The frozen days not scored whose window has closed but begins before the build of `day`'s read: never scored
+    by this build, to be reported (the module's docstring); oldest first."""
+    return [t for t in _closed(frozen_days, scored_days, day) if not reaches(t, day)]
 
 
 def summary_path(tables_dir: Path, day: date) -> Path:
@@ -134,11 +155,11 @@ def _cells(result: Outcome) -> tuple:
 def scores_csv(frozen: Frozen, history: History) -> bytes:
     """The scores file of the frozen day (the module's docstring), from the history of the build that scores it."""
     day = frozen.day
-    first, last = day + timedelta(days=1), day + timedelta(days=HORIZON)
+    last = day + timedelta(days=HORIZON)
     if last > history.day:
         raise ValueError(f"the forecasts of {day.isoformat()} cannot be scored on {history.day.isoformat()}: "
                          f"their window ends on {last.isoformat()}")
-    if first < history.day - timedelta(days=READ_DAYS):
+    if not reaches(day, history.day):
         raise ValueError(f"the forecasts of {day.isoformat()} cannot be scored on {history.day.isoformat()}: "
                          f"their window starts before the {READ_DAYS} days read")
     rows = _read(frozen.body, FILE_FIELDS)
@@ -208,13 +229,6 @@ def summarize(scores: bytes, frozen: Frozen) -> DaySummary:
                       by_column={column: tally.summary() for column, tally in sorted(tallies.items())})
 
 
-def _utc(at: datetime) -> str:
-    """An aware time in UTC, ISO with a Z; a naive one is a ValueError (this Mac's zone is not UTC)."""
-    if at.utcoffset() is None:
-        raise ValueError("a summary's time must carry a time zone")
-    return at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
 def summary_json(summary: DaySummary) -> bytes:
     """The summary file (the module's docstring)."""
     columns = {column: {"forecasts": found.forecasts, "scored": found.scored, "unscored": found.unscored,
@@ -222,9 +236,10 @@ def summary_json(summary: DaySummary) -> bytes:
                         "sq_a": format(found.sq_a, "f"), "sq_b": format(found.sq_b, "f"),
                         "bins": [[count, format(total, "f"), ones] for count, total, ones in found.bins]}
                for column, found in summary.by_column.items()}
-    return json.dumps({"day": summary.day.isoformat(), "frozen_at": _utc(summary.frozen_at), "on_time": summary.on_time,
-                       "model_version": summary.model_version, "target_version": summary.target_version,
-                       "by_column": columns}, sort_keys=True, indent=1).encode()
+    return json.dumps({"day": summary.day.isoformat(), "frozen_at": utc_text(summary.frozen_at),
+                       "on_time": summary.on_time, "model_version": summary.model_version,
+                       "target_version": summary.target_version, "by_column": columns},
+                      sort_keys=True, indent=1).encode()
 
 
 def read_summary(body: bytes) -> DaySummary:

@@ -565,22 +565,34 @@ def write_summary(tables: Path, summary: DaySummary) -> bytes:
 
 
 def test_put_summary_puts_the_days_summary_plain(tmp_path):
-    fake = FakeS3()
+    fake = ClockedS3(NOW)
     archive = S3Archive(fake, "bucket")
+    archive.put_scores(days_back(14), SCORES, NOW)
     body = write_summary(tmp_path, day_summary(days_back(14)))
+    fake.calls.clear()
     key = archive.put_summary(days_back(14), tmp_path)
     assert key == kind_key("scored", None, days_back(14), "summary.json") == \
         "tables/scored/date=2026-10-19/summary.json"
     assert Path(key) == summary_path(Path("tables"), days_back(14))       # its path under the work folder's tables
-    assert fake.calls == [("put_object", {"Bucket": "bucket", "Key": key, "Body": body, "ContentType": JSON})]
+    assert fake.calls == [("head_object", {"Bucket": "bucket", "Key": scores_archive_key(days_back(14))}),
+                          ("put_object", {"Bucket": "bucket", "Key": key, "Body": body, "ContentType": JSON})]
     again = write_summary(tmp_path, day_summary(days_back(14), scored=2))  # derived: a re-run replaces it
     archive.put_summary(days_back(14), tmp_path)
     assert fake.objects[key][0] == again
 
 
+def test_put_summary_refuses_a_day_without_its_scores_file(frozen_archive, tmp_path):
+    write_summary(tmp_path, day_summary(days_back(14)))
+    frozen_archive.put_scores(days_back(15), SCORES, NOW)                  # another day's scores file
+    with pytest.raises(ValueError, match="2026-10-19"):
+        frozen_archive.put_summary(days_back(14), tmp_path)
+    assert frozen_archive._keys("tables/") == [] and frozen_archive.scored_days() == []
+
+
 def test_scored_days_are_the_days_with_a_summary(frozen_archive, tmp_path):
     for day in (days_back(1), days_back(3), DAY):                           # out of order
         write_summary(tmp_path, day_summary(day))
+        frozen_archive.put_scores(day, SCORES, NOW)
         frozen_archive.put_summary(day, tmp_path)
     # a scores file whose summary was never put (a run stopped between the two): not scored, so due again
     frozen_archive.put_scores(days_back(5), SCORES, NOW)
@@ -596,6 +608,7 @@ def test_fetch_summaries_returns_day_summaries(frozen_archive, tmp_path):
     bodies = {}
     for summary in reversed(summaries):
         bodies[summary.day] = write_summary(tmp_path / "out", summary)
+        frozen_archive.put_scores(summary.day, SCORES, NOW)
         frozen_archive.put_summary(summary.day, tmp_path / "out")
     found = frozen_archive.fetch_summaries(tmp_path / "in")
     assert found == summaries                                               # read through read_summary, by day
@@ -660,6 +673,9 @@ def test_no_method_ever_deletes(tmp_path):
     with pytest.raises(AlreadyStored):
         call("put_scores", DAY, SCORES + b"x", NOW)
     write_summary(tmp_path / "out", day_summary(days_back(14)))
+    with pytest.raises(ValueError):
+        call("put_summary", days_back(14), tmp_path / "out")               # no scores file for the day yet
+    call("put_scores", days_back(14), SCORES, NOW)
     call("put_summary", days_back(14), tmp_path / "out")
     call("put_summary", days_back(14), tmp_path / "out")
     call("scored_days")
