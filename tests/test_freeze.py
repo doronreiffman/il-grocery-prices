@@ -323,6 +323,32 @@ def test_a_late_day_gets_its_line_with_its_late_time():
     assert ledger(None, late).endswith(f"2026-11-07,{sha(b'a')},2026-11-07T22:00:01Z\n".encode())
 
 
+def _a_day() -> Frozen:
+    return Frozen(day=DAY, body=b"a", sha256=sha(b"a"), frozen_at=NOW, on_time=True, status="frozen")
+
+
+def test_a_ledger_with_only_its_header_is_extended():
+    assert ledger(LEDGER_HEADER, _a_day()) == ledger(None, _a_day())
+
+
+def test_a_published_ledger_without_its_header_is_refused_not_extended():
+    line = f"2026-11-08,{sha(b'b')},2026-11-08T07:05:03Z\n".encode()
+    for damaged in (b"", line, b"day,sha256,frozen_at" + line, b"sha256,day,frozen_at\n" + line):
+        with pytest.raises(ValueError, match="header"):
+            ledger(damaged, _a_day())      # an empty file would otherwise get a first line and no header
+
+
+def test_a_published_ledger_without_its_final_newline_is_refused_not_glued_to():
+    held = ledger(None, _a_day())
+    later = Frozen(day=NEXT, body=b"b", sha256=sha(b"b"), frozen_at=NOW + timedelta(days=1), on_time=True,
+                   status="frozen")
+    for damaged in (held[:-1], held.rstrip(b"\n") + b"\r"):
+        with pytest.raises(ValueError, match="newline"):
+            ledger(damaged, later)         # the new line would otherwise join the last one
+    with pytest.raises(ValueError, match="newline"):
+        ledger(held[:-1], _a_day())        # not even the day's own line being there makes a damaged ledger fit to publish
+
+
 # The Mac's freezer
 
 def _synced(data: Path, body: bytes, stamp: datetime, day: date = DAY) -> Path:

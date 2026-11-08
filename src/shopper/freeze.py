@@ -7,8 +7,9 @@ forecasts.csv.gz` in the archive (`archive_key`) and, with the same bytes, on th
 (`site_key`).
 
 The cutoff. A day counts only if its file was stored before midnight ending the day, Israel time (`cutoff`), about when
-the chains' next files appear. The time that counts is the stored object's, set by S3 when it received the put, never
-the time the run's own clock showed: a run that thought it was in time and was not is "late".
+the chains' next files appear. The time that counts is the stored object's time as S3 reports it (`LastModified`), never
+the time the run's own clock showed: a run that thought it was in time and was not is "late". Whether S3 stamps the start
+or the end of the upload is UNVERIFIED (the design's F6 marks it so).
 
 The freezer. Only the site run in Lambda writes the archive (question D): `ArchiveFreezer`, given the archive and the
 run's time, `freeze`s the day's file. Its rules, in order:
@@ -40,8 +41,11 @@ AWS CLI sets on a download to the object's time in S3, to the second (`ProvideLa
 The ledger (Call 17). `forecasts/ledger.csv` on the site gains one line a day, `<day>,<SHA-256 of the file's gzip bytes>,
 <S3's time, UTC, ISO with a Z>`, and only grows: `ledger` returns the published ledger's bytes with the day's line
 after them, so anyone who kept an earlier copy can see a changed line. The day's line already there is left as it is
-(a rerun); another line for the day is refused (ValueError). A late day has its line too, with its late time. The
-upload check (Task 21) refuses a ledger that does not begin with the published one's bytes.
+(a rerun); another line for the day is refused (ValueError). A late day has its line too, with its late time. A published
+ledger that does not start with the header line, or does not end in a newline, is refused (ValueError) rather than
+extended: an empty file would get a first line and no header, and a last line without its newline would have the new
+line joined to it, damage a check that only looks for the published bytes at the start would let through. The upload
+check (Task 21) refuses a ledger that does not begin with the published one's bytes.
 """
 import gzip
 import hashlib
@@ -173,11 +177,16 @@ class ReadOnlyFreezer:
 
 def ledger(published: bytes | None, frozen: Frozen) -> bytes:
     """The published ledger (None: there is none yet) with the day's line after it when it is not there; the day's line
-    there already is left as it is, and another line for the day is a ValueError."""
+    there already is left as it is, and another line for the day is a ValueError, as is a published ledger that does not
+    start with LEDGER_HEADER or does not end in a newline."""
     at = frozen.frozen_at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     line = f"{frozen.day.isoformat()},{frozen.sha256},{at}"
     if published is None:
         return LEDGER_HEADER + (line + "\n").encode()
+    if not published.startswith(LEDGER_HEADER):
+        raise ValueError(f"the published ledger does not start with the header line {LEDGER_HEADER!r}")
+    if not published.endswith(b"\n"):
+        raise ValueError("the published ledger does not end in a newline")
     for held in published.decode().splitlines():
         if held.startswith(f"{frozen.day.isoformat()},"):
             if held == line:

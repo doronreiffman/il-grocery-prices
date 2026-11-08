@@ -51,9 +51,10 @@ back plain (`put_covered`), replaced by a re-run of the day as every table is.
 The day's forecasts file (`put_frozen`) is put as a record is: write-once and locked, its content type gzip. The archive
 only stores it: whether a stored file and a new one are the same forecasts is the freezer's to say
 (`shopper.freeze`, question E), so the same bytes again are the same put retried and other bytes under the key are
-AlreadyStored. `frozen_days` lists the days that hold one. `last_modified` gives an object's time as S3 set it, which
-the freezer reads back to say whether a file was stored before its day's cutoff (F6): a MemoryArchive keeps such a time
-per key, the put's `now` unless it is given an `s3_clock` (a function returning an aware time), which tests fix.
+AlreadyStored. `frozen_days` lists the days that hold one. `last_modified` gives an object's time as S3 reports it
+(`LastModified`), which the freezer reads back to say whether a file was stored before its day's cutoff (F6): a
+MemoryArchive keeps such a time per key, the put's `now` unless it is given an `s3_clock` (a function returning an
+aware time), which tests fix.
 
 Scoring (F7). A day's scores file (`put_scores`) is put as the forecasts file is: write-once and locked, as gzip, the
 freezer saying whether a stored one and a new one are the same scores. Its summary (`shopper.score.summary_json`) is
@@ -333,7 +334,7 @@ class S3Archive(_Archive, S3Store):
     """The archive bucket, through a boto3 S3 client."""
 
     def last_modified(self, key: str) -> datetime | None:
-        """The object's time as S3 set it (aware); None when the key holds nothing."""
+        """The object's time as S3 reports it (`LastModified`, aware); None when the key holds nothing."""
         try:
             answer = self.client.head_object(Bucket=self.bucket, Key=key)
         except ClientError as err:
