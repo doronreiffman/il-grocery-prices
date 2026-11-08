@@ -106,6 +106,10 @@ SHOP_PROMOS = ("src/shopper/promos.py", ["tests/test_promos.py"])
 # through basket.rules.store_prices_sql: its tests must catch a break of either.
 EXTRACT_FOR_SHOP_PROMOS = ("src/basket/extract.py", ["tests/test_promos.py"])
 RULES_FOR_SHOP_PROMOS = ("src/basket/rules.py", ["tests/test_promos.py"])
+SHOP_ITEMS = ("src/shopper/items.py", ["tests/test_items.py"])
+# The items table reads B5, B6, B7, B8 and the rows that count from basket.rules, through a view of its own: its tests
+# must catch a break of any of them (the second pre-flight's S13).
+RULES_FOR_SHOP_ITEMS = ("src/basket/rules.py", ["tests/test_items.py"])
 # Carrefour's hand-kept store table lives in basket.chains, beside EXCLUDED; the column tests must catch a change to it.
 CHAINS_FOR_SHOP_COLUMNS = ("src/basket/chains.py", ["tests/test_columns.py"])
 # The survey reads each store's latest promotion file through basket.extract.day_files, which its tests must catch too.
@@ -1255,6 +1259,48 @@ MUTATIONS = {
     "a text's store listed per copy (q22 promotions table)": (SHOP_PROMOS, '        if not carrying or carrying[-1] != store:\n', '        if True:\n'),
     'store prices filtered without codes (q22 promotions table)': (RULES_FOR_SHOP_PROMOS, '" WHERE code_norm IN (SELECT unnest(?::VARCHAR[]))" if codes else ""', '" WHERE code_norm IN (SELECT unnest(?::VARCHAR[]))"'),
     'store prices from another view than the one named (q22 promotions table)': (RULES_FOR_SHOP_PROMOS, 'count(*) AS codes FROM {rows}{where}', 'count(*) AS codes FROM rows{where}'),
+    # shopper: the day's items table, a row per column and product, and the reader's input (q22 items, P1, P2)
+    'internal codes get a row (q22 P1)': (SHOP_ITEMS, '        WHERE r.gs1\n', '        WHERE true\n'),
+    'wide over included stores, not stores with a file (q22 P1)': (SHOP_ITEMS, '_rows(slug, day, prices, sizes, names, with_file, links, counts)', '_rows(slug, day, prices, sizes, names, {key: len(ids) for key, ids in columns.items()}, links, counts)'),
+    'wide at a third (q22 P1)': (RULES_FOR_SHOP_ITEMS, '    return listing * 2 >= with_file', '    return listing * 3 >= with_file'),
+    "the median over the chain's stores, not the column's (q22 P2)": (SHOP_ITEMS, 'JOIN store_columns c ON c.store = r.store', 'JOIN (SELECT DISTINCT col FROM store_columns) c ON true'),
+    'placeholders kept in the median (q22 P2)': (RULES_FOR_SHOP_ITEMS, 'p.price > 0.01', 'p.price >= 0.01'),
+    'excluded sub-chain rows counted (q22 P2)': (SHOP_ITEMS, '        apply_filters(con, keys, sub_chains)\n', '        apply_filters(con, keys, {slug: frozenset()})\n'),
+    'a store named under Be counted with a file (q22 P2)': (SHOP_ITEMS, 'stores_with_file_keys(con, keys, sub_chains)[slug]', 'stores_with_file_keys(con, keys, {slug: frozenset()})[slug]'),
+    'a store in no column counted (q22 P2)': (SHOP_ITEMS, '        _column_rows(con, columns)\n', '        _column_rows(con, {key: ids | set(in_no_column) for key, ids in columns.items()})\n'),
+    "a column's stores with a file counted over the chain (q22 P2)": (SHOP_ITEMS, 'with_file = {key: len(ids & file_keys) for key, ids in columns.items()}', 'with_file = {key: len(file_keys) for key, ids in columns.items()}'),
+    'a hole at half (q22 P2)': (RULES_FOR_SHOP_ITEMS, 'included > 0 and with_file * 2 >= included', 'included > 0 and with_file * 2 > included'),
+    'B8 per column without its included half (q22 items)': (SHOP_ITEMS, 'hole=not chain_day(key, len(ids), with_file[key]).in_ranking', 'hole=with_file[key] * 2 < len(ids)'),
+    'B5 read from rows, not the view named (q22 items)': (RULES_FOR_SHOP_ITEMS, 'FROM ({store_prices_sql(rows, codes is not None)})', 'FROM ({store_prices_sql("rows", codes is not None)})'),
+    'B5 with no codes asked for none (q22 items)': (RULES_FOR_SHOP_ITEMS, 'FROM ({store_prices_sql(rows, codes is not None)})', 'FROM ({store_prices_sql(rows, codes is None)})'),
+    'B7 read from rows, not the view named (q22 items)': (RULES_FOR_SHOP_ITEMS, 'quantity, unit, count(*) FROM {rows}{where}"', 'quantity, unit, count(*) FROM rows{where}"'),
+    'B7 for every code when codes are asked for (q22 items)': (RULES_FOR_SHOP_ITEMS, '    where = "" if codes is None else " WHERE code_norm IN (SELECT unnest(?::VARCHAR[]))"\n', '    where = ""\n'),
+    "the name's tie to the shortest (q22 items)": (SHOP_ITEMS, '(-names[name], -len(name), name)', '(-names[name], len(name), name)'),
+    "the name's tie to the last in code-point order (q22 items)": (SHOP_ITEMS, '(-names[name], -len(name), name)', '(-names[name], -len(name), tuple(-ord(c) for c in name))'),
+    'the name by length before count (q22 items)': (SHOP_ITEMS, '(-names[name], -len(name), name)', '(-len(name), -names[name], name)'),
+    'on promotion only when the deal is valid (q22 items)': (SHOP_ITEMS, '            on = on or link["in_day"]\n', '            on = on or (link["in_day"] and deal(slug, link["item"], listed, None).valid)\n'),
+    'at some stores counted as on promotion (q22 items)': (SHOP_ITEMS, '        if link["wide"] and link["kind"] is not None:\n', '        if link["kind"] is not None:\n'),
+    'a zero link counted as on promotion (q22 items)': (SHOP_ITEMS, '        if link["wide"] and link["kind"] is not None:\n', '        if link["wide"]:\n'),
+    'next start fifteen days out (q22 items)': (SHOP_ITEMS, 'day + timedelta(days=HORIZON)', 'day + timedelta(days=HORIZON + 1)'),
+    'next start of a promotion in the day (q22 items)': (SHOP_ITEMS, 'if day < link["start"] <=', 'if day <= link["start"] <='),
+    'unread promotions not a hole (q22 items)': (SHOP_ITEMS, 'promo_hole=promo is None or promo_files * 2 < counted', 'promo_hole=promo_files * 2 < counted'),
+    'a promotion hole at half (q22 items)': (SHOP_ITEMS, 'promo_hole=promo is None or promo_files * 2 < counted', 'promo_hole=promo is None or promo_files * 2 <= counted'),
+    'unread promotions written as none on promotion (q22 items)': (SHOP_ITEMS, '        on = next_start = structs = None\n', '        on, next_start, structs = False, None, []\n'),
+    'valid deals counted whether on the day or not (q22 items)': (SHOP_ITEMS, 'if link["in_day"] and struct["valid"]', 'if struct["valid"]'),
+    'under the floor never named (q22 items)': (SHOP_ITEMS, 'under_floor=key in floor', 'under_floor=False'),
+    'the link of the lowest GroupID as text (q22 items)': (SHOP_ITEMS, '_by_number(link["group_id"]), link["code"]', 'link["group_id"], link["code"]'),
+    'a zero link shown over a kind link (q22 items)': (SHOP_ITEMS, '(link["kind"] is None, _by_number(link["group_id"]), link["code"])', '(_by_number(link["group_id"]), link["code"])'),
+    'promotions listed by id before start (q22 items)': (SHOP_ITEMS, '(struct["start"], _by_number(struct["promotion_id"]))', '(_by_number(struct["promotion_id"]), struct["start"])'),
+    'promotions of one start listed by id as text (q22 items)': (SHOP_ITEMS, '(struct["start"], _by_number(struct["promotion_id"]))', '(struct["start"], struct["promotion_id"])'),
+    'a percent-off deal priced without its stores (q22 items)': (SHOP_ITEMS, 'found = deal(slug, item, listed, stores)', 'found = deal(slug, item, listed, None)'),
+    'the deal price written rounded only (q22 items)': (SHOP_ITEMS, '"price_exact": None if found.price is None else str(found.price)', '"price_exact": None if found.price is None else str(Fraction(_two(found.price)))'),
+    'the price for the eye rounded down (q22 items)': (SHOP_ITEMS, 'math.floor(abs(price) * 100 + Fraction(1, 2))', 'math.floor(abs(price) * 100)'),
+    'a deal price too large to show written (q22 items)': (SHOP_ITEMS, '    if cents >= MAX_CENTS:\n        return None\n', ''),
+    'a MinQty the table cannot hold written (q22 items)': (SHOP_ITEMS, 'if abs(buy) >= BUY_LIMIT or buy != buy.quantize(THREE):', 'if abs(buy) >= BUY_LIMIT:'),
+    'buy written to two places (q22 items)': (SHOP_ITEMS, '    return format(buy, "f")\n', '    return format(buy.quantize(Decimal("0.01")), "f")\n'),
+    'texts without listed prices (q22 items)': (SHOP_ITEMS, 'json.dumps(listed, ensure_ascii=False), len(text.stores))', 'json.dumps({}, ensure_ascii=False), len(text.stores))'),
+    'texts listed at every column (q22 items)': (SHOP_ITEMS, 'for column, ids in columns.items() if ids & carrying}', 'for column, ids in columns.items()}'),
+    "a group's items left out of the texts' fields (q22 items)": (SHOP_ITEMS, 'if link.group is group]}', 'if False]}'),
     # basket: extract
     "extract older file wins": (EXTRACT, "latest = max(named)", "latest = min(named)"),
     "extract first duplicate wins": (EXTRACT, "        latest[row.code] = row", "        latest.setdefault(row.code, row)"),
@@ -1336,7 +1382,7 @@ MUTATIONS = {
     "rules median takes the lower middle": (RULES, "return (ordered[middle - 1] + ordered[middle]) / 2", "return ordered[middle - 1]"),
     "rules a double-coded store weighs twice": (RULES, '" GROUP BY chain, code_norm, store")', '" GROUP BY chain, code_norm, store, code")'),
     "rules a double-coded store at its higher price": (RULES, "min(price) AS price", "max(price) AS price"),
-    "rules coverage guard at a third": (RULES, "listing[day.slug] * 2 >= day.with_file", "listing[day.slug] * 3 >= day.with_file"),
+    "rules coverage guard at a third": (RULES, "    return listing * 2 >= with_file", "    return listing * 3 >= with_file"),
     "rules size guard ignores a chain": (RULES, "sizes.get((day.slug, code)) for day in ranking}", "sizes.get((day.slug, code)) for day in ranking[:-1]}"),
     "rules unstated size blocks": (RULES, "if size is not None and size != item.size", "if size != item.size"),
     "rules half a chain's stores read as a third": (RULES, "with_file * 2 >= included", "with_file * 3 >= included"),

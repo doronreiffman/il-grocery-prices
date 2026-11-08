@@ -21,6 +21,10 @@ digits once leading zeros are stripped ("0" + code and the code) is double-coded
 the lowest of its rows'. The lowest and highest store prices, the number of stores listing the item
 and the number of them double-coded are kept beside it.
 
+Which rows. Prices (B5) and sizes (B7) are read from the view `rows` unless another view is named, keyed by its
+`chain` column, for the codes asked for, or for every code in the view when given none: the shopper site names a view
+of the same rows whose `chain` is a store format (`shopper.items`), so both rules hold per format with no second copy.
+
 Chain size (B7). A chain's size for an item is the most common readable size over its rows
 (`basket.units.normal_size`), each size counted over every row that states it however it is spelled
 ("1 ליטר" and "1000 מיליליטר" are one size); a tie goes to the smaller amount. It is None when no row
@@ -31,7 +35,7 @@ have a file that day. A chain out of the ranking keeps its item prices but has n
 and it neither keeps an item out nor lets one in.
 
 Guards (B6, B7). An item counts that day when, at every chain in the ranking, at least half of the
-chain's stores with a file list it (coverage), and no chain in the ranking states a size other than
+chain's stores with a file list it (coverage, `covers`), and no chain in the ranking states a size other than
 the basket's (size); a chain that states none does not count against it. Coverage is checked first.
 An item that fails is left out of every chain's total and named with the chains that kept it out and
 their share ("1 of 4") or size ("500 gml").
@@ -188,13 +192,20 @@ def store_prices_sql(rows: str = "rows", codes: bool = True) -> str:
             " GROUP BY chain, code_norm, store")
 
 
-def chain_prices(con: duckdb.DuckDBPyConnection, codes: Sequence[str]) -> dict[tuple[str, str], ChainPrice]:
-    """Per (chain, normalized code) listed in `rows`: the chain's price for the item (B5), one price a store."""
+def _bound(codes: Sequence[str] | None) -> list:
+    """The parameters of a query filtered by `codes` (normalized), or none for every code."""
+    return [] if codes is None else [[normalize(code) for code in codes]]
+
+
+def chain_prices(con: duckdb.DuckDBPyConnection, codes: Sequence[str] | None,
+                 rows: str = "rows") -> dict[tuple[str, str], ChainPrice]:
+    """Per (chain, normalized code) listed in the view `rows`, keyed by its `chain` column: the chain's price for the
+    item (B5), one price a store; for the normalized `codes`, or with None for every code."""
     found = con.execute(f"""
         SELECT chain, code_norm, list(price ORDER BY price, store), count(*), count(*) FILTER (WHERE codes > 1)
-        FROM ({store_prices_sql()})
+        FROM ({store_prices_sql(rows, codes is not None)})
         GROUP BY chain, code_norm ORDER BY chain, code_norm
-    """, [[normalize(code) for code in codes]]).fetchall()
+    """, _bound(codes)).fetchall()
     return {(chain, code): ChainPrice(median(prices), prices[0], prices[-1], listing, double_coded)
             for chain, code, prices, listing, double_coded in found}
 
@@ -208,12 +219,13 @@ def median(ordered: list[Decimal]) -> Decimal:
     return (ordered[middle - 1] + ordered[middle]) / 2
 
 
-def chain_sizes(con: duckdb.DuckDBPyConnection, codes: Sequence[str]) -> dict[tuple[str, str], Size | None]:
-    """Per (chain, normalized code) listed in `rows`: the chain's size for the item (B7), or None."""
-    found = con.execute(
-        "SELECT chain, code_norm, quantity, unit, count(*) FROM rows"
-        " WHERE code_norm IN (SELECT unnest(?::VARCHAR[])) GROUP BY ALL ORDER BY ALL",
-        [[normalize(code) for code in codes]]).fetchall()
+def chain_sizes(con: duckdb.DuckDBPyConnection, codes: Sequence[str] | None,
+                rows: str = "rows") -> dict[tuple[str, str], Size | None]:
+    """Per (chain, normalized code) listed in the view `rows`, keyed by its `chain` column: the chain's size for the
+    item (B7), or None; for the normalized `codes`, or with None for every code."""
+    where = "" if codes is None else " WHERE code_norm IN (SELECT unnest(?::VARCHAR[]))"
+    found = con.execute(f"SELECT chain, code_norm, quantity, unit, count(*) FROM {rows}{where}"
+                        " GROUP BY ALL ORDER BY ALL", _bound(codes)).fetchall()
     counted: dict[tuple[str, str], Counter[Size]] = {}
     for chain, code, quantity, unit, count in found:
         sizes = counted.setdefault((chain, code), Counter())
@@ -226,6 +238,11 @@ def chain_sizes(con: duckdb.DuckDBPyConnection, codes: Sequence[str]) -> dict[tu
 def _most_common(sizes: Counter[Size]) -> Size | None:
     """The size with the most rows, a tie to the smaller amount; None for no size."""
     return min(sizes, key=lambda size: (-sizes[size], size.amount, size.kind), default=None)
+
+
+def covers(listing: int, with_file: int) -> bool:
+    """B6's coverage: `listing` stores list the item, at least half of the chain's `with_file` stores with a file."""
+    return listing * 2 >= with_file
 
 
 def chain_day(slug: str, included: int, with_file: int) -> ChainDay:
@@ -274,7 +291,7 @@ def _guard(item: BasketItem, ranking: Sequence[ChainDay], prices: dict[tuple[str
     code = normalize(item.code)
     listing = {day.slug: prices[(day.slug, code)].listing if (day.slug, code) in prices else 0 for day in ranking}
     short = {day.slug: f"{listing[day.slug]} of {day.with_file}" for day in ranking
-             if not listing[day.slug] * 2 >= day.with_file}
+             if not covers(listing[day.slug], day.with_file)}
     if short:
         return LeftOut(item.code, "coverage", short)
     stated = {day.slug: sizes.get((day.slug, code)) for day in ranking}
