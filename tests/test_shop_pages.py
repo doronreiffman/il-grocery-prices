@@ -23,8 +23,9 @@ from basket.stores import Store
 from basket.words import ALWAYS as BASKET_ALWAYS, CHAIN_NAMES, METHOD_INTRO, TITLE as BASKET_TITLE
 from shopper.columns import BY_KEY, COLUMNS, FLOOR
 from shopper.history import ColumnDay
-from shopper.pages import (BASKET_SECTION, NO_DEALS, ColumnsToday, Counts, FrontRow, front_rows_of, ordered,
-                           render_basket, render_front, render_method, render_record, scorecard_section)
+from shopper.pages import (BASKET_PAGE, BASKET_SECTION, NO_DEALS, SCORED_SO_FAR, ColumnsToday, Counts, FrontRow,
+                           front_rows_of, ordered, render_basket, render_front, render_method, render_record,
+                           scorecard_section)
 from shopper.product import CHAIN_SPAN, page_path
 from shopper.record import scorecard
 from shopper.words import (ALWAYS, ALWAYS_SENTENCE, CREDIT_START, FINE_PRINT, FRONT_RULE, FRONT_TITLE, GAP_HEADING,
@@ -299,6 +300,12 @@ def test_the_method_page_lists_each_column_its_stores_and_the_stores_in_none():
     assert f"Shufersal Universe: 2 included stores today, under the floor of {FLOOR}" in floor
     assert "No column" in _method(_columns(under_floor=[]))
     assert "Rami Levy, Osher Ad and Yochananof are each shown as one format, whole." in page
+    intro = re.search(r'<section id="columns"><h2>What a column is</h2><p>(.*?)</p>', page).group(1)
+    assert (f"each of their formats with at least {FLOOR} included stores on the store lists of 7 November 2026 is a "
+            "column of its own (the floor below; the smaller ones then are in no column)") in intro   # re-review, N2
+    assert "every measure on the front, product and record pages is a column's" in intro
+    assert "The headline basket, in its section below, takes each chain's median instead." in intro
+    assert "each format is a column of its own" not in intro and "every measure here" not in intro      # review, 3
     assert "Every included store is in a column today." in _method(_columns(outside={}))
 
 
@@ -327,17 +334,31 @@ def test_the_method_page_states_the_rules_with_the_codes_constants():
         assert figure in rules, figure
     assert unreadable("carrefour") in rules and no_odds_yet(DEAL).split(".")[0] in rules
     assert "0123456789ab" in page and 'href="site-days/2026-11-02.json"' in page
+    reproduce = re.search(r'<section id="reproduce">(.*?)</section>', page, re.DOTALL).group(1)
+    assert "the same numbers on every page, the record's intervals to rounding (F8)." in reproduce    # review, 4
 
 
 def test_the_method_page_carries_the_baskets_method_as_its_own_section():
     """The second pre-flight's S6: the basket's method parts, byte for byte, inside a section whose id is not the
     inner heading's; ids once each."""
     page = _method()
-    parts = "".join(method_parts(BASKET, METHOD_EXCLUSIONS, a_public()))
+    parts = "".join(method_parts(BASKET, METHOD_EXCLUSIONS, a_public(), BASKET_PAGE))
     assert f'<section id="{BASKET_SECTION}"><h2>{BASKET_TITLE}</h2>{parts}</section>' in page
     assert BASKET_SECTION != "basket" and METHOD_INTRO in parts
     ids = re.findall(r' id="([^"]+)"', page)
     assert len(ids) == len(set(ids))
+
+
+def test_the_baskets_method_on_the_method_page_speaks_of_the_basket_page():
+    """Task 18's review, finding 2: inside the site's method page the basket's words name the basket page, so "What
+    this page does not claim" and "every number on the page" stay true there; the basket's own page keeps its words."""
+    section = re.search(rf'<section id="{BASKET_SECTION}">(.*)</section>', _method(), re.DOTALL).group(1)
+    assert "<h2>What the basket page does not claim</h2>" in section
+    assert "The day file holds every number on the basket page and the counts behind them" in section
+    assert "What this page does not claim" not in section
+    assert "The day file holds every number on the page" not in section
+    own = basket_method(BASKET, EXCLUSIONS, a_public())
+    assert "<h2>What this page does not claim</h2>" in own and "every number on the page and the counts" in own
 
 
 def test_basket_method_parts_are_the_baskets_method_page():
@@ -425,6 +446,25 @@ def test_the_record_page_shows_each_columns_scores_by_month_and_in_all():
     _no_never_phrase_and_no_pronoun(page)
 
 
+def test_the_record_pages_tables_say_they_count_the_days_scored_so_far():
+    """Task 18's review, finding 1: a day is scored 14 days after it is frozen, so the tables hold fewer days than the
+    ledger; the sentence before them and their heads say so, and never call their count the days frozen."""
+    ledger = {START + timedelta(days=n): datetime.combine(START + timedelta(days=n), time(10, 40), tzinfo=timezone.utc)
+              for n in range(46)}
+    page = _record(_scored(), ledger)
+    section = scorecard_section(_scored())
+    assert section.index(SCORED_SO_FAR) < section.index("<table")
+    assert "scored 14 days after it is frozen" in SCORED_SO_FAR
+    heads = re.findall(r'<th scope="col">([^<]+)</th>', re.search(r'<table class="counts">(.*?)</thead>', section,
+                                                                    re.DOTALL).group(1))
+    assert heads[1:4] == ["Files scored, frozen on time", "Files scored, frozen late (not counted)",
+                          "Days with a scored forecast"]
+    assert "Days frozen on time" not in page and "Days late, not counted" not in page
+    assert "Forecasts frozen on 46 days, from 1 December 2026 to 15 January 2027: 46 on time, 0 late." in page
+    assert SCORED_SO_FAR.startswith("Each column's tables below count only")
+    assert SCORED_SO_FAR not in _record() and "<table" not in scorecard_section(scorecard([]))    # re-review, N1
+
+
 def test_the_record_page_shows_calibration_and_a_sentence_per_bin_of_one_percent_or_more():
     """F8 and F11: the calibration table and an inline chart, hidden from screen readers; one sentence per bin holding
     1% or more of the version's scored forecasts, none for a bin under it."""
@@ -499,7 +539,8 @@ def test_the_record_page_says_the_days_read_and_the_column_days_short_of_files()
                                  for n in range(60, 91)})
     page = _record(column_days=days)
     section = re.search(r'<section id="days">(.*?)</section>', page, re.DOTALL).group(1)
-    assert "This page reads the 91 days from 2 October 2026 to 31 December 2026." in section
+    assert "The site's build reads the 91 days from 2 October 2026 to 31 December 2026." in section
+    assert "This page reads" not in section                                                    # the review, finding 5
     deal = re.search(r"<tr><th scope=\"row\">Shufersal Deal</th>(.*?)</tr>", section).group(1)
     assert re.findall(r"<td>([^<]*)</td>", deal) == ["56", "3 to 5 December 2026; 9 December 2026", "none",
                                                       "2 October to 1 November 2026"]

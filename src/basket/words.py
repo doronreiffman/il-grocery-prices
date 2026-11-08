@@ -217,11 +217,12 @@ def double_coded_line(counts: Mapping[str, int]) -> str | None:
             f"{joined(times)}.")
 
 
-def reproduce(day: date, basket_version: str, code_sha: str) -> str:
-    """How anyone with the chains' files gets the same numbers."""
+def reproduce(day: date, basket_version: str, code_sha: str, page: str = "the page") -> str:
+    """How anyone with the chains' files gets the same numbers; `page` names the page whose numbers the day file holds
+    ("the basket page" where the basket's method sits on another page)."""
     return (f"Take each chain's full price files of {day:%-d %B %Y}, the latest one per store, as the chains "
             f"published them; basket {basket_version}, listed above; and the rules above. The day file holds every "
-            "number on the page and the counts behind them: the stores with a file, the rows read, the rows "
+            f"number on {page} and the counts behind them: the stores with a file, the rows read, the rows "
             "dropped as placeholders, and how many stores list each item. It names the code that built it by its "
             f"fingerprint, {code_sha}. The same files, basket and code give the same numbers.")
 

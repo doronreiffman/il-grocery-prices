@@ -280,22 +280,26 @@ def render_method(basket: Basket, exclusions: Mapping[str, Sequence[Store]], pub
     return _page(_band(back, public), f"{words.METHOD_TITLE} · {words.TITLE}", parts, _credit(public))
 
 
-def method_parts(basket: Basket, exclusions: Mapping[str, Sequence[Store]], public: dict) -> list[str]:
+def method_parts(basket: Basket, exclusions: Mapping[str, Sequence[Store]], public: dict,
+                 page: str | None = None) -> list[str]:
     """The method page's body after its heading, as HTML parts: the intro, the rules, the basket, the stores left out,
-    the claims not made, the law, reproducing. The shopper site's method page carries them in a section of its own."""
+    the claims not made, the law, reproducing. The shopper site's method page carries them in a section of its own and
+    names the page they are about (`page`, "the basket page"), so "What this page does not claim" and "every number on
+    the page" stay true there; None keeps the basket's own words."""
     day = date.fromisoformat(public["day"])
     rules = "".join(f"<li><b>{_text(name)}</b> <span>{_prose(text)}</span></li>" for name, text in words.RULES)
     not_claimed = "".join(f"<li>{_prose(line)}</li>" for line in words.NOT_CLAIMED)
+    on = page or "the page"         # the page the day file's numbers are on
     return [f'<p class="lede">{_prose(words.METHOD_INTRO)}</p>',
             _section("<h2>The rules</h2>", f'<ol class="rules">{rules}</ol>'),
             _section('<h2 id="basket">The basket</h2>', f"<p>{_prose(words.basket_intro(basket))}</p>",
                      _basket_table(basket)),
             _section("<h2>Stores left out</h2>",
                      *(_excluded(slug, exclusions.get(slug, ())) for slug in words.CHAIN_NAMES)),
-            _section("<h2>What this page does not claim</h2>", f"<ul>{not_claimed}</ul>"),
+            _section(f"<h2>What {_text(page or 'this page')} does not claim</h2>", f"<ul>{not_claimed}</ul>"),
             _section("<h2>The law</h2>", f"<p>{_prose(words.LAW)}</p>"),
             _section("<h2>To reproduce this number</h2>",
-                     f"<p>{_prose(words.reproduce(day, public['basket_version'], public['code_sha']))}</p>",
+                     f"<p>{_prose(words.reproduce(day, public['basket_version'], public['code_sha'], on))}</p>",
                      _day_link(day))]
 
 
