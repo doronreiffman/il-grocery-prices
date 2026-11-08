@@ -30,9 +30,10 @@ ruling 1).
 What the words state (Task 15's review, fix round 1): never more than the figures shown and the records support. Every
 comparison or change a sentence states is worked on the two-place figures it shows (half up: a listed price by
 `basket.record.money`, a deal price by `shopper.deals.to_agora`), so the page agrees with itself; the exact prices stay
-for ranking, depth and the front page's test (`shopper.measures`), which the words never state. And only consecutive
-days with records pin a date: an edge with a gap in the records beside it (a hole, a day the product is not listed, a
-day whose promotions were not read) is a bound, wherever it sits.
+for ranking and depth (`shopper.measures`), which the words never state, and the front page's test compares the shown
+figures too (`shopper.measures.on_front`, fix round 2). And only consecutive days with records pin a date: an edge with
+a gap in the records beside it (a hole, a day the product is not listed, a day whose promotions were not read) is a
+bound, wherever it sits.
 
 P7, three sentences, no verdict word. The deal against the 30-day median: "Deal price ₪7.90: ₪4.00, 34%, below the
 30-day median listed price of ₪11.90 (of the 30 days with records before today).", the amount and the whole percent
@@ -51,18 +52,19 @@ P8, from the 90-day window (`shopper.measures`), naming the column as the amendm
 by fewer than half the column's stores is never denied: "On a promotion listed across Shufersal Deal on 12 of the 87
 days with records before today, as listed in the morning's files." ("(promotions could not be read on 2)" before the
 comma when some were not read), or "No promotion listed across Shufersal Deal in the 87 days with records before today."
-when none was seen and every day was read; "Runs before today: 3 to 9 November 2026; 24 to 30 November 2026."; "Days
-between runs: 14."; "The last run ended on 30 November 2026, 6 days ago." A run's start is pinned only when the day
-before it is a day with records whose promotions were read, and its end only when the day after it is (or is today,
-read): otherwise the start is "from 22 August 2026 or earlier", the end "to 19 November 2026 or later" and the days
-since its end "at most 3 days ago". A day of the window the files say nothing of (a hole, a day the product is not
+when none was seen and every day was read; "Runs seen before today: 3 to 9 November 2026; 24 to 30 November 2026."
+(three of the 90 days not read, one of them outside the runs: "Runs before today:" only when every day outside them was
+read); "Days between runs: 14."; "The last run ended on 30 November 2026, 6 days ago." A run's start is pinned only when
+the day before it is a day with records whose promotions were read, and its end only when the day after it is (or is
+today, read): otherwise the start is "from 22 August 2026 or earlier", the end "to 19 November 2026 or later" and the
+days since its end "at most 3 days ago". A day of the window the files say nothing of (a hole, a day the product is not
 listed, a day whose promotions were not read) could hold a one-day run nobody saw (fix round 2): one inside the days
-between two runs makes them "at most 7"; one after the last run makes it "the last run seen"; one anywhere outside the
-runs makes the list "Runs seen before today:". Such a day inside a run hides none. A run reaching yesterday when today's
-files list the product on a wide promotion is not over: the section says so first ("On a promotion listed across
-Shufersal Deal today, as listed in the morning's files.") and says no end. Nor is an end said when no day after the run
-was read (today's files saying nothing either way): the run may still be on. With no day of records in the 90 there is
-no history to count.
+between two runs makes them "at most 7"; one after the last run, or a today the files say nothing of, makes it "the last
+run seen"; one anywhere outside the runs makes the list "Runs seen before today:". Such a day inside a run hides none. A
+run reaching yesterday when today's files list the product on a wide promotion is not over: the section says so first
+("On a promotion listed across Shufersal Deal today, as listed in the morning's files.") and says no end. Nor is an end
+said when no day after the run was read (today's files saying nothing either way): the run may still be on. With no day
+of records in the 90 there is no history to count.
 
 Conditions (P5, question K and S3). A promotion's restrictions read from `ClubID` are K's phrase for each code present,
 joined in the order club, card, other ("club members only, and some customers only"); the programmes' names go beside
@@ -349,7 +351,8 @@ def history_sentences(pair: Pair, column_days: Mapping[tuple[str, date], ColumnD
     if not today and ended:
         ago = days_since(found, day)
         ago_text = f"{ago} {_plural(ago, 'day', 'days')} ago"
-        the_last = f"The last run{' seen' if hidden(last.end, day) else ''} ended on {_day(last.end)}"
+        seen = hidden(last.end, day) or today is None             # today unknown could hold a later run
+        the_last = f"The last run{' seen' if seen else ''} ended on {_day(last.end)}"
         if pinned_end(last):
             sentences.append(f"{the_last}, {ago_text}.")
         else:

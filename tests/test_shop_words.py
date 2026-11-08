@@ -546,3 +546,16 @@ def test_a_run_may_hide_in_a_day_the_files_say_nothing_of():
         "Runs seen before today: 21 to 23 October 2026; 31 October to 2 November 2026.",
         "Days between runs: 7.",
         "The last run ended on 2 November 2026, 18 days ago.")
+
+
+def test_the_last_run_is_the_last_seen_when_today_is_not_known():
+    """Fix round 3: every day before today read and the run's end pinned, but today's files say nothing of the product
+    (no column-day, its promotions unread, a hole), so today could hold a later run: "the last run seen". The list of
+    runs is of the days before today, all read, and keeps "Run before today"."""
+    listed = listed_from(1, 90, "10.00")
+    pinned = [back(n) for n in range(5, 11)]                              # 10 to 15 November, both edges read
+    for today in (None, "unread", "hole"):
+        assert _history(listed, pinned, today=today)[1:] == (
+            "Run before today: 10 to 15 November 2026.",
+            "The last run seen ended on 15 November 2026, 5 days ago.")
+    assert _history(listed, pinned, today=False)[2] == "The last run ended on 15 November 2026, 5 days ago."
