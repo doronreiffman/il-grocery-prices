@@ -53,6 +53,10 @@ PAUSE_ON_FIRST_TRY = ("src/collector/sources/shufersal.py", [_S + "test_a_page_r
 BLOCK_TRIED_AGAIN = ("src/collector/sources/shufersal.py", [_S + "test_a_block_on_the_second_try_stops_the_listing"])
 NAME_CHECK = ("src/collector/sources/__init__.py", ["tests/test_chains.py"])
 NCR = ("src/collector/sources/ncr.py", ["tests/test_ncr.py"])
+# The NCR directory read to its last answer before the first row (q26, ruling R40): the one test that takes a row from a
+# listing of several answers before reading it to the end, which must catch rows given answer by answer by itself.
+NCR_WHOLE_READ = ("src/collector/sources/ncr.py",
+                  ["tests/test_ncr.py::test_every_answer_of_the_directory_is_read_before_the_first_row"])
 NEVER_SHORT = ("src/collector/sources/__init__.py", ["tests/test_chains.py"])
 CARREFOUR = ("src/collector/sources/carrefour.py", ["tests/test_carrefour.py"])
 STORE = ("src/collector/store.py", ["tests/test_store.py"])
@@ -153,6 +157,34 @@ _RUN_DRAIN_NEXT = ("            try:\n"
                    "            except Exception as exc:\n")
 _RUN_READ_EARLIER = ('        prefix = manifest_key(self.day, self.slug, "").removesuffix(".json")  # this chain\'s runs of the day\n'
                      "        earlier = [json.loads(record) for record in self.store.read_records(prefix)]\n")
+# NCR's listing as it stands: every name read and checked, then given (q26). And a rewrite that reads the directory answer
+# by answer, checking each answer's names and giving its rows before it asks for the next: the rows after a poll's time
+# stop would then wait on requests the drain cannot make.
+_NCR_LISTED = ("        listed = []\n"
+               "        for number, fname in enumerate(_fnames(http, file_page, self.username, short_of_time), 1):\n"
+               '            name = checked_name(fname, f"the NCR listing, entry {number}")\n'
+               "            if name is None:\n"
+               "                self.unparsed += 1\n"
+               "            elif name.kind in kinds:\n"
+               "                listed.append(Listed(name, DOWNLOAD + fname))\n"
+               "        yield from listed\n")
+_NCR_ANSWER_BY_ANSWER = ("        length, fnames, total = _page_size(file_page), [], None\n"
+                         "        while total is None or len(fnames) < total:\n"
+                         "            if short_of_time():\n"
+                         '                raise OutOfTime(f"before the NCR listing\'s answer from iDisplayStart {len(fnames)}")\n'
+                         "            received, total = _answer(http.post(LISTING, _form(len(fnames), length, file_page.csrftoken),\n"
+                         "                                                headers=AJAX).body)\n"
+                         "            if not received:\n"
+                         '                raise ListingUnreadable(f"the NCR listing stopped at {len(fnames)} of {total} entries")\n'
+                         "            answer = []\n"
+                         "            for fname in received:\n"
+                         "                fnames.append(fname)\n"
+                         '                name = checked_name(fname, f"the NCR listing, entry {len(fnames)}")\n'
+                         "                if name is None:\n"
+                         "                    self.unparsed += 1\n"
+                         "                elif name.kind in kinds:\n"
+                         "                    answer.append(Listed(name, DOWNLOAD + fname))\n"
+                         "            yield from answer\n")
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
 MUTATIONS = {
@@ -449,6 +481,7 @@ MUTATIONS = {
     "NCR names checked only as they are given": (NCR, "                listed.append(Listed(name, DOWNLOAD + fname))\n        yield from listed\n", "                yield Listed(name, DOWNLOAD + fname)\n"),
     # ncr: an adapter that does not page makes no request after its first row (q26, ruling R40; Carrefour's below)
     "an NCR request between rows (q26 adapters)": (NCR, "        yield from listed\n", "        for item in listed:\n            yield item\n            http.get(LOGIN_PAGE)\n"),
+    "NCR rows given answer by answer (q26 adapters)": (NCR_WHOLE_READ, _NCR_LISTED, _NCR_ANSWER_BY_ANSWER),
     "NCR unparsed names not counted": (NCR, "                self.unparsed += 1", "                pass"),
     "NCR unparsed count carried over from the last listing": (NCR, "        self.unparsed = 0\n        file_page", "        file_page"),
     "NCR download returns nothing": (NCR, "        return http.get(item.url).body", '        return b""'),
