@@ -236,3 +236,5 @@ The order the owner chose (design, Question D): q23's deploy of 2026-11-08 comes
 ## Deviations
 
 (Append here when reality forces a change from this plan: what changed, why, and when.)
+
+- **2026-11-08, before Task 1: a pre-flight scan (Opus).** No blocking finding. Ruled: a deviation found during the build is logged here and committed with the task that made it; two mutations added, "a zero part kept in the sentence (q26 update day)" (Task 3) and a break that lets the drain's catch-all rewrite `latch not written: …` (Task 1, beside the one that stops it being raised); "Deploying this branch" starts with Deploy step 1's account check and comes after q23's manual update-day check has been read, not merely on its morning.
