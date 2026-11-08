@@ -119,6 +119,7 @@ SHOP_HISTORY = ("src/shopper/history.py", ["tests/test_history.py"])
 SHOP_FORECAST = ("src/shopper/forecast.py", ["tests/test_forecast.py"])
 SHOP_FREEZE = ("src/shopper/freeze.py", ["tests/test_freeze.py"])
 SHOP_SCORE = ("src/shopper/score.py", ["tests/test_score.py"])
+SHOP_RECORD = ("src/shopper/record.py", ["tests/test_record_numbers.py"])
 # Scoring reads each outcome, its holes and its evidence from shopper.forecast.outcome (Task 10): the scoring tests must
 # catch a break of the rules they rest on.
 FORECAST_FOR_SHOP_SCORE = ("src/shopper/forecast.py", ["tests/test_score.py"])
@@ -1594,6 +1595,42 @@ MUTATIONS = {
     'the summary key under a chain (q22 F7)': (ARCHIVE, '    kind, name = SCORED\n    return kind_key(kind, None, day, name)\n', '    kind, name = SCORED\n    return kind_key(kind, "all", day, name)\n'),
     'summaries returned as raw JSON (q22 F7)': (ARCHIVE, '            found.append(read_summary(body))\n', '            found.append(json.loads(body))\n'),
     'a summary not written to the work folder (q22 F7)': (ARCHIVE, '            path.write_bytes(body)\n            found.append', '            found.append'),
+    # shopper: the record's numbers: the Brier scores, the block bootstrap, calibration (q22 F8), the gate (q22 F9)
+    # and the scorecard (q22 F11), per column
+    'blocks of 7 days (q22 F8)': (SHOP_RECORD, '\nBLOCK = 14 ', '\nBLOCK = 7 '),
+    '1,000 draws (q22 F8)': (SHOP_RECORD, '\nDRAWS = 10_000 ', '\nDRAWS = 1_000 '),
+    'the seed from the clock (q22 F8)': (SHOP_RECORD, 'rng = random.Random(SEED)', 'rng = random.Random()'),
+    'a 90% interval (q22 F8)': (SHOP_RECORD, '\nLEVEL = 95 ', '\nLEVEL = 90 '),
+    'calibration weighted equally (q22 F8)': (SHOP_RECORD, 'return sum(count * gap for count, gap in filled) / sum(count for count, _ in filled)', 'return sum(gap for _, gap in filled) / len(filled)'),
+    'the Brier score pooled over the rows, not a mean of daily means (q22 F8)': (SHOP_RECORD, 'return (sum(day.model for day in days) / len(days),', 'return (sum(day.model * day.scored for day in days) / sum(day.scored for day in days),'),
+    'every column pooled from its first column only (q22 F8)': (SHOP_RECORD, 'parts = list(summary.by_column.values())\n', 'parts = list(summary.by_column.values())[:1]\n'),
+    'an interval from 27 days (q22 F8)': (SHOP_RECORD, '\nMIN_DAYS = 2 * BLOCK ', '\nMIN_DAYS = 2 * BLOCK - 1 '),
+    'a draw not cut to the number of days (q22 F8)': (SHOP_RECORD, 'cut = n - (blocks - 1) * BLOCK', 'cut = BLOCK'),
+    "an interval's end not read between its two draws (q22 F8)": (SHOP_RECORD, '    return ordered[below] + (ordered[below + 1] - ordered[below]) * float(position - below)\n', '    return ordered[below]\n'),
+    "a zero baseline's draw divided by (q22 F8)": (SHOP_RECORD, '            if baseline == 0:   # a draw', '            if False:   # a draw'),
+    "a zero baseline's skill divided by (q22 F8)": (SHOP_RECORD, 'return None if baseline == 0 else 1 - model / baseline', 'return 1 - model / baseline'),
+    "the record's numbers rounded down (q22 F8)": (SHOP_RECORD, 'scaled = math.floor(abs(value) * 10 ** places + Fraction(1, 2))', 'scaled = math.floor(abs(value) * 10 ** places)'),
+    'the gate at 60 days (q22 F9)': (SHOP_RECORD, '\nGATE_DAYS = 90 ', '\nGATE_DAYS = 60 '),
+    'the gate at 91 days (q22 F9)': (SHOP_RECORD, 'enough = len(days) >= GATE_DAYS', 'enough = len(days) > GATE_DAYS'),
+    'a gate interval allowed to touch zero (q22 F9)': (SHOP_RECORD, 'if not span.high < 0:', 'if not span.high <= 0:'),
+    'calibration error 0.05 (q22 F9)': (SHOP_RECORD, 'CAL_MAX = Decimal("0.03")', 'CAL_MAX = Decimal("0.05")'),
+    'a calibration error of 0.03 refused (q22 F9)': (SHOP_RECORD, 'if error > Fraction(CAL_MAX):', 'if error >= Fraction(CAL_MAX):'),
+    'a bin of 1% not checked (q22 F9)': (SHOP_RECORD, 'count >= Fraction(BIN_SHARE) * rows', 'count > Fraction(BIN_SHARE) * rows'),
+    'a bin under 1% checked (q22 F9)': (SHOP_RECORD, 'if count and count >= Fraction(BIN_SHARE) * rows and', 'if count and'),
+    'a bin off by 0.10 refused (q22 F9)': (SHOP_RECORD, '_gap(count, p, ones) > Fraction(BIN_OFF)]', '_gap(count, p, ones) >= Fraction(BIN_OFF)]'),
+    'late days counted (q22 F9)': (SHOP_RECORD, 'for found in _of_version(summaries, version) if found.on_time]', 'for found in _of_version(summaries, version)]'),
+    'versions pooled (q22 F9)': (SHOP_RECORD, '    counted = _counted(summaries, IN_FORCE)\n', '    counted = [found for found in summaries if found.on_time]\n'),
+    'the version in force by its model alone (q22 F9)': (SHOP_RECORD, 'if (found.model_version, found.target_version) == version]', 'if found.model_version == version[0]]'),
+    "columns pooled for a column's gate (q22 F9)": (SHOP_RECORD, '    days = _daily(counted, column)\n    bins = _bins(counted, column)\n', '    days = _daily(counted, None)\n    bins = _bins(counted, None)\n'),
+    'the gate open (q22 F9)': (SHOP_RECORD, 'reasons=reasons, open=False)', 'reasons=reasons, open=all(conditions.values()))'),
+    'the columns tested counted as the chains (q22 F11)': (SHOP_RECORD, '"columns_tested": len(COLUMNS),', '"columns_tested": len({column.slug for column in COLUMNS}),'),
+    'the versions tried left at one (q22 F11)': (SHOP_RECORD, '"versions_tried": len({', '"versions_tried": 1 or len({'),
+    "a version's months over its year (q22 F11)": (SHOP_RECORD, 'return day.isoformat()[:7]', 'return day.isoformat()[:4]'),
+    'late days not shown (q22 F11)': (SHOP_RECORD, '"days_late": len(held) - len(counted),', '"days_late": 0,'),
+    "a column's rows from every column (q22 F11)": (SHOP_RECORD, '"versions": _versions(summaries, column.key)', '"versions": _versions(summaries, None)'),
+    'the seed not printed with the numbers (q22 F11)': (SHOP_RECORD, '"seed": SEED,', '"seed": None,'),
+    "the record's numbers written as floats (q22 F11)": (SHOP_RECORD, 'return None if value is None else format(_decimal(value), "f")', 'return None if value is None else float(_decimal(value))'),
+    "the calibration's rows written as Decimals (q22 F11)": (SHOP_RECORD, 'format(value, "f") if isinstance(value, Decimal) else value for', 'value for'),
     # basket: extract
     "extract older file wins": (EXTRACT, "latest = max(named)", "latest = min(named)"),
     "extract first duplicate wins": (EXTRACT, "        latest[row.code] = row", "        latest.setdefault(row.code, row)"),
