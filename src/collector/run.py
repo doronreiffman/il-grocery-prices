@@ -274,6 +274,7 @@ class _Run:
             except Exception as exc:
                 self.result.error = f"unexpected error: {type(exc).__name__}: {exc}"
                 raise
+            # outside the try: the classification raises nothing; a step that can raise belongs inside it
             name = self._listed(item)
             if name is not None and name not in self.stored:
                 self.result.not_attempted.append(name)
