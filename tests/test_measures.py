@@ -180,8 +180,30 @@ def test_the_front_page_needs_twenty_days():
     assert _on_front(_deal("7.90"), listed_from(1, 20, "10.00"))
     assert _on_front(_deal("7.90"), listed_from(1, 21, "10.00"))
     # the 20 are of the past 90 days, not of the past 30
-    assert _on_front(_deal("7.90"), listed_from(40, 59, "10.00"))
+    assert _on_front(_deal("7.90"), {**listed_from(1, 5, "10.00"), **listed_from(40, 54, "10.00")})
     assert not _on_front(_deal("7.90"), listed_from(91, 120, "10.00"))      # beyond the 90 days
+
+
+def test_the_front_page_needs_a_day_of_records_in_the_past_30():
+    """The row shows the 30-day median, so the gap must exist: twenty days of the 90, all before the 30, are not enough."""
+    assert not _on_front(_deal("7.90"), listed_from(40, 59, "10.00"))
+    assert not _on_front(_deal("7.90"), listed_from(31, 50, "10.00"))       # the day before the window's first
+    assert _on_front(_deal("7.90"), {back(30): "10.00", **listed_from(31, 49, "10.00")})   # the window's first day
+    assert _on_front(_deal("7.90"), {back(1): "10.00", **listed_from(31, 49, "10.00")})    # its last day
+    # a hole in the one day the 30 hold leaves the window empty
+    listed = {back(30): "10.00", **listed_from(31, 49, "10.00")}
+    assert not _on_front(_deal("7.90"), listed, holes=[back(30)])
+
+
+def test_every_front_row_has_a_gap_to_show():
+    """Task 18 orders the rows by `depth(gap)`: wherever `on_front` says yes, `gap` is a gap."""
+    deal = _deal("7.90")
+    for listed in (listed_from(1, 20, "10.00"), listed_from(1, 90, "10.00"), listed_from(40, 59, "10.00"),
+                   {back(30): "10.00", **listed_from(31, 49, "10.00")}, {back(31): "10.00", **listed_from(32, 51, "10.00")},
+                   listed_from(1, 19, "10.00")):
+        pair, column_days = _pair(DEAL, listed), _days(DEAL, [DAY, *listed])
+        if on_front(deal, True, pair, column_days, DAY):
+            assert depth(gap(deal.price, pair, column_days, DAY)) > 0
 
 
 def test_a_hole_is_no_day_of_records_for_the_front_page():

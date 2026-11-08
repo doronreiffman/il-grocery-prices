@@ -29,7 +29,9 @@ The front page's test (Q3 (b), the design's rule): the deal is wide in the colum
 stores), valid (P4), the item has at least MIN_FRONT_DAYS (20) days of records in the past 90 at the column, and the
 deal is below every listed price of those days (strictly: a deal equal to the 90-day low is not). A listed price
 raised shortly before the promotion cannot lift the 90-day low. S1 adds that the page's own day must be a record at the
-column: on a hole day the prices are from too few files and the column has no front row. The words "in the same store
+column: on a hole day the prices are from too few files and the column has no front row. The row shows the 30-day
+median and is ordered by `depth`, so the item also needs a day of records in the past 30: wherever `on_front` says
+yes, `gap` is a gap (Task 9's review). The words "in the same store
 format" (question O) are the words module's.
 
 The promotion history (P8), over the 90-day window. A run is a maximal sequence of consecutive counted days on
@@ -125,10 +127,13 @@ def depth(gap: Gap) -> Fraction:
 
 def on_front(deal: Deal, wide: bool, pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay],
              day: date) -> bool:
-    """Whether the deal is listed on the front page (the module's docstring): `wide` is whether the product's row at the
-    column is wide on `day`."""
+    """Whether the deal is listed on the front page (the module's docstring): `wide` is whether the deal's promotion is
+    carried by at least half the column's counted stores (P3: the promotions struct's `wide`, not the items row's
+    `wide`, which says how many stores list the product)."""
     today = column_days.get((pair.column, day))
     if not (wide and deal.valid and deal.price is not None and today is not None and today.record):
+        return False
+    if not window(pair, column_days, day, RECENT_DAYS).days:     # no 30-day median to show: `gap` is None
         return False
     long = window(pair, column_days, day, READ_DAYS)
     return long.days >= MIN_FRONT_DAYS and deal.price < Fraction(min(long.listed))

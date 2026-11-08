@@ -1426,6 +1426,7 @@ MUTATIONS = {
     'front page on an invalid deal (q22 front)': (SHOP_MEASURES, 'wide and deal.valid and deal.price', 'wide and deal.price'),
     'front page on a deal at some stores (q22 front)': (SHOP_MEASURES, 'if not (wide and ', 'if not ('),
     'front page on a day with no record (q22 front)': (SHOP_MEASURES, 'deal.price is not None and today is not None and today.record):', 'deal.price is not None):'),
+    'front page without a day of records in 30 (q22 front)': (SHOP_MEASURES, '    if not window(pair, column_days, day, RECENT_DAYS).days:     # no 30-day median to show: `gap` is None\n        return False\n', '    if False:\n        return False\n'),
     'a hole breaks a run (q22 P8)': (SHOP_MEASURES, '        if not point.on_promotion:\n', '        if not point.on_promotion or (end is not None and start is not None and (point.day - end).days > 1):\n'),
     'a day whose promotions were not read breaks a run (q22 P8)': (SHOP_MEASURES, '            if not column_days[(pair.column, point.day)].promo_hole]', '            if True]'),
     'the history over 30 days, not 90 (q22 P8)': (SHOP_MEASURES, '    return [point for point in counted(pair, column_days, day, READ_DAYS)', '    return [point for point in counted(pair, column_days, day, RECENT_DAYS)'),
