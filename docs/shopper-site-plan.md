@@ -915,3 +915,12 @@ def put_files(self, site_dir: Path, keys: Sequence[str]) -> list[str]   # every 
 ## Deviations
 
 (Append here when reality forces a change from this plan: what changed, why, and when.)
+
+- **2026-11-08, before Task 1: a pre-flight scan (Opus) against the design and against main after q23's merge (e37cfb1).** Changes ruled before the build:
+  - Deploys (q23 added a third switch): every `sam deploy` passes all nine parameters, `ScheduleState` and `PollScheduleState` as they stand, only `BasketScheduleState` changed; the change set is read as `docs/operations.md` Deploy step 3 reads every deploy's (both functions modified, the layer re-added, every schedule and role modified, no replacement), plus `BasketFunctionRole`'s policy.
+  - Promotions rows follow the design's "Build and hosting" item 1: one row per (promotion, group, item code), `stores` the counted stores whose latest file links that promotion to that code, `chain_wide` = `stores` × 2 ≥ `counted`, the fields of the variant most stores carry, and a `variants` count; not one row per identical link variant (a field that differs by store would have split one promotion and kept it off the target, F1).
+  - The record page's links to past days' forecasts and scores files resolve in the site check by the build's ledger and site-day files, since those files are uploaded on their own day and never deleted.
+  - Interfaces: `day_files` takes a `kind` from Task 2 (the survey needs each store's latest promotion file); Task 1 yields one record per promotion with every group, item-less groups included (minimum spend sits on such a group); `target`, `kind` and `deal` take the chain first (P10's messages name it); `Deal.price` is a `Fraction`, written as two-place `Decimal`; `table_key` stays for prices, `kind_key` added for the other two; `basket.site.PAGES` becomes `FIXED_PAGES` with the five fixed pages; `basket.page.STYLE` split into `BASE_STYLE` and the basket's rules; `REWARD_TYPES` per chain.
+  - Tests and mutations: shopper mutation targets named `SHOP_<MODULE>`; mutations added for scores written once and locked, the hand build's read-only freezer, `KINDS`, `depth`, the target phrases, `browse/other.html` and `sync.sh`'s includes; the coupon test moved to Task 6; P7's example test reads "of the 90 days with records".
+  - Baselines: 1,447 tests at 99.84%, 1,174 mutations, none stale, at e37cfb1.
+  - Docs: the repo may quote a word or two showing a field's meaning, never a whole promotion text; Task 26 keeps both measured sections and q23's payloads and lines.
