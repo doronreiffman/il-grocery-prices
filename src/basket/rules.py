@@ -68,7 +68,7 @@ from basket.units import Size, normal_size, plain
 
 
 class MissingTable(Exception):
-    """A chain's table for the day is absent: its extraction did not run."""
+    """A chain's table for the day is absent: its extraction did not run, or stopped before writing it."""
 
 
 @dataclass(frozen=True)
