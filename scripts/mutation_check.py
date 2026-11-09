@@ -53,6 +53,10 @@ PAUSE_ON_FIRST_TRY = ("src/collector/sources/shufersal.py", [_S + "test_a_page_r
 BLOCK_TRIED_AGAIN = ("src/collector/sources/shufersal.py", [_S + "test_a_block_on_the_second_try_stops_the_listing"])
 NAME_CHECK = ("src/collector/sources/__init__.py", ["tests/test_chains.py"])
 NCR = ("src/collector/sources/ncr.py", ["tests/test_ncr.py"])
+# The NCR directory read to its last answer before the first row (q26, ruling R40): the one test that takes a row from a
+# listing of several answers before reading it to the end, which must catch rows given answer by answer by itself.
+NCR_WHOLE_READ = ("src/collector/sources/ncr.py",
+                  ["tests/test_ncr.py::test_every_answer_of_the_directory_is_read_before_the_first_row"])
 NEVER_SHORT = ("src/collector/sources/__init__.py", ["tests/test_chains.py"])
 CARREFOUR = ("src/collector/sources/carrefour.py", ["tests/test_carrefour.py"])
 STORE = ("src/collector/store.py", ["tests/test_store.py"])
@@ -233,23 +237,67 @@ CANDIDATES_MAIN = ("src/basket/candidates.py", ["tests/test_candidates.py::test_
 _RUN_TAKEN = ('        if self.result.pages:  # first: a row of another day, a repeat or one never downloaded was still listed\n'
               '            page = self.result.pages[-1]\n'
               '            page["taken_through"] = page["last"] if item.ends_page else item.name.raw\n')
-# The day filter is the kind filter, then the other-day count (q23): `_RUN_KIND_FILTER + _RUN_OTHER_DAY`.
+# The day filter is the kind filter, then the other-day count (q23): `_RUN_KIND_FILTER + _RUN_OTHER_DAY`, the first two
+# steps of `_listed`, the sorting the take and a poll's read after its time stop share (q26).
 _RUN_KIND_FILTER = ("        if item.name.kind not in self.kinds:\n"
-                    "            return\n")
+                    "            return None\n")
 _RUN_OTHER_DAY = ("        if item.name.day != self.day:\n"
                   "            self._other_day(item)\n"
-                  "            return\n")
-_RUN_DAY_FILTER = _RUN_KIND_FILTER + _RUN_OTHER_DAY
-_RUN_TO_DOWNLOAD = ("        name = stored_name(item)\n"
-                    "        if name in self.seen:\n"
-                    "            return  # listed again while the listing was read: the first counts\n"
-                    "        self.seen.add(name)\n"
-                    "        self.result.listed.append(name)\n"
-                    "        if name in self.stored:\n"
-                    "            return\n"
-                    "        body = self._fetch(item, name)\n")
+                  "            return None\n")
+# The rest of the take (q26): `_listed`'s call and its None return, the skip of a name stored before, the download.
+_RUN_LISTED = "        name = self._listed(item)\n"
+_RUN_SKIP = ("        if name is None or name in self.stored:\n"
+             "            return\n")
+_RUN_TO_DOWNLOAD = _RUN_LISTED + _RUN_SKIP + "        body = self._fetch(item, name)\n"
+_RUN_STORED = ("        if body is not None:\n"
+               "            self._store(name, body)\n")
+# The run's stop (q26): its handler's first line, the test for reading on after a poll's time stop, the call.
+_RUN_STOP = "        except _Stop:  # `unparsed` stays 0, drained or not: this loop did not read the listing to its end (R13)\n"
+_RUN_DRAIN_IF = ('            if (self.result.error == OUT_OF_TIME and self.result.mode == "poll" and listing is not None\n'
+                 "                    and not isinstance(self.source, PagedSource)):  # a paged listing's page records stay as taken\n")
+_RUN_DRAIN_CALL = "                self._drain(listing)  # ruling R40\n"
+# The drain's read of a row and what it may meet (q26), for the break that puts a latch's failure under the catch-all.
+_RUN_DRAIN_NEXT = ("            try:\n"
+                   "                item = next(listing)\n"
+                   "            except (StopIteration, OutOfTime):  # the end, or an adapter's own request short of time\n"
+                   "                return\n"
+                   "            except Blocked as block:\n"
+                   "                try:\n"
+                   "                    self._latch(str(block))  # a latch not written raises past the handler below, its error kept\n"
+                   "                except _Stop:\n"
+                   "                    return\n"
+                   "            except Exception as exc:\n")
 _RUN_READ_EARLIER = ('        prefix = manifest_key(self.day, self.slug, "").removesuffix(".json")  # this chain\'s runs of the day\n'
                      "        earlier = [json.loads(record) for record in self.store.read_records(prefix)]\n")
+# NCR's listing as it stands: every name read and checked, then given (q26). And a rewrite that reads the directory answer
+# by answer, checking each answer's names and giving its rows before it asks for the next: the rows after a poll's time
+# stop would then wait on requests the drain cannot make. The rewrite also leaves out `_fnames` and `_read_through`: the
+# token and `cd` checks, R34's re-read, R21's refusal of a repeat, the zero-total check and each answer's log line.
+_NCR_LISTED = ("        listed = []\n"
+               "        for number, fname in enumerate(_fnames(http, file_page, self.username, short_of_time), 1):\n"
+               '            name = checked_name(fname, f"the NCR listing, entry {number}")\n'
+               "            if name is None:\n"
+               "                self.unparsed += 1\n"
+               "            elif name.kind in kinds:\n"
+               "                listed.append(Listed(name, DOWNLOAD + fname))\n"
+               "        yield from listed\n")
+_NCR_ANSWER_BY_ANSWER = ("        length, fnames, total = _page_size(file_page), [], None\n"
+                         "        while total is None or len(fnames) < total:\n"
+                         "            if short_of_time():\n"
+                         '                raise OutOfTime(f"before the NCR listing\'s answer from iDisplayStart {len(fnames)}")\n'
+                         "            received, total = _answer(http.post(LISTING, _form(len(fnames), length, file_page.csrftoken),\n"
+                         "                                                headers=AJAX).body)\n"
+                         "            if not received:\n"
+                         '                raise ListingUnreadable(f"the NCR listing stopped at {len(fnames)} of {total} entries")\n'
+                         "            answer = []\n"
+                         "            for fname in received:\n"
+                         "                fnames.append(fname)\n"
+                         '                name = checked_name(fname, f"the NCR listing, entry {len(fnames)}")\n'
+                         "                if name is None:\n"
+                         "                    self.unparsed += 1\n"
+                         "                elif name.kind in kinds:\n"
+                         "                    answer.append(Listed(name, DOWNLOAD + fname))\n"
+                         "            yield from answer\n")
 
 # publish.sh's guard and its uploads, for the mutation that runs the guard after the upload (q22 publish).
 _PUBLISH_GUARD = ('if ! PYTHONPATH=src "$PYTHON" -m shopper.guard "$SITE" "$tmp/published" "$tmp/pages"; then\n'
@@ -563,6 +611,9 @@ MUTATIONS = {
     "NCR kinds filter ignored": (NCR, "            elif name.kind in kinds:", "            else:"),
     "NCR names not checked": (NCR, 'checked_name(fname, f"the NCR listing, entry {number}")', '__import__("collector.names").names.parse_file_name(fname)'),
     "NCR names checked only as they are given": (NCR, "                listed.append(Listed(name, DOWNLOAD + fname))\n        yield from listed\n", "                yield Listed(name, DOWNLOAD + fname)\n"),
+    # ncr: an adapter that does not page makes no request after its first row (q26, ruling R40; Carrefour's below)
+    "an NCR request between rows (q26 adapters)": (NCR, "        yield from listed\n", "        for item in listed:\n            yield item\n            http.get(LOGIN_PAGE)\n"),
+    "NCR rows given answer by answer (q26 adapters)": (NCR_WHOLE_READ, _NCR_LISTED, _NCR_ANSWER_BY_ANSWER),
     "NCR unparsed names not counted": (NCR, "                self.unparsed += 1", "                pass"),
     "NCR unparsed count carried over from the last listing": (NCR, "        self.unparsed = 0\n        file_page", "        file_page"),
     "NCR download returns nothing": (NCR, "        return http.get(item.url).body", '        return b""'),
@@ -581,6 +632,7 @@ MUTATIONS = {
     "Carrefour file without a name read": (CARREFOUR, "        if not isinstance(name, str):", "        if False:"),
     "Carrefour names not checked": (CARREFOUR, 'checked_name(name, f"the Carrefour page, file {number}")', '__import__("collector.names").names.parse_file_name(name)'),
     "Carrefour names checked only as they are given": (CARREFOUR, '                listed.append(Listed(parsed, f"{BASE_URL}/{folder}/{name}"))\n        yield from listed\n', '                yield Listed(parsed, f"{BASE_URL}/{folder}/{name}")\n'),
+    "a Carrefour request between rows (q26 adapters)": (CARREFOUR, "        yield from listed\n", '        for item in listed:\n            yield item\n            http.get(f"{BASE_URL}/")\n'),
     "Carrefour unparsed names not counted": (CARREFOUR, "                self.unparsed += 1", "                pass"),
     "Carrefour unparsed count carried over from the last listing": (CARREFOUR, "        self.unparsed = 0\n        text", "        text"),
     "Carrefour download returns nothing": (CARREFOUR, "        return http.get(item.url).body", '        return b""'),
@@ -637,7 +689,7 @@ MUTATIONS = {
     "state key outside state/": (STORE, 'f"state/{slug}.json"', 'f"{slug}.json"'),
     # run: the brief's five
     "clock date instead of file date": (RUN, "        if item.name.day != self.day:", "        if _utc(self.now()).date() != self.day:"),
-    "stored files fetched again": (RUN, "        if name in self.stored:\n            return\n", ""),
+    "stored files fetched again": (RUN, _RUN_SKIP, "        if name is None:\n            return\n"),
     "no latch on block": (RUN, '            self.store.write_state(self.slug, {"stopped": True,', '            (self.slug, {"stopped": True,'),
     "timeout guard removed": (RUN, "            if self._short_of_time():\n                if problem is None:", "            if False:\n                if problem is None:"),
     "manifest skipped on error": (RUN, "        store.put_record(manifest_key(", "        result.error is None and store.put_record(manifest_key("),
@@ -651,9 +703,10 @@ MUTATIONS = {
     "stored name taken from the listing, not the link (R16)": (RUN, "        name = stored_name(item)\n        if name in self.seen:\n",
                                                                "        name = item.name.raw\n        if name in self.seen:\n"),
     "stored name keeps the link's query (R16)": (RUN, '    return urllib.parse.urlsplit(item.url).path.rsplit("/", 1)[-1]', '    return item.url.rsplit("/", 1)[-1]'),
-    "skipped names not listed": (RUN, "        self.result.listed.append(name)\n        if name in self.stored:\n            return\n",
-                                 "        if name in self.stored:\n            return\n        self.result.listed.append(name)\n"),
-    "a name listed twice fetched again": (RUN, "        if name in self.seen:\n            return  #", "        if False:\n            return  #"),
+    "skipped names not listed": (RUN, "        self.seen.add(name)\n        self.result.listed.append(name)\n",
+                                 "        self.seen.add(name)\n        if name in self.stored:\n            return None\n"
+                                 "        self.result.listed.append(name)\n"),
+    "a name listed twice fetched again": (RUN, "        if name in self.seen:\n            return None  #", "        if False:\n            return None  #"),
     # run: the listing
     "listing read before the files are fetched (R16)": (RUN, "            listing = iter(self.source.listing(self.http, self.kinds, self._short_of_time, **paged))", "            listing = iter(list(self.source.listing(self.http, self.kinds, self._short_of_time, **paged)))"),
     "listing read twice": (RUN, "            listing = iter(self.source.listing(self.http, self.kinds, self._short_of_time, **paged))",
@@ -662,7 +715,8 @@ MUTATIONS = {
     "unparsed not recorded (R13)": (RUN, "            self.result.unparsed = self.source.unparsed  #", "            pass  #"),
     "unparsed read before the listing is used up (R13)": (RUN, "                self._take(item)\n                self._check_time()\n            self.result.unparsed = self.source.unparsed  # final only now: it resets on the first next()\n",
                                                           "                self.result.unparsed = self.source.unparsed\n                self._take(item)\n                self._check_time()\n"),
-    "unparsed taken from an unfinished listing (R13)": (RUN, "        except _Stop:\n            pass", "        except _Stop:\n            self.result.unparsed = self.source.unparsed"),
+    "unparsed taken from an unfinished listing (R13)": (RUN, _RUN_STOP + _RUN_DRAIN_IF,
+                                                        _RUN_STOP + "            self.result.unparsed = self.source.unparsed\n" + _RUN_DRAIN_IF),
     "block in the listing escapes": (RUN, "        except Blocked as block:\n            self._latch(str(block))", "        except ZeroDivisionError as block:\n            self._latch(str(block))"),
     "unreadable listing escapes (R23)": (RUN, "        except ListingUnreadable as exc:\n", "        except ZeroDivisionError as exc:\n"),
     "unreadable listing not recorded as an error (R23)": (RUN, '            self._stop(f"listing unreadable: {exc}")\n        except OutOfTime:', "            raise _Stop\n        except OutOfTime:"),
@@ -677,9 +731,11 @@ MUTATIONS = {
                                                "        earlier = [json.loads(record) for day in (date.fromordinal(self.day.toordinal() - 1), self.day)"
                                                " for record in self.store.read_records(manifest_key(day, self.slug, \"\").removesuffix(\".json\"))]\n"),
     "taken through not recorded (q21 run)": (RUN, '            page["taken_through"] = page["last"] if item.ends_page else item.name.raw\n', ""),
-    "taken through recorded after the day filter (q21 run)": (RUN, _RUN_TAKEN + _RUN_DAY_FILTER, _RUN_DAY_FILTER + _RUN_TAKEN),
-    "taken through recorded after the download (q21 run)": (RUN, _RUN_TAKEN + _RUN_DAY_FILTER + _RUN_TO_DOWNLOAD,
-                                                            _RUN_DAY_FILTER + _RUN_TO_DOWNLOAD + _RUN_TAKEN),
+    "taken through recorded after the day filter (q21 run)": (RUN, _RUN_TAKEN + _RUN_LISTED + _RUN_SKIP,
+                                                              _RUN_LISTED + "        if name is None:\n            return\n" + _RUN_TAKEN
+                                                              + "        if name in self.stored:\n            return\n"),
+    "taken through recorded after the download (q21 run)": (RUN, _RUN_TAKEN + _RUN_TO_DOWNLOAD + _RUN_STORED,
+                                                            _RUN_TO_DOWNLOAD + _RUN_STORED + _RUN_TAKEN),
     "taken through set on a page before the latest (q21 run)": (RUN, "            page = self.result.pages[-1]\n", "            page = self.result.pages[0]\n"),
     "ends_page ignored (q21 run)": (RUN, 'page["taken_through"] = page["last"] if item.ends_page else item.name.raw', 'page["taken_through"] = item.name.raw'),
     "a page recorded taken before a row is given (q21 run)": (RUN, '| {"taken_through": None})', '| {"taken_through": read.last})'),
@@ -706,7 +762,7 @@ MUTATIONS = {
     "a poll held to the morning's kinds (q23 run)": (RUN, '    allowed = chain.polled if mode == "poll" else chain.kinds\n', "    allowed = chain.kinds\n"),
     "a main or retry run held to the polled kinds (q23 run)": (RUN, '    allowed = chain.polled if mode == "poll" else chain.kinds\n', "    allowed = chain.polled\n"),
     "a refused poll's kinds named as the kinds the chain collects (q23 run)": (RUN, "{'polls' if mode == 'poll' else 'collects'}", "collects"),
-    "the run's own day counted in other_days (q23 run)": (RUN, _RUN_OTHER_DAY, "        self._other_day(item)\n        if item.name.day != self.day:\n            return\n"),
+    "the run's own day counted in other_days (q23 run)": (RUN, _RUN_OTHER_DAY, "        self._other_day(item)\n        if item.name.day != self.day:\n            return None\n"),
     "other_days left empty (q23 run)": (RUN, "        self.result.other_days[day] = self.result.other_days.get(day, 0) + 1\n", ""),
     "a name listed twice counted twice in other_days (q23 run)": (RUN, "        if name in self.others:\n            return  # listed again: counted once\n", ""),
     "kinds not asked for counted in other_days (q23 run)": (RUN, _RUN_KIND_FILTER + _RUN_OTHER_DAY, _RUN_OTHER_DAY + _RUN_KIND_FILTER),
@@ -716,6 +772,45 @@ MUTATIONS = {
     "a poll started by R37's rule, the Promo replay alone (q23 replay)": (PROMO_REPLAY, '        rule = pass_start if self.result.mode == "poll" else start_for\n', "        rule = start_for\n"),
     "no step back, the republish replay alone (q23 replay)": (PROMO_REPUBLISHED, "        while at > 2 and record.first > start.furthest:", "        while False:"),
     "a full kind started by the passes rule (q23 run)": (RUN, '        rule = pass_start if self.result.mode == "poll" else start_for\n', "        rule = pass_start\n"),
+    # run: a poll's time stop reads the rest of a listing that does not page, taking nothing, and a fault met there
+    # never reads as a time stop (q26, ruling R40)
+    "a main or retry run drained (q26 drain)": (RUN, 'OUT_OF_TIME and self.result.mode == "poll" and listing', "OUT_OF_TIME and listing"),
+    "a poll's time stop not drained (q26 drain)": (RUN, _RUN_DRAIN_CALL, "                pass\n"),
+    "a drained name stored before put in not_attempted (q26 drain)": (RUN, "            if name is not None and name not in self.stored:\n",
+                                                                      "            if name is not None:\n"),
+    "the drain downloads and stores (q26 drain)": (RUN,
+        "            if name is not None and name not in self.stored:\n                self.result.not_attempted.append(name)\n",
+        "            if name is not None and name not in self.stored:\n"
+        "                self._store(name, self.source.download(self.http, item))\n"),
+    "the drain lists every row (q26 drain)": (RUN, "            name = self._listed(item)\n",
+                                              "            name = stored_name(item)\n            self.result.listed.append(name)\n"),
+    "any stop drains (q26 drain)": (RUN, "            if (self.result.error == OUT_OF_TIME and self.result.mode", "            if (self.result.mode"),
+    "a paged listing drained (q26 drain)": (RUN, " and listing is not None\n                    and not isinstance(self.source, PagedSource)):",
+                                            " and listing is not None):"),
+    "OutOfTime in the drain escapes (q26 drain)": (RUN, "            except (StopIteration, OutOfTime):", "            except StopIteration:"),
+    "a stop before the listing drained (q26 drain)": (RUN, ' and self.result.mode == "poll" and listing is not None\n',
+                                                      ' and self.result.mode == "poll"\n'),
+    "a fault in the drain left as a time stop (q26 drain)": (RUN,
+        '                self.result.error = f"unexpected error: {type(exc).__name__}: {exc}"\n                raise\n',
+        "                raise\n"),
+    "a block in the drain not latched (q26 drain)": (RUN, "            except Blocked as block:\n                try:\n",
+                                                     "            except ZeroDivisionError as block:\n                try:\n"),
+    "a latch not written in the drain swallowed (q26 drain)": (RUN, "                except _Stop:\n                    return\n",
+                                                               "                except Exception:\n                    return\n"),
+    "a latch not written in the drain rewritten by its catch-all (q26 drain)": (RUN, _RUN_DRAIN_NEXT,
+        "            try:\n"
+        "                try:\n"
+        "                    item = next(listing)\n"
+        "                except Blocked as block:\n"
+        "                    try:\n"
+        "                        self._latch(str(block))\n"
+        "                    except _Stop:\n"
+        "                        return\n"
+        "            except (StopIteration, OutOfTime):\n"
+        "                return\n"
+        "            except Exception as exc:\n"),
+    "unparsed read after a drain (q26 drain)": (RUN, _RUN_DRAIN_CALL,
+                                                _RUN_DRAIN_CALL + "                self.result.unparsed = self.source.unparsed\n"),
     # run: blocks and the latch
     "stopped chain collected": (RUN, '        if store.read_state(chain.slug).get("stopped"):', "        if False:"),
     "any state read as stopped": (RUN, 'if store.read_state(chain.slug).get("stopped"):', "if store.read_state(chain.slug):"),
@@ -889,8 +984,8 @@ MUTATIONS = {
     "the update day's alerts before the morning's (q23 update day)": (CHECK, "    alerts = morning + update_alerts\n", "    alerts = update_alerts + morning\n"),
     "a name the morning listed reported again (q23 update day)": (CHECK, ' - stored_names - listed_by_morning)', " - stored_names)"),
     "a name stored since still missing (q23 update day)": (CHECK, 'poll["failed"]} - stored_names - listed_by_morning)', 'poll["failed"]} - listed_by_morning)'),
-    "a name a poll never tried emailed (q23 update day)": (CHECK, 'for name in poll["failed"]} - stored_names', 'for name in [*poll["failed"], *poll["not_attempted"]]} - stored_names'),
-    "not_tried left at zero (q23 update day)": (CHECK, '"not_tried": {kind: len(_of_kind(untried, kind)) for kind in kinds},', '"not_tried": {kind: 0 for kind in kinds},'),
+    "a never-tried name counted as tried and failed (q23 update day)": (CHECK, 'for name in poll["failed"]} - stored_names', 'for name in [*poll["failed"], *poll["not_attempted"]]} - stored_names'),
+    "not_tried left empty (q23 update day)": (CHECK, "    not_tried = {kind: sorted(_of_kind(untried, kind)) for kind in kinds}\n", "    not_tried = {kind: [] for kind in kinds}\n"),
     "a missing name counted in not_tried too (q23 update day)": (CHECK, " - stored_names - set(unstored)", " - stored_names"),
     "an open pass taken as read in full (q23 update day)": (CHECK, "if all(one.read_by is None for one in cut[kind])]", "if all(one.read_by is None and not one.open for one in cut[kind])]"),
     "no failed alert for a chain without page records (q23 update day)": (CHECK, "unread_kinds = [kind for kind in kinds if all(",
@@ -898,6 +993,19 @@ MUTATIONS = {
     "the failed alert sent beside a block (q23 update day)": (CHECK, '    if any(poll["blocked"] for poll in polls):  # the stopped alert covers the day (as R35)\n        unread_kinds = []\n', ""),
     "a pass a page out of order ended left out of the record (q23 update day)": (CHECK, "for one in cut if one.read_by is None and one.out_of_order]", "for one in cut if False]"),
     "by_hour over every kind (q23 update day)": (CHECK, "for name in _of_kind(stored_names, kind))", "for name in stored_names)"),
+    # check: the update day's never-tried names kept by name, the morning's left out, and emailed in the missing alert
+    # for a kind with no page records (q26, ruling R40)
+    "a name the morning listed counted as never tried (q26 update day)": (CHECK, " - set(unstored)\n               - listed_by_morning)", " - set(unstored))"),
+    "a stored name counted as never tried (q26 update day)": (CHECK, 'poll["not_attempted"]} - stored_names - set(unstored)', 'poll["not_attempted"]} - set(unstored)'),
+    "not_tried's names in reverse order (q26 update day)": (CHECK, "sorted(_of_kind(untried, kind))", "sorted(_of_kind(untried, kind), reverse=True)"),
+    "the never-tried names not emailed (q26 update day)": (CHECK, "    emailed = [name for kind in kinds if not has_pages(manifests, kind) for name in not_tried[kind]]\n", "    emailed = []\n"),
+    "a paged kind's never-tried names emailed (q26 update day)": (CHECK, " if not has_pages(manifests, kind) for name in not_tried[kind]]", " for name in not_tried[kind]]"),
+    "an alert with nothing lost (q26 update day)": (CHECK, " if unstored or emailed else []", " if True else []"),
+    "the two counts swapped (q26 update day)": (CHECK, "    tried, never = len(failed), len(untried)\n", "    tried, never = len(untried), len(failed)\n"),
+    "a zero part kept in the sentence (q26 update day)": (CHECK, '    parts = [f"{tried} tried and failed"] if tried else []\n', '    parts = [f"{tried} tried and failed"]\n'),
+    "a zero never-tried part kept in the sentence (q26 update day)": (CHECK, "    if never:\n        parts.append(", "    if True:\n        parts.append("),
+    "one never-tried name called them (q26 update day)": (CHECK, "{'it' if never == 1 else 'them'}", "them"),
+    "the names not sorted together (q26 update day)": (CHECK, "_quoted(sorted([*failed, *untried]))", "_quoted([*failed, *untried])"),
     # pages: the day's readings of a kind joined across runs (R37)
     "a blocked run counted (R37 join)": (PAGES, 'if kind in manifest["kinds"] and not manifest["blocked"]]', 'if kind in manifest["kinds"]]'),
     "a legacy run with an error read in full (R37 join)": (PAGES, 'if not manifest.get("pages") and not manifest["error"]}', 'if not manifest.get("pages")}'),
@@ -1179,7 +1287,7 @@ MUTATIONS = {
     "an unknown chain unblocked in the doc": (OPERATIONS, "--payload '{\"mode\": \"unblock\", \"chain\": \"ramilevy\"}'", "--payload '{\"mode\": \"unblock\", \"chain\": \"victory\"}'"),
     "a real address in the doc": (OPERATIONS, "'AlertEmail=<email>'", "'AlertEmail=owner@mail.example.net'"),
     "the doc's timetable off the schedules": (OPERATIONS, "| 06:39 | Carrefour", "| 06:40 | Carrefour"),
-    "the basket's timetable off its schedules": (OPERATIONS, "| 12:33 | The basket run", "| 12:30 | The basket run"),
+    "the basket's timetable off its schedules": (OPERATIONS, "| 12:33 | The site run", "| 12:30 | The site run"),
     "an extraction's manual run missing from the doc": (OPERATIONS, "--payload '{\"mode\": \"extract\", \"chain\": \"yochananof\", \"day\": \"2026-11-02\"}'", "--payload '{\"mode\": \"extract\", \"chain\": \"osherad\", \"day\": \"2026-11-02\"}'"),
     "a manual extraction started synchronously": (OPERATIONS, "--invocation-type Event --payload '{\"mode\": \"extract\", \"chain\": \"carrefour\"", "--payload '{\"mode\": \"extract\", \"chain\": \"carrefour\""),
     "a manual run for a day that is no date": (OPERATIONS, "\"chain\": \"shufersal\", \"day\": \"2026-11-02\"", "\"chain\": \"shufersal\", \"day\": \"2026-11-31\""),

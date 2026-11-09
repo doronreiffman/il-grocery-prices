@@ -1435,8 +1435,8 @@ def test_a_name_a_poll_tried_and_did_not_store_is_missing():
     poll_manifest(store, "ramilevy", "102000Z-poll-a001", "12:20", failed={lost: not_stored(lost)})
     alerts, record = update_check(store)
     assert ramilevy_section(record)["missing"] == [lost]
-    assert alerts == [Alert("ramilevy", "missing",
-                            f"ramilevy: 1 update file a poll run tried on 2026-10-31 and did not store: {lost}.")]
+    assert alerts == [Alert("ramilevy", "missing", "ramilevy: 1 update file listed on 2026-10-31 and not stored "
+                                                   f"(1 tried and failed): {lost}.")]
 
     store = MemoryStore()
     clean_day(store, day=CHECK_DAY)
@@ -1444,9 +1444,9 @@ def test_a_name_a_poll_tried_and_did_not_store_is_missing():
     poll_manifest(store, "ramilevy", "102000Z-poll-a001", "12:20", failed={name: not_stored(name) for name in lost})
     alerts, record = update_check(store)
     assert ramilevy_section(record)["missing"] == lost
-    assert alerts == [Alert("ramilevy", "missing", "ramilevy: 11 update files a poll run tried on 2026-10-31 and did "
-                                                   f"not store: {', '.join(lost[:10])}, and 1 more (the check record "
-                                                   "lists them all).")]
+    assert alerts == [Alert("ramilevy", "missing", "ramilevy: 11 update files listed on 2026-10-31 and not stored (11 "
+                                                   "tried and failed): " + ", ".join(lost[:10])
+                                                   + ", and 1 more (the check record lists them all).")]
 
 
 def test_a_name_the_morning_listed_is_never_reported_again():
@@ -1461,6 +1461,20 @@ def test_a_name_the_morning_listed_is_never_reported_again():
     assert ramilevy_section(record)["missing"] == []
 
 
+def test_a_name_the_morning_listed_is_not_counted_as_never_tried():
+    """DAY's retry run listed N and did not store it, so DAY's own 11:48 check judged it; the day's last poll, stopped
+    on time, listed it and never tried it. It is neither counted nor emailed again (ruling R40)."""
+    store = MemoryStore()
+    clean_day(store, day=CHECK_DAY)
+    lost = ncr("Price", "001", "080000")
+    manifest(store, "ramilevy", "retry", listed=[lost], run_id="073300Z-retry-0a0a")
+    poll_manifest(store, "ramilevy", "182000Z-poll-a006", "20:20", files=[ncr("Promo", "001", "200000")])
+    poll_manifest(store, "ramilevy", "212000Z-poll-a007", "23:20", not_attempted=[lost], error=STOPPED)
+    alerts, record = update_check(store)
+    assert ramilevy_section(record)["not_tried"] == {"Price": [], "Promo": []}
+    assert alerts == []
+
+
 def test_a_name_stored_after_a_poll_failed_it_is_not_missing():
     store = MemoryStore()
     clean_day(store, day=CHECK_DAY)
@@ -1472,32 +1486,63 @@ def test_a_name_stored_after_a_poll_failed_it_is_not_missing():
     assert ramilevy_section(record)["missing"] == []
 
 
-def test_a_name_a_poll_never_tried_is_counted_not_emailed():
-    """The day's last poll stopped on time with Y listed and never tried (a run leaves a name untried only when it stops
-    on time); the poll before it ended clean, so the day was read. Y is counted, not emailed: the next pass is the next
-    day's."""
-    store = MemoryStore()
-    clean_day(store, day=CHECK_DAY)
+def test_a_name_no_poll_stored_is_emailed_tried_or_not():
+    """Ruling R40: a poll of the four quick chains reads its whole listing before its first row and, when it stops on
+    time, lists from memory every name of its day it did not reach (`not_attempted`). So a name never tried and not
+    stored since is a file of the day no run stored, as one a poll tried and failed is: both are in the chain's one
+    `missing` sentence, counted apart, their names sorted together. The record keeps them apart: `missing` the tried
+    and failed, `not_tried` the never tried, by name, per kind."""
     untried = ncr("Price", "002", "230000")
+    lost_untried = Alert("ramilevy", "missing", "ramilevy: 1 update file listed on 2026-10-31 and not stored (1 never "
+                                                f"tried: a poll stopped on time before reaching it): {untried}.")
+
+    store = MemoryStore()  # the day's last poll stopped on time with Y never tried; the poll before it ended clean
+    clean_day(store, day=CHECK_DAY)
     poll_manifest(store, "ramilevy", "182000Z-poll-a006", "20:20", files=[ncr("Promo", "001", "200000")])
     poll_manifest(store, "ramilevy", "212000Z-poll-a007", "23:20", not_attempted=[untried], error=STOPPED)
     alerts, record = update_check(store)
     section = ramilevy_section(record)
-    assert (section["missing"], section["not_tried"], section["failed"]) == ([], {"Price": 1, "Promo": 0}, None)
-    assert alerts == []
-    stored(store, "ramilevy", untried)  # by a run by hand
-    _, record = update_check(store)
-    assert ramilevy_section(record)["not_tried"] == {"Price": 0, "Promo": 0}
+    assert (section["missing"], section["not_tried"], section["failed"]) == (
+        [], {"Price": [untried], "Promo": []}, None)
+    assert alerts == [lost_untried]
 
-    store = MemoryStore()  # failed by one poll, left untried by a later one: missing only
+    store = MemoryStore()  # a later poll stored it
+    clean_day(store, day=CHECK_DAY)
+    poll_manifest(store, "ramilevy", "122000Z-poll-a002", "14:20", not_attempted=[untried], error=STOPPED)
+    poll_manifest(store, "ramilevy", "142000Z-poll-a003", "16:20", files=[untried])
+    alerts, record = update_check(store)
+    assert ramilevy_section(record)["not_tried"] == {"Price": [], "Promo": []}
+    assert alerts == []
+
+    store = MemoryStore()  # failed by one poll, left untried by a later one: missing only, counted once
     clean_day(store, day=CHECK_DAY)
     both = ncr("Price", "003", "200000")
     poll_manifest(store, "ramilevy", "182000Z-poll-a006", "20:20", failed={both: not_stored(both)})
     poll_manifest(store, "ramilevy", "212000Z-poll-a007", "23:20", not_attempted=[both], error=STOPPED)
     alerts, record = update_check(store)
     section = ramilevy_section(record)
-    assert (section["missing"], section["not_tried"]) == ([both], {"Price": 0, "Promo": 0})
-    assert kinds_of(alerts) == [("ramilevy", "missing")]
+    assert (section["missing"], section["not_tried"]) == ([both], {"Price": [], "Promo": []})
+    assert alerts == [Alert("ramilevy", "missing", "ramilevy: 1 update file listed on 2026-10-31 and not stored "
+                                                   f"(1 tried and failed): {both}.")]
+
+    store = MemoryStore()  # both parts: F tried and failed at 20:20, Y3 and Y1 never tried at 23:20
+    clean_day(store, day=CHECK_DAY)
+    failed = ncr("Price", "002", "200000")
+    first, third = ncr("Price", "001", "230000"), ncr("Price", "003", "230000")
+    poll_manifest(store, "ramilevy", "182000Z-poll-a006", "20:20", failed={failed: not_stored(failed)})
+    poll_manifest(store, "ramilevy", "212000Z-poll-a007", "23:20", not_attempted=[third, first], error=STOPPED)
+    alerts, record = update_check(store)
+    section = ramilevy_section(record)
+    assert (section["missing"], section["not_tried"]) == ([failed], {"Price": [first, third], "Promo": []})
+    assert alerts == [Alert("ramilevy", "missing", "ramilevy: 3 update files listed on 2026-10-31 and not stored "
+                                                   "(1 tried and failed, 2 never tried: a poll stopped on time before "
+                                                   f"reaching them): {first}, {failed}, {third}.")]
+
+    store = MemoryStore()  # the day's only poll stopped on time: no pass read either list in full, and Y is lost
+    clean_day(store, day=CHECK_DAY)
+    poll_manifest(store, "ramilevy", "212000Z-poll-a007", "23:20", not_attempted=[untried], error=STOPPED)
+    alerts, _ = update_check(store)
+    assert alerts == [lost_untried, no_full_reading()]
 
 
 def test_a_kind_no_pass_read_in_full_fails():
@@ -1519,6 +1564,22 @@ def test_a_kind_no_pass_read_in_full_fails():
     section = record["update_day"]["chains"]["shufersal"]
     assert section["failed"] is None
     assert section["passes"]["Promo"] == {"complete": [[P1_ID, P2_ID]], "out_of_order": [], "open": None}
+
+
+def test_a_paged_kinds_untried_names_are_counted_not_emailed():
+    """Question E (ruling R40): a kind with page records that day, Shufersal's, has its never-tried names counted in
+    `not_tried`, not emailed, until Shufersal's polls are designed. Its Promo polls of 2026-11-05, checked the morning
+    after: P1 stopped on time with row 221's name listed and never tried, and no run stored it; P2 completed the pass."""
+    store = MemoryStore()
+    nov_6 = NOV_5 + timedelta(days=1)
+    clean_day(store, ["shufersal"], day=nov_6)
+    untried = gz([221], "Promo")
+    put(store, P1 | {"not_attempted": untried})
+    put(store, P2)
+    alerts, record = check_day(store, ["shufersal"], nov_6, polled={"shufersal": ("Promo",)})
+    section = record["update_day"]["chains"]["shufersal"]
+    assert (section["missing"], section["not_tried"], section["failed"]) == ([], {"Promo": untried}, None)
+    assert alerts == []
 
 
 def test_a_pass_a_page_out_of_order_ended_is_recorded():
@@ -1576,8 +1637,8 @@ def test_a_blocked_poll_leaves_the_failed_alert_to_the_stopped_one():
         poll_manifest(store, "ramilevy", run_id, None, blocked=STOPPED_EARLIER)
     store.write_state("ramilevy", {"stopped": True, "since": israel("12:20"), "reason": block, "alerted": True})
     alerts, record = update_check(store)
-    assert alerts == [Alert("ramilevy", "missing",
-                            f"ramilevy: 1 update file a poll run tried on 2026-10-31 and did not store: {lost}.")]
+    assert alerts == [Alert("ramilevy", "missing", "ramilevy: 1 update file listed on 2026-10-31 and not stored "
+                                                   f"(1 tried and failed): {lost}.")]
     assert ramilevy_section(record)["failed"] is None
 
 
@@ -1615,7 +1676,7 @@ def test_the_record_holds_each_poll_and_each_pass():
         "passes": {"Price": {"complete": [["122000Z-poll-a002"]], "out_of_order": [], "open": None},
                    "Promo": {"complete": [["122000Z-poll-a002"]], "out_of_order": [], "open": None}},
         "missing": [],
-        "not_tried": {"Price": 0, "Promo": 0},
+        "not_tried": {"Price": [], "Promo": []},
         "by_hour": {"Price": {"07": 1, "13": 1}, "Promo": {"13": 1}},
         "failed": None,
     }}}

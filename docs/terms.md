@@ -2,6 +2,8 @@
 
 My call, 2026-11-02, on my reading of section 30(ה) (not legal advice): it allows publishing the headline basket's derived numbers (the page, the method page and the day's JSON), credited to the chains' published files. The raw files stay unpublished; on the same reading the clause would allow that too, but nothing needs it.
 
+My approval of the shopper site's design, 2026-11-07 ([shopper-site.md](shopper-site.md), "Status"), extends this reading to that site's derived numbers and data files.
+
 ## Source
 
 - Page: Nevo's consolidated text, https://www.nevo.co.il/law_html/law00/132302.htm, "חוק קידום התחרות בענפי המזון והפארם, תשע"ד-2014", shown as current as of 19-07-2026. Read by me in my browser on 2026-11-02 at about 21:48 Israel time; the clause below is as I copied it from that page. A web search the same evening also found the government's own consolidated PDF on gov.il ("נוסח מלא ומעודכן", updated 07/2025); not read.

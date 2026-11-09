@@ -132,21 +132,27 @@ def collect(monkeypatch):
 
 
 class FakeSource:
-    """Lists `names`, or raises `listing_raises` when asked for the first; download gives the fixture's gzip, or
-    raises what `answers[name]` holds."""
+    """Lists `names`, or raises `listing_raises` when asked for the first, and raises `then` after the last; download
+    calls `moving` first (a download that takes time), then gives the fixture's gzip, or raises what `answers[name]`
+    holds."""
 
     unparsed = 0
 
-    def __init__(self, names, answers=None, listing_raises=None):
+    def __init__(self, names, answers=None, listing_raises=None, then=None, moving=None):
         self.names, self.answers, self.listing_raises = names, answers or {}, listing_raises
+        self.then, self.moving = then, moving
 
     def listing(self, http, kinds, short_of_time=None):
         if self.listing_raises is not None:
             raise self.listing_raises
         for name in self.names:
             yield Listed(parse_file_name(name), f"https://portal.example/{name}")
+        if self.then is not None:
+            raise self.then
 
     def download(self, http, item, short_of_time=None):
+        if self.moving is not None:
+            self.moving()
         answer = self.answers.get(item.name.raw)
         if answer is not None:
             raise answer
@@ -376,6 +382,27 @@ def test_a_poll_that_stops_a_chain_emails_at_once(monkeypatch):
     assert record["update_day"]["day"] == "2026-10-31" and record["update_day"]["chains"]["ramilevy"]["failed"] is None
     assert len(deps.publish.calls) == 2 and "ramilevy is stopped" not in deps.publish.calls[1][1]
     assert deps.store.read_state("ramilevy") == state
+
+
+def test_a_block_met_while_a_stopped_poll_lists_the_rest_emails_at_once(monkeypatch):
+    """Ruling R40, design call 11: a poll that stops on time reads the rest of its listing, and a block met there
+    latches the chain as one met before the stop would; the poll emails the stopped alert at once, as above, and the
+    manifest carries the time stop, the block and the name it did not reach."""
+    countdown = Countdown()
+    U1, U2 = (f"Price7290058140886-001-{n:03d}-20261031-200000.gz" for n in (1, 2))
+    monkeypatch.setattr(handler_module, "source_for",
+                        lambda chain: FakeSource([U1, U2], then=BLOCK, moving=lambda: setattr(countdown, "left", 30.0)))
+    deps = make_deps(time_left=countdown)
+    summary = run(CFG, POLL, deps, EVENING)
+    key = manifest_key(DAY, "ramilevy", summary["run_id"])
+    assert deps.events == [("state", "ramilevy"), ("record", key), "publish", ("state", "ramilevy")]
+    manifest = json.loads(deps.store.read_raw(key))
+    assert manifest["error"] == "stopped: under 90 s left"
+    assert manifest["blocked"] == "HTTP 403: https://portal.example/x"
+    assert manifest["listed"] == [U1, U2] and manifest["not_attempted"] == [U2]
+    assert deps.store.read_state("ramilevy")["alerted"] is True
+    [(subject, _)] = deps.publish.calls
+    assert subject == "il-grocery-prices 2026-10-31: ramilevy stopped by a poll run"
 
 
 def test_a_poll_whose_email_fails_leaves_the_stopped_chain_to_the_check(monkeypatch, caplog):

@@ -17,12 +17,20 @@ what happened, written whatever happened (docs/collector.md, "How a morning runs
   it is failed and the run goes on. A put that S3 refuses fails that file only (ruling R23).
 - A block (Blocked, or HTML where a file belongs) writes the chain's latch and stops the run; the
   owner clears it. A latch that cannot be written leaves the block in the manifest, with the error
-  "latch not written: …", and the invocation fails. An unreadable listing, or a listing that cannot be fetched, stops the run with an
-  error. So does time: under 90 s left (ruling R32), checked before the listing is read, between its
-  items (a page is fetched inside the listing) and before each download. The adapters are lent the
-  same check for the requests they make on their own (Shufersal's re-read of a category for a
-  fresh link, NCR's listing answers) and raise OutOfTime when it says so: the run stops the
-  same way, and a file whose download stopped so is failed with where it stopped.
+  "latch not written: …", and the invocation fails. An unreadable listing, or a listing that cannot
+  be fetched, stops the run with an error. So does time: under 90 s left (ruling R32), checked before
+  the listing is read, between its items (a page is fetched inside the listing) and before each
+  download. The adapters are lent the same check for the requests they make on their own
+  (Shufersal's re-read of a category for a fresh link, NCR's listing answers) and raise OutOfTime
+  when it says so: the run stops the same way, and a file whose download stopped so is failed with
+  where it stopped.
+- A poll run whose listing does not page reads the rest of it after its own time stop, taking
+  nothing (ruling R40): each row is sorted as the run sorts a row it takes (the kinds asked for, the
+  run's day, a name's first sighting), and nothing is downloaded, stored, timed or recorded as a
+  page. The listing's end or an OutOfTime ends that read with what it had; a block met there writes
+  the latch as above; anything else the listing raises is no time stop: the error becomes
+  "unexpected error: …" and the invocation fails. A main or retry run, a paged listing and any other
+  stop read no further.
 - A paged listing (Shufersal's, a PagedSource; ruling R37) is told where to start each kind, from the
   chain's earlier manifests of the day (collector.pages.start_for; a poll run's from the kind's
   current pass, collector.pages.pass_start, ruling R39), and reports each page it reads
@@ -35,12 +43,15 @@ what happened, written whatever happened (docs/collector.md, "How a morning runs
 
 In the result, `listed` holds that day's names as the listing gave them; `files` those stored or
 found stored by this run; `failed` those tried and not stored, with why; `not_attempted` those
-listed, not stored before, and never tried because the run stopped first. Names the listing had not
-yet given when the run stopped are in none of them: the retry run lists them. `pages` holds the
-pages a paged listing read, in the order read, and `timeouts` the page requests it reported as timed
-out, in the order reported (both empty for any other listing). `other_days` holds, for each date in a
-name other than the run's day (`YYYY-MM-DD`), how many distinct names of the kinds asked for the
-listing gave with that date; it is empty when there were none.
+listed, not stored before, and never tried because the run stopped first. For a poll run of a
+listing that does not page, `listed` holds every name of the day and the kinds asked for that the
+listing gave, and `not_attempted` every such name not stored before and never tried, a run stopped
+on time included. For a main or retry run and every Shufersal run, the names the listing had not yet
+given when the run stopped are in none of them: the retry run, or the next pass, lists them.
+`pages` holds the pages a paged listing read, in the order read, and `timeouts` the page requests it
+reported as timed out, in the order reported (both empty for any other listing). `other_days` holds,
+for each date in a name other than the run's day (`YYYY-MM-DD`), how many distinct names of the
+kinds asked for the listing gave with that date; it is empty when there were none.
 """
 import dataclasses
 import hashlib
@@ -73,7 +84,8 @@ class RunResult:
     """What one invocation did for one chain: the manifest's content, less the code's commit.
     `files[name]` is {"outcome": "stored" | "exists" | "conflict", "size": bytes, "sha256": hex}.
     `listing_read_at` is None when the listing was never read; `unparsed` (names the listing could
-    not read) is 0 unless the listing was read to its end."""
+    not read) is 0 on every run that stopped, a drained poll's included, and final only on a run whose
+    own loop read the listing to its end."""
 
     chain: str
     run_id: str
@@ -161,6 +173,7 @@ class _Run:
         self.page_counts: dict[str, int] = {}  # each kind's last page, as this run's page 1 of it names it
 
     def collect(self) -> None:
+        listing = None  # a stop before the listing is read leaves none to read on
         try:
             self._check_time()
             paged = self._paged()  # first: a failed read of the earlier manifests leaves no listing time
@@ -170,8 +183,10 @@ class _Run:
                 self._take(item)
                 self._check_time()
             self.result.unparsed = self.source.unparsed  # final only now: it resets on the first next()
-        except _Stop:
-            pass
+        except _Stop:  # `unparsed` stays 0, drained or not: this loop did not read the listing to its end (R13)
+            if (self.result.error == OUT_OF_TIME and self.result.mode == "poll" and listing is not None
+                    and not isinstance(self.source, PagedSource)):  # a paged listing's page records stay as taken
+                self._drain(listing)  # ruling R40
 
     def _paged(self) -> dict:
         """What a paged listing is handed beyond any listing's arguments: where each kind starts, from the chain's
@@ -216,21 +231,53 @@ class _Run:
         if self.result.pages:  # first: a row of another day, a repeat or one never downloaded was still listed
             page = self.result.pages[-1]
             page["taken_through"] = page["last"] if item.ends_page else item.name.raw
-        if item.name.kind not in self.kinds:
-            return
-        if item.name.day != self.day:
-            self._other_day(item)
-            return
-        name = stored_name(item)
-        if name in self.seen:
-            return  # listed again while the listing was read: the first counts
-        self.seen.add(name)
-        self.result.listed.append(name)
-        if name in self.stored:
+        name = self._listed(item)
+        if name is None or name in self.stored:
             return
         body = self._fetch(item, name)
         if body is not None:
             self._store(name, body)
+
+    def _listed(self, item: Listed) -> str | None:
+        """Sort a row as the run sorts every row it is given, taken or read after a poll's time stop: the name it is
+        stored under, now in `listed`, or None for a row not listed (a kind not asked for; a name of another day,
+        counted in `other_days`; a name seen already in this run). It raises nothing."""
+        if item.name.kind not in self.kinds:
+            return None
+        if item.name.day != self.day:
+            self._other_day(item)
+            return None
+        name = stored_name(item)
+        if name in self.seen:
+            return None  # listed again while the listing was read: the first counts
+        self.seen.add(name)
+        self.result.listed.append(name)
+        return name
+
+    def _drain(self, listing: Iterator[Listed]) -> None:
+        """After a poll's time stop, read the rest of a listing that does not page (ruling R40): each row is sorted as
+        `_listed` sorts it, and a name it lists that was not stored before the run joins `not_attempted`. Nothing is
+        downloaded, stored, timed or recorded as a page; the latch is the only state written. The listing's end and an
+        OutOfTime end the read with what it had; a block writes the latch and ends it, and a latch that cannot be
+        written fails the invocation as in the loop. Anything else the listing raises means an adapter made a request
+        after the stop: the error says what it was, not the time stop R36 reads, and it is raised."""
+        while True:
+            try:
+                item = next(listing)
+            except (StopIteration, OutOfTime):  # the end, or an adapter's own request short of time
+                return
+            except Blocked as block:
+                try:
+                    self._latch(str(block))  # a latch not written raises past the handler below, its error kept
+                except _Stop:
+                    return
+            except Exception as exc:
+                self.result.error = f"unexpected error: {type(exc).__name__}: {exc}"
+                raise
+            # outside the try: the classification raises nothing; a step that can raise belongs inside it
+            name = self._listed(item)
+            if name is not None and name not in self.stored:
+                self.result.not_attempted.append(name)
 
     def _other_day(self, item: Listed) -> None:
         """Count a name of a kind asked for that is dated another day, under that day, once a name."""
