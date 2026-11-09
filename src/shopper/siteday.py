@@ -18,7 +18,8 @@ covered registry it carried forward (None for none); then:
   is one of `basket.pricefile`'s for a file that does not read, else "format changed"; the file is named only when the
   message names one the collector names, by its published name (`collector.names.parse_file_name` of
   `collector.store.published_name`, as the house reads a stored name: a conflict copy, the published name with a dot
-  and 12 hex digits, is the copy read when it is the latest), and the field only when the message's
+  and 12 hex digits, is the copy read when it is the latest; a published name never holds a "/", so a head holding one,
+  a chain's value with a path in it, is never read as a file name), and the field only when the message's
   first word is one of the fields the chains' files are known to carry, or a level of them
   (`shopper.promotions.KNOWN_FIELDS`). Whatever a chain puts in a field or a tag therefore stays out of the public file;
   the whole message, with the value, goes to the run's log and its alert only (the items table's private report and
@@ -107,7 +108,8 @@ def public_error(slug: str, message: str) -> dict:
     (the module's docstring)."""
     rest = message.removeprefix(f"{slug}: ")
     head, said, tail = rest.partition(": ")
-    file, published = None, published_name(head)    # a conflict copy is named by its published name
+    file = None
+    published = head if "/" in head else published_name(head)   # a conflict copy's suffix stripped, never a path
     if said and parse_file_name(published) is not None:
         file, rest = published, tail
     word = rest.split(" ", 1)[0]

@@ -25,6 +25,8 @@ from shopper.freeze import Frozen
 from shopper.items import ColumnReport, ItemsReport
 from shopper.measures import depth
 from shopper.pages import Counts, ordered
+from shopper.promofile import PromotionFormatChanged
+from shopper.promotions import _reward_type
 from shopper.record import scorecard
 from shopper.siteday import (NOT_COMPARED, Inputs, public_error, publish_site_day, site_day, site_day_path,
                              write_site_day)
@@ -149,7 +151,6 @@ def test_a_promotion_file_that_does_not_read_is_published_as_such(data):
     assert found == {"kind": "file not read", "file": FILE, "field": None}
 
 
-
 def test_a_conflict_copy_is_named_by_its_published_name():
     """A conflict copy is stored as its published name with a dot and 12 hex digits (collector.store) and is the copy
     `basket.extract.day_files` reads when it is the latest: its error is published under the published name, a file that
@@ -161,6 +162,18 @@ def test_a_conflict_copy_is_named_by_its_published_name():
         "kind": "file not read", "file": FILE, "field": None}
     assert public_error("carrefour", f"carrefour: {copy}: RewardType {VALUE} not seen in the chain's files") == {
         "kind": "format changed", "file": FILE, "field": "RewardType"}
+
+
+@pytest.mark.parametrize("value", [f"x/{FILE}: the gzip is cut short or corrupt", f"<b>a</b>/{FILE}: tail"])
+def test_a_value_with_a_slash_never_names_a_file(value):
+    """A published name never holds a "/": a chain's value that puts a path to a file name before the message's first
+    ": " (here a RewardType, through the real reader's check) names no file, and the kind and field stay the message's
+    own (the second re-review's fix-round finding)."""
+    with pytest.raises(PromotionFormatChanged) as raised:
+        _reward_type("carrefour", {"RewardType": value})
+    assert public_error("carrefour", str(raised.value)) == {"kind": "format changed", "file": None,
+                                                            "field": "RewardType"}
+
 
 def test_each_columns_gate_is_its_own_never_its_chains():
     """The site check reads a column's gate from its own block (the amendment's "Where the key lives"): Deal's gate
