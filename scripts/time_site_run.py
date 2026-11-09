@@ -8,8 +8,9 @@ It runs the code of the tree it sits in (its `src/`), so a copy of the tree time
 `--make` writes the tables first, under <folder>/tables: `--days` days of items tables for every chain, ending on DAY,
 each column at `--scale` times the items, wide and on-promotion counts of its report of 7 November 2026 (REAL; 1.0 is
 131,035 rows a day), every row a pair of its own (a column's codes are distinct, drawn from a pool of POOL codes times
-the scale), and the frozen forecasts file of the day scored. It replaces tables it made there before, which its marker
-<folder>/made.json names, and refuses a folder of tables without that marker, deleting nothing. Names and barcodes are
+the scale), and the frozen forecasts file of the day scored. The script writes and deletes only inside a work folder
+it made, which its marker <folder>/made.json names, or a new or empty one: any other --work (the repository's root, a
+data folder) is refused with nothing touched, and nothing is deleted through a symlink. Names and barcodes are
 synthetic: nothing from the archive is read or written. The listed price steps every 30 days; a wide item is on a
 promotion 7 days in 21; no column-day is a hole.
 
@@ -118,16 +119,51 @@ def _column_rows(key: str, index: int, step: int, pool: int, counts: tuple[int, 
         FROM range({items}) t(i)"""
 
 
+def _marked(work: Path) -> bool:
+    """Whether `work` holds this script's marker MADE, a file of its own: a link there is no marker."""
+    return (work / MADE).is_file() and not (work / MADE).is_symlink()
+
+
+def _claim(work: Path) -> None:
+    """Refuse (SystemExit), touching nothing, a --work that is a symlink, or is there, not empty and without this
+    script's marker MADE: the script writes only into a work folder it made, a new one or an empty one."""
+    if work.is_symlink():
+        raise SystemExit(f"{work} is a symlink: give --work a folder of its own, not a link; nothing is touched")
+    if work.exists() and not _marked(work) and (not work.is_dir() or any(work.iterdir())):
+        raise SystemExit(f"{work} is there and {work / MADE} is not: not a work folder this script made, so nothing "
+                         "is touched; give --work a new or empty folder")
+
+
+def _remove(work: Path, *paths: Path) -> None:
+    """Delete each of `paths`, folders or files under `work`, only inside a work folder this script made: its marker
+    MADE is there, and no part of any path from `work` down is a symlink, which could lead out to real tables. Every
+    path is checked before any is deleted; SystemExit else, nothing deleted. A path not there is skipped."""
+    if not _marked(work):
+        raise SystemExit(f"{work / MADE} is not there: {work} is not a work folder this script made, so nothing is "
+                         "deleted")
+    for path in paths:
+        parts = path.relative_to(work).parts
+        for depth in range(len(parts) + 1):                  # `work` itself, then each part down to the path
+            if work.joinpath(*parts[:depth]).is_symlink():
+                raise SystemExit(f"{work.joinpath(*parts[:depth])} is a symlink: nothing is deleted through a link, "
+                                 "so nothing is deleted")
+    for path in paths:
+        if path.is_dir():
+            shutil.rmtree(path)
+        elif path.exists():
+            path.unlink()
+
+
 def make(work: Path, scale: float, days: int) -> None:
-    """The synthetic tables (the module's docstring) and the frozen file of SCORED. Tables already there are replaced
-    only when this script made them (its marker, MADE, beside them); any other folder is refused, nothing deleted."""
-    tables = work / "tables"
-    if tables.exists() and not (work / MADE).is_file():
-        raise SystemExit(f"{tables} is there and {work / MADE} is not: not tables this script made, so nothing is "
-                         "deleted; give --work a folder of its own")
+    """The synthetic tables (the module's docstring) and the frozen file of SCORED, into a work folder this script
+    made, a new one or an empty one (`_claim`). The tables and the frozen file it made there before are deleted first
+    (`_remove`), so a link planted in their place is refused, never written through; the marker is written last."""
+    _claim(work)
     if days <= HORIZON:
         raise SystemExit(f"--days must be above {HORIZON}: the scored day's window must be held")
-    shutil.rmtree(tables, ignore_errors=True)
+    tables = work / "tables"
+    if _marked(work):
+        _remove(work, tables, work / "frozen.csv.gz")
     pool = max(round(POOL * scale), max(_scaled(counts[0], scale) for counts in REAL.values()))
     assert all(math.gcd(step, pool) == 1 for step in STEPS)
     names = ", ".join(f'"{name}"' for name, _ in ITEM_COLUMNS)
@@ -299,11 +335,13 @@ def main(argv: list[str] | None = None) -> int:
     tables, site = work / "tables", work / "site"
     if args.make:
         steps.run("make the tables (not counted)", lambda: (make(work, args.scale, args.days), ""), total=False)
+    if not _marked(work):
+        raise SystemExit(f"{work / MADE} is not there: {work} is not a work folder this script made; make one with "
+                         "--make")
     made = json.loads((work / MADE).read_text())
     print(f"scale {made['scale']}, {made['days']} days of tables, {made['rows_a_day']:,} rows a day, pool "
           f"{made['pool']:,}; Python {sys.version.split()[0]}, DuckDB {duckdb.__version__}", flush=True)
-    for folder in (site, work / "staging", tables / "covered", tables / "scored"):
-        shutil.rmtree(folder, ignore_errors=True)
+    _remove(work, site, work / "staging", tables / "covered", tables / "scored")
 
     history = steps.run("history (load)", lambda: (found := load(tables, DAY, SLUGS), f"{len(found.tables)} tables"))
     if args.bare:
@@ -363,7 +401,7 @@ def main(argv: list[str] | None = None) -> int:
             sample.append(pair)
         some = {code: found[code] for code in sorted(codes) if code in found}
         print(f"\nprofiled sample: {len(codes):,} products, {len(sample):,} pairs, {len(some):,} covered", flush=True)
-        shutil.rmtree(work / "profiled", ignore_errors=True)
+        _remove(work, work / "profiled")
 
         def sample_pass():
             pages = build._Pages(some, history, COLLECTED_BY, gates, {}, work / "profiled")
