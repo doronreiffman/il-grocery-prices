@@ -161,6 +161,10 @@ FREEZE_FOR_SHOP_PAGES = ("src/shopper/freeze.py", ["tests/test_shop_pages.py"])
 SHOP_SITEDAY = ("src/shopper/siteday.py", ["tests/test_siteday.py"])
 BUILD_FOR_SHOP_SITEDAY = ("src/basket/build.py", ["tests/test_siteday.py"])
 SHOP_BUILD = ("src/shopper/build.py", ["tests/test_shop_build.py"])
+# The guard (Task 21): shopper/guard.py with its tests; the basket's guard (basket.guard.guard_days) serves the site's days
+# too, so its revision test must be caught breaking by the shopper guard's tests as well.
+SHOP_GUARD = ("src/shopper/guard.py", ["tests/test_shop_guard.py"])
+GUARD_FOR_SHOP_GUARD = ("src/basket/guard.py", ["tests/test_shop_guard.py"])
 # The basket's reproduce words name the page the day file's numbers are on (Task 18, fix round 1).
 WORDS_FOR_SHOP_PAGES = ("src/basket/words.py", ["tests/test_shop_pages.py"])
 # The deal price for the eye is written by shopper.deals.to_agora, which the items table and the words both call: each
@@ -2088,6 +2092,44 @@ MUTATIONS = {
     'the column intro claiming every measure on the page (q22 pages)': (SHOP_PAGES, '"on the front, product and record pages is a column\'s: which products are covered, listed prices, "', '"here is a column\'s: which products are covered, listed prices, "'),
     "the reproduce sentence without the intervals' rounding (q22 pages)": (SHOP_PAGES, 'same numbers on every page, the record\'s "\n            "intervals to rounding (F8). The day\'s inputs are named in")', 'same numbers on every page. The day\'s inputs are named in")'),
     'the days read said of this page (q22 pages)': (SHOP_PAGES, 'said = (f"The site\'s build reads the {len(days)} days from', 'said = (f"This page reads the {len(days)} days from'),
+    # Task 21: the guard, one mutation per rule
+    "the basket's days not guarded (q22 guard)": (SHOP_GUARD, '    problems = guard_days(site / "days", published / "days")\n', "    problems = []\n"),
+    "the site's days not guarded (q22 guard)": (SHOP_GUARD, 'for problem in guard_days(site / "site-days", published / "site-days")]', "for problem in []]"),
+    "a site day's problem named as a basket day's (q22 guard)": (SHOP_GUARD, 'problem.replace("days/", "site-days/", 1) if problem.startswith("days/") else problem', "problem"),
+    "a site day with as many revisions as the published one passed (q22 guard)": (GUARD_FOR_SHOP_GUARD, "and len(revisions) > len(earlier))", "and len(revisions) >= len(earlier))"),
+    "a site day with more revisions and no reason passed (q22 guard)": (GUARD_FOR_SHOP_GUARD, 'return (isinstance(new.get("revised"), dict) and isinstance(revisions, list)', "return (isinstance(revisions, list)"),
+    "a replaced forecasts file passed (q22 guard)": (SHOP_GUARD, '_replaced(site, published, "forecasts") + _replaced(site, published, "scores")', '_replaced(site, published, "scores")'),
+    "a replaced scores file passed (q22 guard)": (SHOP_GUARD, '_replaced(site, published, "forecasts") + _replaced(site, published, "scores")', '_replaced(site, published, "forecasts")'),
+    "a replaced file compared by its length (q22 guard)": (SHOP_GUARD, "and (published / folder / local.name).read_bytes() != local.read_bytes()]", "and (published / folder / local.name).stat().st_size != local.stat().st_size]"),
+    "a replaced file named as the other folder's (q22 guard)": (SHOP_GUARD, 'f"{folder}/{local.name} differs from the published file: a published {folder} file is never replaced"', 'f"forecasts/{local.name} differs from the published file: a published forecasts file is never replaced"'),
+    "a ledger that does not start with the published one passed (q22 guard)": (SHOP_GUARD, "if not here.read_bytes().startswith(there.read_bytes()):", "if not there.read_bytes().startswith(here.read_bytes()):"),
+    "a ledger compared by its length (q22 guard)": (SHOP_GUARD, "if not here.read_bytes().startswith(there.read_bytes()):", "if len(here.read_bytes()) < len(there.read_bytes()):"),
+    "a published ledger the build lacks passed (q22 guard)": (SHOP_GUARD, '        return [f"{LEDGER} is published and not in the build: run scripts/sync.sh first"]\n', "        return []\n"),
+    "a ledger asked for when none is published (q22 guard)": (SHOP_GUARD, "    if not there.is_file():\n        return []\n", "    if False:\n        return []\n"),
+    "the record page not compared (q22 guard)": (SHOP_GUARD, "    if expected in shown:\n        return []\n", "    return []\n"),
+    "the record page compared with the oldest site-day file (q22 guard)": (SHOP_GUARD, '    days = sorted((site / "site-days").glob("*.json"))\n', '    days = sorted((site / "site-days").glob("*.json"), reverse=True)\n'),
+    "the record page's differing columns not named (q22 guard)": (SHOP_GUARD, "    differing = [section.group(1) for section in SECTION.finditer(expected) if section.group(0) not in shown]\n", "    differing = []\n"),
+    "a record page differing in every column named for the first only (q22 guard)": (SHOP_GUARD, "    return [f\"record.html differs from {name} in the scorecard of {key}\" for key in differing] or [", "    return [f\"record.html differs from {name} in the scorecard of {key}\" for key in differing[:1]] or ["),
+    "a scorecard that cannot be rendered crashing the guard (q22 guard)": (SHOP_GUARD, "    except (ValueError, LookupError, TypeError, AttributeError) as error:", "    except ArithmeticError as error:"),
+    "a missing record page passed (q22 guard)": (SHOP_GUARD, '        return ["record.html is not in the build"]\n', "        return []\n"),
+    "a build with no site-day file passed (q22 guard)": (SHOP_GUARD, '        return ["no site-day file in the build: record.html has none to be compared with"]\n', "        return []\n"),
+    "the published product pages not asked for (q22 guard)": (SHOP_GUARD, "    return problems + (_pages(site, published_pages) if with_pages else [])", "    return problems"),
+    "the product pages asked for when they do not go up (q22 guard)": (SHOP_GUARD, "    return problems + (_pages(site, published_pages) if with_pages else [])", "    return problems + _pages(site, published_pages)"),
+    "the other rules dropped when the pages do not go up (q22 guard)": (SHOP_GUARD, "    return problems + (_pages(site, published_pages) if with_pages else [])", "    return problems if with_pages else []"),
+    "a key outside p/ asked for (q22 guard)": (SHOP_GUARD, 'if key.startswith("p/") and key.endswith(".html") and not', 'if key.endswith(".html") and not'),
+    "a p/ key that is no page asked for (q22 guard)": (SHOP_GUARD, 'if key.startswith("p/") and key.endswith(".html") and not', 'if key.startswith("p/") and not'),
+    "the missing pages all named (q22 guard)": (SHOP_GUARD, "missing[:SHOWN]", "missing"),
+    "the pages beyond the named ones counted as all (q22 guard)": (SHOP_GUARD, 'f" and {count - SHOWN:,} more"', 'f" and {count:,} more"'),
+    "one missing page said in the plural (q22 guard)": (SHOP_GUARD, 'what = "1 published product page is" if count == 1 else', 'what = "1 published product page is" if count == 0 else'),
+    "problems exit 0 (q22 guard)": (SHOP_GUARD, "    return 1 if problems else 0", "    return 0"),
+    "a missing site folder exit 1 (q22 guard)": (SHOP_GUARD, 'no site to guard", file=sys.stderr)\n        return 2', 'no site to guard", file=sys.stderr)\n        return 1'),
+    "a wrong number of arguments exit 1 (q22 guard)": (SHOP_GUARD, 'file=sys.stderr)\n        return 2\n    site, published, keys', 'file=sys.stderr)\n        return 1\n    site, published, keys'),
+    "a missing file of keys read as none (q22 guard)": (SHOP_GUARD, '    if not keys.is_file():\n        print(f"no file at {keys}: no list of the published product pages", file=sys.stderr)\n        return 2\n    problems = guard_site(site, published, keys.read_text(encoding="utf-8").split())', '    problems = guard_site(site, published, keys.read_text(encoding="utf-8").split() if keys.is_file() else [])'),
+    "the keys split on new lines only (q22 guard)": (SHOP_GUARD, 'keys.read_text(encoding="utf-8").split()', 'keys.read_text(encoding="utf-8").split("\\n")'),
+    "the problems not printed (q22 guard)": (SHOP_GUARD, "    for problem in problems:\n        print(problem, file=sys.stderr)\n", ""),
+    # Task 21: the record page's order, whatever order the scorecard's mappings come in (a site-day file read back has its keys sorted)
+    "the gate's conditions in the scorecard's order (q22 guard)": (SHOP_PAGES, "                         for key in CONDITIONS)       # their order", "                         for key in held)       # their order"),
+    "the record's columns in the scorecard's order (q22 guard)": (SHOP_PAGES, "    for column in COLUMNS:       # their order, not the mapping's: the site-day file is written with its keys sorted\n        key, found = column.key, columns[column.key]\n", "    for key, found in columns.items():\n"),
     # basket: extract
     "extract older file wins": (EXTRACT, "latest = max(named)", "latest = min(named)"),
     "extract first duplicate wins": (EXTRACT, "        latest[row.code] = row", "        latest.setdefault(row.code, row)"),

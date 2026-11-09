@@ -18,13 +18,13 @@ import pytest
 
 from basket.check import PRONOUNS, flatten, strip_tags
 from basket.chains import CARREFOUR_COLUMNS
-from basket.page import Frame, method_parts, render_index, render_method as basket_method
+from basket.page import Frame, method_parts, render_day, render_index, render_method as basket_method
 from basket.stores import Store
 from basket.words import ALWAYS as BASKET_ALWAYS, CHAIN_NAMES, METHOD_INTRO, TITLE as BASKET_TITLE
 from shopper.columns import BY_KEY, COLUMNS, FLOOR
 from shopper.history import ColumnDay
-from shopper.pages import (BASKET_PAGE, BASKET_SECTION, NO_DEALS, SCORED_SO_FAR, ColumnsToday, Counts, FrontRow,
-                           front_rows_of, ordered, render_basket, render_front, render_method, render_record,
+from shopper.pages import (BASKET_PAGE, BASKET_SECTION, CONDITIONS, NO_DEALS, SCORED_SO_FAR, ColumnsToday, Counts,
+                           FrontRow, front_rows_of, ordered, render_basket, render_front, render_method, render_record,
                            scorecard_section)
 from shopper.product import CHAIN_SPAN, page_path
 from shopper.record import scorecard
@@ -495,11 +495,23 @@ def test_a_baseline_scoring_zero_has_no_skill_and_a_day_of_unscored_rows_scores_
 
 def test_the_scorecard_section_is_the_record_pages_and_the_scorecards_alone():
     """The guard renders the record page's tables again from the site-day file's scorecard (Task 21): the section is
-    in the page as `scorecard_section` gives it, and the same bytes from the scorecard read back from JSON."""
+    in the page as `scorecard_section` gives it, and the same bytes from the scorecard read back from JSON as the
+    site-day file is written, its keys sorted (the gate's conditions then come back in another order)."""
     card = _scored()
     assert scorecard_section(card) in _record(card)
     assert scorecard_section(json.loads(json.dumps(card))) == scorecard_section(card)
+    assert scorecard_section(json.loads(render_day(card))) == scorecard_section(card)
+    assert list(json.loads(render_day(card))["columns"][DEAL]["gate"]["conditions"]) != list(CONDITIONS)   # the premise
     assert scorecard_section(card) != scorecard_section(scorecard([]))
+
+
+def test_the_scorecard_section_gives_the_columns_in_their_order_whatever_the_mappings():
+    """The columns come in `COLUMNS`' order, not the order of the scorecard's mapping, which a file read back may change."""
+    card = _scored()
+    reversed_card = card | {"columns": dict(reversed(card["columns"].items()))}
+    assert scorecard_section(reversed_card) == scorecard_section(card)
+    assert re.findall(r'<section data-column="([^"]+)"', scorecard_section(reversed_card)) == [
+        column.key for column in COLUMNS]
 
 
 def test_an_open_gate_stops_the_record_page():
