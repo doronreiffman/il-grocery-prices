@@ -21,10 +21,11 @@ morning from the code (the shopper plan's question H). Every file is checked fir
 (`is_record`: each day's forecasts file and scores file, never the ledger) go up in a `put_files` call of their own,
 ended before anything else is put; a record put that fails stops the upload there (RecordsNotUploaded), so the ledger,
 the site-day and day files and the pages, which name the records, never name a file the site lacks (the task review's
-finding 1: a rerun lists the day's forecasts file only when the ledger gains its line). Then the rest, in the order
-above, in a second call. Each file takes its content type by its last suffix: `search.js` goes up as JavaScript, never
-as HTML (the second pre-flight's B3). Anything else in the folder (the marker, the published copies the build compared
-with) stays local.
+finding 1: a rerun lists the day's forecasts file only when the ledger gains its line). Then the rest in a second
+call, started in the order above, the data files before the pages; the pool ends them in no fixed order, so the pages
+are started after the data files, not held until those are up (the Task 23 review's point 4). Each file takes its
+content type by its last suffix: `search.js` goes up as JavaScript, never as HTML (the second pre-flight's B3).
+Anything else in the folder (the marker, the published copies the build compared with) stays local.
 
 `put_files` puts the shopper site's files, any number of them, each once (a key given twice goes up once): it checks
 first that every file is in the site folder and has a content type above, and refuses (FileNotFoundError, ValueError)

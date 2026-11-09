@@ -3,12 +3,13 @@ ever reaches AWS here.
 
 The stand-in answers the identity check with the expected user (or `IDENTITY`); the site stack's outputs when
 `SITE_BUCKET` is set, else AWS's words for a stack that does not exist yet (as sync.sh quotes them); a recursive
-`s3 cp` from the bucket by copying that folder of `FAKE_BUCKET`, a local folder standing in for the bucket; the
-listing of the `p/` keys with `P_KEYS`, as `--output text` prints it; and an invalidation with its id. `FAIL_READ` names
-one read that fails instead, a folder's copy or `p` for the listing, as the CLI fails one. Every other call
-(each `s3 sync`) is recorded and does nothing. `publish.sh` runs with a stand-in `python` that records each call too and
-answers the site check with `CHECK_EXIT` (the check's own tests are `tests/test_shop_check.py`); every other module, the
-publish guard, runs for real (`shopper.guard`), over a build made as `tests/test_shop_guard.py` makes one.
+`s3 cp` from the bucket by copying that folder of `FAKE_BUCKET`, a local folder standing in for the bucket; the listing
+of the `p/` keys with `P_KEYS`, as `--output text` prints it; and an invalidation with its id. `FAIL_READ` names one
+read that fails instead, a folder's copy or `p` for the listing, as the CLI fails one; `FAIL_SYNC` one upload, by its
+`--include` pattern. Every other call (each `s3 sync`) is recorded and does nothing. `publish.sh` runs with a stand-in
+`python` that records each call too and answers the site check with `CHECK_EXIT` (the check's own tests are
+`tests/test_shop_check.py`); every other module, the publish guard, runs for real (`shopper.guard`), over a build made
+as `tests/test_shop_guard.py` makes one.
 """
 import os
 import re
@@ -57,6 +58,10 @@ case "$1 $2" in
   "s3api list-objects-v2")
     if [ "${{FAIL_READ:-}}" = p ]; then echo "An error occurred (AccessDenied)" >&2; exit 254; fi
     printf '%s' "$P_KEYS" ;;
+  "s3 sync")
+    case " $* " in
+      *" --include ${{FAIL_SYNC:-}} "*) echo "upload failed: An error occurred (AccessDenied)" >&2; exit 1 ;;
+    esac ;;
   "cloudfront create-invalidation") echo I1EXAMPLE ;;
 esac
 """
@@ -67,7 +72,7 @@ exec "$REAL_PYTHON" "$@"
 """
 # Variables the scripts or the stand-ins read, never taken from the environment the tests run in.
 _OWN = ("SITE_DIR", "PYTHON", "SITE_BUCKET", "IDENTITY", "DISTRIBUTION", "CHECK_EXIT", "P_KEYS", "FAKE_BUCKET",
-        "FAIL_READ")
+        "FAIL_READ", "FAIL_SYNC")
 
 
 def _run(tmp_path: Path, script: str, *args: str, **env: str) -> tuple[subprocess.CompletedProcess, list[list[str]]]:
@@ -307,6 +312,32 @@ def test_publish_sh_stops_on_a_failed_read_of_the_bucket(tmp_path, read, said):
     run, calls = _publish(tmp_path, a_build(tmp_path), FAIL_READ=read)
     assert run.returncode == 2 and f"{said}; nothing uploaded" in run.stderr
     assert not _uploads(calls) and not _index(calls, lambda call: call[:3] == ["python", "-m", "shopper.guard"])
+
+
+UPLOAD_ORDER = ["*.csv.gz", "*.csv", "*.json", "*.js", "*.html"]
+
+
+def test_publish_sh_uploads_the_data_files_before_the_pages(tmp_path):
+    """The final review's finding 8: the records first (the forecasts and scores files), then the ledger, the day and
+    site-day files with the search pieces, `search.js`, and the pages last, as the site run puts them
+    (`basket.site.upload`), so a stop part-way never leaves a live page naming a file not yet up."""
+    run, calls = _publish(tmp_path, a_build(tmp_path))
+    assert run.returncode == 0, run.stderr
+    assert [_filters(call)[1][1] for call in _syncs(calls)] == UPLOAD_ORDER
+
+
+@pytest.mark.parametrize("failing", UPLOAD_ORDER)
+def test_publish_sh_stops_on_a_failed_upload(tmp_path, failing):
+    """The final review's finding 8: an upload that fails stops the script by its own test, not by `set -e` alone,
+    with the uploads after it not made and nothing invalidated; the message says what went up. A rerun then passes
+    the guard, the files already up being the build's own (the first publish test publishes over a bucket holding
+    them)."""
+    run, calls = _publish(tmp_path, a_build(tmp_path), FAIL_SYNC=failing)
+    assert run.returncode == 1
+    assert (f"the upload of {failing} failed: the kinds before it went up, none after it, and nothing was invalidated; "
+            "run it again") in run.stderr
+    assert [_filters(call)[1][1] for call in _syncs(calls)] == UPLOAD_ORDER[:UPLOAD_ORDER.index(failing) + 1]
+    assert not _index(calls, lambda call: call[:2] == ["cloudfront", "create-invalidation"])
 
 
 def test_publish_sh_refuses_an_earlier_day_over_a_later_published_one(tmp_path):

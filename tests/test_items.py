@@ -425,6 +425,21 @@ def test_an_item_takes_the_kind_link_of_the_lowest_group_as_a_number(tmp_path):
     assert _price_on(rows[(SHELI, B)]) == [("91", "fixed_price", Decimal("4.50"), True, None, True)]   # not the 0 link
 
 
+def test_an_item_on_promotion_shows_a_wide_link_before_a_lower_group(tmp_path):
+    """Task 6's review and the final review's finding 9: the item is on promotion by a wide kind link, so the struct
+    shown is a wide one, though a link of a lower group, at some stores only, has a kind too: never "at some stores"
+    beside a day counted as on promotion across the column."""
+    stores = STORES + (_store("7", "1"),)                # Sheli's three counted stores
+    both = _promotion("92", _group("1", [_item(A, reward="3", price="3.00")]),
+                      _group("2", [_item(A, reward="3", price="4.00")]))
+    wide_only = _promotion("92", _group("2", [_item(A, reward="3", price="4.00")]))
+    _, rows = _run(tmp_path, {**LISTED, "7": [(A, "5.00")]}, {"1": [both], "2": [wide_only], "7": [wide_only]},
+                   stores=stores)
+    row = rows[(SHELI, A)]
+    assert row["on_promotion"] is True
+    assert _price_on(row) == [("92", "fixed_price", Decimal("4.00"), True, None, True)]   # group 2's, not group 1's
+
+
 def test_an_items_promotions_are_listed_by_start_then_id_as_a_number(tmp_path):
     first = _one("200", _item(A, reward="3", price="4.20"), start="2026-11-01")
     hundred = _one("100", _item(A, reward="3", price="4.00"), start="2026-11-05")

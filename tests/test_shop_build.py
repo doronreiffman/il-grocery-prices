@@ -214,7 +214,8 @@ def test_the_front_page_has_the_days_row_and_count_line(tmp_path):
     data, site = tree(tmp_path), tmp_path / "site"
     _build(data, site)
     front = _text(site / "index.html")
-    assert "Today the five chains list 1 promotion on 1 product; 1 of them is below every listed price" in front
+    assert ("Today the five chains list 1 promotion across a store format on 1 product; 1 of them is below every "
+            "listed price") in front
     found = _site_day(site)
     assert found["counts"] == {"promotions": 1, "products": 1, "below": 1}
     assert [(row["column"], row["barcode"], row["deal"]) for row in found["front_rows"]] == [(OSHER, MILK, "3.00")]

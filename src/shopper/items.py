@@ -34,8 +34,9 @@ row of the column on the item is wide (carried by at least half the column's cou
 the day (`shopper.promotions.in_day`), whether its deal is valid or not. `next_start` is the earliest start in d + 1 to
 d + HORIZON (14) among the column's wide rows on the item with a kind that start after the day, or NULL. `promotions`
 holds one struct per promotion on the item, by start, then by id as a number. Of a promotion's links on the item, the
-one shown is a link with a kind before a `RewardType` 0 link, then the lowest `GroupID` as a number, then the lowest
-code; an item named only by 0 links has a struct with no kind and no price ("price not read", never on promotion). The
+one shown is a wide link before one at some stores (so an item on promotion shows a wide struct), then a link with a
+kind before a `RewardType` 0 link, then the lowest `GroupID` as a number, then the lowest code; an item named only by
+0 links has a struct with no kind and no price ("price not read", never on promotion). The
 deal is `shopper.deals.deal` over the link's item fields (the row's `fields` JSON, its "item", S11) against the
 column's `listed`, a percent-off deal at the row's `discounted_median`, `discounted_low` and `discounted_high`. A
 percent-off row without them (no carrying store's `DiscountedPrice` the promotions table could hold) has no price:
@@ -228,8 +229,11 @@ def _link_groups(result: duckdb.DuckDBPyConnection) -> Iterator[tuple[tuple[str,
 
 
 def _shown(links: list[dict[str, Any]]) -> dict[str, Any]:
-    """A promotion's link shown for the item: a kind before none, then the lowest GroupID as a number, then the code."""
-    return min(links, key=lambda link: (link["kind"] is None, by_number(link["group_id"]), link["code"]))
+    """A promotion's link shown for the item: a wide link before one at some stores (so the struct of a promotion that
+    puts the item on promotion is a wide one: the final review's finding 9), then a kind before none, then the lowest
+    GroupID as a number, then the code."""
+    return min(links, key=lambda link: (not link["wide"], link["kind"] is None, by_number(link["group_id"]),
+                                        link["code"]))
 
 
 def _struct(slug: str, link: dict[str, Any], listed: Decimal) -> dict[str, Any]:

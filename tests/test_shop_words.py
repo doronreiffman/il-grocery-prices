@@ -150,18 +150,30 @@ def test_the_front_rule_and_count_line_name_the_store_format():
     assert FRONT_RULE == rule.replace(" for the item over ", " for the item in the same store format over ")
     assert f'"{FRONT_RULE}"' in PLAN
     line = _found(r'a count line \("([^"]+)"')
-    assert count_line(1840, 6210, 410) == line.replace("at that chain", "in their store format") + "."
+    across = line.replace(" promotions on ", " promotions across a store format on ")     # the final review's finding 4
+    assert count_line(1840, 6210, 410) == across.replace("at that chain", "in their store format") + "."
     assert count_line(1840, 6210, 410).endswith(
         "410 of them are below every listed price of the past 90 days in their store format.")
 
 
+def test_the_count_line_says_its_promotions_are_listed_across_a_store_format():
+    """The final review's finding 4: the count is of the promotions listed across a column today (`shopper.build`'s
+    count line), not every promotion in the chains' files, most of which run at some stores only; so the line says
+    what it counts, as every other sentence of the site does."""
+    for promotions in (1, 1840):
+        line = count_line(promotions, 6210, 410)
+        noun = "promotion" if promotions == 1 else "promotions"
+        assert f"list {promotions:,} {noun} across a store format on 6,210 products;" in line
+
+
 def test_count_line_with_thousands_separators():
     assert count_line(1_234_567, 21_973, 1_000) == (
-        "Today the five chains list 1,234,567 promotions on 21,973 products; 1,000 of them are below every listed "
-        "price of the past 90 days in their store format.")
-    assert count_line(1, 1, 1) == ("Today the five chains list 1 promotion on 1 product; 1 of them is below every "
-                                   "listed price of the past 90 days in their store format.")
-    assert count_line(0, 0, 0).startswith("Today the five chains list 0 promotions on 0 products; 0 of them are ")
+        "Today the five chains list 1,234,567 promotions across a store format on 21,973 products; 1,000 of them are "
+        "below every listed price of the past 90 days in their store format.")
+    assert count_line(1, 1, 1) == ("Today the five chains list 1 promotion across a store format on 1 product; 1 of "
+                                   "them is below every listed price of the past 90 days in their store format.")
+    assert count_line(0, 0, 0).startswith(
+        "Today the five chains list 0 promotions across a store format on 0 products; 0 of them are ")
 
 
 def test_club_label_names_the_chains_marking_none():

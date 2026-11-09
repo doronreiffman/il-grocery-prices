@@ -5,6 +5,7 @@ refuses a symlink from the work folder down to what it deletes, so a link plante
 a file it rewrites is deleted first, so never written through a link, and a linked marker is no marker. A folder the
 script made is replaced."""
 import importlib.util
+import os
 from pathlib import Path
 
 import pytest
@@ -92,6 +93,21 @@ def test_a_linked_file_in_the_work_folder_is_never_written_through(tmp_path):
     with pytest.raises(SystemExit, match="made.json"):
         script.main(["--work", str(marker)])
     assert real.read_bytes() == b"the owner's ledger"
+
+
+def test_a_hard_linked_marker_is_never_written_through(tmp_path):
+    """Task 25a's re-review, C: a hard link is a file of its own to every check, so the marker is deleted before it is
+    written again, never rewritten in place: the file the link shares stays as it was."""
+    script = _script()
+    real = tmp_path / "ledger.csv"
+    real.write_bytes(b"the owner's ledger")
+    mine = tmp_path / "mine"
+    script.make(mine, 0.001, 15)
+    (mine / script.MADE).unlink()
+    os.link(real, mine / script.MADE)
+    script.make(mine, 0.001, 15)
+    assert real.read_bytes() == b"the owner's ledger"
+    assert (mine / script.MADE).stat().st_ino != real.stat().st_ino
 
 
 def test_a_folder_the_script_made_is_replaced(tmp_path):

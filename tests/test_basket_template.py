@@ -104,11 +104,12 @@ def test_function_runs_the_basket_handler_on_python_313_arm64_with_the_layer(bas
     assert basket_function["Layers"] == [{"Ref": "DuckDbLayer"}]
 
 
-def test_function_has_two_gb_two_gb_of_tmp_and_lambdas_longest_run(basket_function):
-    """DuckDB's memory limit sits under the 2 GB; /tmp holds a chain's price files of the day, its table and
-    DuckDB's spill folder."""
+def test_function_has_two_gb_ten_gb_of_tmp_and_lambdas_longest_run(basket_function):
+    """DuckDB's memory limit sits under the 2 GB. /tmp holds an extraction's files of the day, its tables and DuckDB's
+    spill folder, and the site run's 91 days of items tables, its pages and the day's prices tables: 10,240 MB, since
+    the site run's need at full scale is not measured (the final review's finding 3; docs/operations.md, "Sizing")."""
     assert basket_function["MemorySize"] == 2048
-    assert basket_function["EphemeralStorage"] == {"Size": 2048}
+    assert basket_function["EphemeralStorage"] == {"Size": 10240}
     assert basket_function["Timeout"] == 900
 
 

@@ -14,6 +14,8 @@ CLAUDE.local.md
 # a day synced from the archive and the tables and pages built from it (docs/headline-basket.md)
 data/
 site/
+# the product pages a build stages beside site/, left only when the build is killed (src/shopper/build.py)
+/shopper-pages-*/
 
 # Project notes (CLAUDE.md, work queue, open issues, decisions, records): a private repo of their own inside .claude/
 /.claude/

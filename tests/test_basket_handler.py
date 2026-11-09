@@ -17,6 +17,8 @@ import io
 import json
 import logging
 import re
+import shutil
+import tempfile
 from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from html import unescape
@@ -394,6 +396,30 @@ def test_a_chain_stopped_after_its_prices_keeps_its_prices_table(tmp_path, tmp_r
     with pytest.raises(raised):
         run(CFG, {"mode": "extract", "chain": "osherad"}, deps_of(archive), NOW, tmp_root)
     assert sorted(key for key in archive.objects if key.startswith("tables/")) == sorted(written)
+    assert list(tmp_root.iterdir()) == []
+
+
+def test_a_put_that_fails_after_a_stopped_extraction_leaves_the_extractions_error(tmp_path, tmp_root, monkeypatch,
+                                                                                  caplog):
+    """The final review's finding 6: when the put of what a stopped extraction wrote fails too, the error raised is the
+    extraction's own, so the log and the run's end name what stopped the chain; the put's error is logged as a
+    warning beside it."""
+    data = with_promotions(golden_tree(tmp_path / "golden"))
+
+    def failing(*args, **kwargs):
+        raise RuntimeError("the items table could not be written")
+
+    def put_fails(*args, **kwargs):
+        raise OSError("the archive bucket did not answer")
+
+    monkeypatch.setattr(shop_extract, "write_items", failing)
+    archive = archive_from(data)
+    monkeypatch.setattr(archive, "put_tables", put_fails)
+    with caplog.at_level(logging.WARNING, logger="basket.handler"):
+        with pytest.raises(RuntimeError, match="the items table could not be written"):
+            run(CFG, {"mode": "extract", "chain": "osherad"}, deps_of(archive), NOW, tmp_root)
+    assert [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING] == [
+        "the tables the stopped extraction wrote did not go up: OSError: the archive bucket did not answer"]
     assert list(tmp_root.iterdir()) == []
 
 
@@ -1233,6 +1259,29 @@ def test_the_work_folder_is_removed(site_morning, tmp_root, tmp_path):
     with pytest.raises(OSError):
         run(CFG, BASKET_EVENT, deps, AGAIN, tmp_root)
     assert list(tmp_root.iterdir()) == []
+
+
+def test_the_pages_a_killed_site_run_staged_are_swept_on_the_next_start(site_morning, tmp_root, tmp_path, monkeypatch):
+    """The final review's finding 2: a site run Lambda kills during the one pass never removes the product pages it
+    staged, and a warm Lambda keeps /tmp, which is also Python's temp folder there. The pages are staged inside the
+    run's own work folder, so the next run's start removes them with it. /tmp as such a kill leaves it is copied as the
+    pass ends, and the next run starts on the copy."""
+    killed = tmp_path / "killed"                         # tmp_root as a kill at the pass's end leaves it
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_root))
+    finish = shop_build._Pages.finish
+
+    def finish_then_copy(self):
+        finish(self)
+        if not killed.exists():
+            shutil.copytree(tmp_root, killed, symlinks=True)
+
+    monkeypatch.setattr(shop_build._Pages, "finish", finish_then_copy)
+    run(CFG, BASKET_EVENT, site_deps(site_morning), RUN_AT, tmp_root)
+    staged = [path for path in killed.rglob("shopper-pages-*") if path.is_dir()]
+    assert staged and all(any(path.rglob("*.html")) for path in staged)     # the premise: pages were staged
+    monkeypatch.setattr(tempfile, "tempdir", str(killed))
+    run(CFG, {"mode": "extract", "chain": "ramilevy"}, deps_of(site_morning), NOW, killed)
+    assert list(killed.iterdir()) == []
 
 
 def test_a_stored_scores_file_that_differs_publishes_then_pings_fail(site_morning, tmp_root):

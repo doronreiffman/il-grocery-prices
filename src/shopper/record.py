@@ -46,10 +46,11 @@ and the guard renders the record page's tables again from it (Tasks 19 and 21).
 
 The scorecard (F11). How many columns are tested at once (nine: the design's "Words", since F9's 95% over nine columns
 makes one lucky opening likelier than over five) and how many versions were tried; the bootstrap's block, draws, seed,
-level and least days; the version in force. Per column, and for every column pooled, a row per version, in the order
-each was first frozen, with its months and its whole: the days on time, late and scored; of the days on time the rows,
-the scored, the unscored and the outcomes 1, the outcome-1 share, the three Brier scores, the two skills, the intervals
-and the calibration's ten rows and error. And each column's gate. Days with no file at all are the ledger's to count.
+level and least days; the version in force. Per column, a row per version, in the order each was first frozen, with
+its months and its whole: the days on time, late and scored; of the days on time the rows, the scored, the unscored
+and the outcomes 1, the outcome-1 share, the three Brier scores, the two skills, the intervals and the calibration's
+ten rows and error. And each column's gate. Days with no file at all are the ledger's to count. Every column pooled
+(`brier` and the others with no column) is not on the scorecard: the design defines no pooled record.
 """
 import math
 import random
@@ -409,7 +410,6 @@ def scorecard(summaries: Sequence[DaySummary]) -> dict:
                                if summary.by_column}),
         "version_in_force": {"model_version": MODEL_VERSION, "target_version": TARGET_VERSION},
         "bootstrap": {"block": BLOCK, "draws": DRAWS, "seed": SEED, "level": LEVEL, "min_days": MIN_DAYS},
-        "all_columns": {"versions": _versions(summaries, None)},
         "columns": {column.key: {"name": column.name, "versions": _versions(summaries, column.key),
                                  "gate": asdict(gate(summaries, column.key))} for column in COLUMNS},
     }
