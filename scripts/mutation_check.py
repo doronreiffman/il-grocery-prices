@@ -172,6 +172,12 @@ PAGE_FOR_SHOP_CHECK = ("src/basket/page.py", ["tests/test_shop_check.py"])
 # too, so its revision test must be caught breaking by the shopper guard's tests as well.
 SHOP_GUARD = ("src/shopper/guard.py", ["tests/test_shop_guard.py"])
 GUARD_FOR_SHOP_GUARD = ("src/basket/guard.py", ["tests/test_shop_guard.py"])
+# The golden 90 days (Task 25): six breaks named elsewhere, each of which tests/test_golden_90.py must catch by itself (the
+# second pre-flight's N2: a target per source file).
+FORECAST_FOR_SHOP_GOLDEN = ("src/shopper/forecast.py", ["tests/test_golden_90.py"])
+MEASURES_FOR_SHOP_GOLDEN = ("src/shopper/measures.py", ["tests/test_golden_90.py"])
+PROMOS_FOR_SHOP_GOLDEN = ("src/shopper/promos.py", ["tests/test_golden_90.py"])
+ITEMS_FOR_SHOP_GOLDEN = ("src/shopper/items.py", ["tests/test_golden_90.py"])
 # The uploads (Task 22): publish.sh with its tests, beside sync.sh's (SYNC_SCRIPT, Task 2's).
 PUBLISH_SCRIPT = ("scripts/publish.sh", ["tests/test_scripts.py"])
 # The basket's reproduce words name the page the day file's numbers are on (Task 18, fix round 1).
@@ -2745,6 +2751,15 @@ MUTATIONS = {
     "a prefix of s (q22 lifecycle)": (SITE_TEMPLATE, "Prefix: search/,", "Prefix: s,"),
     "a current page expired too (q22 lifecycle)": (SITE_TEMPLATE, "Prefix: browse/, NoncurrentVersionExpiration: {NoncurrentDays: 30}", "Prefix: browse/, NoncurrentVersionExpiration: {NoncurrentDays: 30}, ExpirationInDays: 30"),
     "a rule switched off (q22 lifecycle)": (SITE_TEMPLATE, "{Id: old-method-page, Status: Enabled,", "{Id: old-method-page, Status: Disabled,"),
+    # the golden 90 days: the breaks of "the horizon fifteen days (q22 F1)", "n0 of 3 (q22 F4)", "front page at or below the
+    # low (q22 front)", "a day after d read (q22 F3)", "wide over the chain's counted stores, not the column's (q22
+    # promotions table)" and "the median over the chain's stores, not the column's (q22 P2)", the golden alone to catch them
+    "the horizon fifteen days, in the golden (q22 golden)": (FORECAST_FOR_SHOP_GOLDEN, '    for ahead in range(1, HORIZON + 1):\n', '    for ahead in range(1, HORIZON + 2):\n'),
+    "n0 of 3, in the golden (q22 golden)": (FORECAST_FOR_SHOP_GOLDEN, 'N0 = 30 ', 'N0 = 3 '),
+    "front page at or below the low, in the golden (q22 golden)": (MEASURES_FOR_SHOP_GOLDEN, 'to_agora(deal.price) < Decimal(money(min(long.listed)))', 'to_agora(deal.price) <= Decimal(money(min(long.listed)))'),
+    "a day after d read, in the golden (q22 golden)": (FORECAST_FOR_SHOP_GOLDEN, '        result = outcome(pair, column_days, seen)\n', '        result = outcome(pair, column_days, seen + timedelta(days=1))\n'),
+    "wide over the chain's counted stores, not the column's, in the golden (q22 golden)": (PROMOS_FOR_SHOP_GOLDEN, 'k.stores * 2 >= n.counted AS wide', 'k.stores * 2 >= (SELECT count(*) FROM store_columns) AS wide'),
+    "the median over the chain's stores, not the column's, in the golden (q22 golden)": (ITEMS_FOR_SHOP_GOLDEN, 'JOIN store_columns c ON c.store = r.store', 'JOIN (SELECT DISTINCT col FROM store_columns) c ON true'),
     # template: the basket's parameters
     "site bucket of any name": (BASKET_TEMPLATE, "AllowedPattern: 'il-grocery-prices-site-sitebucket-.+'", "AllowedPattern: '.+'"),
     "site bucket pattern takes the bare prefix": (BASKET_TEMPLATE, "AllowedPattern: 'il-grocery-prices-site-sitebucket-.+'", "AllowedPattern: 'il-grocery-prices-site-sitebucket-.*'"),
