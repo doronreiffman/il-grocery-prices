@@ -37,13 +37,14 @@ from basket.handler import (REQUIRED, SITE_BUCKET_PREFIX, Config, Deps, MorningN
 from basket.pricefile import BadPriceFile
 from basket.record import code_fingerprint
 from basket.rules import MissingTable
-from basket.site import CACHE_CONTROL, CONTENT_TYPES, FIXED_PAGES, HTML, JSON, UPLOAD_WORKERS, MemorySite
+from basket.site import (CACHE_CONTROL, CONTENT_TYPES, FIXED_PAGES, HTML, JSON, UPLOAD_WORKERS, MemorySite,
+                         RecordsNotUploaded, is_record)
 from basket.stores import NoStoreList
 from collector.store import LOCK_MODE, RETENTION_DAYS, check_key, raw_key
 from shopper import build as shop_build
 from shopper import extract as shop_extract
 from shopper import guard as shop_guard
-from shopper.build import LEDGER
+from shopper.build import LEDGER, STEP_LINE
 from shopper.freeze import ArchiveFreezer, ForecastsDiffer, archive_key, ledger, scores_archive_key, scores_site_key, site_key
 from shopper.history import load as shop_load
 from shopper.product import page_path
@@ -578,6 +579,12 @@ def test_the_summary_is_logged_once_as_one_json_line(data, tmp_root, caplog):
     assert "\n" not in record.getMessage() and json.loads(record.getMessage()) == summary
 
 
+def test_the_shopper_package_logs_at_info():
+    """The build's step lines (the scoring's and the one pass's seconds) reach CloudWatch too (the task review's
+    finding 2), whatever level the runtime gives the root logger."""
+    assert logging.getLogger("shopper").level == logging.INFO
+
+
 def test_the_basket_package_logs_at_info():
     """Lambda's runtime may give the root logger WARNING; the summary still reaches CloudWatch."""
     assert logging.getLogger("basket").level == logging.INFO
@@ -924,16 +931,25 @@ REGISTRY = kind_key("covered", None, DAY, "covered.parquet")
 
 
 class FailingSite(MemorySite):
-    """A site bucket whose every put fails while `failing`, as one that does not answer."""
+    """A site bucket whose every put fails while `failing`, and a put of a key in `refused` always, as one that does
+    not answer."""
 
     def __init__(self):
         super().__init__()
         self.failing = False
+        self.refused: set[str] = set()
 
-    def _put(self, *args):
-        if self.failing:
-            raise OSError("the site bucket did not answer")
-        super()._put(*args)
+    def _put(self, key, *rest):
+        if self.failing or key in self.refused:
+            raise OSError(f"{key}: the site bucket did not answer")
+        super()._put(key, *rest)
+
+
+def step_lines(caplog) -> list[tuple[str, float]]:
+    """Each step's line in the run's log (STEP_LINE, "step fetch: 1.2 s"), in order: its name and its seconds."""
+    assert STEP_LINE == "step %s: %.1f s"
+    lines = (re.fullmatch(r"step (\w+): (\d+\.\d) s", record.getMessage()) for record in caplog.records)
+    return [(found[1], float(found[2])) for found in lines if found]
 
 
 def stretched(archive: MemoryArchive, root: Path) -> MemoryArchive:
@@ -1006,7 +1022,8 @@ def test_the_first_site_run_publishes_every_page_and_freezes(site_morning, tmp_r
     assert frozen.lock_mode == LOCK_MODE and site_morning.objects[scores_archive_key(T)].lock_mode == LOCK_MODE
     assert sorted(outcome.data) == sorted([site_key(DAY), LEDGER, scores_site_key(T), "site-days/2026-01-01.json",
                                            "days/2026-01-01.json"])
-    assert (summary["uploaded"], summary["pages"], summary["pages_uploaded"]) == (outcome.data, True, len(outcome.pages))
+    assert (summary["uploaded"], summary["pages"], summary["pages_uploaded"]) == (
+        sorted(outcome.data, key=lambda key: not is_record(key)), True, len(outcome.pages))  # the records first
     assert sorted(deps.site.objects) == sorted({*before, *outcome.pages, *outcome.data})
     assert {page_path(code) for code in (MILK, PASTA, EGGS)} <= set(outcome.pages) and set(FIXED_PAGES) <= set(
         outcome.pages)
@@ -1037,7 +1054,8 @@ def test_an_earlier_day_uploads_its_data_files_only(site_morning, tmp_root, outc
     before = dict(deps.site.objects)
     summary = run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
     [outcome] = outcomes
-    assert (summary["pages"], summary["pages_uploaded"], summary["uploaded"]) == (False, 0, outcome.data)
+    assert (summary["pages"], summary["pages_uploaded"], summary["uploaded"]) == (
+        False, 0, sorted(outcome.data, key=lambda key: not is_record(key)))  # the records first
     assert sorted(outcome.data) == sorted([site_key(DAY), LEDGER, scores_site_key(T), "site-days/2026-01-01.json",
                                            "days/2026-01-01.json"])
     assert sorted(deps.site.objects) == sorted({*before, *outcome.data})
@@ -1069,7 +1087,7 @@ def test_a_rerun_after_a_failed_upload_publishes_the_frozen_bytes(site_morning, 
     site = FailingSite()
     deps = site_deps(site_morning, site)
     site.failing = True
-    with pytest.raises(OSError, match="did not answer"):
+    with pytest.raises(RecordsNotUploaded, match="did not answer"):  # the records go up first
         run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
     assert pinged(deps) == [f"{URL}/start", f"{URL}/fail"]
     frozen = site_morning.objects[archive_key(DAY)].body
@@ -1282,3 +1300,51 @@ def test_the_s3_client_holds_a_connection_for_each_upload_worker(monkeypatch):
     deps = handler_module.handler({"mode": "basket"}, None)
     assert made["s3"]["config"].max_pool_connections == UPLOAD_WORKERS == 16
     assert deps.archive.client is deps.site.s3
+
+
+def test_a_failed_record_put_stops_before_the_ledger_and_a_rerun_finishes_the_day(site_morning, tmp_root):
+    """The task review's finding 1: the put of DAY's forecasts file fails, every other put landing. The run stops
+    before anything that names it goes up: the ledger, the site-day and day files and the pages stay as they were,
+    nothing is put back or invalidated, and /fail says what to do. The rerun meets the frozen file ("same") and puts
+    it, then the ledger naming it, and T's summary after them."""
+    site = FailingSite()
+    deps = site_deps(site_morning, site)
+    before = dict(site.objects)
+    site.refused = {site_key(DAY)}
+    with pytest.raises(RecordsNotUploaded) as raised:
+        run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    message = str(raised.value)
+    assert site_key(DAY) in message and message.endswith("\n" + handler_module.WHAT_NOW[RecordsNotUploaded])
+    assert set(site.objects) - set(before) <= {scores_site_key(T)}  # the other record at most
+    assert site.objects[LEDGER] == before[LEDGER] and site.invalidations == []
+    assert summary_key(T) not in site_morning.objects and REGISTRY not in site_morning.objects
+    assert pinged(deps) == [f"{URL}/start", f"{URL}/fail"] and deps.ping.calls[1][1] == f"RecordsNotUploaded: {message}"
+    site.refused = set()
+    site_morning.s3_clock = lambda: LATER_STAMP
+    summary = run(CFG, BASKET_EVENT, deps, AGAIN, tmp_root)
+    frozen = site_morning.objects[archive_key(DAY)].body
+    assert summary["forecasts"]["status"] == "same" and site.objects[site_key(DAY)][0] == frozen
+    assert site.objects[LEDGER][0] == before[LEDGER][0] + (
+        f"2026-01-01,{sha(frozen)},2026-01-01T09:30:07Z\n".encode())
+    assert summary["scored"] == ["2025-12-18"] and summary_key(T) in site_morning.objects
+    assert pinged(deps)[-1] == URL
+
+
+def test_each_steps_seconds_go_to_the_log_as_the_step_ends(site_morning, tmp_root, caplog):
+    """The task review's finding 2: a run refused, or killed at the function's 900 s, still leaves its figures. Each
+    step's seconds are a line of the run's log as the step ends, the build's scoring and one pass among them, before
+    the summary, and the same figures as the summary's; a run whose upload fails leaves every line before the
+    upload's."""
+    site = FailingSite()
+    deps = site_deps(site_morning, site)
+    with caplog.at_level(logging.INFO):
+        summary = run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    lines = step_lines(caplog)
+    assert [name for name, _ in lines] == ["fetch", "scoring", "pass", "build", "check", "guard", "upload", "total"]
+    assert dict(lines) == summary["seconds"]
+    assert json.loads(caplog.records[-1].getMessage()) == summary  # the summary after them
+    caplog.clear()
+    site.failing = True
+    with caplog.at_level(logging.INFO), pytest.raises(OSError):
+        run(CFG, BASKET_EVENT, deps, AGAIN, tmp_root)
+    assert [name for name, _ in step_lines(caplog)] == ["fetch", "scoring", "pass", "build", "check", "guard"]

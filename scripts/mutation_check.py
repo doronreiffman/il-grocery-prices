@@ -221,6 +221,9 @@ GUARD = ("src/basket/guard.py", ["tests/test_guard.py"])
 ARCHIVE = ("src/basket/archive.py", ["tests/test_archive.py"])
 SITE = ("src/basket/site.py", ["tests/test_site.py"])
 BASKET_HANDLER = ("src/basket/handler.py", ["tests/test_basket_handler.py"])
+# The build logs the scoring's and the one pass's seconds as each ends, for the site run's log (Task 23, fix round 1):
+# the handler's tests read those lines.
+SHOP_BUILD_FOR_BASKET_HANDLER = ("src/shopper/build.py", ["tests/test_basket_handler.py"])
 MUTATION_CHECK = ("scripts/mutation_check.py", ["tests/test_mutation_check.py"])  # this file: the run has loaded it
 CANDIDATES_MAIN = ("src/basket/candidates.py", ["tests/test_candidates.py::test_main_counts_only_the_included_stores_and_writes_the_day_s_table"])
 
@@ -2288,8 +2291,8 @@ MUTATIONS = {
     "pages put for an earlier day (q22 site run)": (BASKET_HANDLER, "outcome.data, with_pages=with_pages)", "outcome.data, with_pages=True)"),
     "the guard asked for the product pages of an earlier day (q22 site run)": (BASKET_HANDLER, "product_pages, with_pages=with_pages)", "product_pages, with_pages=True)"),
     "the success ping on a promotions error (q22 site run)": (BASKET_HANDLER, '                if summary["alerts"]:  #', "                if False:  #"),
-    "the fail ping before the upload (q22 site run)": (BASKET_HANDLER, "        uploaded = deps.site.upload(site, outcome.data, with_pages=with_pages)\n", '        if outcome.promotions_errors:\n            raise RuntimeError("promotions not read")\n        uploaded = deps.site.upload(site, outcome.data, with_pages=with_pages)\n'),
-    "a summary put back before the upload (q22 site run)": (BASKET_HANDLER, "        uploaded = deps.site.upload(site, outcome.data, with_pages=with_pages)\n", "        for t in outcome.scored:\n            deps.archive.put_summary(t, tables)\n        uploaded = deps.site.upload(site, outcome.data, with_pages=with_pages)\n"),
+    "the fail ping before the upload (q22 site run)": (BASKET_HANDLER, "            uploaded = deps.site.upload(site, outcome.data, with_pages=with_pages)\n", '            if outcome.promotions_errors:\n                raise RuntimeError("promotions not read")\n            uploaded = deps.site.upload(site, outcome.data, with_pages=with_pages)\n'),
+    "a summary put back before the upload (q22 site run)": (BASKET_HANDLER, "            uploaded = deps.site.upload(site, outcome.data, with_pages=with_pages)\n", "            for t in outcome.scored:\n                deps.archive.put_summary(t, tables)\n            uploaded = deps.site.upload(site, outcome.data, with_pages=with_pages)\n"),
     "the registry not put back (q22 site run)": (BASKET_HANDLER, "        deps.archive.put_covered(day, tables)\n", ""),
     "a new summary not put back (q22 site run)": (BASKET_HANDLER, "        for t in outcome.scored:\n            deps.archive.put_summary(t, tables)\n", ""),
     "no invalidation after an upload (q22 site run)": (BASKET_HANDLER, "run_id) if uploaded else None", "run_id) if False else None"),
@@ -2305,7 +2308,7 @@ MUTATIONS = {
     "a stored scores file that differs not alerted (q22 site run)": (BASKET_HANDLER, '    alerts += [f"scores differ, the stored file kept: {message}" for message in outcome.scores_differ]\n', ""),
     "a day newly out of reach not alerted (q22 site run)": (BASKET_HANDLER, "    if outcome.newly_out_of_reach:\n        alerts.append(", "    if False:\n        alerts.append("),
     "every day out of reach alerted, not those new this morning (q22 site run)": (BASKET_HANDLER, "    if outcome.newly_out_of_reach:\n        alerts.append(\"out of reach, never scored: \" + \", \".join(t.isoformat() for t in outcome.newly_out_of_reach))", "    if outcome.out_of_reach:\n        alerts.append(\"out of reach, never scored: \" + \", \".join(t.isoformat() for t in outcome.out_of_reach))"),
-    "a refusal without what to do (q22 site run)": (BASKET_HANDLER, '            raise type(error)(f"{error}\\n{WHAT_NOW[type(error)]}") from error\n', "            raise\n"),
+    "a refusal without what to do (q22 site run)": (BASKET_HANDLER, '    return type(error)(f"{error}\\n{WHAT_NOW[type(error)]}")\n', "    return type(error)(str(error))\n"),
     "the run's forecasts status read as the day's (q22 site run)": (BASKET_HANDLER, '"status": frozen.status,', '"status": "frozen" if frozen.on_time else "late",'),
     "the data files uploaded counted as pages (q22 site run)": (BASKET_HANDLER, "    data = [key for key in uploaded if key in outcome.data]\n", "    data = []\n"),
     "the S3 client's pool at botocore's default (q22 site run)": (BASKET_HANDLER, 'boto3.client("s3", config=S3_CONFIG)', 'boto3.client("s3")'),
@@ -2316,6 +2319,16 @@ MUTATIONS = {
     "a page folder not put (q22 site run)": (SITE, 'PAGE_FOLDERS = ("p", "browse", "search")', 'PAGE_FOLDERS = ("p", "search")'),
     "a published copy put as a page (q22 site run)": (SITE, 'PAGE_FOLDERS = ("p", "browse", "search")', 'PAGE_FOLDERS = ("p", "browse", "search", "site-days")'),
     "a page in a sub-folder not put (q22 site run)": (SITE, '.rglob("*")) if path.is_file()]', '.glob("*")) if path.is_file()]'),
+    # the site run, fix round 1 of its review: the record files first, on their own (finding 1), and each step's seconds
+    # in the log as it ends (finding 2)
+    "a record put with the files that name it (q22 site run)": (SITE, "        records = [key for key in keys if is_record(key)]\n", "        records = []\n"),
+    "a failed record put let the upload go on (q22 site run)": (SITE, '            raise RecordsNotUploaded(f"a record file did not go up', '            put = []\n            if False:\n                raise RecordsNotUploaded(f"a record file did not go up'),
+    "the ledger taken as a record (q22 site run)": (SITE, 'return key.startswith(RECORD_FOLDERS) and key.endswith(".csv.gz")', "return key.startswith(RECORD_FOLDERS)"),
+    "a failed record put without what to do (q22 site run)": (BASKET_HANDLER, "        except RecordsNotUploaded as error:\n", "        except ZeroDivisionError as error:\n"),
+    "a step's seconds not logged as it ends (q22 site run)": (BASKET_HANDLER, "    log.info(STEP_LINE, name, seconds[name])\n", ""),
+    "the scoring's seconds not logged as the scoring ends (q22 site run)": (SHOP_BUILD_FOR_BASKET_HANDLER, '    log.info(STEP_LINE, "scoring", seconds["scoring"])\n', ""),
+    "the one pass's seconds not logged as the pass ends (q22 site run)": (SHOP_BUILD_FOR_BASKET_HANDLER, '        log.info(STEP_LINE, "pass", seconds["pass"])\n', ""),
+    "shopper's log level left to the runtime (q22 site run)": (BASKET_HANDLER, 'logging.getLogger("shopper").setLevel(logging.INFO)\n', "\n"),
     "--delete back on the pages (q22 publish)": (PUBLISH_SCRIPT, "upload --include '*.html' --content-type", "upload --delete --include '*.html' --content-type"),
     "the guard after the upload (q22 publish)": (PUBLISH_SCRIPT, _PUBLISH_GUARD + _PUBLISH_UPLOAD, _PUBLISH_UPLOAD + _PUBLISH_GUARD),
     "the marker not checked (q22 publish)": (PUBLISH_SCRIPT, 'if [ ! -f "$SITE/.shopper-site" ]; then', 'if false; then'),
@@ -2593,8 +2606,8 @@ MUTATIONS = {
     "site day file under another key": (SITE, 'return f"days/{day.isoformat()}.json"', 'return f"day/{day.isoformat()}.json"'),
     "site pages put as JSON": (SITE, 'CONTENT_TYPES = {".html": HTML,', 'CONTENT_TYPES = {".html": JSON,'),
     "site day file put as HTML": (SITE, '".json": JSON, ".js"', '".json": HTML, ".js"'),
-    "site pages put before the data files": (SITE, "        return self.put_files(site_dir, keys)\n", "        return self.put_files(site_dir, keys[len(data):] + keys[:len(data)])\n"),
-    "site puts before every file is found": (SITE, "        return self.put_files(site_dir, keys)\n", "        return [key for group in (keys[:len(data)], keys[len(data):]) for key in self.put_files(site_dir, group)]\n"),
+    "site pages put before the data files": (SITE, "        return put + self.put_files(site_dir, [key for key in keys if key not in records])\n", "        return put + self.put_files(site_dir, [key for key in reversed(keys) if key not in records])\n"),
+    "site puts before every file is found": (SITE, "        self._checked(site_dir, keys)  # every file found and typed before any put\n", ""),
     "site key with more after .json read as a day": (SITE, r'\.json$")', r'\.json")'),
     "site impossible date stops the latest day": (SITE, "except ValueError:", "except TypeError:"),
     "site bare 404 read as an error": (SITE, "if error_code(err) in MISSING:", 'if error_code(err) == "NoSuchKey":'),

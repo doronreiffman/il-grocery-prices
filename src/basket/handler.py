@@ -61,7 +61,10 @@ The basket mode is the shopper site's run (the shopper plan's Task 23; the 12:33
    rules only when the pages go up, the second pre-flight's S17): SiteCheckFailed, nothing uploaded.
 4. The upload (`basket.site.upload`): the data files the build lists new, always (Call 9), then, only when the day is
    the site's latest or later, every page under `p/`, `browse/` and `search/` and the fixed pages, so a run for an
-   earlier day leaves every page as the later day's; one invalidation when anything went up.
+   earlier day leaves every page as the later day's; one invalidation when anything went up. The record files (the
+   day's forecasts file, the scores files) go up first, on their own: a record put that fails stops the run
+   (RecordsNotUploaded, saying what to do) before the ledger, the site-day and day files or a page names one, so a
+   rerun lists them again and finishes the day (the task review's finding 1).
 5. Put back, plain, after the upload: the day's covered registry and the summary of each day scored. A day is scored
    once its summary is in the archive, so a run whose upload fails leaves its days due, and the next run publishes the
    same scores file (the archive's bytes) before it marks them scored.
@@ -72,7 +75,9 @@ unchanged, whether the pages went up, the data files uploaded (by key) and the p
 the record's key, the day's forecasts file as the freezer gave it (its status, "frozen", "late", "same" or "none", its
 SHA-256 and whether on time), the days scored, each chain's promotions error, the alerts, and the seconds of each step:
 the fetch, the build and, within it, the scoring and the one pass, the check, the guard, the upload, and the total
-(measured, not tuned: the plan's Task 25a speeds the run up).
+(measured, not tuned: the plan's Task 25a speeds the run up). Each step's seconds also go to the log as the step ends,
+a line a step (`shopper.build.STEP_LINE`, "step fetch: 12.3 s"), so a run refused, or killed at the function's 900 s,
+still leaves the figures of the steps it finished (the task review's finding 2).
 
 The basket mode reports to healthchecks.io: `/start` before it looks for the check record; then, when the run succeeds,
 the plain URL with the run's summary, or, when it succeeds with alerts, `/fail` after the upload with the alert lines
@@ -121,13 +126,13 @@ from basket.build import RevisionNeeded
 from basket.chains import CARREFOUR_COLUMNS, SLUGS
 from basket.duck import TEMP_DIRECTORY_VAR
 from basket.rules import MissingTable
-from basket.site import UPLOAD_WORKERS, S3Site, day_key, day_of
+from basket.site import UPLOAD_WORKERS, RecordsNotUploaded, S3Site, day_key, day_of
 from basket.stores import NoStoreList
 from collector.handler import ping, ping_user_agent
 from collector.http import check_user_agent
 from collector.run import new_run_id
 from collector.store import RETENTION_DAYS
-from shopper.build import LEDGER, build_site
+from shopper.build import LEDGER, STEP_LINE, build_site
 from shopper.check import check_site
 from shopper.extract import extract_chain_day
 from shopper.freeze import ArchiveFreezer, ForecastsDiffer, scores_site_key, site_key
@@ -136,8 +141,9 @@ from shopper.score import due
 from shopper.siteday import site_day_path
 
 # INFO on the package's logger itself, so the runs' summaries reach CloudWatch whatever level the runtime gives
-# the root logger, as the collector's handler does for its package.
+# the root logger, as the collector's handler does for its package; and on the shopper's, for the build's step lines.
 logging.getLogger("basket").setLevel(logging.INFO)
+logging.getLogger("shopper").setLevel(logging.INFO)
 log = logging.getLogger(__name__)
 
 REQUIRED = ("BUCKET", "SITE_BUCKET", "DISTRIBUTION_ID", "HEALTHCHECK_URL", "USER_AGENT")
@@ -161,6 +167,8 @@ WHAT_NOW = {
     ForecastsDiffer: ("Nothing went up. Rerun the site run at the commit that froze the day; a hand build can then put "
                       "up pages from later code, with a one-line reason to revise when its numbers differ."),
     NoStoreList: "One chain's missing store list stops the site run for all five chains.",
+    RecordsNotUploaded: ("Rerun the site run: it puts the archive's same record files first, then the ledger, the day "
+                         "files and the pages that name them."),
 }
 
 
@@ -362,6 +370,17 @@ def _since(started: float) -> float:
     return round(time.perf_counter() - started, 1)
 
 
+def _step(seconds: dict[str, float], name: str, started: float) -> None:
+    """The step's seconds since `started`, to a tenth, into `seconds` and into the log as the step ends."""
+    seconds[name] = _since(started)
+    log.info(STEP_LINE, name, seconds[name])
+
+
+def _told(error: Exception) -> Exception:
+    """The error again, as its own type, with what to do after its message (WHAT_NOW)."""
+    return type(error)(f"{error}\n{WHAT_NOW[type(error)]}")
+
+
 def _copy(site, key: str, *folders: Path) -> None:
     """The site's published file at `key`, when there is one, written at that key under each of `folders`."""
     body = site.published(key)
@@ -418,30 +437,33 @@ def _basket(event: dict, deps: Deps, now: datetime, work: Path, day: date) -> di
         latest = deps.site.latest_published_day()
         with_pages = latest is None or day >= latest  # the pages show the site's latest day
         product_pages = deps.site.keys("p/")
-        seconds["fetch"] = _since(started)
+        _step(seconds, "fetch", started)
         step = time.perf_counter()
         try:
             outcome = build_site(day, work, site, now, collected_by=event["collected_by"],
                                  freezer=ArchiveFreezer(deps.archive, now), revise=None, extract=False,
                                  basket_path=BASKET_FILE, min_items=MIN_ITEMS)
         except tuple(WHAT_NOW) as error:
-            raise type(error)(f"{error}\n{WHAT_NOW[type(error)]}") from error
-        seconds["build"] = _since(step)
+            raise _told(error) from error
+        _step(seconds, "build", step)
         seconds |= {name: round(took, 1) for name, took in outcome.seconds.items()}
         step = time.perf_counter()
         problems = check_site(site)
         if problems:
             raise SiteCheckFailed("\n".join(["the site check failed:", *problems]))
-        seconds["check"] = _since(step)
+        _step(seconds, "check", step)
         step = time.perf_counter()
         problems = guard_site(site, published, product_pages, with_pages=with_pages)
         if problems:
             raise SiteCheckFailed("\n".join(["the publish guard failed:", *problems]))
-        seconds["guard"] = _since(step)
+        _step(seconds, "guard", step)
         step = time.perf_counter()
-        uploaded = deps.site.upload(site, outcome.data, with_pages=with_pages)
+        try:
+            uploaded = deps.site.upload(site, outcome.data, with_pages=with_pages)
+        except RecordsNotUploaded as error:
+            raise _told(error) from error
         invalidation = deps.site.invalidate(outcome.basket.record.run_id) if uploaded else None
-        seconds["upload"] = _since(step)
+        _step(seconds, "upload", step)
         # Put back after the upload (the module's docstring, 5): a summary marks its day scored.
         deps.archive.put_covered(day, tables)
         for t in outcome.scored:
@@ -449,7 +471,7 @@ def _basket(event: dict, deps: Deps, now: datetime, work: Path, day: date) -> di
     finally:  # every build of every day is kept, a refused one included
         for path in sorted((work / "basket" / f"date={day.isoformat()}").glob("basket-*.json")):
             records.append(deps.archive.put_basket_record(path, now))
-    seconds["total"] = _since(started)
+    _step(seconds, "total", started)
     data = [key for key in uploaded if key in outcome.data]
     frozen = outcome.frozen
     return {"mode": "basket", "day": day.isoformat(), "run_id": outcome.basket.record.run_id,

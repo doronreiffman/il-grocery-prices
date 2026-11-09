@@ -17,10 +17,14 @@ the build lists new: the day's forecasts file, the ledger, each scored day's sco
 when not unchanged); then, only when `with_pages` (the day is the site's latest, so a run for an earlier day leaves
 every page as the later day's), every file under the page folders `p/`, `browse/` and `search/` (`PAGE_FOLDERS`), and
 the fixed pages, `FIXED_PAGES`: `index.html`, `method.html`, `record.html`, `basket.html` and `search.js`, rebuilt every
-morning from the code (the shopper plan's question H). Every one goes through `put_files` in that order, the data files
-first, so the pages that link them go up after them, and each takes its content type by its last suffix: `search.js`
-goes up as JavaScript, never as HTML (the second pre-flight's B3). Anything else in the folder (the marker, the
-published copies the build compared with) stays local.
+morning from the code (the shopper plan's question H). Every file is checked first, before any put. The record files
+(`is_record`: each day's forecasts file and scores file, never the ledger) go up in a `put_files` call of their own,
+ended before anything else is put; a record put that fails stops the upload there (RecordsNotUploaded), so the ledger,
+the site-day and day files and the pages, which name the records, never name a file the site lacks (the task review's
+finding 1: a rerun lists the day's forecasts file only when the ledger gains its line). Then the rest, in the order
+above, in a second call. Each file takes its content type by its last suffix: `search.js` goes up as JavaScript, never
+as HTML (the second pre-flight's B3). Anything else in the folder (the marker, the published copies the build compared
+with) stays local.
 
 `put_files` puts the shopper site's files, any number of them, each once (a key given twice goes up once): it checks
 first that every file is in the site folder and has a content type above, and refuses (FileNotFoundError, ValueError)
@@ -48,6 +52,7 @@ from collector.store import MISSING, error_code
 
 FIXED_PAGES = ("index.html", "method.html", "record.html", "basket.html", "search.js")   # the pre-flight's S14
 PAGE_FOLDERS = ("p", "browse", "search")   # the product pages, the browse pages and the search pieces
+RECORD_FOLDERS = ("forecasts/", "scores/")   # the record files: each day's forecasts and scores files, as .csv.gz
 UPLOAD_WORKERS = 16
 HTML = "text/html; charset=utf-8"
 JSON = "application/json; charset=utf-8"
@@ -59,6 +64,16 @@ _DAY_FILE = re.compile(r"^(?:site-)?days/(\d{4}-\d{2}-\d{2})\.json$")
 
 def day_key(day: date) -> str:
     return f"days/{day.isoformat()}.json"
+
+
+class RecordsNotUploaded(Exception):
+    """A record file's put failed, so nothing that names one was put (the module's docstring)."""
+
+
+def is_record(key: str) -> bool:
+    """Whether the site key is a record file: a day's forecasts file or scores file (`shopper.freeze.site_key`,
+    `scores_site_key`), never the ledger."""
+    return key.startswith(RECORD_FOLDERS) and key.endswith(".csv.gz")
 
 
 def day_of(key: str) -> date | None:
@@ -101,20 +116,26 @@ class _Site:
 
     def upload(self, site_dir: Path, data: Sequence[str], with_pages: bool) -> list[str]:
         """Put the data files `data` from `site_dir`, then, when `with_pages`, every file under PAGE_FOLDERS and the
-        FIXED_PAGES, through `put_files`; their keys, in that order. Refuses, putting nothing, when one of them is not in
-        the folder (FileNotFoundError) or has no content type (ValueError)."""
+        FIXED_PAGES: the record files among them first, in a `put_files` call of their own, then the rest; their keys,
+        in that order. Refuses, putting nothing, when one of them is not in the folder (FileNotFoundError) or has no
+        content type (ValueError); RecordsNotUploaded, with nothing else put, when a record put fails."""
         keys = list(data)
         if with_pages:
             keys += [path.relative_to(site_dir).as_posix() for folder in PAGE_FOLDERS
                      for path in sorted((site_dir / folder).rglob("*")) if path.is_file()]
             keys += FIXED_PAGES
-        return self.put_files(site_dir, keys)
+        self._checked(site_dir, keys)  # every file found and typed before any put
+        records = [key for key in keys if is_record(key)]
+        try:
+            put = self.put_files(site_dir, records)
+        except Exception as error:  # a put failed: the files were checked above
+            raise RecordsNotUploaded(f"a record file did not go up, so nothing that names it was put: "
+                                     f"{type(error).__name__}: {error}") from error
+        return put + self.put_files(site_dir, [key for key in keys if key not in records])
 
-    def put_files(self, site_dir: Path, keys: Sequence[str]) -> list[str]:
-        """Put each file `site_dir / key` at `key` with its content type and max-age=300, through a pool of
-        UPLOAD_WORKERS threads; the keys, in the order given, each once. Refuses, putting nothing, when a file is not
-        in the folder (FileNotFoundError) or has no content type (ValueError); a put that fails is raised (the module's
-        docstring)."""
+    def _checked(self, site_dir: Path, keys: Sequence[str]) -> list[tuple[str, Path, str]]:
+        """Each file `site_dir / key` once, with its path and content type; FileNotFoundError for a file not in the
+        folder, ValueError for one of no content type."""
         puts = []
         for key in dict.fromkeys(keys):
             path = site_dir / key
@@ -124,6 +145,14 @@ class _Site:
             if kind is None:
                 raise ValueError(f"{key}: no content type for a file of its kind; nothing uploaded")
             puts.append((key, path, kind))
+        return puts
+
+    def put_files(self, site_dir: Path, keys: Sequence[str]) -> list[str]:
+        """Put each file `site_dir / key` at `key` with its content type and max-age=300, through a pool of
+        UPLOAD_WORKERS threads; the keys, in the order given, each once. Refuses, putting nothing, when a file is not
+        in the folder (FileNotFoundError) or has no content type (ValueError); a put that fails is raised (the module's
+        docstring)."""
+        puts = self._checked(site_dir, keys)
 
         def put(file: tuple[str, Path, str]) -> None:
             key, path, kind = file

@@ -82,11 +82,13 @@ line, each scored day's scores file. It lists every frozen day out of the read's
 apart those that went out of reach this morning, absent from the previous published site-day file's list (the latest
 before the day in the site folder; with none, every one): the site run's /fail is for those alone, so a day out of
 reach alerts once, not every morning after (the ruling on the task review's (b)). It also gives the seconds the scoring
-(3) and the one pass (5) took, for the site run's summary (the plan's Task 23: measured, not tuned). Only `main` reads
-the time of day, and gives it as `now`.
+(3) and the one pass (5) took, for the site run's summary (the plan's Task 23: measured, not tuned), and logs each as it
+ends, a line a step (`STEP_LINE`, as the site run logs its own steps), so a run refused or killed later still leaves
+them (the task review's finding 2). Only `main` reads the time of day, and gives it as `now`.
 """
 import argparse
 import json
+import logging
 import shutil
 import sys
 import tempfile
@@ -126,6 +128,8 @@ __all__ = ["LEDGER", "MARKER", "ForecastsDiffer", "NotFrozenYet", "NotSynced", "
 
 MARKER = ".shopper-site"
 LEDGER = "forecasts/ledger.csv"
+STEP_LINE = "step %s: %.1f s"   # a step's line in the run's log: its name and its seconds
+log = logging.getLogger(__name__)
 
 
 class NotFrozenYet(Exception):
@@ -442,6 +446,7 @@ def build_site(day: date, data_dir: Path, site_dir: Path, now: datetime, collect
             differ += [message] if message else []
         summaries = _summaries(tables_dir)
     seconds = {"scoring": time.perf_counter() - started}
+    log.info(STEP_LINE, "scoring", seconds["scoring"])
     known = [summary for summary in summaries if summary.day + timedelta(days=HORIZON) <= day]
     card = scorecard(known)
     gates = {key: Gate(**card["columns"][key]["gate"]) for key in card["columns"]}
@@ -453,6 +458,7 @@ def build_site(day: date, data_dir: Path, site_dir: Path, now: datetime, collect
         rows = forecasts(_Watched(history, pages), day)
         pages.finish()
         seconds["pass"] = time.perf_counter() - started
+        log.info(STEP_LINE, "pass", seconds["pass"])
         frozen = None
         published_none = _published_none(site_dir, day)
         if (rows or freezer.frozen(day) is not None) and not (freezer.writes and published_none):
