@@ -4,15 +4,16 @@ script; the index page carries every ALWAYS phrase, and says REVISED on a revise
 
     PYTHONPATH=src .venv/bin/python -m basket.check site
 
-Runs before every upload (`scripts/publish.sh`). Each `.html` under the folder is read two ways: as written
-(attributes and markup included) and with tags stripped (the text a reader sees). In both, entities are
-unescaped, whitespace is collapsed, curly single quotes (U+2018, U+2019) read as the straight apostrophe and
-case is ignored, so an entity, a tag, a line break or a typographic apostrophe cannot hide a phrase. A NEVER
-phrase found in either is a problem, and so is REVISED on the index page of a day not revised. A phrase that
-must be there (the credit line's fixed start, "Not shopping advice.", and on the index page every ALWAYS
-phrase, and REVISED on a revised day) counts only in the text a reader sees. `noindex` and `<script` are
-tags, looked for as written. The words "we", "our" and "us" are matched whole in the text a reader sees;
-attributes hold chain slugs and codes, not words.
+Runs before every upload (`scripts/publish.sh`); the shopper site's check (`shopper.check`) imports how a page is
+read (`flatten`, `strip_tags`, `says`), the index page's rules (`index_problems`, run there over `basket.html`) and
+`main`. Each `.html` under the folder is read two ways: as written (attributes and markup included) and with tags
+stripped (the text a reader sees). In both, entities are unescaped, whitespace is collapsed, curly single quotes
+(U+2018, U+2019) read as the straight apostrophe and case is ignored, so an entity, a tag, a line break or a
+typographic apostrophe cannot hide a phrase. A NEVER phrase found in either is a problem, and so is REVISED on the
+index page of a day not revised. A phrase that must be there (the credit line's fixed start, "Not shopping advice.",
+and on the index page every ALWAYS phrase, and REVISED on a revised day) counts only in the text a reader sees.
+`noindex` and `<script` are tags, looked for as written. The words "we", "our" and "us" are matched whole in the
+text a reader sees; attributes hold chain slugs and codes, not words.
 
 The day is revised when the newest `days/<day>.json` (ISO dates sort as dates) has `"revised"` set to an
 object, as `basket.build` writes it; null, or no day file, is a day never revised. The marker
@@ -23,6 +24,7 @@ import html
 import json
 import re
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from basket.page import MARKER
@@ -33,7 +35,7 @@ CREDIT_START = ("Prices from the price files Shufersal, Rami Levy, Osher Ad, Car
 NOT_ADVICE = "Not shopping advice."
 NOTICES = {"the credit line": CREDIT_START, f'"{NOT_ADVICE}"': NOT_ADVICE}  # every page, in the text read
 NOINDEX = '<meta name="robots" content="noindex">'
-APOSTROPHES = str.maketrans("\u2018\u2019", "''")  # curly single quotes read as the straight apostrophe
+APOSTROPHES = ("\u2018", "\u2019")  # curly single quotes, read as the straight apostrophe
 SCRIPT = "<script"
 PRONOUNS = re.compile(r"\b(?:we|our|us)\b", re.I)
 INDEX = "index.html"
@@ -45,15 +47,22 @@ class NoPages(Exception):
 
 
 def flatten(text: str) -> str:
-    """`text` with entities unescaped, whitespace collapsed, curly single quotes straightened and in lower case."""
-    return re.sub(r"\s+", " ", html.unescape(text)).translate(APOSTROPHES).lower()
+    """`text` with entities unescaped, each run of whitespace one space and the ends trimmed, curly single quotes
+    straightened, and in lower case. `str.split` and `str.replace` rather than a regular expression and
+    `str.translate`, several times quicker on a page of non-ASCII text: the shopper site's check reads tens of
+    thousands of pages before each upload."""
+    flat = " ".join(html.unescape(text).split())
+    for quote in APOSTROPHES:
+        flat = flat.replace(quote, "'")
+    return flat.lower()
 
 
 def strip_tags(text: str) -> str:
     return re.sub(r"<[^>]*>", " ", text)
 
 
-def _says(phrase: str, *versions: str) -> bool:
+def says(phrase: str, *versions: str) -> bool:
+    """Whether `phrase`, flattened, is in any of the flattened `versions` of a page."""
     return any(flatten(phrase) in version for version in versions)
 
 
@@ -67,14 +76,16 @@ def _day(site_dir: Path) -> tuple[str, dict | None]:
     return newest.relative_to(site_dir).as_posix(), json.loads(newest.read_text(encoding="utf-8")).get("revised")
 
 
-def _index_problems(site_dir: Path, written: str, read: str) -> list[str]:
-    problems = [f"{INDEX}: missing an always phrase: {phrase!r}" for phrase in ALWAYS if not _says(phrase, read)]
+def index_problems(site_dir: Path, written: str, read: str, page: str = INDEX) -> list[str]:
+    """The index page's rules over a page read both ways, each problem naming `page`: every ALWAYS phrase, and
+    REVISED exactly when the newest day file is revised."""
+    problems = [f"{page}: missing an always phrase: {phrase!r}" for phrase in ALWAYS if not says(phrase, read)]
     day, revised = _day(site_dir)
     if isinstance(revised, dict):
-        if not _says(REVISED, read):
-            problems.append(f"{INDEX}: no {REVISED!r} on a revised day ({day})")
-    elif _says(REVISED, written, read):
-        problems.append(f"{INDEX}: {REVISED!r} on a day not revised ({day})")
+        if not says(REVISED, read):
+            problems.append(f"{page}: no {REVISED!r} on a revised day ({day})")
+    elif says(REVISED, written, read):
+        problems.append(f"{page}: {REVISED!r} on a day not revised ({day})")
     return problems
 
 
@@ -89,16 +100,16 @@ def check_site(site_dir: Path) -> list[str]:
         name = path.relative_to(site_dir).as_posix()
         raw = path.read_text(encoding="utf-8")
         written, read = flatten(raw), flatten(strip_tags(raw))
-        problems += [f"{name}: a never phrase: {phrase!r}" for phrase in NEVER if _says(phrase, written, read)]
-        problems += [f"{name}: missing {which}" for which, notice in NOTICES.items() if not _says(notice, read)]
-        if not _says(NOINDEX, written):
+        problems += [f"{name}: a never phrase: {phrase!r}" for phrase in NEVER if says(phrase, written, read)]
+        problems += [f"{name}: missing {which}" for which, notice in NOTICES.items() if not says(notice, read)]
+        if not says(NOINDEX, written):
             problems.append(f"{name}: missing noindex")
         if SCRIPT in written:
             problems.append(f"{name}: a script")
         words = sorted({found.group(0).lower() for found in PRONOUNS.finditer(read)})
         problems += [f"{name}: the word {word!r}" for word in words]
         if name == INDEX:
-            problems += _index_problems(site_dir, written, read)
+            problems += index_problems(site_dir, written, read)
     if not (site_dir / INDEX).is_file():
         problems.append(f"{INDEX}: missing")
     if not (site_dir / MARKER).is_file():
@@ -106,9 +117,10 @@ def check_site(site_dir: Path) -> list[str]:
     return problems
 
 
-def main(argv: list[str]) -> int:
+def main(argv: list[str], check: Callable[[Path], list[str]] = check_site) -> int:
+    """The command over the folder `argv[0]`, by `check` (this site's, or the shopper site's): the exit code."""
     try:
-        problems = check_site(Path(argv[0]))
+        problems = check(Path(argv[0]))
     except NoPages as err:
         print(err, file=sys.stderr)
         return 2

@@ -107,7 +107,8 @@ from shopper.score import DaySummary, due, out_of_reach, read_summary, scores_cs
 from shopper.search import SCRIPT, browse_pages, pieces
 from shopper.siteday import Inputs, publish_site_day, site_day, write_site_day
 
-__all__ = ["MARKER", "ForecastsDiffer", "NotSynced", "SiteOutcome", "build_site", "main"]
+__all__ = ["LEDGER", "MARKER", "ForecastsDiffer", "NotSynced", "SiteOutcome", "build_site", "main",
+           "read_ledger"]
 
 MARKER = ".shopper-site"
 LEDGER = "forecasts/ledger.csv"
@@ -291,8 +292,8 @@ def _score(freezer, t: date, history: History, tables_dir: Path) -> tuple[bytes,
     return stored, message
 
 
-def _ledger_days(body: bytes | None) -> dict[date, datetime]:
-    """The days a ledger names, each with its file's S3 time."""
+def read_ledger(body: bytes | None) -> dict[date, datetime]:
+    """The days a ledger names, each with its file's S3 time ({} for no ledger); the site check reads it too."""
     if body is None:
         return {}
     found = {}
@@ -306,7 +307,7 @@ def _ledger(writes: bool, published: bytes | None, frozen: Frozen | None, day: d
     """The ledger after the freeze (the module's docstring, 7, and "The freezer")."""
     if writes:
         return published if frozen is None else ledger(published, frozen)
-    named = day in _ledger_days(published)
+    named = day in read_ledger(published)
     if frozen is None:
         if named:
             raise NotSynced(f"the published ledger names a forecasts file for {day.isoformat()} that the synced data "
@@ -433,7 +434,7 @@ def build_site(day: date, data_dir: Path, site_dir: Path, now: datetime, collect
     written = list(pages.written)
 
     basket = load_basket(basket_path, min_items=min_items)
-    ledger_days = {seen: at for seen, at in _ledger_days(new_ledger).items() if seen <= day}
+    ledger_days = {seen: at for seen, at in read_ledger(new_ledger).items() if seen <= day}
     files = ([LEDGER] if new_ledger is not None else []) + [site_key(seen) for seen in ledger_days]
     files += [scores_site_key(summary.day) for summary in known]
     browse = browse_pages(covered_now, day, shown_by)
