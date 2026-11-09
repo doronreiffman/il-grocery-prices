@@ -195,13 +195,14 @@ def _chart(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: d
             return (TOP + BOTTOM) // 2
         return TOP + whole(Fraction(high - price) / Fraction(high - low) * (BOTTOM - TOP))
 
+    heights = {price: height(price) for price in set(shown.values())}    # each shown price's, worked once
     line = []
     for start, end in _runs([point.day for point in points]):
-        level = height(shown[start])
+        level = heights[shown[start]]
         line.append(f"M{_x(start, first)} {level}")
         for each in (start + timedelta(days=n) for n in range(1, (end - start).days + 1)):
-            if height(shown[each]) != level:
-                level = height(shown[each])
+            if heights[shown[each]] != level:
+                level = heights[shown[each]]
                 line.append(f"H{_x(each, first)}V{level}")
         line.append(f"H{_x(end, first) + DAY_WIDTH}")
     on = [point.day for point in promotion_points(pair, column_days, day) if point.on_promotion]
@@ -209,7 +210,7 @@ def _chart(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: d
     marks = "".join(f"M{x} {MARK}h{width}v6h-{width}z" for x, width in widths)
     marked = f'<path class="on" d="{marks}"/>' if marks else ""
     right = READ_DAYS * DAY_WIDTH + 4
-    labels = [(height(high), high)] if high == low else [(TOP, high), (BOTTOM, low)]
+    labels = [(heights[high], high)] if high == low else [(TOP, high), (BOTTOM, low)]
     prices = "".join(f'<text x="{right}" y="{y + 3}">₪{price}</text>' for y, price in labels)
     line_key, on_key = chart_key(key)
     return (f'<svg class="chart" viewBox="0 0 {right + 40} 64" aria-hidden="true" focusable="false">'

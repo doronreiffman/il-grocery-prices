@@ -2776,6 +2776,7 @@ MUTATIONS = {
     # the speedups (the plan's Task 25a): each rule a speedup adds
     "a day scored without its window's last table (q22 speed)": (SHOP_SCORE, 'if t < seen <= last}', 'if t < seen < last}'),
     "a day scored without its window's first table (q22 speed)": (SHOP_SCORE, 'if t < seen <= last}', 'if t + timedelta(days=1) < seen <= last}'),
+    "every price drawn at the lowest's height (q22 speed)": (SHOP_PRODUCT, 'heights = {price: height(price) for price in', 'heights = {price: height(low) for price in'),
     # template: the basket's parameters
     "site bucket of any name": (BASKET_TEMPLATE, "AllowedPattern: 'il-grocery-prices-site-sitebucket-.+'", "AllowedPattern: '.+'"),
     "site bucket pattern takes the bare prefix": (BASKET_TEMPLATE, "AllowedPattern: 'il-grocery-prices-site-sitebucket-.+'", "AllowedPattern: 'il-grocery-prices-site-sitebucket-.*'"),

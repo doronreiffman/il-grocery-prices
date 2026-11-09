@@ -3,7 +3,9 @@ shared shell (`shopper.shell`) with the base style (`basket.page.BASE_STYLE`, sp
 pre-flight's S11). Pairs, points and column-days are built by hand, as tests/test_measures.py builds them; names,
 barcodes and programmes are synthetic."""
 import hashlib
+import random
 import re
+from dataclasses import replace
 from datetime import date, timedelta
 from decimal import Decimal
 from fractions import Fraction
@@ -15,15 +17,18 @@ from basket.page import BASE_STYLE, BASKET_STYLE, STYLE
 from basket.words import too_few
 from shopper.columns import BY_KEY, COLUMNS
 from shopper.deals import to_agora
-from shopper.history import ColumnDay, Covered, Pair, Point
-from shopper.measures import gap
-from shopper.product import CHAIN_SPAN, MAX_PAGE, page_path, render_product
+from shopper import product
+from shopper.history import READ_DAYS, ColumnDay, Covered, Pair, Point, counted
+from shopper.measures import gap, promotion_points, whole
+from shopper.product import BOTTOM, CHAIN_SPAN, DAY_WIDTH, MARK, MAX_PAGE, TOP, page_path, render_product
+from shopper.shell import text
 from shopper.record import Gate
 from shopper.search import browse_pages, browse_path
 from shopper.words import (ACROSS_HEADING, ALWAYS, ALWAYS_SENTENCE, AT_SOME_STORES, FINE_PRINT, FROM_FIELDS,
                            GAP_HEADING, HISTORY_HEADING, MORNING, NEVER, NOT_LISTED, ODDS_WORDS, PRICE_NOT_READ,
                            SITE_NAME, chart_key, credit, date_line, gap_sentences, last_across, no_odds_yet,
                            price_history, starts_on, unreadable)
+import shopper_random
 
 DAY = date(2026, 11, 20)
 CODE = "2000000000046"
@@ -551,3 +556,59 @@ def test_the_style_split_keeps_the_baskets_block_byte_for_byte():
         assert rule in BASE_STYLE and rule not in BASKET_STYLE, rule
     for rule in (".tiles {", "ol.bars li {", "table.prices {", "table.basket {", "ol.rules li {", "details {"):
         assert rule in BASKET_STYLE and rule not in BASE_STYLE, rule
+
+
+# The speedups (the plan's Task 25a): the code as it stood before each, kept here, against the code as it is
+
+def _chart_before(pair, column_days, day, key):
+    """`shopper.product._chart` as it stood before Task 25a, a height worked out for every day drawn."""
+    points = counted(pair, column_days, day, READ_DAYS)
+    if not points:
+        return ""
+    first = day - timedelta(days=READ_DAYS)
+    shown = {point.day: Decimal(product.money(point.listed)) for point in points}
+    low, high = min(shown.values()), max(shown.values())
+
+    def height(price):
+        if high == low:
+            return (TOP + BOTTOM) // 2
+        return TOP + whole(Fraction(high - price) / Fraction(high - low) * (BOTTOM - TOP))
+
+    line = []
+    for start, end in product._runs([point.day for point in points]):
+        level = height(shown[start])
+        line.append(f"M{product._x(start, first)} {level}")
+        for each in (start + timedelta(days=n) for n in range(1, (end - start).days + 1)):
+            if height(shown[each]) != level:
+                level = height(shown[each])
+                line.append(f"H{product._x(each, first)}V{level}")
+        line.append(f"H{product._x(end, first) + DAY_WIDTH}")
+    on = [point.day for point in promotion_points(pair, column_days, day) if point.on_promotion]
+    widths = [(product._x(start, first), product._x(end, first) - product._x(start, first) + DAY_WIDTH)
+              for start, end in product._runs(on)]
+    marks = "".join(f"M{x} {MARK}h{width}v6h-{width}z" for x, width in widths)
+    marked = f'<path class="on" d="{marks}"/>' if marks else ""
+    right = READ_DAYS * DAY_WIDTH + 4
+    labels = [(height(high), high)] if high == low else [(TOP, high), (BOTTOM, low)]
+    prices = "".join(f'<text x="{right}" y="{y + 3}">₪{price}</text>' for y, price in labels)
+    line_key, on_key = chart_key(key)
+    return (f'<svg class="chart" viewBox="0 0 {right + 40} 64" aria-hidden="true" focusable="false">'
+            f'<path d="{"".join(line)}"/>{marked}{prices}</svg>'
+            f'<p class="key"><i class="line"></i>{text(line_key)} <i class="on"></i>{text(on_key)}</p>')
+
+
+def test_the_chart_is_the_same_with_each_prices_height_worked_once():
+    """Task 25a: the chart works each shown price's height once, not once a day; its markup is the same as before,
+    over random pairs (holes, gaps, days with no listed price, price changes, promotion runs) and pairs of one price."""
+    rng = random.Random(16)
+    drawn = 0
+    for n in range(400):
+        column = COLUMNS[n % len(COLUMNS)]
+        days = shopper_random.column_days(rng, column.key, column.slug, back(READ_DAYS + 1), DAY)
+        pair = shopper_random.pair(rng, column.key, shopper_random.code(n), back(READ_DAYS + 1), DAY)
+        if n % 10 == 0:          # one price throughout: the line at mid-height
+            pair = Pair(column.key, pair.code, {seen: replace(point, listed=Decimal("7.30"))
+                                                for seen, point in pair.points.items()})
+        assert product._chart(pair, days, DAY, column.key) == _chart_before(pair, days, DAY, column.key)
+        drawn += product._chart(pair, days, DAY, column.key) != ""
+    assert drawn > 350
