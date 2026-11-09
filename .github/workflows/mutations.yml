@@ -1,8 +1,9 @@
 name: Mutation check
 
-# The full mutation check: every planted bug in scripts/mutation_check.py, each expected to fail a test. It takes one to
-# two hours, so it runs weekly on main (Saturday 03:00 UTC) and on demand from the Actions tab, not on every push
-# (owner, 2026-11-09). Every push still runs the tests and the staleness check (ci.yml).
+# The full mutation check: every planted bug in scripts/mutation_check.py, each expected to fail a test. It took 1 h 51 min
+# on the Mac (2,355 mutations, 2026-11-09), so it is scheduled weekly on main (Saturday 03:00 UTC) and runs on demand from
+# the Actions tab, not on every push (owner, 2026-11-09). Every push still runs the tests, with
+# tests/test_mutation_targets.py (ci.yml).
 
 on:
   schedule:
@@ -26,4 +27,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22.11.0"
+      # The tests first, unchanged: the check counts any failing test as a caught mutation, so a suite that fails on its own
+      # (a new Python patch release, an unpinned dependency) would pass every mutation aimed at it.
+      - run: pytest --cov=collector --cov=src/basket --cov=src/shopper --cov-fail-under=95
       - run: python scripts/mutation_check.py
