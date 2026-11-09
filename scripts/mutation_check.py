@@ -1177,7 +1177,7 @@ MUTATIONS = {
     "an unknown chain unblocked in the doc": (OPERATIONS, "--payload '{\"mode\": \"unblock\", \"chain\": \"ramilevy\"}'", "--payload '{\"mode\": \"unblock\", \"chain\": \"victory\"}'"),
     "a real address in the doc": (OPERATIONS, "'AlertEmail=<email>'", "'AlertEmail=owner@mail.example.net'"),
     "the doc's timetable off the schedules": (OPERATIONS, "| 06:39 | Carrefour", "| 06:40 | Carrefour"),
-    "the basket's timetable off its schedules": (OPERATIONS, "| 12:33 | The basket run", "| 12:30 | The basket run"),
+    "the basket's timetable off its schedules": (OPERATIONS, "| 12:33 | The site run", "| 12:30 | The site run"),
     "an extraction's manual run missing from the doc": (OPERATIONS, "--payload '{\"mode\": \"extract\", \"chain\": \"yochananof\", \"day\": \"2026-11-02\"}'", "--payload '{\"mode\": \"extract\", \"chain\": \"osherad\", \"day\": \"2026-11-02\"}'"),
     "a manual extraction started synchronously": (OPERATIONS, "--invocation-type Event --payload '{\"mode\": \"extract\", \"chain\": \"carrefour\"", "--payload '{\"mode\": \"extract\", \"chain\": \"carrefour\""),
     "a manual run for a day that is no date": (OPERATIONS, "\"chain\": \"shufersal\", \"day\": \"2026-11-02\"", "\"chain\": \"shufersal\", \"day\": \"2026-11-31\""),
