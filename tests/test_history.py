@@ -415,12 +415,15 @@ def test_the_pairs_stream_as_before(tmp_path):
     """Task 25a: the stream reads each price as its text, made a Decimal once, and makes each point by position; the
     pairs are the same as before, compared by `repr` so that each Decimal's places are compared too (5.40 is not
     5.4 there), over two chains' random tables of 91 days (missing tables, holes, unread promotions, prices that
-    change, promotions with conditions), more rows than one fetch."""
+    change, promotions with conditions), more rows than one fetch. Pair by pair, so that a failure names the pairs
+    rather than make pytest diff two strings of millions of characters."""
     rng = random.Random(8)
     first = back(READ_DAYS)
     for slug, codes in ((SHUF, 60), (RAMI, 40)):
         shopper_random.write_tables(rng, tmp_path, slug, first, DAY, [shopper_random.code(n) for n in range(codes)])
     history = load(tmp_path, DAY, [SHUF, RAMI])
-    found = list(history.pairs())
+    found, before = list(history.pairs()), list(_pairs_before(history))
     assert sum(len(pair.points) for pair in found) > BATCH
-    assert repr(found) == repr(list(_pairs_before(history)))
+    assert [(pair.column, pair.code) for pair in found] == [(pair.column, pair.code) for pair in before]
+    differ = [f"{new.column} {new.code}" for new, old in zip(found, before) if repr(new) != repr(old)]
+    assert not differ, f"{len(differ)} pairs differ, the first {differ[:3]}"

@@ -1333,3 +1333,56 @@ def put_files(self, site_dir: Path, keys: Sequence[str]) -> list[str]   # every 
   - Time: the module takes 487 to 552 s on this Mac over two runs (in the first, the module's run 253 s, the second run 223 s, the F3 build 7 s). That is above "about two minutes". Under the mutation check, a break caught before the last test costs about 4.5 minutes. In a late build most of the time is the scorecard's bootstrap: on 30 April, 2.9 s of 5.1 s profiled, 29 bootstraps of 10,000 draws. About 6,000 failed module lookups a build, most from `History.pairs`' DuckDB fetches, took 0.65 s of the 5.1 s; their cause is UNVERIFIED. Both are leads for Task 25a.
   - Sizes (the carries of Tasks 16, 17 and 20). The largest product page written in the golden days is 22,517 bytes, of 60,000: G1 on 5 April, the last day of a run, with seven sections each holding its deal's P7 sentences. The median of the 546 written is 12,316 bytes. The largest search piece is 143 bytes, of 150,000: six products.
   - Tests: 8 in `tests/test_golden_90.py`, the task's seven and the pin; 2,443 in all, at 99.86% (933 s with coverage on this Mac). Mutations: 6 new, all `(q22 golden)`, on four new targets (`FORECAST_FOR_SHOP_GOLDEN`, `MEASURES_FOR_SHOP_GOLDEN`, `PROMOS_FOR_SHOP_GOLDEN`, `ITEMS_FOR_SHOP_GOLDEN`); `$PY scripts/mutation_check.py "q22 golden"`: 6 of 6 caught, in 1,418 s; 2,289 in the script, none stale.
+- **Task 25a (2026-11-09):** the site run's speed (the owner's option A). Changes from the task as written, what it decided where the task leaves room, and the figures:
+  - The goal is met. At full scale (91 days of synthetic tables, 131,035 rows a day), the site run's compute takes 329.8 s of CPU on this Mac, against 538.8 s before, the two runs back to back on the same tables. The goal was at most 500 s. Every output is unchanged: `test_the_golden_bytes_are_pinned` passes with the pin as it was, and every other test passes with no expected value edited.
+  - Before and after, per step, in CPU seconds. The source is `scripts/time_site_run.py`, run on c0bf6e0 and on 98e759a, back to back, the one pass with 97 to 98% of its CPU time on the performance cores:
+
+    | Step | Before | After |
+    |---|---|---|
+    | the history (`load`) | 0.0 | 0.0 |
+    | the covered registry | 6.4 | 8.4 (code unchanged; 45% on the performance cores, against 73%) |
+    | scoring the due day | 123.3 | 12.9 |
+    | the scorecard (48 scored days) | 0.9 | 0.9 |
+    | the one pass (45,994 forecasts, 34,708 product pages, 22,966 front rows) | 401.1 | 300.4 |
+    | the forecasts file | 0.7 | 0.7 |
+    | the pages moved in; the front, browse and search pages | 6.3 | 6.4 |
+    | **total** | **538.8** (559.2 s wall) | **329.8** (323.8 s wall) |
+    | total, had it all run on the performance cores | 527.5 | 322.7 |
+    | a bare pass over the pairs (not in the total) | 113.2 | 75.4 |
+
+    Peak resident memory: 1,307 MiB before, 1,208 MiB after. That is the Mac's figure, with DuckDB at its default limit, not Lambda's 1200MB.
+  - The changes kept, one commit each, in the order tried:
+    1. 78b9934. **The due day is scored from its window's tables alone.** `shopper.score.window_history` keeps the tables of t + 1 to t + 14, the only days `outcome` reads, and every column-day. The build gives `scores_csv` that history. Scoring: 123.3 s to 12.9 s.
+       - Not as the task wrote it ("fold it into the one pass"). The scoring runs before the scorecard, and the scorecard's gates go to the pages the one pass draws. `scores_csv`'s tests also feed it hand-built histories.
+       - This way `scores_csv`'s interface and tests stay as they were: one new function of five lines and one changed call.
+    2. dbc7a43. **The product page's chart works each shown price's height once a chart**, not twice a day.
+    3. 98e759a. **The pairs' stream reads the prices as text**, each text made a Decimal once (`_Decimals`). It makes each point by position, not by keyword.
+       - A bare pass: 106.5 to 118.5 s before, 72.7 to 75.7 s after, a third fewer instructions (1,017 billion to 668 billion). This was measured A/B, alternated twice.
+       - Of the one pass's 100.7 s saved, about 38 s is the stream's. The rest, about 63 s, is the chart's. That split is worked from the bare pass, not measured apart.
+  - Measuring. A loaded Mac moves work to the efficiency cores, where the same work takes more CPU seconds.
+    - Examples: the first run of the code before (load 4 to 10) gave 805.3 s, not 538.8 s. The runs after each change, made beside a full test run, gave 564.6 s, 490.4 s and 537.1 s.
+    - Changes 2 and 3 were kept on those loaded figures: 564.6 s, then 490.4 s, within the noise of 500.
+    - The quiet back-to-back runs show the code before was 538.8 s. Less the 110.4 s change 1 saved, that is about 428 s: change 1 alone would likely have met the goal, though that state was not measured quietly.
+    - So the script also prints each step's share on the performance cores, and an estimate of its CPU seconds had it all run there. The estimate is the step's instructions retired over the instructions a second it retired on those cores (`proc_pid_rusage`). Instructions retired agree within 1% between runs of the same code.
+  - The synthetic tables (`time_site_run.py --make`):
+    - Each column's items, wide and on-promotion counts are from its report of 7 November, at a given scale. A column's codes are distinct, drawn from a pool of 45,000: 131,035 pairs. Task 19's tables gave 93,046 pairs, since its codes collided.
+    - The prices are as Task 19's: the listed price steps every 30 days, and a wide item is on a promotion 7 days in 21. No day is a hole.
+    - The scored day's frozen file stands in with a row for each wide pair off promotion that day (45,970 rows). The scorecard reads 48 copies of that day's summary, the days 91 days of records give.
+    - Names and barcodes are synthetic: a name is two Hebrew letters and a number, a barcode 2 and twelve digits.
+  - Built and tested, not committed, since the goal was met. All three are in a scratch copy. Each has its own equality test against the code it replaces, and the mutations they move are re-pointed. Together, on top of 98e759a, the one pass goes from 300.4 s to 206.1 s and the total from 329.8 s to 235.6 s (one run). They wait on the owner's go:
+    - `counted` takes the window's dates from a cache of each day and length: a walk about twice as fast, and a product page walks a window about ten times a column.
+    - `closed_days` reads each of the 91 days once. One `AHEAD` constant then holds the window's extent for both `outcome` and `closed_days`.
+    - `history_sentences` reads the window's promotion days once, not four times (`runs_of`, `promotion_days_of`). `promoted_today` reads its one day.
+  - Leads checked and left, each under 20 s at full scale:
+    - **Task 25's "6,000 failed module lookups".** DuckDB tries `import pandas` twice for each parameter it binds. `History._connect` binds two a table: 1,820 lookups for 455 tables, about 0.3 to 0.5 s a connection, and a build opens three connections.
+      - A VALUES list in place of the `executemany` would end it: about 1 to 1.5 s at full scale.
+      - It is a larger share of the golden's small builds: 0.65 s of a 5.1 s build in Task 25's profile.
+    - **The scorecard's bootstrap** takes 0.9 s at 48 scored days. It grows with the record, not with the read: 4.7 s at 180 scored days and 9.5 s at 365 (it does not depend on the rows).
+    - **Not touched:** DuckDB's own sort and join, about 21 to 23 s of CPU on one thread, and its conversion of the promotions' structs.
+  - The golden module alone after the changes: 8 passed in 416.9 s on this Mac (Task 25: 487 to 552 s). Its builds are small, so the speedups show less there.
+  - Tests and mutations:
+    - Three equality tests keep the code as it stood and compare it with the code as it is, over random histories (`tests/shopper_random.py`, a file beyond the task's list): the scoring from the window's tables (`tests/test_score.py`), the chart (`tests/test_product.py`) and the stream (`tests/test_history.py`).
+    - The stream's test compares pair by pair by `repr`, so a Decimal's places count. One comparison of the whole stream's `repr` made pytest diff two strings of about 7.7 million characters for many minutes when a mutation broke it.
+    - 2,456 tests in all, at 99.86%.
+    - Five new mutations, `(q22 speed)`: the window's first and last tables, a price's height, a price's places, the stores' range.
+    - `$PY scripts/mutation_check.py "q22 speed" "q22 F7" "q22 product" "q22 history" "q22 P1" "q22 P6"`, with the four build mutations beside `_score`: 161 run, 160 CAUGHT. The one ERROR was the stream test's long diff, stopped by hand. After the fix, "q22 speed" gave 5 of 5 caught, and the 35 that target `tests/test_history.py` gave 35 of 35. 2,302 in the script, none stale.

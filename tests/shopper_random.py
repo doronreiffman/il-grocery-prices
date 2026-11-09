@@ -14,7 +14,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from shopper.columns import columns_of
-from shopper.history import ColumnDay, Covered, Pair, Point
+from shopper.history import ColumnDay, Pair, Point
 
 PRICES = tuple(Decimal(text) for text in ("4.90", "5.00", "5.40", "9.90", "10.00", "12.35", "12.40", "12.45"))
 KINDS = ("record",) * 14 + ("price_hole", "promo_hole", "missing", "absent")
@@ -92,17 +92,6 @@ def pair(rng: random.Random, column: str, code: str, first: date, last: date, de
 def code(n: int) -> str:
     """A synthetic barcode."""
     return f"2{n:012d}"
-
-
-def covered(rng: random.Random, found: str, pairs: dict[str, Pair], first: date) -> Covered:
-    """A covered product with the pairs' columns' names (and now and then a column with none), as the registry gives
-    it."""
-    names = {column: f"Product {found[-4:]}{' x' * index}" for index, column in enumerate(pairs)}
-    return Covered(code=found, title=min(names.values(), key=lambda name: (-len(name), name)) if names else "Product",
-                   names=names, size=rng.choice((None, (Decimal("1"), "kg"), (Decimal("500"), "g"))),
-                   first_covered=first,
-                   last_wide={column: first + timedelta(days=rng.randrange(0, 60)) for column in pairs
-                              if rng.random() < 0.7})
 
 
 def _json(struct: dict) -> dict:

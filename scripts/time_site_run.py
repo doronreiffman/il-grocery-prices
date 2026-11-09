@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Time the site run's compute over synthetic items tables (the plan's Task 25a).
 
-    PYTHONPATH=src python scripts/time_site_run.py --work <folder> [--make [--scale 1.0] [--days 91]] [--bare]
-                                                   [--profile N]
+    python scripts/time_site_run.py --work <folder> [--make [--scale 1.0] [--days 91]] [--bare] [--profile N]
+
+It runs the code of the tree it sits in (its `src/`), so a copy of the tree times that copy's code.
 
 `--make` writes the tables first, under <folder>/tables (any made before are removed): `--days` days of items tables
 for every chain, ending on DAY, each column at `--scale` times the items, wide and on-promotion counts of its report of
@@ -21,8 +22,9 @@ then the totals and the peak resident memory. Figures only.
 
 On macOS each step also prints the share of its CPU time spent on the performance cores and an estimate of its CPU
 seconds had it all run there: its instructions retired over the instructions a second it retired on those cores
-(`proc_pid_rusage`, RUSAGE_INFO_V6). A loaded Mac moves work to the efficiency cores, where the same work takes two to
-three times the CPU seconds; the estimate is what an idle Mac would show, and compares runs made under other loads.
+(`proc_pid_rusage`, RUSAGE_INFO_V6). A loaded Mac moves work to the efficiency cores, where the same work takes more
+CPU seconds (on 9 November the code of c0bf6e0 gave 805 s loaded and 539 s quiet); the estimate is what an idle Mac
+would show, and compares runs made under other loads.
 
 `--bare` adds a bare pass over `History.pairs()` (the stream alone, apart from the run's total). `--profile N` adds
 cProfile's top functions, by cumulative and by own time, over the pass of the first N products (by code; at least
