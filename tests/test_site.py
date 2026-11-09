@@ -1,11 +1,13 @@
 """The site side of the scheduled build (`basket.site`): the published files read back, the latest day on the site,
-the pages and the day file put with the content types and cache-control `scripts/publish.sh` sets, every site file
-put through the pool with its content type, one invalidation, and nothing deleted.
+the site run's upload (its data files always, its pages only for the site's latest day, the fixed pages among them),
+every site file put through the pool with the content type and cache-control `scripts/publish.sh` sets, one
+invalidation, and nothing deleted.
 
 The rules run on MemorySite and on S3Site over test_store's FakeS3 and a fake CloudFront client, which must give
 the same outcomes. The Stubber test at the end runs S3Site against real boto3 clients, so the put's, the read's,
 the listing's and the invalidation's parameter names are checked against botocore's models offline.
 """
+import re
 import threading
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -15,16 +17,14 @@ import pytest
 from botocore.exceptions import ClientError
 from botocore.stub import Stubber
 
-from basket.site import (CACHE_CONTROL, CONTENT_TYPES, HTML, JSON, PAGES, UPLOAD_WORKERS, MemorySite, S3Site, _Site,
-                         day_key)
+from basket.site import (CACHE_CONTROL, CONTENT_TYPES, FIXED_PAGES, HTML, JSON, UPLOAD_WORKERS, MemorySite, S3Site, _Site,
+                         day_key, day_of)
 from test_store import FakeS3, client_error
 
 ROOT = Path(__file__).resolve().parent.parent
 DAY = date(2026, 11, 3)
 EARLIER = date(2026, 11, 2)
 INDEX = b"<!doctype html><title>index</title>"
-METHOD = b"<!doctype html><title>method</title>"
-DAY_FILE = b'{"day": "2026-11-03"}'
 REFERENCE = "113000Z-basket-ab12"
 ONE_PATH_ALL = {"Paths": {"Quantity": 1, "Items": ["/*"]}, "CallerReference": REFERENCE}
 # The design's content type of each kind of site file, by its last suffix (the plan's Task 22).
@@ -74,15 +74,23 @@ def on_site(site, key: str, body: bytes) -> None:
     site._put(key, body, HTML if key.endswith(".html") else JSON, CACHE_CONTROL)
 
 
+# The shopper site's fixed pages, by name (the plan's question H): rebuilt every morning from the code.
+FIXED = ("index.html", "method.html", "record.html", "basket.html", "search.js")
+# A site run's data files of the day, as `shopper.build` lists them new: they go up whatever the day.
+DATA = ["forecasts/2026-11-03.csv.gz", "forecasts/ledger.csv", "scores/2026-10-20.csv.gz", "site-days/2026-11-03.json",
+        "days/2026-11-03.json"]
+# Its pages under the page folders, in the order the upload takes them: by folder, then by name.
+FOLDER_PAGES = ["p/2000000000046.html", "p/2000000000053.html", "browse/05d0.html", "browse/other.html",
+                "search/05d0.json", "search/pieces.json"]
+
+
 def built(folder: Path) -> Path:
-    """A site folder as `basket.build` leaves it: the two pages, the day's file, an earlier day's file and the
-    marker. Only the files an upload names go up."""
-    (folder / "days").mkdir(parents=True)
-    (folder / "index.html").write_bytes(INDEX)
-    (folder / "method.html").write_bytes(METHOD)
-    (folder / "days" / "2026-11-03.json").write_bytes(DAY_FILE)
-    (folder / "days" / "2026-11-02.json").write_bytes(b'{"day": "2026-11-02"}')
-    (folder / ".basket-site").write_bytes(b"")
+    """A site folder as the site run leaves it in Lambda: the fixed pages, the pages under the page folders, the day's
+    data files, the published copies of the day before's site-day file and of an earlier day's file, and the marker;
+    each file's bytes its own key, so a body put under another key shows. Only the files an upload names go up."""
+    for key in (*FIXED, *FOLDER_PAGES, *DATA, "site-days/2026-11-02.json", "days/2026-11-02.json", ".shopper-site"):
+        (folder / key).parent.mkdir(parents=True, exist_ok=True)
+        (folder / key).write_bytes(key.encode())
     return folder
 
 
@@ -113,7 +121,6 @@ def recorded_puts(site) -> list[str]:
 
 def test_keys_and_the_upload_settings_are_those_publish_sh_uses():
     assert day_key(DAY) == "days/2026-11-03.json"
-    assert PAGES == ("index.html", "method.html")
     assert (HTML, JSON, CACHE_CONTROL) == ("text/html; charset=utf-8", "application/json; charset=utf-8", "max-age=300")
     assert CONTENT_TYPES == TYPES
     assert UPLOAD_WORKERS == 16
@@ -125,8 +132,8 @@ def test_keys_and_the_upload_settings_are_those_publish_sh_uses():
 
 def test_published_day_is_none_before_the_first_upload(site, tmp_path):
     assert site.published_day(DAY) is None
-    site.upload(built(tmp_path), DAY, with_pages=True, with_day=True)
-    assert site.published_day(DAY) == DAY_FILE
+    site.upload(built(tmp_path), DATA, with_pages=True)
+    assert site.published_day(DAY) == b"days/2026-11-03.json"
     assert site.published_day(EARLIER) is None  # in the folder, but not uploaded
 
 
@@ -187,56 +194,93 @@ def test_s3_site_finds_the_latest_day_past_the_first_page():
     assert ("paginate", {"Bucket": "site-bucket", "Prefix": "days/"}) in fake.calls
 
 
-def test_upload_puts_the_pages_then_the_day_file_with_content_types_and_cache_control(site, tmp_path):
-    keys = site.upload(built(tmp_path), DAY, with_pages=True, with_day=True)
-    assert keys == ["index.html", "method.html", "days/2026-11-03.json"]
-    assert list(held(site).items()) == [
-        ("index.html", (INDEX, HTML, CACHE_CONTROL)),
-        ("method.html", (METHOD, HTML, CACHE_CONTROL)),
-        ("days/2026-11-03.json", (DAY_FILE, JSON, CACHE_CONTROL)),
-    ]
+def test_upload_puts_the_data_files_then_every_page_with_its_content_type(site, tmp_path):
+    """The site's latest day: the data files the build lists new, then every file under `p/`, `browse/` and `search/`,
+    then the fixed pages, each with its content type by its last suffix and max-age=300; nothing else of the folder
+    (the published copies, the marker)."""
+    keys = site.upload(built(tmp_path), DATA, with_pages=True)
+    assert keys == [*DATA, *FOLDER_PAGES, *FIXED]
+    assert held(site) == {key: (key.encode(), TYPES[Path(key).suffix], CACHE_CONTROL) for key in keys}
 
 
-def test_upload_without_the_day_file_leaves_days_alone(site, tmp_path):
-    on_site(site, "days/2026-11-03.json", b"published")
-    site_dir = built(tmp_path)
-    assert site.upload(site_dir, DAY, with_pages=True, with_day=False) == ["index.html", "method.html"]
-    assert held(site)["days/2026-11-03.json"][0] == b"published"
-    assert held(site)["index.html"] == (INDEX, HTML, CACHE_CONTROL)
-    # a day file it is not to put may be missing from the folder
-    (site_dir / "days" / "2026-11-03.json").unlink()
-    assert site.upload(site_dir, DAY, with_pages=True, with_day=False) == ["index.html", "method.html"]
-    assert sorted(held(site)) == ["days/2026-11-03.json", "index.html", "method.html"]
+def test_upload_puts_the_fixed_pages(site, tmp_path):
+    """The shopper plan's question H (and the second pre-flight's S15): the five fixed pages, rebuilt every morning
+    from the code, go up with the day's pages, whatever the build lists."""
+    assert FIXED_PAGES == FIXED
+    keys = site.upload(built(tmp_path), [], with_pages=True)
+    assert [key for key in keys if key in FIXED] == list(FIXED)
+    assert set(FIXED) <= set(held(site))
 
 
-def test_upload_without_the_pages_puts_the_day_file_only(site, tmp_path):
+def test_upload_puts_each_fixed_page_with_its_content_type(site, tmp_path):
+    """The second pre-flight's B3: the site sends nosniff, so a script served as HTML would not run; `search.js` goes up
+    as JavaScript, the four pages as HTML."""
+    site.upload(built(tmp_path), [], with_pages=True)
+    assert {key: held(site)[key][1] for key in FIXED} == {
+        "index.html": "text/html; charset=utf-8", "method.html": "text/html; charset=utf-8",
+        "record.html": "text/html; charset=utf-8", "basket.html": "text/html; charset=utf-8",
+        "search.js": "text/javascript; charset=utf-8"}
+
+
+def test_upload_for_an_earlier_day_puts_the_data_files_only(site, tmp_path):
+    """Call 9: a day before the site's latest puts its data files and leaves every page as the later day's; the pages
+    it is not to put may be missing from the folder."""
     on_site(site, "index.html", b"the later day's page")
     site_dir = built(tmp_path)
-    assert site.upload(site_dir, DAY, with_pages=False, with_day=True) == ["days/2026-11-03.json"]
-    assert held(site) == {"index.html": (b"the later day's page", HTML, CACHE_CONTROL),
-                          "days/2026-11-03.json": (DAY_FILE, JSON, CACHE_CONTROL)}
-    # pages it is not to put may be missing from the folder
-    (site_dir / "index.html").unlink()
-    (site_dir / "method.html").unlink()
-    assert site.upload(site_dir, DAY, with_pages=False, with_day=True) == ["days/2026-11-03.json"]
+    assert site.upload(site_dir, DATA, with_pages=False) == DATA
+    assert held(site)["index.html"] == (b"the later day's page", HTML, CACHE_CONTROL)
+    assert sorted(held(site)) == sorted([*DATA, "index.html"])
+    for key in (*FIXED, *FOLDER_PAGES):
+        (site_dir / key).unlink()
+    assert site.upload(site_dir, DATA, with_pages=False) == DATA
 
 
-def test_upload_of_neither_puts_nothing(site, tmp_path):
-    assert site.upload(built(tmp_path), DAY, with_pages=False, with_day=False) == []
-    assert held(site) == {}
-
-
-def test_upload_refuses_a_missing_page(site, tmp_path):
-    site_dir = built(tmp_path / "no-method")
-    (site_dir / "method.html").unlink()
-    with pytest.raises(FileNotFoundError, match="method.html"):
-        site.upload(site_dir, DAY, with_pages=True, with_day=True)
-    assert held(site) == {}  # index.html, found first, was not put either
-    site_dir = built(tmp_path / "no-day")
+def test_upload_puts_only_the_data_files_it_is_given(site, tmp_path):
+    """An unchanged day lists no data file: the pages go up, and the folder's day files, the published copies among
+    them, stay local; a data file it is not to put may be missing."""
+    on_site(site, "days/2026-11-03.json", b"published")
+    site_dir = built(tmp_path)
+    assert site.upload(site_dir, [], with_pages=True) == [*FOLDER_PAGES, *FIXED]
+    assert held(site)["days/2026-11-03.json"][0] == b"published"
+    assert not [key for key in held(site) if key.startswith(("site-days/", "forecasts/", "scores/"))]
     (site_dir / "days" / "2026-11-03.json").unlink()
-    with pytest.raises(FileNotFoundError, match="2026-11-03.json"):
-        site.upload(site_dir, DAY, with_pages=True, with_day=True)
+    assert site.upload(site_dir, ["forecasts/ledger.csv"], with_pages=False) == ["forecasts/ledger.csv"]
+
+
+def test_upload_of_nothing_puts_nothing(site, tmp_path):
+    assert site.upload(built(tmp_path), [], with_pages=False) == []
     assert held(site) == {}
+
+
+def test_upload_takes_the_page_folders_whole(site, tmp_path):
+    """Every file under the page folders, in sub-folders too, is a page to put; one of no known type stops the upload
+    before anything goes up, as `put_files` refuses it."""
+    site_dir = built(tmp_path)
+    (site_dir / "p" / "more").mkdir()
+    (site_dir / "p" / "more" / "2000000000060.html").write_bytes(b"deeper")
+    assert "p/more/2000000000060.html" in site.upload(site_dir, [], with_pages=True)
+    (site_dir / "search" / "notes.txt").write_bytes(b"")
+    with pytest.raises(ValueError, match="search/notes.txt: no content type"):
+        MemorySite().upload(site_dir, DATA, with_pages=True)
+
+
+@pytest.mark.parametrize("missing", ["method.html", "search.js", "days/2026-11-03.json"])
+def test_upload_refuses_a_missing_file_before_any_put(site, tmp_path, missing):
+    """A fixed page or a data file missing from the folder stops the upload before anything goes up: not the data
+    files found first either. (The page folders go up as they are: a product page the build lost is the guard's.)"""
+    site_dir = built(tmp_path)
+    (site_dir / missing).unlink()
+    with pytest.raises(FileNotFoundError, match=re.escape(missing)):
+        site.upload(site_dir, DATA, with_pages=True)
+    assert held(site) == {}
+
+
+def test_day_of_reads_a_day_file_or_a_site_day_file():
+    """The day a published day file or site-day file names, the rule the latest day and the site run's previous
+    site-day file share; None for anything else."""
+    assert day_of("days/2026-11-03.json") == day_of("site-days/2026-11-03.json") == DAY
+    for key in ("days/2026-11-31.json", "site-days/2026-11-03.json.bak", "forecasts/2026-11-03.csv.gz", "index.html"):
+        assert day_of(key) is None
 
 
 def test_put_files_puts_each_once_with_its_content_type(site, tmp_path):
@@ -367,15 +411,15 @@ def test_no_method_ever_deletes(tmp_path):
     with pytest.raises(FileNotFoundError):
         call("put_files", shop_dir, keys)
     for with_pages in (True, False):
-        for with_day in (True, False):
-            call("upload", site_dir, DAY, with_pages=with_pages, with_day=with_day)
-    call("upload", site_dir, DAY, with_pages=True, with_day=True)  # the same files again
+        for data in (DATA, []):
+            call("upload", site_dir, data, with_pages=with_pages)
+    call("upload", site_dir, DATA, with_pages=True)  # the same files again
     call("published_day", DAY)
     call("latest_published_day")
     call("invalidate", REFERENCE)
     (site_dir / "method.html").unlink()
     with pytest.raises(FileNotFoundError):
-        call("upload", site_dir, DAY, with_pages=True, with_day=True)
+        call("upload", site_dir, DATA, with_pages=True)
     # every method _Site defines was run above
     assert called == {name for name in vars(_Site) if not name.startswith("_")}
     assert {op for op, _ in fake.calls} <= {"put_object", "get_object", "get_paginator", "paginate"}
@@ -390,10 +434,10 @@ def test_real_clients_take_the_put_the_read_the_listing_and_the_invalidation(tmp
     site = S3Site(s3, cloudfront, "site-bucket", "E123")
     site_dir = built(tmp_path)
     with Stubber(s3) as s3_stub, Stubber(cloudfront) as cloudfront_stub:
-        for key, body, content_type in (("index.html", INDEX, HTML), ("method.html", METHOD, HTML),
-                                        ("days/2026-11-03.json", DAY_FILE, JSON)):
-            s3_stub.add_response("put_object", {}, {"Bucket": "site-bucket", "Key": key, "Body": body,
-                                                    "ContentType": content_type, "CacheControl": CACHE_CONTROL})
+        # one put: the pool's puts of several files run in no fixed order, and the Stubber answers in order
+        s3_stub.add_response("put_object", {}, {"Bucket": "site-bucket", "Key": "days/2026-11-03.json",
+                                                "Body": b"days/2026-11-03.json", "ContentType": JSON,
+                                                "CacheControl": CACHE_CONTROL})
         s3_stub.add_client_error("get_object", "NoSuchKey", http_status_code=404,
                                  expected_params={"Bucket": "site-bucket", "Key": "days/2026-11-04.json"})
         s3_stub.add_response("list_objects_v2", {"Contents": [{"Key": "days/2026-11-02.json"}], "IsTruncated": True,
@@ -410,7 +454,7 @@ def test_real_clients_take_the_put_the_read_the_listing_and_the_invalidation(tmp
              "Invalidation": {"Id": "I1", "Status": "InProgress", "CreateTime": created,
                               "InvalidationBatch": ONE_PATH_ALL}},
             {"DistributionId": "E123", "InvalidationBatch": ONE_PATH_ALL})
-        assert site.upload(site_dir, DAY, with_pages=True, with_day=True) == list(PAGES) + ["days/2026-11-03.json"]
+        assert site.upload(site_dir, ["days/2026-11-03.json"], with_pages=False) == ["days/2026-11-03.json"]
         assert site.published_day(date(2026, 11, 4)) is None
         assert site.latest_published_day() == DAY
         assert site.invalidate(REFERENCE) == "I1"

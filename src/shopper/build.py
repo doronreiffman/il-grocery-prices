@@ -81,8 +81,9 @@ site-day and basket day files when not unchanged, the ledger and the day's forec
 line, each scored day's scores file. It lists every frozen day out of the read's reach, as the site-day file does, and
 apart those that went out of reach this morning, absent from the previous published site-day file's list (the latest
 before the day in the site folder; with none, every one): the site run's /fail is for those alone, so a day out of
-reach alerts once, not every morning after (the ruling on the task review's (b)). Only `main` reads the time of day,
-and gives it as `now`.
+reach alerts once, not every morning after (the ruling on the task review's (b)). It also gives the seconds the scoring
+(3) and the one pass (5) took, for the site run's summary (the plan's Task 23: measured, not tuned). Only `main` reads
+the time of day, and gives it as `now`.
 """
 import argparse
 import json
@@ -142,7 +143,8 @@ class SiteOutcome:
     (scored only through a freezer that writes), those out of reach and, of them, those the previous published site-day
     file did not list (the only ones the site run alerts for); the pages written and the data files new to the
     site, as site paths; each chain's promotions error, by slug; each ScoresDiffer's message; each chain's extraction
-    seconds (None for tables kept); the site-day file as the pages show it, and whether this run revised it."""
+    seconds (None for tables kept); the site-day file as the pages show it, and whether this run revised it; the
+    seconds of the scoring and of the one pass."""
     day: date
     run_id: str
     unchanged: bool
@@ -159,6 +161,7 @@ class SiteOutcome:
     extraction_seconds: dict[str, float | None]
     site_day: dict
     revised: bool
+    seconds: dict[str, float]
 
 
 class _Watched(History):
@@ -417,7 +420,7 @@ def build_site(day: date, data_dir: Path, site_dir: Path, now: datetime, collect
     """Build the day's whole site (the module's docstring); `now` must carry a time zone."""
     run_id = new_run_id(now, "site")   # first: it refuses a naive `now`, which would be read as this machine's zone
     raw_dir, tables_dir = data_dir / "raw", data_dir / "tables"
-    seconds = _extract(raw_dir, tables_dir, day, rebuild) if extract else _fetched(tables_dir, day)
+    extracted = _extract(raw_dir, tables_dir, day, rebuild) if extract else _fetched(tables_dir, day)
     history = load(tables_dir, day, SLUGS)
     registry = _previous_registry(tables_dir, day)
     covered_now = covered(history, None if registry is None else covered_path(tables_dir, registry),
@@ -432,20 +435,24 @@ def build_site(day: date, data_dir: Path, site_dir: Path, now: datetime, collect
     due_days, far = due(frozen_days, scored_before, day), out_of_reach(frozen_days, scored_before, day)
     scores: dict[date, bytes] = {}
     differ: list[str] = []
+    started = time.perf_counter()
     if freezer.writes:
         for t in due_days:
             scores[t], message = _score(freezer, t, history, tables_dir)
             differ += [message] if message else []
         summaries = _summaries(tables_dir)
+    seconds = {"scoring": time.perf_counter() - started}
     known = [summary for summary in summaries if summary.day + timedelta(days=HORIZON) <= day]
     card = scorecard(known)
     gates = {key: Gate(**card["columns"][key]["gate"]) for key in card["columns"]}
     code_sha = code_fingerprint()
 
     with tempfile.TemporaryDirectory(prefix="shopper-pages-") as staging:
+        started = time.perf_counter()
         pages = _Pages(covered_now, history, collected_by, gates, errors, Path(staging) / "first")
         rows = forecasts(_Watched(history, pages), day)
         pages.finish()
+        seconds["pass"] = time.perf_counter() - started
         frozen = None
         published_none = _published_none(site_dir, day)
         if (rows or freezer.frozen(day) is not None) and not (freezer.writes and published_none):
@@ -506,8 +513,8 @@ def build_site(day: date, data_dir: Path, site_dir: Path, now: datetime, collect
     (site_dir / MARKER).write_text("", encoding="utf-8")
     return SiteOutcome(day=day, run_id=run_id, unchanged=unchanged, basket=basket_outcome, frozen=frozen,
                        scored=sorted(scores), pages=written, data=data, promotions_errors=errors, due=due_days,
-                       out_of_reach=far, newly_out_of_reach=_newly(far, site_dir, day), scores_differ=differ, extraction_seconds=seconds, site_day=shown,
-                       revised=revised)
+                       out_of_reach=far, newly_out_of_reach=_newly(far, site_dir, day), scores_differ=differ, extraction_seconds=extracted, site_day=shown,
+                       revised=revised, seconds=seconds)
 
 
 def _days(days) -> str:

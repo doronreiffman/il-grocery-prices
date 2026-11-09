@@ -1,19 +1,26 @@
 """The scheduled build's Lambda entry point (`basket.handler`): the config, the event's day, the refusals before
-anything is read, the check-record gate, the extract mode and the basket mode.
+anything is read, the check-record gate, the extract mode and the basket mode, which is the shopper site's run.
 
 run() is driven with a Deps over a MemoryArchive filled from test_build's golden day (`archive_from`), a MemorySite and
 a recorded ping, and a tmp_root of the test's own, so a work folder left behind shows. The basket mode's tests start
-from the morning as the extractions leave it (`morning`: the golden archive with the five chains' tables), and build
-with the golden day's basket and an item floor of 1, since its codes are synthetic.
+from the morning as the extractions leave it (`morning`: the golden archive with the five chains' tables, Carrefour's
+stores placed by the golden day's own table), and build with the golden day's basket and an item floor of 1, since its
+codes are synthetic. The site run's own tests stretch that morning back over the days before it, as
+tests/test_shop_build.py's tree is (`stretched`: 40 days of Osher Ad's history, a registry 100 days back, day T's
+frozen forecasts, the archive's S3 clock fixed), over a site that T's morning left (`published_before`).
 """
+import csv
 import gzip
+import hashlib
 import inspect
+import io
 import json
 import logging
 import re
 from dataclasses import replace
-from datetime import date, datetime, timezone
-from pathlib import Path
+from datetime import date, datetime, timedelta, timezone
+from html import unescape
+from pathlib import Path, PurePosixPath
 from zoneinfo import ZoneInfo
 
 import duckdb
@@ -21,22 +28,30 @@ import pytest
 
 from basket import build as build_module
 from basket import handler as handler_module
-from basket.archive import TABLE_FILES, TABLES, MemoryArchive, kind_key, record_key, table_key
+from basket.archive import TABLE_FILES, TABLES, MemoryArchive, kind_key, record_key, summary_key, table_key
 from basket.basket_file import DEFAULT_BASKET
 from basket.chains import CARREFOUR_COLUMNS
 from basket.build import RevisionNeeded
-from basket.guard import guard_days
 from basket.handler import (REQUIRED, SITE_BUCKET_PREFIX, Config, Deps, MorningNotChecked, SiteCheckFailed, event_day,
                             run)
 from basket.pricefile import BadPriceFile
 from basket.record import code_fingerprint
 from basket.rules import MissingTable
-from basket.site import CACHE_CONTROL, HTML, JSON, MemorySite
+from basket.site import CACHE_CONTROL, CONTENT_TYPES, FIXED_PAGES, HTML, JSON, UPLOAD_WORKERS, MemorySite
 from basket.stores import NoStoreList
 from collector.store import LOCK_MODE, RETENTION_DAYS, check_key, raw_key
+from shopper import build as shop_build
 from shopper import extract as shop_extract
-from test_build import BASKET, DAY, MILK, PRICES, SLUGS, golden_tree, price_file_name, reprice, store_list
+from shopper import guard as shop_guard
+from shopper.build import LEDGER
+from shopper.freeze import ArchiveFreezer, ForecastsDiffer, archive_key, ledger, scores_archive_key, scores_site_key, site_key
+from shopper.history import load as shop_load
+from shopper.product import page_path
+from shopper.score import SCORE_FIELDS, UNSCORED
+from test_build import BASKET, DAY, EGGS, MILK, PASTA, PRICES, SLUGS, golden_tree, price_file_name, reprice, store_list
 from test_extract import TABLE_COLUMNS
+from test_history import _row, _table
+from test_shop_build import OSHER, _frozen_file, _history, _registry
 from test_shop_extract import COLUMN, GOLDEN_COLUMNS, on, promo_file, promo_file_name, read, with_promotions
 
 ROOT = Path(__file__).parent.parent
@@ -54,7 +69,11 @@ CFG = Config(bucket="il-grocery-prices-archivebucket-0123456789ab",
              healthcheck_url="https://hc-ping.example/0000-test", user_agent=UA, retention_days=3650)
 URL = CFG.healthcheck_url
 BASKET_EVENT = {"mode": "basket", "collected_by": "11:00"}
-PUBLISHED = ["index.html", "method.html", "days/2026-01-01.json"]
+# The golden day's data files, new on its first run: no forecast before a column's 30th day of records, so no
+# forecasts file and no ledger line.
+PUBLISHED = ["site-days/2026-01-01.json", "days/2026-01-01.json"]
+NO_FORECASTS = {"status": "none", "sha256": None, "on_time": None}
+STEPS = ("fetch", "build", "scoring", "pass", "check", "guard", "upload", "total")  # the summary's seconds, in order
 HEADLINE = ["Lowest listed total today: Osher Ad, ₪22.65.",
             "Highest: Carrefour, ₪27.16, 20% more. 3 everyday items, listed shelf prices before promotions, from the "
             "chains' price files of Thursday 1 January 2026."]  # the golden day's two lines (test_build)
@@ -565,7 +584,7 @@ def test_the_basket_package_logs_at_info():
     assert handler_module.log.getEffectiveLevel() == logging.INFO
 
 
-# ---- the basket mode ----
+# ---- the basket mode: the site run ----
 
 def extracted(archive: MemoryArchive, tmp_root: Path, chains=SLUGS) -> MemoryArchive:
     """The archive after the extract mode has run for each of `chains`, as the morning's schedules run it; its
@@ -584,9 +603,23 @@ def golden_basket(monkeypatch):
 
 
 @pytest.fixture
-def morning(data, tmp_root, golden_basket):
-    """The archive as the basket run finds it: the golden day, its check record and the five chains' tables."""
+def morning(data, tmp_root, golden_basket, golden_columns):
+    """The archive as the site run finds it: the golden day, its check record and the five chains' tables, their
+    Carrefour stores placed by the golden day's own table (S18)."""
     return extracted(archive_from(data), tmp_root)
+
+
+@pytest.fixture
+def outcomes(monkeypatch):
+    """Each site run's outcome, as `shopper.build.build_site` gave it to the handler, in order."""
+    seen = []
+
+    def recorded(*args, **kwargs):
+        seen.append(shop_build.build_site(*args, **kwargs))
+        return seen[-1]
+
+    monkeypatch.setattr(handler_module, "build_site", recorded)
+    return seen
 
 
 def records_of(archive: MemoryArchive) -> list[str]:
@@ -597,15 +630,33 @@ def pinged(deps: Deps) -> list[str]:
     return [url for url, _ in deps.ping.calls]
 
 
-def test_first_run_publishes_the_day_and_pings(morning, tmp_root):
+def sha(body: bytes) -> str:
+    return hashlib.sha256(body).hexdigest()
+
+
+def text_of(deps: Deps, key: str) -> str:
+    """A published page's text as a reader sees it, entities read and white space collapsed."""
+    return " ".join(unescape(deps.site.objects[key][0].decode()).split())
+
+
+def test_first_run_publishes_the_day_and_pings(morning, tmp_root, outcomes):
+    """The golden morning, with no history yet: every page the build wrote goes up with the day's two data files, no
+    forecast before a column's 30th day of records, one invalidation, the record, and the success ping with the
+    summary, which names each step's seconds."""
     deps = deps_of(morning)
     summary = run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
     run_id = summary["run_id"]
+    [outcome] = outcomes
     assert re.fullmatch(r"093000Z-basket-[0-9a-f]{4}", run_id)  # the run's start in UTC
     assert summary == {"mode": "basket", "day": "2026-01-01", "run_id": run_id, "headline": HEADLINE,
-                       "unchanged": False, "pages": True, "uploaded": PUBLISHED, "invalidation": "memory-1",
-                       "record": record_key(DAY, run_id)}
-    assert sorted(deps.site.objects) == sorted(PUBLISHED)
+                       "unchanged": False, "site_day_unchanged": False, "pages": True, "uploaded": PUBLISHED,
+                       "pages_uploaded": len(outcome.pages), "invalidation": "memory-1",
+                       "record": record_key(DAY, run_id), "forecasts": NO_FORECASTS, "scored": [],
+                       "promotions_errors": {}, "alerts": [], "seconds": summary["seconds"]}
+    assert list(summary["seconds"]) == list(STEPS)
+    assert all(isinstance(took, float) and took >= 0 for took in summary["seconds"].values())
+    assert sorted(deps.site.objects) == sorted(outcome.pages + PUBLISHED)  # every page and the day's data files
+    assert set(FIXED_PAGES) <= set(outcome.pages)
     assert deps.site.invalidations == [run_id]  # one invalidation, under the run's id
     # the record, write-once and locked, the only one
     assert records_of(morning) == [record_key(DAY, run_id)]
@@ -617,17 +668,20 @@ def test_first_run_publishes_the_day_and_pings(morning, tmp_root):
     public = json.loads(deps.site.objects["days/2026-01-01.json"][0])
     assert public["collected_by"] == "11:00"  # the event's, not the run's 11:30
     assert public["code_sha"] == code_fingerprint() and public["run_id"] == run_id
+    assert json.loads(deps.site.objects["site-days/2026-01-01.json"][0])["collected_by"] == "11:00"
     assert list(tmp_root.iterdir()) == []
 
 
 def test_unchanged_day_uploads_pages_not_the_day_file(morning, tmp_root):
     deps = deps_of(morning)
     first = run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
-    published = deps.site.objects["days/2026-01-01.json"]
+    published = {key: deps.site.objects[key] for key in PUBLISHED}
     second = run(CFG, BASKET_EVENT, deps, AGAIN, tmp_root)
-    assert (second["unchanged"], second["pages"], second["uploaded"]) == (True, True, ["index.html", "method.html"])
+    assert (second["unchanged"], second["site_day_unchanged"], second["pages"], second["uploaded"]) == (
+        True, True, True, [])
+    assert second["pages_uploaded"] == first["pages_uploaded"] > 0
     assert second["headline"] == HEADLINE
-    assert deps.site.objects["days/2026-01-01.json"] == published  # the day file as first published
+    assert {key: deps.site.objects[key] for key in PUBLISHED} == published  # the day files as first published
     assert deps.site.invalidations == [first["run_id"], second["run_id"]]
     assert records_of(morning) == sorted([first["record"], second["record"]])  # every build of the day is kept
     assert first["record"] != second["record"]
@@ -640,10 +694,11 @@ def test_an_earlier_day_than_the_sites_latest_uploads_its_day_file_not_the_pages
              "method.html": (b"<p>the method, 2 January</p>", HTML, CACHE_CONTROL)}
     deps.site.objects.update(later)
     summary = run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
-    assert (summary["unchanged"], summary["pages"], summary["uploaded"]) == (False, False, ["days/2026-01-01.json"])
+    assert (summary["unchanged"], summary["pages"], summary["uploaded"], summary["pages_uploaded"]) == (
+        False, False, PUBLISHED, 0)
     assert deps.site.invalidations == [summary["run_id"]]
     assert {key: deps.site.objects[key] for key in later} == later  # the front page stays the later day's
-    assert sorted(deps.site.objects) == sorted([*later, "days/2026-01-01.json"])
+    assert sorted(deps.site.objects) == sorted([*later, *PUBLISHED])
 
 
 def test_an_earlier_day_already_published_and_unchanged_uploads_nothing_and_does_not_invalidate(morning, tmp_root):
@@ -679,6 +734,9 @@ def test_differing_numbers_fail_loudly_and_publish_nothing(data, morning, tmp_ro
     assert pinged(deps) == [f"{URL}/start", f"{URL}/fail"]
     body = deps.ping.calls[1][1]
     assert body == f"RevisionNeeded: {raised.value}" and "chains.yochananof.total" in body
+    # what to do, said in the refusal (Task 19's carry): only a hand build revises
+    assert str(raised.value).endswith("\n" + handler_module.WHAT_NOW[RevisionNeeded])
+    assert "build the day by hand with a one-line reason to revise" in body
     assert list(tmp_root.iterdir()) == []
 
 
@@ -689,8 +747,10 @@ def test_missing_table_names_the_chain_uploads_nothing_and_pings_fail(morning, t
     with pytest.raises(MissingTable) as raised:
         run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
     message = str(raised.value)
-    assert "'osherad'" in message and table_key("osherad", DAY, "prices.parquet") in message
-    assert "2026-01-01" in message
+    assert message == ("no table for chain 'osherad' on 2026-01-01: its extraction run did not run or did not finish "
+                       f"({table_key('osherad', DAY, 'prices.parquet')})")
+    # stopped at the fetch, before the history's 91 days of items tables (the build's own check would come later)
+    assert not [key for op, key in morning.reads if op == "get" and key.startswith("tables/items/")]
     assert deps.site.objects == {} and deps.site.invalidations == []
     assert records_of(morning) == []  # stopped before the build: no record
     assert pinged(deps) == [f"{URL}/start", f"{URL}/fail"]
@@ -698,7 +758,8 @@ def test_missing_table_names_the_chain_uploads_nothing_and_pings_fail(morning, t
     assert list(tmp_root.iterdir()) == []
 
 
-def test_a_chain_with_no_files_publishes_with_the_chain_out_of_the_ranking(data, tmp_root, golden_basket):
+def test_a_chain_with_no_files_publishes_with_the_chain_out_of_the_ranking(data, tmp_root, golden_basket,
+                                                                           golden_columns):
     archive = archive_from(data)
     for store in PRICES["osherad"]:  # Osher Ad's store list came, and no price file
         del archive.objects[raw_key("osherad", DAY, price_file_name("osherad", store))]
@@ -724,7 +785,8 @@ def test_site_check_failure_uploads_nothing(morning, tmp_root, monkeypatch):
     with pytest.raises(SiteCheckFailed) as raised:
         run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
     assert str(raised.value) == "the site check failed:\nindex.html: x"
-    assert checked == [[".basket-site", "days", "index.html", "method.html"]]  # the built site
+    assert checked == [[".shopper-site", "basket.html", "browse", "days", "index.html", "method.html", "p",
+                        "record.html", "search", "search.js", "site-days"]]  # the built site
     assert deps.site.objects == {} and deps.site.invalidations == []
     assert len(records_of(morning)) == 1  # the record went up all the same
     assert pinged(deps) == [f"{URL}/start", f"{URL}/fail"]
@@ -732,33 +794,37 @@ def test_site_check_failure_uploads_nothing(morning, tmp_root, monkeypatch):
 
 
 def test_guard_failure_uploads_nothing(morning, tmp_root, monkeypatch):
-    """The guard is given the built day file and the site's published copy; the first run's guard is the real one,
-    the second's finds a problem, in a text of Hebrew letters (two bytes each in UTF-8) too long for the ping."""
+    """The guard is given the built site, the site's published copies and its published product pages, and whether
+    the pages go up; the first run's guard is the real one, the second's finds a problem, in a text of Hebrew letters
+    (two bytes each in UTF-8) too long for the ping."""
     seen = []
 
-    def guard(local_days, published_days):
-        seen.append({name: {path.name: path.read_bytes() for path in folder.iterdir()}
-                     for name, folder in (("local", local_days), ("published", published_days))})
-        return guard_days(local_days, published_days) if len(seen) == 1 else ["days/2026-01-01.json: " + "א" * 200_000]
+    def guard(site_dir, published_dir, pages, with_pages):
+        held = ({path.relative_to(published_dir).as_posix(): path.read_bytes()
+                 for path in published_dir.rglob("*") if path.is_file()} if published_dir.is_dir() else {})
+        seen.append((held, sorted(pages), with_pages))
+        if len(seen) == 1:
+            return shop_guard.guard_site(site_dir, published_dir, pages, with_pages=with_pages)
+        return ["days/2026-01-01.json: " + "א" * 200_000]
 
-    monkeypatch.setattr(handler_module, "guard_days", guard)
+    monkeypatch.setattr(handler_module, "guard_site", guard)
     deps = deps_of(morning)
     first = run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
-    published = deps.site.objects["days/2026-01-01.json"][0]
-    assert seen == [{"local": {"2026-01-01.json": published}, "published": {}}]  # nothing published yet
+    assert seen == [({}, [], True)]  # nothing published yet
     site = dict(deps.site.objects)
     deps.ping.calls.clear()
     with pytest.raises(SiteCheckFailed) as raised:
         run(CFG, BASKET_EVENT, deps, AGAIN, tmp_root)
-    assert str(raised.value).startswith("the published-day guard failed:\ndays/2026-01-01.json: אאא")
-    assert seen[1] == {"local": {"2026-01-01.json": published}, "published": {"2026-01-01.json": published}}
+    assert str(raised.value).startswith("the publish guard failed:\ndays/2026-01-01.json: אאא")
+    assert seen[1] == ({key: site[key][0] for key in PUBLISHED}, sorted(key for key in site if key.startswith("p/")),
+                       True)
     assert deps.site.objects == site and deps.site.invalidations == [first["run_id"]]
     assert len(records_of(morning)) == 2
     assert pinged(deps) == [f"{URL}/start", f"{URL}/fail"]
     body = deps.ping.calls[1][1]
-    # cut to healthchecks.io's 100 kB by bytes, the ASCII head's 71 leaving an odd count for the two-byte letters: the
+    # cut to healthchecks.io's 100 kB by bytes, the ASCII head's 65 leaving an odd count for the two-byte letters: the
     # half letter at the cut is dropped, never sent broken
-    assert body.startswith("SiteCheckFailed: the published-day guard failed:\n")
+    assert body.startswith("SiteCheckFailed: the publish guard failed:\n")
     assert f"SiteCheckFailed: {raised.value}".startswith(body) and len(body.encode()) == 99_999
 
 
@@ -791,7 +857,7 @@ def test_a_failing_ping_is_logged_not_raised(morning, tmp_root, caplog):
     hidden = "OSError: <hidden>/start: no answer from <hidden> for check <hidden>"
     with caplog.at_level(logging.INFO, logger="basket.handler"):
         summary = run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
-    assert summary["uploaded"] == PUBLISHED and sorted(deps.site.objects) == sorted(PUBLISHED)
+    assert summary["uploaded"] == PUBLISHED and set(PUBLISHED) <= set(deps.site.objects)
     assert pinged(deps) == [f"{URL}/start", URL]
     warnings = [(r.levelno, r.getMessage()) for r in caplog.records if r.levelno >= logging.WARNING]
     assert warnings == [(logging.WARNING, f"the start ping to healthchecks.io failed: {hidden}"),
@@ -812,9 +878,9 @@ def test_work_folder_is_removed_after_success_and_after_failure(morning, tmp_roo
 
     def build_seen(*args, **kwargs):
         during.append([path.name for path in tmp_root.iterdir()])
-        return build_module.build_day(*args, **kwargs)
+        return shop_build.build_site(*args, **kwargs)
 
-    monkeypatch.setattr(handler_module, "build_day", build_seen)
+    monkeypatch.setattr(handler_module, "build_site", build_seen)
     deps = Deps(archive=morning, site=MemorySite(),
                 ping=Recorder(watch=lambda: [path.name for path in tmp_root.iterdir()]))
     run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
@@ -841,3 +907,378 @@ def test_the_scheduled_run_never_revises():
     source = inspect.getsource(handler_module)
     assert re.findall(r"\brevise\s*=\s*[^,)\s]+", source) == ["revise=None"]
     assert "--revise" not in source
+
+
+# ---- the site run over the golden day stretched back (tests/test_shop_build.py's history) ----
+
+T = DAY - timedelta(days=14)                                       # the day the run of DAY scores
+T_AT = datetime(2025, 12, 18, 10, 33, 7, tzinfo=timezone.utc)      # S3's time of T's forecasts file, T's morning
+STAMP = datetime(2026, 1, 1, 9, 30, 7, tzinfo=timezone.utc)        # S3's time of the run's puts
+LATER_STAMP = datetime(2026, 1, 1, 9, 45, 7, tzinfo=timezone.utc)  # S3's time of a second run's puts
+AFTER = datetime(2026, 1, 1, 22, 30, tzinfo=timezone.utc)          # 00:30 on 2 January in Israel: past DAY's cutoff
+FAR = DAY - timedelta(days=120)                                    # a frozen day past the read's reach
+CITY, MARKET = "carrefour-city", "carrefour-market"
+ERROR = "carrefour: PromoFull7290055700007-001-002-20260101-0800.gz: RewardType 7 not seen in the chain's files"
+T_SITE_DAY = f"site-days/{T.isoformat()}.json"
+REGISTRY = kind_key("covered", None, DAY, "covered.parquet")
+
+
+class FailingSite(MemorySite):
+    """A site bucket whose every put fails while `failing`, as one that does not answer."""
+
+    def __init__(self):
+        super().__init__()
+        self.failing = False
+
+    def _put(self, *args):
+        if self.failing:
+            raise OSError("the site bucket did not answer")
+        super()._put(*args)
+
+
+def stretched(archive: MemoryArchive, root: Path) -> MemoryArchive:
+    """The golden morning stretched back over the days before it, as tests/test_shop_build.py's tree is: Osher Ad's
+    items tables of the 40 days before DAY and of DAY, with milk on a promotion for club members today, so that pasta
+    and eggs have forecasts; a registry 100 days back holding a product the read no longer reaches; and day T's
+    forecasts file, frozen on T's morning. From then on, S3's clock gives STAMP to every put."""
+    _history(root, 40)
+    for back in range(41):
+        archive.put_tables(OSHER, DAY - timedelta(days=back), root / "tables")
+    _registry(root, root / "old")
+    archive.put_covered(DAY - timedelta(days=100), root / "tables")
+    archive.s3_clock = lambda: T_AT
+    archive.put_frozen(T, _frozen_file(), T_AT)
+    archive.s3_clock = lambda: STAMP
+    archive.reads.clear()
+    return archive
+
+
+def published_before(site: MemorySite, archive: MemoryArchive, out_of_reach=()) -> dict:
+    """The site as T's morning left it: T's forecasts file, the ledger naming it and T's site-day file (listing the
+    days `out_of_reach`); what the site then holds."""
+    frozen = ArchiveFreezer(archive, RUN_AT).frozen(T)
+    for key, body in ((site_key(T), frozen.body), (LEDGER, ledger(None, frozen)),
+                      (T_SITE_DAY, json.dumps({"day": T.isoformat(),
+                                               "out_of_reach": [far.isoformat() for far in out_of_reach]}).encode())):
+        site._put(key, body, CONTENT_TYPES[PurePosixPath(key).suffix], CACHE_CONTROL)
+    return dict(site.objects)
+
+
+def site_deps(archive: MemoryArchive, site: MemorySite | None = None, watch=None) -> Deps:
+    site = MemorySite() if site is None else site
+    published_before(site, archive)
+    return Deps(archive=archive, site=site, ping=Recorder(watch=watch))
+
+
+def unscored(frozen_body: bytes) -> bytes:
+    """A scores file of a frozen file's rows, every row unscored: rows other than those the run makes, which scores
+    them."""
+    header, *rows = csv.reader(io.StringIO(gzip.decompress(frozen_body).decode()))
+    out = io.StringIO()
+    writer = csv.writer(out, lineterminator="\n")
+    writer.writerow((*header, *SCORE_FIELDS))
+    for row in rows:
+        writer.writerow((*row, "", "5", "", "", UNSCORED, ""))
+    return gzip.compress(out.getvalue().encode(), mtime=0)
+
+
+def items_of(archive: MemoryArchive, root: Path, slug: str, day: date, rows, error=None) -> None:
+    """The chain's items table of the day, written by hand (tests/test_history.py's `_table`) and put in the archive."""
+    _table(root / "tables", slug, day, rows=rows, error=error)
+    archive.put_tables(slug, day, root / "tables")
+
+
+@pytest.fixture
+def site_morning(morning, tmp_path):
+    return stretched(morning, tmp_path / "earlier")
+
+
+def test_the_first_site_run_publishes_every_page_and_freezes(site_morning, tmp_root, outcomes):
+    """The site run of DAY: T scored, its scores file put once and locked; DAY's forecasts frozen once, locked, and the
+    ledger grown by DAY's line at S3's time; every page and every data file of the build up, each with its content
+    type, and one invalidation; then the day's registry and T's summary put back, plain; the summary says what it
+    did and each step's seconds."""
+    deps = site_deps(site_morning)
+    before = dict(deps.site.objects)
+    summary = run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    [outcome] = outcomes
+    frozen = site_morning.objects[archive_key(DAY)]
+    assert frozen.lock_mode == LOCK_MODE and site_morning.objects[scores_archive_key(T)].lock_mode == LOCK_MODE
+    assert sorted(outcome.data) == sorted([site_key(DAY), LEDGER, scores_site_key(T), "site-days/2026-01-01.json",
+                                           "days/2026-01-01.json"])
+    assert (summary["uploaded"], summary["pages"], summary["pages_uploaded"]) == (outcome.data, True, len(outcome.pages))
+    assert sorted(deps.site.objects) == sorted({*before, *outcome.pages, *outcome.data})
+    assert {page_path(code) for code in (MILK, PASTA, EGGS)} <= set(outcome.pages) and set(FIXED_PAGES) <= set(
+        outcome.pages)
+    assert deps.site.objects[site_key(DAY)] == (frozen.body, "application/gzip", CACHE_CONTROL)
+    assert deps.site.objects[scores_site_key(T)][0] == site_morning.objects[scores_archive_key(T)].body
+    assert deps.site.objects["search.js"][1] == "text/javascript; charset=utf-8"
+    assert deps.site.objects[LEDGER][0] == before[LEDGER][0] + (
+        f"2026-01-01,{sha(frozen.body)},2026-01-01T09:30:07Z\n".encode())
+    assert {key: summary[key] for key in ("site_day_unchanged", "forecasts", "scored", "promotions_errors", "alerts")} == {
+        "site_day_unchanged": False, "forecasts": {"status": "frozen", "sha256": sha(frozen.body), "on_time": True},
+        "scored": ["2025-12-18"], "promotions_errors": {}, "alerts": []}
+    assert list(summary["seconds"]) == list(STEPS)
+    for key in (REGISTRY, summary_key(T)):  # put back after the upload, plain
+        assert site_morning.objects[key].lock_mode is None
+    assert deps.site.invalidations == [summary["run_id"]]
+    assert pinged(deps) == [f"{URL}/start", URL] and json.loads(deps.ping.calls[1][1]) == summary
+    assert list(tmp_root.iterdir()) == []
+
+
+def test_an_earlier_day_uploads_its_data_files_only(site_morning, tmp_root, outcomes):
+    """Call 9: with a later day on the site, the run of DAY puts its data files (its forecasts file, the ledger, T's
+    scores file, its site-day and day files) and no page; the guard asks for no product page then (S17), though the
+    later day's include one the build of DAY lacks."""
+    deps = site_deps(site_morning)
+    for key, body in (("site-days/2026-01-02.json", b'{"day": "2026-01-02"}'), ("days/2026-01-02.json", b"{}"),
+                      ("index.html", b"<p>2 January</p>"), ("p/2000000000099.html", b"<p>first covered on 2 January</p>")):
+        deps.site._put(key, body, CONTENT_TYPES[PurePosixPath(key).suffix], CACHE_CONTROL)
+    before = dict(deps.site.objects)
+    summary = run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    [outcome] = outcomes
+    assert (summary["pages"], summary["pages_uploaded"], summary["uploaded"]) == (False, 0, outcome.data)
+    assert sorted(outcome.data) == sorted([site_key(DAY), LEDGER, scores_site_key(T), "site-days/2026-01-01.json",
+                                           "days/2026-01-01.json"])
+    assert sorted(deps.site.objects) == sorted({*before, *outcome.data})
+    assert {key: deps.site.objects[key] for key in before if key not in outcome.data} == {
+        key: held for key, held in before.items() if key not in outcome.data}  # the later day's pages stay
+    assert deps.site.invalidations == [summary["run_id"]]
+
+
+def test_an_unchanged_rerun_uploads_pages_not_the_day_files(site_morning, tmp_root, outcomes):
+    """A second run of the day meets the frozen file ("same") and T's summary: no data file is new, so the pages go up
+    alone, and the site's data files stay as first published."""
+    deps = site_deps(site_morning)
+    first = run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    data = {key: deps.site.objects[key] for key in first["uploaded"]}
+    site_morning.s3_clock = lambda: LATER_STAMP
+    second = run(CFG, BASKET_EVENT, deps, AGAIN, tmp_root)
+    assert (second["unchanged"], second["site_day_unchanged"], second["pages"], second["uploaded"]) == (
+        True, True, True, [])
+    assert second["pages_uploaded"] == first["pages_uploaded"] == len(outcomes[1].pages)
+    assert (second["forecasts"], second["scored"]) == ({**first["forecasts"], "status": "same"}, [])
+    assert {key: deps.site.objects[key] for key in data} == data
+    assert deps.site.invalidations == [first["run_id"], second["run_id"]]
+
+
+def test_a_rerun_after_a_failed_upload_publishes_the_frozen_bytes(site_morning, tmp_root):
+    """The first run freezes DAY and puts T's scores file, then its upload fails: nothing is put back, so T stays due.
+    The rerun meets the frozen file ("same") and the stored scores: the site gets the archive's bytes, the ledger's line
+    the first put's S3 time, and T's summary goes up after them."""
+    site = FailingSite()
+    deps = site_deps(site_morning, site)
+    site.failing = True
+    with pytest.raises(OSError, match="did not answer"):
+        run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    assert pinged(deps) == [f"{URL}/start", f"{URL}/fail"]
+    frozen = site_morning.objects[archive_key(DAY)].body
+    assert scores_archive_key(T) in site_morning.objects
+    assert summary_key(T) not in site_morning.objects and REGISTRY not in site_morning.objects
+    site.failing = False
+    site_morning.s3_clock = lambda: LATER_STAMP
+    summary = run(CFG, BASKET_EVENT, deps, AGAIN, tmp_root)
+    assert summary["forecasts"] == {"status": "same", "sha256": sha(frozen), "on_time": True}
+    assert site.objects[site_key(DAY)][0] == frozen
+    assert site.objects[LEDGER][0].endswith(f"2026-01-01,{sha(frozen)},2026-01-01T09:30:07Z\n".encode())
+    assert summary["scored"] == ["2025-12-18"]
+    assert site.objects[scores_site_key(T)][0] == site_morning.objects[scores_archive_key(T)].body
+    assert summary_key(T) in site_morning.objects and REGISTRY in site_morning.objects
+
+
+def test_forecasts_that_differ_stop_before_any_upload(site_morning, tmp_root):
+    """Question E: the archive holds a forecasts file of DAY with other rows: ForecastsDiffer names both SHA-256s and
+    what to do, nothing goes up, nothing is put back, and the stored file stays."""
+    other = _frozen_file()
+    site_morning.put_frozen(DAY, other, RUN_AT)
+    deps = site_deps(site_morning)
+    before = dict(deps.site.objects)
+    with pytest.raises(ForecastsDiffer) as raised:
+        run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    message = str(raised.value)
+    assert sha(other) in message and message.endswith("\n" + handler_module.WHAT_NOW[ForecastsDiffer])
+    assert "Rerun the site run at the commit that froze the day" in message
+    assert deps.site.objects == before and deps.site.invalidations == []
+    assert pinged(deps) == [f"{URL}/start", f"{URL}/fail"] and deps.ping.calls[1][1] == f"ForecastsDiffer: {message}"
+    assert site_morning.objects[archive_key(DAY)].body == other
+    assert summary_key(T) not in site_morning.objects and REGISTRY not in site_morning.objects
+    assert records_of(site_morning) == []  # stopped before the basket's build
+    assert list(tmp_root.iterdir()) == []
+
+
+def test_a_run_past_the_cutoff_freezes_nothing_and_records_the_gap(site_morning, tmp_root):
+    """F6: a run of DAY after midnight ending it, Israel time, freezes nothing and adds no ledger line, so the record
+    shows DAY with no forecasts file; T is scored all the same (scoring needs no clock)."""
+    deps = site_deps(site_morning)
+    before = dict(deps.site.objects)
+    summary = run(CFG, BASKET_EVENT | {"day": "2026-01-01"}, deps, AFTER, tmp_root)
+    assert archive_key(DAY) not in site_morning.objects
+    assert summary["forecasts"] == NO_FORECASTS and summary["scored"] == ["2025-12-18"]
+    assert json.loads(deps.site.objects["site-days/2026-01-01.json"][0])["forecasts"]["status"] == "none"
+    assert deps.site.objects[LEDGER] == before[LEDGER] and site_key(DAY) not in deps.site.objects
+    assert sorted(summary["uploaded"]) == sorted([scores_site_key(T), "site-days/2026-01-01.json", "days/2026-01-01.json"])
+    assert "with no forecasts file: 19 December 2025 to 1 January 2026." in text_of(deps, "record.html")
+
+
+def test_todays_missing_items_table_names_the_chain(site_morning, tmp_root):
+    """A chain's items table of the day missing (its extraction did not finish it, as when the chain has no store list)
+    stops the run for all five chains, before the build, naming the chain and the table's key."""
+    key = kind_key("items", "carrefour", DAY, "items.parquet")
+    del site_morning.objects[key]
+    deps = site_deps(site_morning)
+    before = dict(deps.site.objects)
+    with pytest.raises(MissingTable) as raised:
+        run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    assert str(raised.value) == (
+        "no items table for chain 'carrefour' on 2026-01-01: its extraction run did not run or did not finish its "
+        f"items table, as when the chain has no store list ({key}); one chain's missing table stops the site run for "
+        "all five chains")
+    assert deps.site.objects == before and deps.site.invalidations == [] and records_of(site_morning) == []
+    assert pinged(deps) == [f"{URL}/start", f"{URL}/fail"] and deps.ping.calls[1][1] == f"MissingTable: {raised.value}"
+
+
+def test_a_missing_past_table_is_a_hole_in_each_of_its_columns(site_morning, tmp_root, tmp_path, monkeypatch):
+    """A chain's items table missing for a day of the read (its extraction did not run, or stopped before the table:
+    one file without the other is none) stops nothing: that day is a hole, and a promotion hole, in each of the
+    chain's columns, both of Carrefour's here, and the site-day file names only the tables read."""
+    yesterday, before = DAY - timedelta(days=1), DAY - timedelta(days=2)
+    for day in (before, yesterday):
+        items_of(site_morning, tmp_path / "carrefour", "carrefour", day, [_row(CITY, MILK, "7.20"), _row(MARKET, MILK, "7.35")])
+    del site_morning.objects[kind_key("items", "carrefour", yesterday, "report.json")]
+    histories = []
+
+    def load_seen(*args, **kwargs):
+        histories.append(shop_load(*args, **kwargs))
+        return histories[-1]
+
+    monkeypatch.setattr(shop_build, "load", load_seen)
+    deps = site_deps(site_morning)
+    run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    [history] = histories
+    for column in (CITY, MARKET):
+        gone, there = history.column_days[(column, yesterday)], history.column_days[(column, before)]
+        assert (gone.present, gone.hole, gone.promo_hole) == (False, True, True)
+        assert (there.present, there.hole) == (True, False)
+    read = json.loads(deps.site.objects["site-days/2026-01-01.json"][0])["inputs"]["items_tables"]
+    assert kind_key("items", "carrefour", before, "items.parquet") in read
+    assert kind_key("items", "carrefour", yesterday, "items.parquet") not in read
+
+
+def test_a_chains_promotions_error_publishes_then_pings_fail(site_morning, tmp_root, tmp_path):
+    """Question M (a): Carrefour's promotions could not be read today. The site goes up all the same, its pages
+    carrying P10's sentence, and then, after the upload, /fail names the chain and the field, with the summary."""
+    items_of(site_morning, tmp_path / "carrefour", "carrefour", DAY, [_row(CITY, MILK, "7.20"), _row(MARKET, MILK, "7.35")],
+             error=ERROR)
+    site = MemorySite()
+    deps = site_deps(site_morning, site, watch=lambda: sorted(site.objects))
+    before = sorted(site.objects)
+    summary = run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    assert summary["promotions_errors"] == {"carrefour": ERROR}
+    assert summary["alerts"] == [f"promotions not read: {ERROR}"]
+    assert pinged(deps) == [f"{URL}/start", f"{URL}/fail"]
+    assert deps.ping.calls[1][1] == f"SiteAlert: the site went up, and:\npromotions not read: {ERROR}\n\n" + json.dumps(summary)
+    assert deps.ping.seen == [before, sorted(site.objects)]  # /fail after the upload
+    assert page_path(MILK) in deps.ping.seen[1] and summary["pages_uploaded"] > 0
+    assert "Promotions from Carrefour's files could not be read today." in text_of(deps, page_path(MILK))
+
+
+@pytest.mark.parametrize("folder", ["forecasts", "scores"])
+def test_a_guard_failure_uploads_nothing(site_morning, tmp_root, folder):
+    """The guard compares the build with the site's published copies, fetched for it: here DAY's forecasts file, or
+    T's scores file, already on the site with other bytes than the archive's (a published record is never replaced).
+    The run stops before any upload, and nothing is put back."""
+    deps = site_deps(site_morning)
+    key = site_key(DAY) if folder == "forecasts" else scores_site_key(T)
+    deps.site._put(key, gzip.compress(b"other\n", mtime=0), "application/gzip", CACHE_CONTROL)
+    before = dict(deps.site.objects)
+    with pytest.raises(SiteCheckFailed) as raised:
+        run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    assert str(raised.value) == (f"the publish guard failed:\n{key} differs from the published file: a published "
+                                 f"{folder} file is never replaced")
+    assert deps.site.objects == before and deps.site.invalidations == []
+    assert summary_key(T) not in site_morning.objects and REGISTRY not in site_morning.objects
+    assert len(records_of(site_morning)) == 1  # the record went up all the same
+    assert pinged(deps) == [f"{URL}/start", f"{URL}/fail"]
+
+
+def test_the_work_folder_is_removed(site_morning, tmp_root, tmp_path):
+    """After a run that publishes with an alert and after one whose upload fails, tmp_root is empty; the alert goes out
+    from the run, before its folder is removed."""
+    items_of(site_morning, tmp_path / "carrefour", "carrefour", DAY, [_row(CITY, MILK, "7.20")], error=ERROR)
+    site = FailingSite()
+    deps = site_deps(site_morning, site, watch=lambda: [path.name for path in tmp_root.iterdir()])
+    run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    [[], [work]] = deps.ping.seen
+    assert pinged(deps) == [f"{URL}/start", f"{URL}/fail"] and work.startswith("basket-")
+    assert list(tmp_root.iterdir()) == []
+    site.failing = True
+    with pytest.raises(OSError):
+        run(CFG, BASKET_EVENT, deps, AGAIN, tmp_root)
+    assert list(tmp_root.iterdir()) == []
+
+
+def test_a_stored_scores_file_that_differs_publishes_then_pings_fail(site_morning, tmp_root):
+    """Task 13's carry: a scores file of T already stored with other rows is the record: its bytes go up, T's summary
+    is made from them, and after the upload /fail names T and both SHA-256s."""
+    stored = unscored(_frozen_file())
+    site_morning.put_scores(T, stored, RUN_AT)
+    deps = site_deps(site_morning)
+    summary = run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    [alert] = summary["alerts"]
+    assert alert.startswith("scores differ, the stored file kept: ") and sha(stored) in alert and "2025-12-18" in alert
+    assert deps.site.objects[scores_site_key(T)][0] == stored and summary["scored"] == ["2025-12-18"]
+    assert pinged(deps) == [f"{URL}/start", f"{URL}/fail"]
+    assert deps.ping.calls[1][1].startswith(f"SiteAlert: the site went up, and:\n{alert}\n\n")
+    assert summary_key(T) in site_morning.objects
+
+
+@pytest.mark.parametrize("listed", [False, True])
+def test_a_day_out_of_reach_pings_fail_on_its_first_morning_only(site_morning, tmp_root, listed):
+    """Task 19's ruling: a frozen day whose window the read no longer holds is never scored, and /fail names it after
+    the upload only on the morning it went out of reach: when the previous site-day file (T's) already lists it, the
+    run pings success."""
+    site_morning.put_frozen(FAR, _frozen_file(), RUN_AT)
+    site = MemorySite()
+    published_before(site, site_morning, out_of_reach=[FAR] if listed else [])
+    deps = Deps(archive=site_morning, site=site, ping=Recorder())
+    summary = run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    assert json.loads(site.objects["site-days/2026-01-01.json"][0])["out_of_reach"] == [FAR.isoformat()]
+    if listed:
+        assert summary["alerts"] == [] and pinged(deps) == [f"{URL}/start", URL]
+    else:
+        assert summary["alerts"] == ["out of reach, never scored: 2025-09-03"]
+        assert pinged(deps) == [f"{URL}/start", f"{URL}/fail"]
+
+
+def test_a_chain_without_a_store_list_stops_the_whole_site_run(site_morning, tmp_root):
+    """One chain's missing store list stops the site run for all five chains, as a missing table does, taken on
+    knowingly (Task 19's carry): the message says so."""
+    del site_morning.objects[raw_key("osherad", DAY, store_list("osherad")[0])]
+    deps = site_deps(site_morning)
+    before = dict(deps.site.objects)
+    with pytest.raises(NoStoreList) as raised:
+        run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    assert "osherad" in str(raised.value)
+    assert str(raised.value).endswith("\nOne chain's missing store list stops the site run for all five chains.")
+    assert deps.site.objects == before and deps.site.invalidations == []
+    assert pinged(deps) == [f"{URL}/start", f"{URL}/fail"]
+
+
+def test_the_s3_client_holds_a_connection_for_each_upload_worker(monkeypatch):
+    """botocore's pool holds 10 connections by default, fewer than the 16 upload workers (Task 22's carry): the one S3
+    client, the archive's and the site's, is made with one for each."""
+    import boto3
+
+    made = {}
+
+    def client(service, **kwargs):
+        made[service] = kwargs
+        return object()
+
+    monkeypatch.setattr(boto3, "client", client)
+    monkeypatch.setattr(handler_module, "run", lambda cfg, event, deps, now, tmp_root: deps)
+    for name, value in ENV.items():
+        monkeypatch.setenv(name, value)
+    deps = handler_module.handler({"mode": "basket"}, None)
+    assert made["s3"]["config"].max_pool_connections == UPLOAD_WORKERS == 16
+    assert deps.archive.client is deps.site.s3

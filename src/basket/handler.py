@@ -3,7 +3,8 @@ Scheduler sends the events each morning; the owner sends the same with a "day" t
 
     {"mode": "extract", "chain": "<slug>"}         the chain's day of full files into its prices, promotions and
                                                    items tables
-    {"mode": "basket", "collected_by": "HH:MM"}    the day's record, pages and day file, built and published
+    {"mode": "basket", "collected_by": "HH:MM"}    the site run: the shopper site's day, the basket's among it,
+                                                   built, checked, guarded and published
 
 "day" (YYYY-MM-DD) is optional in both; without it the day is the Israel calendar date when the invocation starts.
 Every field is checked before anything is read. Then neither mode runs until the collector's check has written its
@@ -31,34 +32,70 @@ and rows in the prices table and the rows whose price could not be read, and giv
 promotions error (None when there was none), each column's items, wide items, hole and promotion hole, and the
 seconds of the promotions and of the items steps.
 
-The basket mode fetches each chain's table of the day (MissingTable, naming the chain and the table's key, when its
-extraction run did not run or did not finish), its store list and its manifests, and the site's published copy of the
-day, then runs `basket.build.build_day` over the work folder as the Mac does, with the tables kept and never with a
-reason to revise: a day whose numbers differ from its published copy stops with RevisionNeeded, and only a hand build
-revises. The built site must pass `basket.check` and `basket.guard` (SiteCheckFailed). The upload puts the two pages
-only when the day is the site's latest or later, so a run for an earlier day leaves the front page alone, and the day
-file unless the published one already holds its numbers; one invalidation follows any upload. The run's record goes
-up to the archive, write-once and locked, whatever stopped the run once the record was written. The summary gives the
-day, the run id, the headline, whether the day was unchanged, whether the pages went up, the keys uploaded, the
-invalidation's id and the record's key.
+The basket mode is the shopper site's run (the shopper plan's Task 23; the 12:33 event keeps "basket", question M
+(b)): it builds, checks, guards and publishes the site's whole day, the basket's day among it. In order:
 
-The basket mode reports to healthchecks.io: `/start` before it looks for the check record; then the plain URL with
-the run's summary when the run succeeds, or `/fail` with the error's name and text when anything fails,
-MorningNotChecked included. The /fail body is cut to its first 100,000 bytes of UTF-8, since healthchecks.io keeps the
-first 100 kB of a body; a character the cut would split is dropped. An event refused as bad (ValueError) sends no ping.
-A ping that fails is logged as a warning naming its kind (start, success or fail) and the run goes on: its outcome
-never hangs on healthchecks.io. The ping URL is a secret: no part of it reaches the log, the error's text included.
+1. The fetch, into the work folder laid out as the Mac's synced `data/` and `site/`. From the archive: each chain's
+   prices table of the day (MissingTable, naming the chain and the table's key, when its extraction run did not run or
+   did not finish), its store list and its manifests; each chain's items table, with its report, of the day and of
+   the 90 days before it, every column of the chain in it: the day's own missing is MissingTable, naming the chain and
+   the key (its extraction stops before the items table when the chain has no store list), a past day's missing is a
+   hole in each of the chain's columns, as `shopper.history.load` reads it; the latest covered registry before the
+   day; every scoring summary. The frozen forecasts files the build scores are read by the archive's freezer itself
+   (`shopper.freeze.ArchiveFreezer`), not fetched. From the site: the day's published `days/<d>.json` and
+   `site-days/<d>.json`, the latest published site-day file before the day (the build tells by it the days newly out of
+   reach) and `forecasts/ledger.csv`, each under `site/` for the build to compare with and under `published/` for the
+   guard; for the guard alone, the published `forecasts/<d>.csv.gz` and the `scores/<t>.csv.gz` of each day due for
+   scoring (`shopper.score.due`), and the published `p/` keys. Past days' forecasts and scores files are not fetched:
+   the check resolves the record page's links to them by the ledger and the newest site-day file (the pre-flights' B5
+   and B2). One chain's missing table or store list therefore stops the run for all five chains, as a missing prices
+   table stops the basket's (taken on knowingly; the message says so).
+2. The build, `shopper.build.build_site`, through the archive's freezer, with the tables kept (`extract=False`) and
+   never with a reason to revise: it scores each day due (its scores file put once, locked), freezes the day's
+   forecasts (put once, locked; F6) and publishes the site-day and basket day files by B12. RevisionNeeded (the day's
+   numbers differ from its published copy), ForecastsDiffer (the archive holds a forecasts file of the day with other
+   rows, question E) and NoStoreList stop the run, nothing uploaded, each message saying what to do (`WHAT_NOW`): only a
+   hand build revises, with a one-line reason, once the published ledger names the day's forecasts file when the
+   archive holds one; a differing freeze is put up by a rerun at the commit that froze the day.
+3. The check (`shopper.check.check_site`) and the guard (`shopper.guard.guard_site`, its latest-day and product-page
+   rules only when the pages go up, the second pre-flight's S17): SiteCheckFailed, nothing uploaded.
+4. The upload (`basket.site.upload`): the data files the build lists new, always (Call 9), then, only when the day is
+   the site's latest or later, every page under `p/`, `browse/` and `search/` and the fixed pages, so a run for an
+   earlier day leaves every page as the later day's; one invalidation when anything went up.
+5. Put back, plain, after the upload: the day's covered registry and the summary of each day scored. A day is scored
+   once its summary is in the archive, so a run whose upload fails leaves its days due, and the next run publishes the
+   same scores file (the archive's bytes) before it marks them scored.
+
+The run's record goes up to the archive, write-once and locked, whatever stopped the run once the record was written.
+The summary gives the day, the basket's run id and headline, whether its day file and the site-day file were
+unchanged, whether the pages went up, the data files uploaded (by key) and the pages (by count), the invalidation's id,
+the record's key, the day's forecasts file as the freezer gave it (its status, "frozen", "late", "same" or "none", its
+SHA-256 and whether on time), the days scored, each chain's promotions error, the alerts, and the seconds of each step:
+the fetch, the build and, within it, the scoring and the one pass, the check, the guard, the upload, and the total
+(measured, not tuned: the plan's Task 25a speeds the run up).
+
+The basket mode reports to healthchecks.io: `/start` before it looks for the check record; then, when the run succeeds,
+the plain URL with the run's summary, or, when it succeeds with alerts, `/fail` after the upload with the alert lines
+and the summary: each chain whose promotions could not be read, by the extraction's message naming its field
+(question M (a)); each stored scores file whose rows differ from this run's, kept and published as the record, with
+both SHA-256s; the days that went out of the read's reach this morning (Task 19's ruling). When anything fails it pings
+`/fail` with the error's name and text, MorningNotChecked included. A /fail body is cut to its first 100,000 bytes of
+UTF-8, since healthchecks.io keeps the first 100 kB of a body; a character the cut would split is dropped. An event
+refused as bad (ValueError) sends no ping. A ping that fails is logged as a warning naming its kind (start, success or
+fail) and the run goes on: its outcome never hangs on healthchecks.io. The ping URL is a secret: no part of it reaches
+the log, the error's text included.
 
 The extract mode never pings. A chain whose prices extraction failed, or whose run Lambda killed (memory over the
-function's, or the timeout: then nothing goes up), shows in the basket run as a missing table, unless an earlier run of
-the day put one (a put adds or replaces; nothing deletes). A run stopped in a later step has put its prices table, so
-the basket run reads the chain as before: a chain with no store list it refuses as always, its /fail ping naming
-NoStoreList; a run stopped in the promotions or the items table shows as a missing items table once the site run reads
-the items tables (again unless an earlier run of the day put one), and until then nothing pings for it.
+function's, or the timeout: then nothing goes up), shows in the site run as a missing table, unless an earlier run of
+the day put one (a put adds or replaces; nothing deletes). A run stopped in a later step has put its prices table but
+not its items table: a chain with no store list, or a run stopped in the promotions or the items table, shows in the
+site run as a missing items table of the day (again unless an earlier run of the day put one).
 
 Environment: BUCKET (the archive bucket), SITE_BUCKET (the site stack's bucket: refused unless its name starts with
 SITE_BUCKET_PREFIX, so the archive bucket is never taken for it), DISTRIBUTION_ID, HEALTHCHECK_URL, USER_AGENT (each
-required), RETENTION_DAYS (default 3650), DUCKDB_TEMP_DIRECTORY (optional: the folder `basket.duck` gives DuckDB).
+required), RETENTION_DAYS (default 3650), DUCKDB_TEMP_DIRECTORY (optional: the folder `basket.duck` gives DuckDB). The one S3
+client, the archive's and the site's, holds a connection for each upload worker (`S3_CONFIG`; botocore's default pool
+holds 10, fewer than the 16).
 """
 import json
 import logging
@@ -66,6 +103,7 @@ import os
 import re
 import shutil
 import tempfile
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -75,20 +113,27 @@ from typing import Any
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
-from basket.archive import S3Archive, table_key
+from botocore.config import Config as ClientConfig
+
+from basket.archive import S3Archive, kind_key, table_key
 from basket.basket_file import DEFAULT_BASKET
-from basket.build import build_day
+from basket.build import RevisionNeeded
 from basket.chains import CARREFOUR_COLUMNS, SLUGS
-from basket.check import check_site
 from basket.duck import TEMP_DIRECTORY_VAR
-from basket.guard import guard_days
 from basket.rules import MissingTable
-from basket.site import S3Site
+from basket.site import UPLOAD_WORKERS, S3Site, day_key, day_of
+from basket.stores import NoStoreList
 from collector.handler import ping, ping_user_agent
 from collector.http import check_user_agent
 from collector.run import new_run_id
 from collector.store import RETENTION_DAYS
+from shopper.build import LEDGER, build_site
+from shopper.check import check_site
 from shopper.extract import extract_chain_day
+from shopper.freeze import ArchiveFreezer, ForecastsDiffer, scores_site_key, site_key
+from shopper.guard import guard_site
+from shopper.score import due
+from shopper.siteday import site_day_path
 
 # INFO on the package's logger itself, so the runs' summaries reach CloudWatch whatever level the runtime gives
 # the root logger, as the collector's handler does for its package.
@@ -106,6 +151,17 @@ CARREFOUR_TABLE = CARREFOUR_COLUMNS  # read at call time, as BASKET_FILE is: the
 EXTRACT_KINDS = ("PriceFull", "PromoFull")  # the extract mode's files of the day
 FAIL_BYTES = 100_000  # a /fail ping's body: the error's name and text, cut to this many bytes of UTF-8
 PING_PATHS = {"start": "/start", "success": "", "fail": "/fail"}  # each ping's kind and its path after the URL
+S3_CONFIG = ClientConfig(max_pool_connections=UPLOAD_WORKERS)  # a connection for each upload worker
+ALERTED = "SiteAlert: the site went up, and:"  # the head of the /fail body for a run that published with alerts
+# What to do, said after the message of each refusal the build gives (the module's docstring, 2).
+WHAT_NOW = {
+    RevisionNeeded: ("The site run never revises a published day: build the day by hand with a one-line reason to "
+                     "revise (scripts/sync.sh, shopper.build's revise option, then scripts/publish.sh), once the "
+                     "published ledger names the day's forecasts file when the archive holds one."),
+    ForecastsDiffer: ("Nothing went up. Rerun the site run at the commit that froze the day; a hand build can then put "
+                      "up pages from later code, with a one-line reason to revise when its numbers differ."),
+    NoStoreList: "One chain's missing store list stops the site run for all five chains.",
+}
 
 
 class MorningNotChecked(Exception):
@@ -113,7 +169,8 @@ class MorningNotChecked(Exception):
 
 
 class SiteCheckFailed(Exception):
-    """The built site failed `basket.check` or the published-day guard (`basket.guard`); the problems, one a line."""
+    """The built site failed the site check (`shopper.check`) or the publish guard (`shopper.guard`); the problems, one
+    a line."""
 
 
 @dataclass(frozen=True)
@@ -201,7 +258,10 @@ def run(cfg: Config, event: dict, deps: Deps, now: datetime, tmp_root: Path) -> 
                 summary = _extract(event["chain"], day, deps, now, work)
             else:
                 summary = _basket(event, deps, now, work, day)
-                _ping(deps, cfg.healthcheck_url, "success", json.dumps(summary))
+                if summary["alerts"]:  # the site went up: the alerts, after the upload (question M (a))
+                    _ping(deps, cfg.healthcheck_url, "fail", _cut(_alert(summary), FAIL_BYTES))
+                else:
+                    _ping(deps, cfg.healthcheck_url, "success", json.dumps(summary))
         finally:
             _remove(work)
     except Exception as err:
@@ -210,6 +270,11 @@ def run(cfg: Config, event: dict, deps: Deps, now: datetime, tmp_root: Path) -> 
         raise
     log.info(json.dumps(summary, sort_keys=True))
     return summary
+
+
+def _alert(summary: dict) -> str:
+    """The /fail body of a run that published with alerts: what went up, each alert a line, then the summary."""
+    return "\n".join([ALERTED, *summary["alerts"], "", json.dumps(summary)])
 
 
 def _cut(text: str, limit: int) -> str:
@@ -292,8 +357,46 @@ def _extract(slug: str, day: date, deps: Deps, now: datetime, work: Path) -> dic
             "keys": keys, **report.summary()}
 
 
+def _since(started: float) -> float:
+    """The seconds since `started` (`time.perf_counter`), to a tenth."""
+    return round(time.perf_counter() - started, 1)
+
+
+def _copy(site, key: str, *folders: Path) -> None:
+    """The site's published file at `key`, when there is one, written at that key under each of `folders`."""
+    body = site.published(key)
+    if body is None:
+        return
+    for folder in folders:
+        path = folder / key
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(body)
+
+
+def _published(site, day: date, due_days: list[date], site_dir: Path, published_dir: Path) -> None:
+    """The site's published copies the build and the guard read (the module's docstring, 1)."""
+    earlier = [seen for seen in map(day_of, site.keys("site-days/")) if seen is not None and seen < day]
+    compared = [day_key(day), site_day_path(Path(), day).as_posix(), LEDGER]
+    compared += [site_day_path(Path(), max(earlier)).as_posix()] if earlier else []
+    for key in compared:  # the build compares with them, and so does the guard
+        _copy(site, key, site_dir, published_dir)
+    for key in [site_key(day), *(scores_site_key(t) for t in due_days)]:  # the guard alone
+        _copy(site, key, published_dir)
+
+
+def _alerts(outcome) -> list[str]:
+    """What the run alerts for after the upload (the module's docstring), one line each."""
+    alerts = [f"promotions not read: {message}" for message in outcome.promotions_errors.values()]
+    alerts += [f"scores differ, the stored file kept: {message}" for message in outcome.scores_differ]
+    if outcome.newly_out_of_reach:
+        alerts.append("out of reach, never scored: " + ", ".join(t.isoformat() for t in outcome.newly_out_of_reach))
+    return alerts
+
+
 def _basket(event: dict, deps: Deps, now: datetime, work: Path, day: date) -> dict:
+    started = time.perf_counter()
     tables, raw, site, published = work / "tables", work / "raw", work / "site", work / "published"
+    seconds: dict[str, float] = {}
     records = []
     try:
         for slug in SLUGS:
@@ -302,39 +405,69 @@ def _basket(event: dict, deps: Deps, now: datetime, work: Path, day: date) -> di
                                    f"finish ({table_key(slug, day, 'prices.parquet')})")
             deps.archive.fetch_store_list(slug, day, raw)  # None: build_day refuses the chain as NoStoreList
             deps.archive.fetch_manifests(slug, day, work / "manifests")
-        # The site's published copy of the day: under site/ for build_day to compare the new numbers with, under
-        # published/ for the guard; with none, the guard finds an empty folder.
-        (published / "days").mkdir(parents=True)
-        copy = deps.site.published_day(day)
-        if copy is not None:
-            (site / "days").mkdir(parents=True)
-            for folder in (site / "days", published / "days"):
-                (folder / f"{day.isoformat()}.json").write_bytes(copy)
+        read = deps.archive.fetch_history(day, tables)
+        for slug in SLUGS:
+            key = kind_key("items", slug, day, "items.parquet")
+            if key not in read:
+                raise MissingTable(f"no items table for chain {slug!r} on {day}: its extraction run did not run or did "
+                                   f"not finish its items table, as when the chain has no store list ({key}); one "
+                                   "chain's missing table stops the site run for all five chains")
+        deps.archive.fetch_covered(day, tables)
+        scored = [summary.day for summary in deps.archive.fetch_summaries(tables)]
+        _published(deps.site, day, due(deps.archive.frozen_days(), scored, day), site, published)
         latest = deps.site.latest_published_day()
         with_pages = latest is None or day >= latest  # the pages show the site's latest day
-        outcome = build_day(day, work, site, BASKET_FILE, now, revise=None, rebuild=False, min_items=MIN_ITEMS,
-                            collected_by=event["collected_by"])
+        product_pages = deps.site.keys("p/")
+        seconds["fetch"] = _since(started)
+        step = time.perf_counter()
+        try:
+            outcome = build_site(day, work, site, now, collected_by=event["collected_by"],
+                                 freezer=ArchiveFreezer(deps.archive, now), revise=None, extract=False,
+                                 basket_path=BASKET_FILE, min_items=MIN_ITEMS)
+        except tuple(WHAT_NOW) as error:
+            raise type(error)(f"{error}\n{WHAT_NOW[type(error)]}") from error
+        seconds["build"] = _since(step)
+        seconds |= {name: round(took, 1) for name, took in outcome.seconds.items()}
+        step = time.perf_counter()
         problems = check_site(site)
         if problems:
             raise SiteCheckFailed("\n".join(["the site check failed:", *problems]))
-        problems = guard_days(site / "days", published / "days")
+        seconds["check"] = _since(step)
+        step = time.perf_counter()
+        problems = guard_site(site, published, product_pages, with_pages=with_pages)
         if problems:
-            raise SiteCheckFailed("\n".join(["the published-day guard failed:", *problems]))
-        uploaded = deps.site.upload(site, day, with_pages=with_pages, with_day=not outcome.unchanged)
-        invalidation = deps.site.invalidate(outcome.record.run_id) if uploaded else None
+            raise SiteCheckFailed("\n".join(["the publish guard failed:", *problems]))
+        seconds["guard"] = _since(step)
+        step = time.perf_counter()
+        uploaded = deps.site.upload(site, outcome.data, with_pages=with_pages)
+        invalidation = deps.site.invalidate(outcome.basket.record.run_id) if uploaded else None
+        seconds["upload"] = _since(step)
+        # Put back after the upload (the module's docstring, 5): a summary marks its day scored.
+        deps.archive.put_covered(day, tables)
+        for t in outcome.scored:
+            deps.archive.put_summary(t, tables)
     finally:  # every build of every day is kept, a refused one included
         for path in sorted((work / "basket" / f"date={day.isoformat()}").glob("basket-*.json")):
             records.append(deps.archive.put_basket_record(path, now))
-    return {"mode": "basket", "day": day.isoformat(), "run_id": outcome.record.run_id,
-            "headline": list(outcome.headline_lines), "unchanged": outcome.unchanged, "pages": with_pages,
-            "uploaded": uploaded, "invalidation": invalidation, "record": records[0] if records else None}
+    seconds["total"] = _since(started)
+    data = [key for key in uploaded if key in outcome.data]
+    frozen = outcome.frozen
+    return {"mode": "basket", "day": day.isoformat(), "run_id": outcome.basket.record.run_id,
+            "headline": list(outcome.basket.headline_lines), "unchanged": outcome.basket.unchanged,
+            "site_day_unchanged": outcome.unchanged, "pages": with_pages, "uploaded": data,
+            "pages_uploaded": len(uploaded) - len(data), "invalidation": invalidation,
+            "record": records[0] if records else None,
+            "forecasts": {"status": "none", "sha256": None, "on_time": None} if frozen is None else {
+                "status": frozen.status, "sha256": frozen.sha256, "on_time": frozen.on_time},
+            "scored": [t.isoformat() for t in outcome.scored], "promotions_errors": dict(outcome.promotions_errors),
+            "alerts": _alerts(outcome), "seconds": seconds}
 
 
-def handler(event, context):  # pragma: no cover - the boto3 clients and the wall clock; run() is tested
+def handler(event, context):
     import boto3
 
     cfg = Config.from_env(os.environ)
-    s3 = boto3.client("s3")
+    s3 = boto3.client("s3", config=S3_CONFIG)
     deps = Deps(archive=S3Archive(s3, cfg.bucket, cfg.retention_days),
                 site=S3Site(s3, boto3.client("cloudfront"), cfg.site_bucket, cfg.distribution_id),
                 ping=partial(ping, user_agent=ping_user_agent(cfg.user_agent)))

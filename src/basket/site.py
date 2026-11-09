@@ -12,20 +12,23 @@ The invalidation covers every path (`/*`), as publish.sh's does. Its CallerRefer
 run's id): CloudFront answers a second request with the same reference and the same paths with the first one's
 invalidation, and creates no new one.
 
-`upload` puts only the files it is told to: the basket's two pages (`PAGES`) when `with_pages` (a run for a day
-earlier than the site's latest leaves them alone, call 12 of `docs/headline-basket-step-two-plan.md`), then the day's
-file when `with_day` (a day whose published file is unchanged need not go up again). It checks that each of those files
-is in the site folder before it puts any, so a missing one leaves the site as it was. Anything else in the folder
-(the `.basket-site` marker, other days' files) stays local.
+`upload` is the site run's upload (the shopper plan's Task 23, Call 9): the data files it is given, always (the ones
+the build lists new: the day's forecasts file, the ledger, each scored day's scores file, the site-day and day files
+when not unchanged); then, only when `with_pages` (the day is the site's latest, so a run for an earlier day leaves
+every page as the later day's), every file under the page folders `p/`, `browse/` and `search/` (`PAGE_FOLDERS`), and
+the fixed pages, `FIXED_PAGES`: `index.html`, `method.html`, `record.html`, `basket.html` and `search.js`, rebuilt every
+morning from the code (the shopper plan's question H). Every one goes through `put_files` in that order, the data files
+first, so the pages that link them go up after them, and each takes its content type by its last suffix: `search.js`
+goes up as JavaScript, never as HTML (the second pre-flight's B3). Anything else in the folder (the marker, the
+published copies the build compared with) stays local.
 
 `put_files` puts the shopper site's files, any number of them, each once (a key given twice goes up once): it checks
 first that every file is in the site folder and has a content type above, and refuses (FileNotFoundError, ValueError)
 before any put when one is not, so a missing or unknown file leaves the site as it was; then it puts them through a
-pool of `UPLOAD_WORKERS` threads (a morning puts every product page, about 22,000 to 25,000 by the design's count). A
-put that fails is raised: the puts made before it are not undone, and those not yet started when it is raised are not
-made. `FIXED_PAGES` are the shopper site's fixed pages, rebuilt every morning from the code (the shopper plan's
-question H). The latest day on the site is the greatest of the basket's day files (`days/`) and the shopper site's
-(`site-days/`), which go up together.
+pool of `UPLOAD_WORKERS` threads (a morning puts every product page, about 22,000 to 25,000 by the design's count),
+started in the order given. A put that fails is raised: the puts made before it are not undone, and those not yet
+started when it is raised are not made. The latest day on the site is the greatest of the basket's day files (`days/`)
+and the shopper site's (`site-days/`), which go up together; `day_of` reads the day such a key names.
 
 Nothing here ever deletes. `days/`, `site-days/` and the data files are append-only, as on the Mac; and a page the
 build no longer writes stays on the site, since the hand upload deletes nothing either (the shopper plan's question H).
@@ -43,8 +46,9 @@ from botocore.exceptions import ClientError
 
 from collector.store import MISSING, error_code
 
-PAGES = ("index.html", "method.html")
+PAGES = ("index.html", "method.html")   # the basket's two pages: read only by tests/test_basket_template.py's role test
 FIXED_PAGES = ("index.html", "method.html", "record.html", "basket.html", "search.js")   # the pre-flight's S14
+PAGE_FOLDERS = ("p", "browse", "search")   # the product pages, the browse pages and the search pieces
 UPLOAD_WORKERS = 16
 HTML = "text/html; charset=utf-8"
 JSON = "application/json; charset=utf-8"
@@ -58,7 +62,7 @@ def day_key(day: date) -> str:
     return f"days/{day.isoformat()}.json"
 
 
-def _day_of(key: str) -> date | None:
+def day_of(key: str) -> date | None:
     """The day a key `days/<YYYY-MM-DD>.json` or `site-days/<YYYY-MM-DD>.json` names; None for any other key."""
     match = _DAY_FILE.match(key)
     if match is None:
@@ -93,23 +97,19 @@ class _Site:
     def latest_published_day(self) -> date | None:
         """The greatest day among the site's `days/<YYYY-MM-DD>.json` and `site-days/<YYYY-MM-DD>.json` files; None
         when it has none."""
-        days = [day for day in map(_day_of, self._keys("days/") + self._keys("site-days/")) if day is not None]
+        days = [day for day in map(day_of, self._keys("days/") + self._keys("site-days/")) if day is not None]
         return max(days, default=None)
 
-    def upload(self, site_dir: Path, day: date, with_pages: bool, with_day: bool) -> list[str]:
-        """Put the two pages from `site_dir` when `with_pages`, then the day's file when `with_day`; their keys,
-        in that order. Refuses (FileNotFoundError), putting nothing, when one of those files is missing."""
-        files = []
+    def upload(self, site_dir: Path, data: Sequence[str], with_pages: bool) -> list[str]:
+        """Put the data files `data` from `site_dir`, then, when `with_pages`, every file under PAGE_FOLDERS and the
+        FIXED_PAGES, through `put_files`; their keys, in that order. Refuses, putting nothing, when one of them is not in
+        the folder (FileNotFoundError) or has no content type (ValueError)."""
+        keys = list(data)
         if with_pages:
-            files += [(name, HTML) for name in PAGES]
-        if with_day:
-            files.append((day_key(day), JSON))
-        for key, _ in files:
-            if not (site_dir / key).is_file():
-                raise FileNotFoundError(f"{site_dir / key}: not in the built site; nothing uploaded")
-        for key, content_type in files:
-            self._put(key, (site_dir / key).read_bytes(), content_type, CACHE_CONTROL)
-        return [key for key, _ in files]
+            keys += [path.relative_to(site_dir).as_posix() for folder in PAGE_FOLDERS
+                     for path in sorted((site_dir / folder).rglob("*")) if path.is_file()]
+            keys += FIXED_PAGES
+        return self.put_files(site_dir, keys)
 
     def put_files(self, site_dir: Path, keys: Sequence[str]) -> list[str]:
         """Put each file `site_dir / key` at `key` with its content type and max-age=300, through a pool of
