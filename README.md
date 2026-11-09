@@ -16,7 +16,6 @@ Built by Doron Reiffman ([LinkedIn](https://www.linkedin.com/in/doronreiffman)).
 
 ## At a glance
 
-<!-- 25a figures -->
 | | |
 |---|---|
 | Chains | 5 (Shufersal, Rami Levy, Osher Ad, Carrefour, Yochananof), on three portals |
@@ -27,7 +26,7 @@ Built by Doron Reiffman ([LinkedIn](https://www.linkedin.com/in/doronreiffman)).
 | Shopper site | a page per product at 9 store formats, about 24,000 products on 7 November 2026's tables; built, not yet live |
 | Kept for | 10 years, write-once (S3 Object Lock) |
 | Tests | 2,473 (99.86% coverage), plus 2,325 planted bugs, all caught |
-| Cost | about $1 to $3 a month in the first year, about $1 to $3 more for the update files through the day (an estimate; a check of its arithmetic gives $0.90 to $3.70), plus about $0.10 to $0.90 for the basket (about $3.50 at worst), and about $4.80 to $6.80 for the shopper site once it runs (an estimate; about $11 at worst) |
+| Cost | about $1 to $3 a month in the first year, about $1 to $3 more for the update files through the day (an estimate; a check of its arithmetic gives $0.90 to $3.70), plus about $0.10 to $0.90 for the basket (about $3.50 at worst), and about $4.80 to $7.20 for the shopper site once it runs (an estimate; about $11 at worst) |
 
 ## Why
 
@@ -63,8 +62,7 @@ All times are Israel time. The diagram shows the headline basket's morning. The 
 - **A number anyone can reproduce.** The barcodes and the rules are published, and the pricing rules run as DuckDB SQL, each with tests of its own. Every build writes a private record naming the basket version and a fingerprint of the code. A published day changes only with a dated reason shown on its page, the earlier figures kept beside it. [docs/headline-basket.md](docs/headline-basket.md#the-number-rules)
 - **Claims no stronger than the evidence.** The page says "listed price" and "before promotions", never "cheapest chain", "you'll pay" or "at the till". A check before every upload refuses a page that uses a banned phrase or lacks the credit line. The shopper site adds its own banned words ("fake", "real deal", "you save" among them) and reports a promotion's measured gap to the product's own listed prices, never a motive. [docs/headline-basket.md](docs/headline-basket.md#words), [docs/shopper-site.md](docs/shopper-site.md#words), [docs/terms.md](docs/terms.md)
 - **Tests that are themselves tested.** 2,473 tests covering 99.86% of the collector's, the basket's and the shopper site's code, and 2,325 deliberate bugs that a [script](scripts/mutation_check.py) plants one at a time to prove a test catches each (as of 9 November 2026). CI runs both on every push, along with a lint of the AWS templates. Template tests pin the settings safety depends on: the archive's lock, the functions' permissions, the schedules.
-<!-- 25a figures -->
-- **Cheap, boring infrastructure.** About $1 to $3 a month for the collector in its first year, about $1 to $3 more for the update files through the day (averaged over the year; a check of the arithmetic gives $0.90 to $3.70, and the first weeks' measurements replace both), about $0.10 to $0.90 more for the basket (about $3.50 at worst), under $0.05 for the basket's site, and about $4.80 to $6.80 for the shopper site once it runs (about $11 at worst), each estimate written down with its sources. [docs/operations.md](docs/operations.md#cost), [docs/headline-basket.md](docs/headline-basket.md#cost-monthly-estimates)
+- **Cheap, boring infrastructure.** About $1 to $3 a month for the collector in its first year, about $1 to $3 more for the update files through the day (averaged over the year; a check of the arithmetic gives $0.90 to $3.70, and the first weeks' measurements replace both), about $0.10 to $0.90 more for the basket (about $3.50 at worst), under $0.05 for the basket's site, and about $4.80 to $7.20 for the shopper site once it runs (about $11 at worst), each estimate written down with its sources. [docs/operations.md](docs/operations.md#cost), [docs/headline-basket.md](docs/headline-basket.md#cost-monthly-estimates)
 
 ## What's next
 
