@@ -12,8 +12,15 @@ covered registry it carried forward (None for none); then:
   under the floor); its gate, its own, never its chain's (closed in step one: its conditions and which hold, from the
   scorecard); and its counts (the items table's items, those listed across it, those on a promotion listed across it,
   the valid deals running today, and its front page rows).
-- `chains`, a block per chain, P10's state: its promotions error as the extraction named it, or None, and its items
-  table's key. P10's sentence goes on every section of a chain's columns, so it stays per chain.
+- `chains`, a block per chain, P10's state: its promotions error, or None, and its items table's key. P10's sentence
+  goes on every section of a chain's columns, so it stays per chain. The error is published by its kind, its file and
+  its field, never a value (`public_error`; the task review's finding 2): the kind is "file not read" when the message
+  is one of `basket.pricefile`'s for a file that does not read, else "format changed"; the file is named only when the
+  message names one the collector names (`collector.names.parse_file_name`), and the field only when the message's
+  first word is one of the fields the chains' files are known to carry, or a level of them
+  (`shopper.promotions.KNOWN_FIELDS`). Whatever a chain puts in a field or a tag therefore stays out of the public file;
+  the whole message, with the value, goes to the run's log and its alert only (the items table's private report and
+  `shopper.build.SiteOutcome.promotions_errors`).
 - `counts`, the front page's count line: the promotions listed across a column today (distinct by chain and id), the
   products they are on, and the products with a front page row (question A: products are barcodes).
 - `front_rows`, the front page's rows in its order, each with every number the row shows: its column and barcode, the
@@ -44,7 +51,7 @@ import gzip
 import io
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import date, datetime
 from pathlib import Path
 
@@ -53,14 +60,25 @@ from basket.build import publish_day_file
 from basket.chains import SLUGS
 from basket.page import render_day
 from basket.record import NOT_COMPARED, comparable, money
+from collector.names import parse_file_name
 from shopper.columns import BY_KEY, COLUMNS
 from shopper.deals import to_agora
 from shopper.freeze import Frozen, utc_text
 from shopper.history import ColumnDay
 from shopper.pages import Counts, FrontRow, ordered
+from shopper.promofile import FieldSets
+from shopper.promotions import KNOWN_FIELDS
 from shopper.words import shown_below
 
-__all__ = ["NOT_COMPARED", "Inputs", "comparable", "publish_site_day", "site_day", "site_day_path", "write_site_day"]
+__all__ = ["NOT_COMPARED", "Inputs", "comparable", "public_error", "publish_site_day", "site_day", "site_day_path",
+           "write_site_day"]
+
+# A promotions error's public form (the module's docstring): `basket.pricefile`'s messages for a file that does not
+# read, after its name; and the names a message may give as its field, the chains' known fields and their levels.
+UNREADABLE = ("the gzip is cut short or corrupt", "the zip is cut short or corrupt", "not XML", "the XML does not parse")
+FIELD_NAMES = frozenset({level.name for level in fields(FieldSets)} |
+                        {tag for sets in KNOWN_FIELDS.values() for level in fields(FieldSets)
+                         for tags in getattr(sets, level.name) for tag in tags})
 
 
 @dataclass(frozen=True)
@@ -79,6 +97,19 @@ def _column(key: str, today: ColumnDay, report: Mapping, rows: Sequence[FrontRow
             "gate": scorecard["columns"][key]["gate"],
             "counts": {"items": found["items"], "wide": found["wide"], "on_promotion": found["on_promotion"],
                        "valid_deals": found["valid_deals"], "front_rows": sum(row.column == key for row in rows)}}
+
+
+def public_error(slug: str, message: str) -> dict:
+    """A chain's promotions error as the site-day file publishes it: its kind, its file and its field, never a value
+    (the module's docstring)."""
+    rest = message.removeprefix(f"{slug}: ")
+    head, said, tail = rest.partition(": ")
+    file = None
+    if said and parse_file_name(head) is not None:
+        file, rest = head, tail
+    word = rest.split(" ", 1)[0]
+    return {"kind": "file not read" if rest.startswith(UNREADABLE) else "format changed", "file": file,
+            "field": word if word in FIELD_NAMES else None}
 
 
 def _row(row: FrontRow) -> dict:
@@ -105,6 +136,10 @@ def _forecasts(frozen: Frozen | None) -> dict:
             "frozen_at": utc_text(frozen.frozen_at), "on_time": frozen.on_time, "rows": _rows_in(frozen.body)}
 
 
+def _error(slug: str, message: str | None) -> dict | None:
+    return None if message is None else public_error(slug, message)
+
+
 def site_day(day: date, run_id: str, code_sha: str, built_at: datetime, collected_by: str, inputs: Inputs,
              column_days: Mapping[tuple[str, date], ColumnDay], chains: Mapping[str, Mapping], counts: Counts,
              rows: Sequence[FrontRow], frozen: Frozen | None, scorecard: Mapping,
@@ -119,7 +154,7 @@ def site_day(day: date, run_id: str, code_sha: str, built_at: datetime, collecte
         "inputs": {"items_tables": list(inputs.items_tables), "registry": inputs.registry},
         "columns": {column.key: _column(column.key, column_days[(column.key, day)], chains[column.slug], shown,
                                         scorecard) for column in COLUMNS},
-        "chains": {slug: {"promotions_error": chains[slug]["promotions_error"],
+        "chains": {slug: {"promotions_error": _error(slug, chains[slug]["promotions_error"]),
                           "items_table": kind_key("items", slug, day, "items.parquet")} for slug in SLUGS},
         "counts": {"promotions": counts.promotions, "products": counts.products, "below": counts.below},
         "front_rows": [_row(row) for row in shown],

@@ -105,7 +105,8 @@ def write_site_day(site: Path, found: dict) -> None:
 
 def test_a_clean_site_passes(site):
     found = site_day(site)
-    assert found["chains"]["carrefour"]["promotions_error"] == ERROR                      # the premises
+    assert found["chains"]["carrefour"]["promotions_error"] == {   # the premises (kind, file, field; never the value)
+        "kind": "format changed", "file": "PromoFull7290055700007-001-002-20260101-0800.gz", "field": "RewardType"}
     assert not any(column["gate"]["open"] for column in found["columns"].values())
     milk = (site / MILK_PAGE).read_text(encoding="utf-8")
     for column in (CITY, MARKET):
