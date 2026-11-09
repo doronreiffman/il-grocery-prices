@@ -1,11 +1,12 @@
-"""The site side of the scheduled build (`basket.site`): the published day read back, the latest day on the site,
-the pages and the day file put with the content types and cache-control `scripts/publish.sh` sets, one
-invalidation, and nothing deleted.
+"""The site side of the scheduled build (`basket.site`): the published files read back, the latest day on the site,
+the pages and the day file put with the content types and cache-control `scripts/publish.sh` sets, every site file
+put through the pool with its content type, one invalidation, and nothing deleted.
 
 The rules run on MemorySite and on S3Site over test_store's FakeS3 and a fake CloudFront client, which must give
 the same outcomes. The Stubber test at the end runs S3Site against real boto3 clients, so the put's, the read's,
 the listing's and the invalidation's parameter names are checked against botocore's models offline.
 """
+import threading
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -14,7 +15,8 @@ import pytest
 from botocore.exceptions import ClientError
 from botocore.stub import Stubber
 
-from basket.site import CACHE_CONTROL, HTML, JSON, PAGES, MemorySite, S3Site, _Site, day_key
+from basket.site import (CACHE_CONTROL, CONTENT_TYPES, HTML, JSON, PAGES, UPLOAD_WORKERS, MemorySite, S3Site, _Site,
+                         day_key)
 from test_store import FakeS3, client_error
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -25,6 +27,9 @@ METHOD = b"<!doctype html><title>method</title>"
 DAY_FILE = b'{"day": "2026-11-03"}'
 REFERENCE = "113000Z-basket-ab12"
 ONE_PATH_ALL = {"Paths": {"Quantity": 1, "Items": ["/*"]}, "CallerReference": REFERENCE}
+# The design's content type of each kind of site file, by its last suffix (the plan's Task 22).
+TYPES = {".html": "text/html; charset=utf-8", ".json": "application/json; charset=utf-8",
+         ".js": "text/javascript; charset=utf-8", ".csv": "text/csv; charset=utf-8", ".gz": "application/gzip"}
 
 
 class FakeCloudFront:
@@ -81,12 +86,39 @@ def built(folder: Path) -> Path:
     return folder
 
 
+def shopper_files(folder: Path, count: int) -> list[str]:
+    """`count` files as the shopper build leaves them, every kind at least once, each file's bytes its own key (so a
+    body put under another key shows); their keys, product pages last."""
+    keys = ["index.html", "record.html", "search.js", "search/pieces.json", "search/05e9.json", "browse/index.html",
+            "site-days/2026-11-03.json", "days/2026-11-03.json", "forecasts/ledger.csv", "forecasts/2026-11-03.csv.gz",
+            "scores/2026-10-20.csv.gz"]
+    keys += [f"p/{2000000000000 + n}.html" for n in range(count - len(keys))]
+    for key in keys:
+        (folder / key).parent.mkdir(parents=True, exist_ok=True)
+        (folder / key).write_bytes(key.encode())
+    return keys
+
+
+def recorded_puts(site) -> list[str]:
+    """The key of each put the site makes from now on, from whichever thread, in the order they run."""
+    puts, put = [], site._put
+
+    def recorded(key, *rest):
+        puts.append(key)
+        put(key, *rest)
+
+    site._put = recorded
+    return puts
+
+
 def test_keys_and_the_upload_settings_are_those_publish_sh_uses():
     assert day_key(DAY) == "days/2026-11-03.json"
     assert PAGES == ("index.html", "method.html")
     assert (HTML, JSON, CACHE_CONTROL) == ("text/html; charset=utf-8", "application/json; charset=utf-8", "max-age=300")
+    assert CONTENT_TYPES == TYPES
+    assert UPLOAD_WORKERS == 16
     script = (ROOT / "scripts" / "publish.sh").read_text()
-    for setting in (f"--content-type '{HTML}'", f"--content-type '{JSON}'", f"--cache-control '{CACHE_CONTROL}'",
+    for setting in (*(f"--content-type '{kind}'" for kind in TYPES.values()), f"--cache-control '{CACHE_CONTROL}'",
                     "--paths '/*'"):
         assert setting in script
 
@@ -114,6 +146,35 @@ def test_latest_published_day_ignores_what_only_looks_like_a_day_file(site):
     for key in ("days/2026-11-09.json.bak", "days/2026-11-31.json", "days/old/2026-11-08.json", "days/2026-11-7.json"):
         on_site(site, key, b"{}")
     assert site.latest_published_day() == EARLIER
+
+
+def test_latest_day_reads_both_folders(site):
+    """The basket's day files (`days/`) and the shopper site's (`site-days/`) are published together; the latest day
+    is the greatest in either."""
+    on_site(site, "site-days/2026-11-03.json", b"{}")
+    assert site.latest_published_day() == DAY  # a site-day file alone
+    on_site(site, "days/2026-11-02.json", b"{}")
+    assert site.latest_published_day() == DAY  # the greater is the site-day file's
+    on_site(site, "days/2026-11-04.json", b"{}")
+    assert site.latest_published_day() == date(2026, 11, 4)  # the greater is the day file's
+    for key in ("site-days/2026-11-09.json.bak", "site-days/old/2026-11-08.json", "site-days/2026-11-31.json",
+                "site-day/2026-11-09.json", "forecasts/2026-11-09.json"):
+        on_site(site, key, b"{}")
+    assert site.latest_published_day() == date(2026, 11, 4)
+    if isinstance(site, S3Site):
+        assert {kwargs["Prefix"] for op, kwargs in site.s3.calls if op == "paginate"} == {"days/", "site-days/"}
+
+
+def test_published_and_keys_read_what_is_on_the_site(site):
+    assert site.published("forecasts/ledger.csv") is None
+    assert site.keys("p/") == []
+    on_site(site, "forecasts/ledger.csv", b"day,sha256,frozen_at\n")
+    for key in ("p/2000000000053.html", "p/2000000000046.html", "index.html", "browse/index.html"):
+        on_site(site, key, key.encode())
+    assert site.published("forecasts/ledger.csv") == b"day,sha256,frozen_at\n"
+    assert site.published("p/2000000000046.html") == b"p/2000000000046.html"
+    assert sorted(site.keys("p/")) == ["p/2000000000046.html", "p/2000000000053.html"]
+    assert site.keys("search/") == []
 
 
 def test_s3_site_finds_the_latest_day_past_the_first_page():
@@ -178,6 +239,76 @@ def test_upload_refuses_a_missing_page(site, tmp_path):
     assert held(site) == {}
 
 
+def test_put_files_puts_each_once_with_its_content_type(site, tmp_path):
+    """2,000 files through the pool: each put once, its own bytes under its own key, its content type by its last
+    suffix (a forecasts file `.csv.gz` is gzip, never text) and max-age=300; a key given twice goes up once."""
+    keys = shopper_files(tmp_path, 2000)
+    puts = recorded_puts(site)
+    assert site.put_files(tmp_path, keys + ["index.html", "forecasts/ledger.csv"]) == keys
+    assert len(puts) == 2000 and sorted(puts) == sorted(keys)
+    assert held(site) == {key: (key.encode(), TYPES[Path(key).suffix], CACHE_CONTROL) for key in keys}
+    assert held(site)["forecasts/2026-11-03.csv.gz"][1] == "application/gzip"
+    assert held(site)["search.js"][1] == "text/javascript; charset=utf-8"
+    assert held(site)["forecasts/ledger.csv"][1] == "text/csv; charset=utf-8"
+
+
+def test_put_files_of_no_file_puts_nothing(site, tmp_path):
+    assert site.put_files(tmp_path, []) == []
+    assert held(site) == {}
+
+
+def test_put_files_refuses_a_missing_file_before_any_put(site, tmp_path):
+    keys = shopper_files(tmp_path, 40)
+    (tmp_path / "scores/2026-10-20.csv.gz").unlink()
+    with pytest.raises(FileNotFoundError, match="scores/2026-10-20.csv.gz"):
+        site.put_files(tmp_path, keys)
+    assert held(site) == {}  # not the 39 files that are there either
+    (tmp_path / "scores/2026-10-20.csv.gz").mkdir()  # a folder in its place is no file
+    with pytest.raises(FileNotFoundError, match="scores/2026-10-20.csv.gz"):
+        site.put_files(tmp_path, keys)
+    assert held(site) == {}
+
+
+@pytest.mark.parametrize("odd", [".shopper-site", "notes.txt", "p/2000000000046.htm", "forecasts/ledger"])
+def test_put_files_refuses_a_file_of_no_known_type_before_any_put(site, tmp_path, odd):
+    """The content type is set, never guessed (the site's headers send nosniff): a file of another kind stops the
+    upload before anything goes up."""
+    keys = shopper_files(tmp_path, 40)
+    (tmp_path / odd).write_bytes(b"")
+    with pytest.raises(ValueError, match=f"{odd}: no content type"):
+        site.put_files(tmp_path, keys + [odd])
+    assert held(site) == {}
+
+
+def test_put_files_puts_through_a_pool_of_16(tmp_path):
+    """The first 16 puts each wait until all 16 are in flight at once: a pool of fewer threads, or puts one after
+    another, never fills the barrier, which then breaks and fails the upload."""
+    site = MemorySite()
+    barrier, lock, started = threading.Barrier(16, timeout=10), threading.Lock(), []
+    put = site._put
+
+    def held_until_16_are_in_flight(key, *rest):
+        with lock:
+            started.append(key)
+            first = len(started) <= 16
+        if first:
+            barrier.wait()
+        put(key, *rest)
+
+    site._put = held_until_16_are_in_flight
+    keys = shopper_files(tmp_path, 40)
+    assert site.put_files(tmp_path, keys) == keys
+    assert sorted(site.objects) == sorted(keys)
+
+
+def test_put_files_raises_a_failed_put(tmp_path):
+    fake = FakeS3()
+    fake.errors["put_object"] = [client_error("AccessDenied", 403, "PutObject")]
+    site = S3Site(fake, FakeCloudFront(), "site-bucket", "E123")
+    with pytest.raises(ClientError, match="AccessDenied"):
+        site.put_files(tmp_path, shopper_files(tmp_path, 40))
+
+
 def test_invalidate_sends_one_path_and_the_reference():
     cloudfront = FakeCloudFront()
     site = S3Site(FakeS3(), cloudfront, "site-bucket", "E123")
@@ -225,6 +356,16 @@ def test_no_method_ever_deletes(tmp_path):
 
     call("published_day", DAY)
     call("latest_published_day")
+    call("published", "days/2026-11-03.json")
+    call("keys", "p/")
+    shop_dir = tmp_path / "shop"
+    shop_dir.mkdir()
+    keys = shopper_files(shop_dir, 40)
+    call("put_files", shop_dir, keys)
+    call("put_files", shop_dir, keys)  # the same files again
+    (shop_dir / "search.js").unlink()
+    with pytest.raises(FileNotFoundError):
+        call("put_files", shop_dir, keys)
     for with_pages in (True, False):
         for with_day in (True, False):
             call("upload", site_dir, DAY, with_pages=with_pages, with_day=with_day)
@@ -260,6 +401,8 @@ def test_real_clients_take_the_put_the_read_the_listing_and_the_invalidation(tmp
                              {"Bucket": "site-bucket", "Prefix": "days/"})
         s3_stub.add_response("list_objects_v2", {"Contents": [{"Key": "days/2026-11-03.json"}], "IsTruncated": False},
                              {"Bucket": "site-bucket", "Prefix": "days/", "ContinuationToken": "t"})
+        s3_stub.add_response("list_objects_v2", {"KeyCount": 0, "IsTruncated": False},
+                             {"Bucket": "site-bucket", "Prefix": "site-days/"})
         created = datetime(2026, 11, 3, 9, 30, tzinfo=timezone.utc)
         cloudfront_stub.add_response(
             "create_invalidation",

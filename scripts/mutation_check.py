@@ -172,6 +172,8 @@ PAGE_FOR_SHOP_CHECK = ("src/basket/page.py", ["tests/test_shop_check.py"])
 # too, so its revision test must be caught breaking by the shopper guard's tests as well.
 SHOP_GUARD = ("src/shopper/guard.py", ["tests/test_shop_guard.py"])
 GUARD_FOR_SHOP_GUARD = ("src/basket/guard.py", ["tests/test_shop_guard.py"])
+# The uploads (Task 22): publish.sh with its tests, beside sync.sh's (SYNC_SCRIPT, Task 2's).
+PUBLISH_SCRIPT = ("scripts/publish.sh", ["tests/test_scripts.py"])
 # The basket's reproduce words name the page the day file's numbers are on (Task 18, fix round 1).
 WORDS_FOR_SHOP_PAGES = ("src/basket/words.py", ["tests/test_shop_pages.py"])
 # The deal price for the eye is written by shopper.deals.to_agora, which the items table and the words both call: each
@@ -237,6 +239,25 @@ _RUN_TO_DOWNLOAD = ("        name = stored_name(item)\n"
                     "        body = self._fetch(item, name)\n")
 _RUN_READ_EARLIER = ('        prefix = manifest_key(self.day, self.slug, "").removesuffix(".json")  # this chain\'s runs of the day\n'
                      "        earlier = [json.loads(record) for record in self.store.read_records(prefix)]\n")
+
+# publish.sh's guard and its uploads, for the mutation that runs the guard after the upload (q22 publish).
+_PUBLISH_GUARD = ('if ! PYTHONPATH=src "$PYTHON" -m shopper.guard "$SITE" "$tmp/published" "$tmp/pages"; then\n'
+                  '  echo "the publish guard failed; nothing uploaded" >&2\n'
+                  '  exit 1\n'
+                  'fi\n'
+                  '\n')
+_PUBLISH_UPLOAD = ('# One allowlisted sync per kind of file, its content type set rather than guessed (the response headers send\n'
+                   "# nosniff), the types basket.site.CONTENT_TYPES gives the site run's uploads. The marker and anything else in the\n"
+                   '# folder stay local. Browsers keep a file five minutes, so an upload shows within minutes of the invalidation. No\n'
+                   '# sync here removes anything: a published file the build lacks stays (question H).\n'
+                   'upload() {\n'
+                   '  aws s3 sync "$SITE/" "s3://$bucket/" --exclude \'*\' "$@" --cache-control \'max-age=300\' --profile "$PROFILE" --region "$REGION"\n'
+                   '}\n'
+                   "upload --include '*.html' --content-type 'text/html; charset=utf-8'\n"
+                   "upload --include '*.json' --content-type 'application/json; charset=utf-8'\n"
+                   "upload --include '*.js' --content-type 'text/javascript; charset=utf-8'\n"
+                   "upload --include '*.csv' --content-type 'text/csv; charset=utf-8'\n"
+                   "upload --include '*.csv.gz' --content-type 'application/gzip'\n")
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
 MUTATIONS = {
@@ -2218,9 +2239,9 @@ MUTATIONS = {
     "a site-day file that does not read or holds no scorecard crashing the guard (q22 guard)": (SHOP_GUARD, "    except (ArithmeticError, ValueError, LookupError, TypeError, AttributeError) as error:", "    except ArithmeticError as error:"),
     "a missing record page passed (q22 guard)": (SHOP_GUARD, '        return ["record.html is not in the build"]\n', "        return []\n"),
     "a build with no site-day file passed (q22 guard)": (SHOP_GUARD, '        return ["no site-day file in the build: record.html has none to be compared with"]\n', "        return []\n"),
-    "the published product pages not asked for (q22 guard)": (SHOP_GUARD, "    return problems + (_pages(site, published_pages) if with_pages else [])", "    return problems"),
-    "the product pages asked for when they do not go up (q22 guard)": (SHOP_GUARD, "    return problems + (_pages(site, published_pages) if with_pages else [])", "    return problems + _pages(site, published_pages)"),
-    "the other rules dropped when the pages do not go up (q22 guard)": (SHOP_GUARD, "    return problems + (_pages(site, published_pages) if with_pages else [])", "    return problems if with_pages else []"),
+    "the published product pages not asked for (q22 guard)": (SHOP_GUARD, "    return problems + (_latest(site, published) + _pages(site, published_pages) if with_pages else [])", "    return problems + (_latest(site, published) if with_pages else [])"),
+    "the product pages asked for when they do not go up (q22 guard)": (SHOP_GUARD, "    return problems + (_latest(site, published) + _pages(site, published_pages) if with_pages else [])", "    return problems + (_latest(site, published) if with_pages else []) + _pages(site, published_pages)"),
+    "the other rules dropped when the pages do not go up (q22 guard)": (SHOP_GUARD, "    return problems + (_latest(site, published) + _pages(site, published_pages) if with_pages else [])", "    return (problems + _latest(site, published) + _pages(site, published_pages)) if with_pages else []"),
     "a key outside p/ asked for (q22 guard)": (SHOP_GUARD, 'if key.startswith("p/") and key.endswith(".html") and not', 'if key.endswith(".html") and not'),
     "a p/ key that is no page asked for (q22 guard)": (SHOP_GUARD, 'if key.startswith("p/") and key.endswith(".html") and not', 'if key.startswith("p/") and not'),
     "the missing pages all named (q22 guard)": (SHOP_GUARD, "missing[:SHOWN]", "missing"),
@@ -2231,10 +2252,59 @@ MUTATIONS = {
     "a wrong number of arguments exit 1 (q22 guard)": (SHOP_GUARD, 'file=sys.stderr)\n        return 2\n    site, published, keys', 'file=sys.stderr)\n        return 1\n    site, published, keys'),
     "a missing file of keys read as none (q22 guard)": (SHOP_GUARD, '    if not keys.is_file():\n        print(f"no file at {keys}: no list of the published product pages", file=sys.stderr)\n        return 2\n    problems = guard_site(site, published, keys.read_text(encoding="utf-8").split())', '    problems = guard_site(site, published, keys.read_text(encoding="utf-8").split() if keys.is_file() else [])'),
     "the keys split on new lines only (q22 guard)": (SHOP_GUARD, 'keys.read_text(encoding="utf-8").split()', 'keys.read_text(encoding="utf-8").split("\\n")'),
+    # Task 22, fix round 1: the latest day (a cross-task edit to Task 21's guard)
+    "an earlier day's pages over a later published day (q22 guard)": (SHOP_GUARD, "    if not built or not shown or shown[-1].name <= built[-1].name:\n", "    if True:\n"),
+    "the latest day rule on the oldest published day (q22 guard)": (SHOP_GUARD, "shown[-1].name <= built[-1].name", "shown[0].name <= built[-1].name"),
+    "the latest day rule on the build's oldest day (q22 guard)": (SHOP_GUARD, "shown[-1].name <= built[-1].name", "shown[-1].name <= built[0].name"),
+    "the latest day's rerun refused as an earlier day (q22 guard)": (SHOP_GUARD, "shown[-1].name <= built[-1].name", "shown[-1].name < built[-1].name"),
+    "a later published day refused when the pages do not go up (q22 guard)": (SHOP_GUARD, "if with_pages else [])", "if with_pages else _latest(site, published))"),
     "the problems not printed (q22 guard)": (SHOP_GUARD, "    for problem in problems:\n        print(problem, file=sys.stderr)\n", ""),
     # Task 21: the record page's order, whatever order the scorecard's mappings come in (a site-day file read back has its keys sorted)
     "the gate's conditions in the scorecard's order (q22 guard)": (SHOP_PAGES, "                         for key in CONDITIONS)       # their order", "                         for key in held)       # their order"),
     "the record's columns in the scorecard's order (q22 guard)": (SHOP_PAGES, "    for column in COLUMNS:       # their order, not the mapping's: the site-day file is written with its keys sorted\n        key, found = column.key, columns[column.key]\n", "    for key, found in columns.items():\n"),
+    # Task 22: the uploads (basket.site), publish.sh and sync.sh
+    "a missing file noticed after the puts (q22 upload)": (SITE, '            if not path.is_file():\n', '            if False:\n'),
+    "gz served as text (q22 upload)": (SITE, '".gz": "application/gzip"', '".gz": "text/csv; charset=utf-8"'),
+    "one worker (q22 upload)": (SITE, 'ThreadPoolExecutor(max_workers=UPLOAD_WORKERS)', 'ThreadPoolExecutor(max_workers=1)'),
+    "a pool of 8 (q22 upload)": (SITE, 'UPLOAD_WORKERS = 16', 'UPLOAD_WORKERS = 8'),
+    "a .csv.gz file typed by its first suffix (q22 upload)": (SITE, 'CONTENT_TYPES.get(PurePosixPath(key).suffix)', 'CONTENT_TYPES.get("".join(PurePosixPath(key).suffixes[:1]))'),
+    "a file of no known type put (q22 upload)": (SITE, '            if kind is None:\n', '            if False:\n'),
+    "a failed put not raised (q22 upload)": (SITE, '            list(pool.map(put, puts))', '            pool.map(put, puts)'),
+    "a key given twice put twice (q22 upload)": (SITE, '        for key in dict.fromkeys(keys):\n', '        for key in keys:\n'),
+    "the files put without cache control (q22 upload)": (SITE, 'kind, CACHE_CONTROL)', 'kind, "")'),
+    "a file's bytes put under another key (q22 upload)": (SITE, 'self._put(key, path.read_bytes(), kind', 'self._put(key, puts[0][1].read_bytes(), kind'),
+    "the files' keys not in the order given (q22 upload)": (SITE, '        return [key for key, _, _ in puts]\n', '        return sorted(key for key, _, _ in puts)\n'),
+    "the latest day read from days/ alone (q22 upload)": (SITE, 'self._keys("days/") + self._keys("site-days/")', 'self._keys("days/")'),
+    "a site-day file not read as a day (q22 upload)": (SITE, 'r"^(?:site-)?days/', 'r"^days/'),
+    "the keys of every prefix (q22 upload)": (SITE, '        return self._keys(prefix)\n', '        return self._keys("")\n'),
+    "published reads the day file (q22 upload)": (SITE, '        return self._get(key)\n', '        return self._get("days/" + key)\n'),
+    "--delete back on the pages (q22 publish)": (PUBLISH_SCRIPT, "upload --include '*.html' --content-type", "upload --delete --include '*.html' --content-type"),
+    "the guard after the upload (q22 publish)": (PUBLISH_SCRIPT, _PUBLISH_GUARD + _PUBLISH_UPLOAD, _PUBLISH_UPLOAD + _PUBLISH_GUARD),
+    "the marker not checked (q22 publish)": (PUBLISH_SCRIPT, 'if [ ! -f "$SITE/.shopper-site" ]; then', 'if false; then'),
+    "the basket's marker taken (q22 publish)": (PUBLISH_SCRIPT, 'if [ ! -f "$SITE/.shopper-site" ]; then', 'if [ ! -f "$SITE/.basket-site" ]; then'),
+    "the check not run (q22 publish)": (PUBLISH_SCRIPT, 'if ! PYTHONPATH=src "$PYTHON" -m shopper.check "$SITE"; then', 'if false; then'),
+    "the guard not run (q22 publish)": (PUBLISH_SCRIPT, 'if ! PYTHONPATH=src "$PYTHON" -m shopper.guard "$SITE" "$tmp/published" "$tmp/pages"; then', 'if false; then'),
+    "the site-day files not copied for the guard (q22 publish)": (PUBLISH_SCRIPT, 'for folder in days site-days forecasts scores; do', 'for folder in days forecasts scores; do'),
+    "the scores files not copied for the guard (q22 publish)": (PUBLISH_SCRIPT, 'for folder in days site-days forecasts scores; do', 'for folder in days site-days forecasts; do'),
+    "the published product pages not given to the guard (q22 publish)": (PUBLISH_SCRIPT, '> "$tmp/pages" || {\n', '> "$tmp/pages" && : > "$tmp/pages" || {\n'),
+    "a failed read of the bucket read as an empty one (q22 publish)": (PUBLISH_SCRIPT, '--recursive --profile "$PROFILE" --region "$REGION" || {', '--recursive --profile "$PROFILE" --region "$REGION" || true || {'),
+    "a failed listing of the product pages read as none (q22 publish)": (PUBLISH_SCRIPT, '> "$tmp/pages" || {', '> "$tmp/pages" || true || {'),
+    "gz served as text by publish.sh (q22 publish)": (PUBLISH_SCRIPT, "--include '*.csv.gz' --content-type 'application/gzip'", "--include '*.csv.gz' --content-type 'text/csv; charset=utf-8'"),
+    "the ledger not uploaded (q22 publish)": (PUBLISH_SCRIPT, "upload --include '*.csv' --content-type 'text/csv; charset=utf-8'\n", ''),
+    "search.js not uploaded (q22 publish)": (PUBLISH_SCRIPT, "upload --include '*.js' --content-type 'text/javascript; charset=utf-8'\n", ''),
+    "the uploads kept an hour (q22 publish)": (PUBLISH_SCRIPT, "--cache-control 'max-age=300'", "--cache-control 'max-age=3600'"),
+    "publish.sh under another identity (q22 publish)": (PUBLISH_SCRIPT, 'if [ "$who" != "$EXPECTED" ]; then', "if false; then"),
+    "the uploads to any bucket (q22 publish)": (PUBLISH_SCRIPT, '  "$BUCKET_PREFIX"?*) ;;\n', '  *) ;;\n'),
+    "the items tables not synced (q22 publish)": (SYNC_SCRIPT, 'aws s3 sync "s3://$BUCKET/tables/items/" data/tables/items/ --profile "$PROFILE" --region "$REGION"\n', ''),
+    "the covered registries not synced (q22 publish)": (SYNC_SCRIPT, 'aws s3 sync "s3://$BUCKET/tables/covered/" data/tables/covered/ --profile "$PROFILE" --region "$REGION"\n', ''),
+    "the scoring summaries not synced (q22 publish)": (SYNC_SCRIPT, 'aws s3 sync "s3://$BUCKET/tables/scored/" data/tables/scored/ --profile "$PROFILE" --region "$REGION"\n', ''),
+    "the forecasts files not synced (q22 publish)": (SYNC_SCRIPT, 'aws s3 sync "s3://$BUCKET/forecasts/" data/forecasts/ --exact-timestamps --profile "$PROFILE" --region "$REGION"\n', ''),
+    "the forecasts files' times not kept (q22 publish)": (SYNC_SCRIPT, 'data/forecasts/ --exact-timestamps --profile', 'data/forecasts/ --profile'),
+    "the scores files not synced (q22 publish)": (SYNC_SCRIPT, 'aws s3 sync "s3://$BUCKET/scores/" data/scores/ --profile "$PROFILE" --region "$REGION"\n', ''),
+    "the site-day files not synced (q22 publish)": (SYNC_SCRIPT, '  aws s3 sync "s3://$site_bucket/site-days/" site/site-days/ --exact-timestamps --profile "$PROFILE" --region "$REGION"\n', ''),
+    "the site-day files' times not kept (q22 publish)": (SYNC_SCRIPT, 'site/site-days/ --exact-timestamps --profile', 'site/site-days/ --profile'),
+    "the ledger not synced (q22 publish)": (SYNC_SCRIPT, '--include ledger.csv --exact-timestamps', '--include ledger.cs --exact-timestamps'),
+    "the ledger's time not kept (q22 publish)": (SYNC_SCRIPT, '--include ledger.csv --exact-timestamps \\\n', '--include ledger.csv \\\n'),
     # basket: extract
     "extract older file wins": (EXTRACT, "latest = max(named)", "latest = min(named)"),
     "extract first duplicate wins": (EXTRACT, "        latest[row.code] = row", "        latest.setdefault(row.code, row)"),
