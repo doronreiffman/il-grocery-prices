@@ -10,10 +10,12 @@ ignored, so neither an entity, a tag nor a line break can hide a phrase (`flatte
 day comes from the newest site-day file, `site-days/<day>.json` (ISO dates sort as dates): the day, each column's gate,
 each chain's promotions error and every day scored to date. Every `.html` under the folder is checked:
 
-- Each chain's span (`CHAIN_SPAN`, which holds every chain-supplied text, escaped) must hold no markup, `<` or `>`; then
-  it is cut out, so a chain's own words count for no rule below: a product named with a NEVER phrase or the word "us"
-  passes, and no phrase a page must carry can come from a chain's text. A span holding markup is refused and left in,
-  so what it holds is read as the page's own.
+- Each chain's span must hold no markup, `<` or `>`: `CHAIN_SPAN`, which holds every chain-supplied text, escaped, and
+  `basket.page.HE_SPAN`, the basket's span for a Hebrew name, which on `basket.html` and `method.html` holds the names
+  of the stores left out by rule as their chains publish them (Call 11). Then it is cut out, so a chain's own words
+  count for no rule below: a product or a store named with a NEVER phrase or the word "us" passes, and no phrase a page
+  must carry can come from a chain's text. A span holding markup is refused and left in, so what it holds is read as
+  the page's own.
 - No NEVER phrase as written or as read, except inside `method.html`'s `<ul id="never-words">`, whose items must be
   NEVER, in order, and which is cut out before the phrases are sought; "we", "our" and "us" never, as whole words in
   the text read.
@@ -32,18 +34,21 @@ each chain's promotions error and every day scored to date. Every `.html` under 
 Then by page. `index.html` and every `p/*.html` carry every ALWAYS phrase in the text read. A product page holds at most
 60,000 bytes (`MAX_PAGE`), and in each of its sections of a column (`data-column`): when the column's own gate is closed
 in the newest site-day file, F10's sentence naming the column (`no_odds_yet`), and once that is cut out, no odds word
-(`ODDS_WORDS`), matched as whole words in the text read (N4: "21 in" holds no "1 in"); when the section's chain
-(`data-chain`) had its promotions unread that day, P10's sentence naming the chain (`unreadable`), on each of the chain's
-columns (question M (g): both Carrefour's). A section of a column the site-day file does not name is refused. A
-probability on a closed column's page is caught when the page is drawn (`render_product` refuses an open gate), not
-here: no figure pattern tells it from P7's "34%" (N9). `basket.html` is held to the basket's index rules
-(`basket.check.index_problems`, naming basket.html: N3): the basket's ALWAYS phrases, and "Revised on" exactly when the
-newest `days/` file is revised. Each search piece, `search/*.json`, holds at most 150,000 bytes (`PIECE_MAX`). And
-`index.html` and the marker `.shopper-site` are there.
+(`ODDS_WORDS`) in the text read, a word from its start, so with its other forms ("forecasts", "chances", "forecasting"),
+and the phrase "1 in" whole (N4: "21 in" and "1 inch" hold none); when the section's chain (`data-chain`) had its
+promotions unread that day, P10's sentence naming the chain (`unreadable`), on each of the chain's columns (question M
+(g): both Carrefour's). A section of a column the site-day file does not name is refused. A probability on a closed
+column's page is caught by the product page's tests (`tests/test_product.py`'s
+`test_each_column_section_carries_f10_naming_the_column_and_no_probability`, the plan's Task 16), not here: no figure
+pattern tells it from P7's "34%" (N9). `basket.html` is held to the basket's index rules (`basket.check.index_problems`,
+naming basket.html: N3): the basket's ALWAYS phrases, and "Revised on" exactly when the newest `days/` file is revised.
+Each search piece, `search/*.json`, holds at most 150,000 bytes (`PIECE_MAX`). And `index.html` and the marker
+`.shopper-site` are there.
 
-Exit 0 clean; 1 with problems, one a line on stderr naming the file and the rule; 2 when there is no page to check
-(`basket.check.main`). `check_site` is imported under its own name beside `basket.check.check_site` (the first
-pre-flight's N13).
+A malformed page is a problem line too, never a crash: a page that is not UTF-8, or a link `urlsplit` refuses (a host in
+brackets that is no IPv6 address). Exit 0 clean; 1 with problems, one a line on stderr naming the file and the rule; 2
+when there is no page to check (`basket.check.main`). `check_site` is imported under its own name beside
+`basket.check.check_site` (the first pre-flight's N13).
 """
 import html
 import json
@@ -53,10 +58,11 @@ import sys
 from collections.abc import Mapping
 from datetime import date
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+from urllib.parse import SplitResult, unquote, urlsplit
 
 from basket.check import INDEX, NOINDEX, NOT_ADVICE, PRONOUNS, NoPages, flatten, index_problems, says, strip_tags
 from basket.check import main as check_main
+from basket.page import HE_SPAN
 from shopper.build import LEDGER, MARKER, read_ledger
 from shopper.freeze import scores_site_key, site_key
 from shopper.product import CHAIN_SPAN, MAX_PAGE
@@ -72,7 +78,7 @@ SITE_DAYS = "site-days/????-??-??.json"
 SEARCH_SCRIPT = '<script src="search.js" defer></script>'      # the front page's one script (shopper.pages)
 SCRIPT = "<script"
 NOTICES = {"the credit line": CREDIT_START, f'"{NOT_ADVICE}"': NOT_ADVICE}   # every page, in the text read
-SPAN = re.compile("(.*?)".join(map(re.escape, CHAIN_SPAN.split("{}"))), re.S)
+SPANS = tuple(re.compile("(.*?)".join(map(re.escape, span.split("{}"))), re.S) for span in (CHAIN_SPAN, HE_SPAN))
 MARKUP = re.compile("[<>]")
 NEVER_LIST = '<ul id="never-words">'                           # method.html's NEVER list (shopper.pages)
 LISTED = re.compile(re.escape(NEVER_LIST) + "(.*?)</ul>", re.S)
@@ -81,7 +87,8 @@ HEADER = re.compile(r"<header\b[^>]*>(.*?)</header>", re.S | re.I)
 SECTION = re.compile(r"<section\b([^>]*)>(.*?)</section>", re.S | re.I)
 TAG = re.compile(r"<([a-z][a-z0-9-]*)(\s[^>]*)?>", re.I)
 ATTRIBUTE = re.compile(r"""([^\s"'<>/=]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))""")
-ODDS = {word: re.compile(rf"\b{re.escape(flatten(word))}\b") for word in ODDS_WORDS}     # whole words (N4)
+# A word from its start, with its other forms ("forecasts"); a phrase whole, so "21 in" and "1 inch" hold no "1 in" (N4)
+ODDS = {word: re.compile(rf"\b{re.escape(flatten(word))}" + (r"\b" if " " in word else "")) for word in ODDS_WORDS}
 
 
 def _attributes(text: str | None) -> dict[str, str]:
@@ -97,15 +104,22 @@ def _tags(raw: str) -> list[tuple[str, dict[str, str]]]:
     return [(found.group(1).lower(), _attributes(found.group(2))) for found in TAG.finditer(raw)]
 
 
-def _elsewhere(url: str) -> bool:
+def _split(url: str) -> SplitResult | None:
+    """The URL's parts, or None for a text `urlsplit` refuses (a host in brackets that is no IPv6 address)."""
+    try:
+        return urlsplit(url)
+    except ValueError:
+        return None
+
+
+def _elsewhere(found: SplitResult) -> bool:
     """Whether a URL names another origin: it has a scheme ("https:", "data:") or a host ("//")."""
-    found = urlsplit(url)
     return bool(found.scheme or found.netloc)
 
 
 def _cut_spans(raw: str) -> tuple[str, bool]:
-    """The page with each chain span that holds no markup cut out (a space in its place), and whether a span held
-    markup (left in: what it holds is read as the page's own)."""
+    """The page with each chain span (of either kind) that holds no markup cut out (a space in its place), and whether
+    a span held markup (left in: what it holds is read as the page's own)."""
     marked = False
 
     def cut(found: re.Match) -> str:
@@ -115,7 +129,9 @@ def _cut_spans(raw: str) -> tuple[str, bool]:
             return found.group(0)
         return " "
 
-    return SPAN.sub(cut, raw), marked
+    for span in SPANS:
+        raw = span.sub(cut, raw)
+    return raw, marked
 
 
 def _never_list(raw: str) -> tuple[str, list[str]]:
@@ -163,7 +179,10 @@ def _page(site_dir: Path, name: str, path: Path, day: date | None, shown: Mappin
           line: str) -> tuple[list[str], list[str], set[str]]:
     """The page's own problems (the module's docstring), its links (each `href` and `src` once, in order) and its
     ids; `day` and `shown` the newest site-day file's (None without one), `line` the day's date line."""
-    raw, marked = _cut_spans(path.read_text(encoding="utf-8"))
+    try:
+        raw, marked = _cut_spans(path.read_text(encoding="utf-8"))
+    except UnicodeDecodeError:
+        return [f"{name}: not UTF-8"], [], set()
     problems = [f"{name}: markup inside a chain's span"] if marked else []
     if name == METHOD:
         raw, listed = _never_list(raw)
@@ -182,7 +201,8 @@ def _page(site_dir: Path, name: str, path: Path, day: date | None, shown: Mappin
     tags = _tags(raw)
     loaded = [found["src"] for _, found in tags if "src" in found]
     loaded += [found["href"] for tag, found in tags if tag == "link" and "href" in found]
-    problems += [f"{name}: loads from another origin: {url!r}" for url in loaded if _elsewhere(url)]
+    problems += [f"{name}: loads from another origin: {url!r}" for url in loaded
+                 if (parts := _split(url)) is not None and _elsewhere(parts)]      # one not a URL: the link rule's
     product = PRODUCT.fullmatch(name) is not None
     if name == INDEX or product:
         problems += [f"{name}: missing an always phrase: {phrase!r}" for phrase in ALWAYS if not says(phrase, read)]
@@ -221,10 +241,13 @@ def _records(site_dir: Path, shown: Mapping | None) -> set[str]:
 
 def _link_problem(name: str, url: str, files: set[str], records: set[str], ids: Mapping[str, set[str]]) -> str | None:
     """The problem with a link from the page `name`, or None: a link to another origin is not this rule's; a relative
-    one resolves to a file in the build (with a fragment, to a page holding that id) or to a record file (`_records`)."""
-    if _elsewhere(url):
+    one resolves to a file in the build (with a fragment, to a page holding that id) or to a record file (`_records`);
+    a text `urlsplit` refuses is no link."""
+    link = _split(url)
+    if link is None:
+        return f"{name}: a link that is not a URL: {url!r}"
+    if _elsewhere(link):
         return None
-    link = urlsplit(url)
     path = unquote(link.path)
     if path.startswith("/"):
         return f"{name}: a link to {url!r} from the root, not relative to the page"

@@ -19,6 +19,7 @@ import pytest
 
 from basket.chains import SLUGS
 from basket.check import NOT_ADVICE, NoPages
+from basket.page import HE_SPAN
 from basket.words import REVISED
 from shopper.build import LEDGER, MARKER, build_site
 from shopper.check import SEARCH_SCRIPT, check_site, main
@@ -131,6 +132,25 @@ def test_a_never_word_inside_a_chains_name_passes(site, words):
 def test_markup_inside_a_chains_span_fails(site, inside, more):
     add(site, MILK_PAGE, CHAIN_SPAN.format(inside))
     assert check_site(site) == [f"{MILK_PAGE}: {problem}" for problem in ["markup inside a chain's span", *more]]
+
+
+def test_a_store_named_with_a_never_word_passes(site):
+    """Call 11 (the task review's finding 1): basket.page's span for a Hebrew name holds the names of the stores left out
+    by rule, as their chains publish them, on basket.html and method.html; it is read for markup only, as CHAIN_SPAN."""
+    opening = HE_SPAN.split("{}")[0]
+    for name in ("basket.html", "method.html"):
+        path = site / name
+        text = path.read_text(encoding="utf-8")
+        found = re.search(f"store 413 \u201c{re.escape(opening)}([^<]*)</span>", text)
+        assert found, name                                                   # the premise: the store left out by rule
+        path.write_text(text.replace(found.group(0), found.group(0).replace(found.group(1), "Trick Mall US")),
+                        encoding="utf-8")
+    assert check_site(site) == []
+
+
+def test_markup_inside_the_baskets_hebrew_span_fails(site):
+    add(site, "basket.html", HE_SPAN.format("<b>Mall</b>"))
+    assert check_site(site) == ["basket.html: markup inside a chain's span"]
 
 
 def test_a_span_with_markup_is_still_read(site):
@@ -309,9 +329,19 @@ def test_an_odds_word_in_a_closed_columns_section_fails(site, word):
 
 
 def test_an_odds_word_inside_a_word_or_a_number_passes(site):
-    """N4: odds words are whole words, so "21 in" or "1 inch" is none."""
-    in_section(site, MILK_PAGE, OSHER, "<h2>Osher Ad</h2>", "<h2>Osher Ad</h2><p>On 21 in a row; 1 inch; oddset.</p>")
+    """N4: the phrase "1 in" is matched whole, so "21 in" or "1 inch" holds none; a word is matched from its start, so a
+    word that only ends in one ("perchance") holds none."""
+    in_section(site, MILK_PAGE, OSHER, "<h2>Osher Ad</h2>",
+               "<h2>Osher Ad</h2><p>On 21 in a row; 1 inch; perchance.</p>")
     assert check_site(site) == []
+
+
+@pytest.mark.parametrize("said, word", [("forecasts", "forecast"), ("chances", "chance"), ("forecasting", "forecast"),
+                                        ("Odds-on", "odds")])
+def test_an_odds_words_other_forms_in_a_closed_columns_section_fail(site, said, word):
+    """The design's odds words with their other forms: a word is matched from its start (the task review's point 2)."""
+    in_section(site, MILK_PAGE, OSHER, "<h2>Osher Ad</h2>", f"<h2>Osher Ad</h2><p>The {said} here.</p>")
+    assert check_site(site) == [f"{MILK_PAGE}: the odds word {word!r} in the section of {OSHER}, its gate closed"]
 
 
 def test_f10_missing_fails(site):
@@ -372,6 +402,20 @@ def test_a_section_of_a_column_the_site_day_file_does_not_name_fails(site):
 def test_a_link_to_a_missing_file_fails(site, name, markup, problem):
     add(site, name, markup)
     assert check_site(site) == [f"{name}: {problem}"]
+
+
+@pytest.mark.parametrize("markup, url", [('<a href="https://[x]/">x</a>', "https://[x]/"),
+                                         ('<img src="//[::1" alt="">', "//[::1")])
+def test_a_link_that_is_not_a_url_is_named_not_a_crash(site, markup, url):
+    """The task review's finding 2: `urlsplit` refuses a host in brackets that is no IPv6 address."""
+    add(site, MILK_PAGE, markup)
+    assert check_site(site) == [f"{MILK_PAGE}: a link that is not a URL: {url!r}"]
+
+
+def test_a_page_that_is_not_utf8_is_named_not_a_crash(site):
+    path = site / MILK_PAGE
+    path.write_bytes(path.read_bytes().replace(b"<main>", b"<main>\xff", 1))
+    assert check_site(site) == [f"{MILK_PAGE}: not UTF-8"]
 
 
 def test_a_link_with_a_fragment_resolves_to_the_id(site):

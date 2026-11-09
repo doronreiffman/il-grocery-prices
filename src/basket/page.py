@@ -31,8 +31,8 @@ and no mark, and the item count in the headline is the table's rows; with one, i
 A chain out of the ranking (B8) shows `too_few` in place of a bar; its prices are marked † and "out",
 and a note says why.
 
-Hebrew. A Hebrew name is wrapped whole in <span dir="rtl" lang="he">, and so is every run of Hebrew in a
-sentence (a store's name).
+Hebrew. A Hebrew name is wrapped whole in <span dir="rtl" lang="he"> (`HE_SPAN`), and so is every run of Hebrew in
+a sentence (a store's name); the shopper site's check reads what such a span holds for markup only.
 
 The shopper site's frame (`Frame`; the shopper plan's Task 18, its question M (c) and (d) and the second pre-flight's
 S6). The shopper site shows the same index page as `basket.html` in its own frame: with a frame, the header band is
@@ -65,6 +65,7 @@ from basket.rules import Headline, LeftOut
 from basket.stores import Store
 
 MARKER = ".basket-site"
+HE_SPAN = '<span dir="rtl" lang="he">{}</span>'   # a Hebrew name, escaped (the module's docstring)
 HEBREW = re.compile(r"[\u0590-\u05FF]+(?:[\s\d%'\".,()\-]+[\u0590-\u05FF]+)*")
 # every page: the colours and their dark set, the fonts, the body, links, the header band, sections
 _TOP = """\
@@ -385,7 +386,7 @@ def _text(text: str) -> str:
 
 
 def _he(text: str) -> str:
-    return f'<span dir="rtl" lang="he">{_text(text)}</span>'
+    return HE_SPAN.format(_text(text))
 
 
 def _prose(text: str) -> str:
