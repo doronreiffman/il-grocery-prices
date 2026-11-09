@@ -5,6 +5,7 @@ chain (the design's Call 8 and "Where the key lives"), published under B12 by th
 Column-days, pairs and front rows are built by hand as tests/test_product.py and tests/test_shop_pages.py build them;
 the items reports as Task 6 writes them; the forecasts file is tests/test_freeze.py's; the scored days' summaries as
 tests/test_record_numbers.py builds them. Names and barcodes are synthetic."""
+import gzip
 import json
 import os
 from dataclasses import asdict, replace
@@ -17,6 +18,7 @@ import basket.record
 from basket.build import RevisionNeeded
 from basket.chains import SLUGS
 from basket.page import render_day
+from basket.pricefile import BadPriceFile, read_items
 from basket.record import comparable
 from shopper.columns import COLUMNS, columns_of
 from shopper.freeze import Frozen
@@ -24,7 +26,8 @@ from shopper.items import ColumnReport, ItemsReport
 from shopper.measures import depth
 from shopper.pages import Counts, ordered
 from shopper.record import scorecard
-from shopper.siteday import (NOT_COMPARED, Inputs, publish_site_day, site_day, site_day_path, write_site_day)
+from shopper.siteday import (NOT_COMPARED, Inputs, public_error, publish_site_day, site_day, site_day_path,
+                             write_site_day)
 from shopper.words import shown_below
 from test_freeze import forecasts_of, sha
 from test_product import DAY, _days
@@ -38,7 +41,9 @@ INPUTS = Inputs(items_tables=("tables/items/chain=osherad/date=2026-11-19/items.
                               "tables/items/chain=osherad/date=2026-11-20/items.parquet"),
                 registry="tables/covered/date=2026-11-19/covered.parquet")
 FROZEN_AT = datetime(2026, 11, 20, 10, 33, 9, tzinfo=timezone.utc)
-ERROR = "carrefour: PromoFull7290055700007-001-002-20261120-0800.gz: RewardType 7 not seen in the chain's files"
+FILE = "PromoFull7290055700007-001-002-20261120-0800.gz"
+ERROR = f"carrefour: {FILE}: RewardType 7 not seen in the chain's files"
+PUBLIC_ERROR = {"kind": "format changed", "file": FILE, "field": "RewardType"}
 
 
 def _reports(error: str | None = None) -> dict[str, dict]:
@@ -102,8 +107,46 @@ def test_the_site_day_file_has_a_block_per_column_and_per_chain():
     assert found["columns"]["shufersal-universe"]["under_floor"] is True
     assert [found["columns"][key]["counts"]["front_rows"] for key in (DEAL, SHELI, EXPRESS)] == [1, 1, 0]
     assert found["chains"]["carrefour"] == {
-        "promotions_error": ERROR, "items_table": "tables/items/chain=carrefour/date=2026-11-20/items.parquet"}
+        "promotions_error": PUBLIC_ERROR, "items_table": "tables/items/chain=carrefour/date=2026-11-20/items.parquet"}
     assert found["chains"]["osherad"]["promotions_error"] is None
+
+
+
+VALUE = "<b>מבצע</b> \"x\""          # a chain's own text where a value should be: markup and Hebrew
+
+
+@pytest.mark.parametrize("message, public", [
+    (f"{FILE}: PromotionStartDateTime {VALUE!r} is not a date", ("format changed", FILE, "PromotionStartDateTime")),
+    (f"carrefour: IsGiftItem {VALUE!r} is not a quantity", ("format changed", None, "IsGiftItem")),
+    (f"carrefour: RewardType {VALUE} not seen in the chain's files", ("format changed", None, "RewardType")),
+    (f"carrefour: ClubID form not seen in the chain's files: {VALUE!r}", ("format changed", None, "ClubID")),
+    (f"{FILE}: MinPurchaseAmount {VALUE!r} is not an amount", ("format changed", FILE, "MinPurchaseAmount")),
+    (f"MinQty {VALUE!r} does not fit the items table", ("format changed", None, "MinQty")),
+    (f"{FILE}: item fields changed: added ['{VALUE}'], missing []", ("format changed", FILE, "item")),
+    (f"{FILE}: {VALUE} after Groups", ("format changed", FILE, None)),
+    (f"{VALUE}: RewardType 7 not seen in the chain's files", ("format changed", None, None)),
+])
+def test_a_promotions_error_is_published_by_its_kind_file_and_field_never_a_value(message, public):
+    """Finding 2's ruling: the site-day file says what kind of error, in which file, on which field, and never a value
+    from the chain's file; the whole message stays in the run's log and its alert. The file is named only when it is
+    one the collector names, the field only when it is one of the fields the chains' files carry, so whatever a chain
+    puts in a field or a tag stays out of the public file."""
+    text = message if message.startswith("carrefour: ") else f"carrefour: {message}"
+    assert public_error("carrefour", text) == dict(zip(("kind", "file", "field"), public))
+    found = render_day(_site_day(chains=_reports(text)))
+    assert "מבצע" not in found and "<b>" not in found and "\\\"x" not in found
+    assert json.loads(found)["chains"]["carrefour"]["promotions_error"] == dict(zip(("kind", "file", "field"), public))
+
+
+@pytest.mark.parametrize("data", [b"<html><body>\xd7\x9e</body></html>", gzip.compress(b"<Root/>", mtime=0)[:-6],
+                                  b"PK\x03\x04 cut", b"<?xml version='1.0'?><Root><a></Root>"])
+def test_a_promotion_file_that_does_not_read_is_published_as_such(data):
+    """The four ways a file does not read (`basket.pricefile`'s own messages): the kind says so, the file is named, no
+    field, and none of the file's bytes."""
+    with pytest.raises(BadPriceFile) as refused:
+        read_items(FILE, data)
+    found = public_error("carrefour", f"carrefour: {refused.value}")
+    assert found == {"kind": "file not read", "file": FILE, "field": None}
 
 
 def test_each_columns_gate_is_its_own_never_its_chains():

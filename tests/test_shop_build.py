@@ -28,7 +28,7 @@ from basket.chains import SLUGS
 from basket.extract import table_path
 from basket.rules import MissingTable
 from shopper import build as shop_build
-from shopper.build import MARKER, NotSynced, build_site, main
+from shopper.build import MARKER, NotFrozenYet, NotSynced, build_site, main
 from shopper.extract import extract_chain_day
 from shopper.forecast import Forecast, forecasts_csv
 from shopper.freeze import (ArchiveFreezer, Frozen, ReadOnlyFreezer, archive_key, ledger, scores_archive_key,
@@ -51,6 +51,8 @@ OSHER = "osherad"
 NOW = datetime(2026, 1, 1, 10, 33, tzinfo=timezone.utc)          # 12:33 in Israel
 LATER = datetime(2026, 1, 1, 13, 0, tzinfo=timezone.utc)
 STAMP = datetime(2026, 1, 1, 10, 33, 7, tzinfo=timezone.utc)     # S3's time of every put
+AFTER = datetime(2026, 1, 1, 22, 30, tzinfo=timezone.utc)         # 00:30 on 2 January in Israel: past DAY's cutoff
+AFTER_LATER = AFTER + timedelta(hours=1)
 T = DAY - timedelta(days=14)                                       # the day the build of DAY scores
 FAR = DAY - timedelta(days=120)                                    # a frozen day past the read's reach
 DEAL = {"promotion_id": "7", "description": "PLACEHOLDER", "start": "2025-12-28", "end": "2026-01-10", "kind": "3",
@@ -102,7 +104,11 @@ def tree(root: Path, history: bool = True) -> Path:
     return data
 
 
-def _build(data: Path, site: Path, freezer=None, now: datetime = NOW, **more):
+def _build(data: Path, site: Path, freezer=None, now: datetime | None = None, **more):
+    """A build of DAY: the site run's (the freezer given) at 12:33 Israel time; the Mac's, by default, past DAY's
+    cutoff, when its forecasts can no longer be frozen (finding 1's ruling)."""
+    if now is None:
+        now = AFTER if freezer is None else NOW
     return build_site(DAY, data, site, now, "11:48", ReadOnlyFreezer(data) if freezer is None else freezer,
                       basket_path=BASKET, min_items=1, **more)
 
@@ -458,8 +464,9 @@ def test_a_chains_promotions_error_is_the_chains(tmp_path):
     error = "carrefour: PromoFull7290055700007-001-002-20260101-0800.gz: RewardType 7 not seen in the chain's files"
     _table(data / "tables", "carrefour", DAY, rows=[_row("carrefour-market", MILK, "7.35")], error=error)
     outcome = _build(data, site)
-    assert outcome.promotions_errors == {"carrefour": error}
-    assert _site_day(site)["chains"]["carrefour"]["promotions_error"] == error
+    assert outcome.promotions_errors == {"carrefour": error}               # the whole message, for the alert
+    assert _site_day(site)["chains"]["carrefour"]["promotions_error"] == {
+        "kind": "format changed", "file": "PromoFull7290055700007-001-002-20260101-0800.gz", "field": "RewardType"}
     assert "Promotions from Carrefour's files could not be read today." in _text(site / page_path(MILK))
 
 
@@ -490,9 +497,9 @@ def test_a_refused_build_writes_no_page(tmp_path):
         page.write_text("OLD", encoding="utf-8")
     pages = _snapshot(site)
     with pytest.raises(RevisionNeeded, match="counts differ"):
-        _build(data, site, now=LATER)
+        _build(data, site, now=AFTER_LATER)
     assert _snapshot(site) == pages
-    revised = _build(data, site, now=LATER, revise="a counting fix")
+    revised = _build(data, site, now=AFTER_LATER, revise="a counting fix")
     assert _site_day(site)["revised"]["reason"] == "a counting fix" and not revised.unchanged
     assert (site / page_path(MILK)).read_text(encoding="utf-8") != "OLD"
 
@@ -501,10 +508,10 @@ def test_the_pages_show_the_day_as_published(tmp_path, monkeypatch):
     """An unchanged rerun given another collected-by time, at other code, keeps the site-day file as published, and
     every page shows the published time, the product pages included, and the method page the published fingerprint."""
     data, site = tree(tmp_path), tmp_path / "site"
-    build_site(DAY, data, site, NOW, "11:48", ReadOnlyFreezer(data), basket_path=BASKET, min_items=1)
+    build_site(DAY, data, site, AFTER, "11:48", ReadOnlyFreezer(data), basket_path=BASKET, min_items=1)
     first = _site_day(site)["code_sha"]
     monkeypatch.setattr(shop_build, "code_fingerprint", lambda: "0123456789ab")
-    again = build_site(DAY, data, site, LATER, "15:00", ReadOnlyFreezer(data), basket_path=BASKET, min_items=1)
+    again = build_site(DAY, data, site, AFTER_LATER, "15:00", ReadOnlyFreezer(data), basket_path=BASKET, min_items=1)
     assert again.unchanged and _site_day(site)["collected_by"] == "11:48"
     method = (site / "method.html").read_text(encoding="utf-8")
     assert first in method and "0123456789ab" not in method
@@ -635,3 +642,77 @@ def test_the_site_publishes_the_scores_file_the_archive_holds(tmp_path):
     data, site = tree(tmp_path / "b"), tmp_path / "b" / "site"
     outcome = _build(data, site, ArchiveFreezer(archive, NOW))
     assert (site / scores_site_key(T)).read_bytes() == stored and outcome.scores_differ == []
+
+
+
+# ---- finding 1: a day the Mac publishes without forecasts stays so ----
+
+def test_the_hand_build_stops_before_the_cutoff_on_a_day_the_site_run_can_freeze(tmp_path):
+    """Finding 1's ruling (a): a day with forecasts, no synced file and no ledger line, before its cutoff, is one the
+    site run can still freeze; a hand build that published it without would leave the site run's freeze unpublishable,
+    so it stops, writing no page, and says what to do."""
+    data, site = tree(tmp_path), tmp_path / "site"
+    with pytest.raises(NotFrozenYet) as raised:
+        _build(data, site, now=NOW)
+    message = str(raised.value)
+    assert "2026-01-01" in message and "site run" in message and "midnight" in message
+    assert not list(site.rglob("*.html")) and not site_day_path(site, DAY).exists()
+    assert _build(data, site, now=datetime(2026, 1, 1, 22, 0, tzinfo=timezone.utc)).frozen is None   # at the cutoff
+
+
+def test_a_day_with_no_forecast_builds_by_hand_before_the_cutoff(tmp_path):
+    data, site = tree(tmp_path, history=False), tmp_path / "site"
+    assert _build(data, site, now=NOW).frozen is None
+
+
+def test_the_site_run_never_freezes_a_day_published_without_forecasts(tmp_path):
+    """Finding 1's ruling (b): the site-day file of the day already says forecasts "none": the site run freezes
+    nothing, though before the cutoff by its clock, and the day goes up unchanged."""
+    data, site = tree(tmp_path), tmp_path / "site"
+    _build(data, site)                                                  # the Mac, past the cutoff: "none"
+    assert _site_day(site)["forecasts"]["status"] == "none"
+    archive = _archive()
+    outcome = _build(data, site, ArchiveFreezer(archive, NOW))
+    assert outcome.frozen is None and archive_key(DAY) not in archive.objects and outcome.unchanged
+    assert not (site / "forecasts").exists()
+
+
+def test_a_hand_build_past_the_cutoff_then_the_site_run_freezes_nothing_and_refuses_nothing(tmp_path):
+    """The whole sequence: the Mac builds the day after its midnight, then the site run builds it: no freeze, no
+    refusal, the site-day file as the Mac published it."""
+    data, site = tree(tmp_path), tmp_path / "site"
+    _build(data, site, now=AFTER)
+    published = site_day_path(site, DAY).read_bytes()
+    archive = _archive()
+    outcome = _build(data, site, ArchiveFreezer(archive, AFTER_LATER), now=AFTER_LATER)
+    assert (outcome.frozen, outcome.unchanged, archive.objects) == (None, True, {})
+    assert site_day_path(site, DAY).read_bytes() == published
+    # a day published without forecasts is no day the site run can still freeze: the Mac never stops on it
+    assert _build(data, site, now=NOW).unchanged
+
+
+# ---- a day out of reach alerts once ----
+
+def test_a_day_first_out_of_reach_is_told_apart_from_those_already_out(tmp_path):
+    """The ruling on the reviewer's (b): the site-day file lists every frozen day out of the read's reach, and the
+    outcome names apart those the previous published site-day file did not list, the only ones the site run's /fail
+    is for."""
+    data, site = tree(tmp_path), tmp_path / "site"
+    archive = _archive()
+    later = DAY - timedelta(days=100)
+    _put_frozen(archive, FAR, datetime(2025, 9, 3, 10, 0, tzinfo=timezone.utc))
+    _put_frozen(archive, later, datetime(2025, 9, 23, 10, 0, tzinfo=timezone.utc))
+    for seen, listed in ((DAY - timedelta(days=3), []), (DAY - timedelta(days=2), [FAR.isoformat()])):
+        path = site_day_path(site, seen)                                # the latest before the day is the previous
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"day": seen.isoformat(), "out_of_reach": listed}), encoding="utf-8")
+    for stray in ("20251231.json", "notes.json"):                       # no site-day file's name: passed over
+        (site / "site-days" / stray).write_text(json.dumps({"out_of_reach": []}), encoding="utf-8")
+    outcome = _build(data, site, ArchiveFreezer(archive, NOW))
+    assert (outcome.out_of_reach, outcome.newly_out_of_reach) == ([FAR, later], [later])
+    assert _site_day(site)["out_of_reach"] == [FAR.isoformat(), later.isoformat()]
+    again = _build(data, site, ArchiveFreezer(archive, LATER), now=LATER)   # the day's own file is no previous one
+    assert again.unchanged and again.newly_out_of_reach == [later]
+    alone = tmp_path / "alone"
+    first = _build(tree(alone), alone / "site", ArchiveFreezer(archive, NOW))
+    assert first.newly_out_of_reach == [FAR, later]                     # no earlier file: every one is new

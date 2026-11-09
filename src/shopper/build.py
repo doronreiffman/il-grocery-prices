@@ -18,6 +18,14 @@ published ledger's line for it, as they are. A day the published ledger names wh
 synced, not "never frozen"; a synced file the ledger lacks, or one whose time is not the ledger's, is no record the site
 shows: either stops the build (NotSynced), before any page is written, so a synced file's time never becomes a ledger's.
 
+A day published without forecasts stays so (the task review's finding 1). The Mac stops (NotFrozenYet) on a day with
+forecast rows, no synced file and no ledger line before the day's cutoff (midnight ending it, Israel time): the site run
+can still freeze that day, and a site-day file the Mac published with forecasts "none" would refuse the site run's
+freeze under B12 while the hand revision that could publish it is refused as not synced. So the site run freezes the
+day first, or the Mac builds after midnight, when no freezer can freeze it any more. And the site run freezes nothing
+for a day whose published site-day file already says forecasts "none": the day stays as published (frozen after a
+Mac build past its midnight, it would be late, and counted nowhere, anyway).
+
 In order:
 
 1. Extract (`extract`, the Mac's command): each chain's day through `shopper.extract.extract_chain_day` when its prices
@@ -44,8 +52,9 @@ In order:
    leaves every page as it was.
 6. The freeze (F6, question E): the day's forecasts file (`forecasts_csv`, rows sorted, the code fingerprint in every
    row) through `freezer.freeze`; a day with no forecast row freezes nothing (forecasts begin on a column's 30th day of
-   records), unless the archive holds a file for it already, which the freezer then compares. ForecastsDiffer stops the
-   build, nothing written to the site folder.
+   records), unless the archive holds a file for it already, which the freezer then compares; the site run freezes
+   nothing for a day published with forecasts "none", and the Mac stops (NotFrozenYet) on a day the site run can still
+   freeze (above). ForecastsDiffer stops the build, nothing written to the site folder.
 7. The ledger (Call 17): with a freezer that writes, the published ledger with the day's line added when it is not
    there (`shopper.freeze.ledger`); with the read-only freezer, the published ledger as it is (above).
 8. The basket (`basket.build.build_day(..., write_pages=False)`, its tables kept: they are this build's own, the
@@ -69,7 +78,11 @@ read is never said to mark none).
 
 The outcome lists the pages written and, apart, the data files new to the site (Call 9: they always go up): the
 site-day and basket day files when not unchanged, the ledger and the day's forecasts file when the ledger gained its
-line, each scored day's scores file. Only `main` reads the time of day, and gives it as `now`.
+line, each scored day's scores file. It lists every frozen day out of the read's reach, as the site-day file does, and
+apart those that went out of reach this morning, absent from the previous published site-day file's list (the latest
+before the day in the site folder; with none, every one): the site run's /fail is for those alone, so a day out of
+reach alerts once, not every morning after (the ruling on the task review's (b)). Only `main` reads the time of day,
+and gives it as `now`.
 """
 import argparse
 import json
@@ -95,8 +108,8 @@ from collector.run import new_run_id
 from shopper.columns import COLUMNS, members, outside, under_floor
 from shopper.extract import extract_chain_day
 from shopper.forecast import forecasts, forecasts_csv
-from shopper.freeze import (ForecastsDiffer, Frozen, ReadOnlyFreezer, ScoresDiffer, days_with, ledger, scores_site_key,
-                            site_key)
+from shopper.freeze import (ForecastsDiffer, Frozen, ReadOnlyFreezer, ScoresDiffer, cutoff, days_with, ledger,
+                            scores_site_key, site_key)
 from shopper.history import Covered, History, Pair, covered, covered_path, load
 from shopper.items import HORIZON, items_path
 from shopper.pages import (ColumnsToday, Counts, FrontRow, front_rows_of, render_basket, render_front, render_method,
@@ -105,12 +118,16 @@ from shopper.product import page_path, render_product, running_today
 from shopper.record import Gate, scorecard
 from shopper.score import DaySummary, due, out_of_reach, read_summary, scores_csv, summarize, summary_json, summary_path
 from shopper.search import SCRIPT, browse_pages, pieces
-from shopper.siteday import Inputs, publish_site_day, site_day, write_site_day
+from shopper.siteday import Inputs, publish_site_day, site_day, site_day_path, write_site_day
 
-__all__ = ["MARKER", "ForecastsDiffer", "NotSynced", "SiteOutcome", "build_site", "main"]
+__all__ = ["MARKER", "ForecastsDiffer", "NotFrozenYet", "NotSynced", "SiteOutcome", "build_site", "main"]
 
 MARKER = ".shopper-site"
 LEDGER = "forecasts/ledger.csv"
+
+
+class NotFrozenYet(Exception):
+    """The Mac's build of a day the site run can still freeze, before its cutoff (the module's docstring)."""
 
 
 class NotSynced(Exception):
@@ -121,7 +138,8 @@ class NotSynced(Exception):
 class SiteOutcome:
     """What the build did: the day and the run; whether the site-day file was left as published; the basket's build;
     the day's forecasts file as the freezer gave it (None when none is frozen); the days scored by this run, the days due
-    (scored only through a freezer that writes) and those out of reach; the pages written and the data files new to the
+    (scored only through a freezer that writes), those out of reach and, of them, those the previous published site-day
+    file did not list (the only ones the site run alerts for); the pages written and the data files new to the
     site, as site paths; each chain's promotions error, by slug; each ScoresDiffer's message; each chain's extraction
     seconds (None for tables kept); the site-day file as the pages show it, and whether this run revised it."""
     day: date
@@ -135,6 +153,7 @@ class SiteOutcome:
     promotions_errors: dict[str, str]
     due: list[date]
     out_of_reach: list[date]
+    newly_out_of_reach: list[date]
     scores_differ: list[str]
     extraction_seconds: dict[str, float | None]
     site_day: dict
@@ -291,6 +310,35 @@ def _score(freezer, t: date, history: History, tables_dir: Path) -> tuple[bytes,
     return stored, message
 
 
+def _site_days(site_dir: Path) -> list[date]:
+    """The days of the site-day files in the site folder, earliest first."""
+    found = []
+    for path in (site_dir / "site-days").glob("*.json"):
+        try:
+            seen = date.fromisoformat(path.stem)
+        except ValueError:
+            continue
+        if path == site_day_path(site_dir, seen):
+            found.append(seen)
+    return sorted(found)
+
+
+def _published_none(site_dir: Path, day: date) -> bool:
+    """Whether the day's published site-day file says no forecasts file is frozen for it."""
+    path = site_day_path(site_dir, day)
+    return path.is_file() and json.loads(path.read_text(encoding="utf-8"))["forecasts"]["status"] == "none"
+
+
+def _newly(far: list[date], site_dir: Path, day: date) -> list[date]:
+    """The days out of reach that the previous published site-day file (the latest before the day) did not list: on
+    their first morning out of reach, the only one the site run alerts for. With no earlier file, every one."""
+    earlier = [seen for seen in _site_days(site_dir) if seen < day]
+    if not earlier:
+        return list(far)
+    listed = set(json.loads(site_day_path(site_dir, earlier[-1]).read_text(encoding="utf-8"))["out_of_reach"])
+    return [t for t in far if t.isoformat() not in listed]
+
+
 def _ledger_days(body: bytes | None) -> dict[date, datetime]:
     """The days a ledger names, each with its file's S3 time."""
     if body is None:
@@ -398,11 +446,16 @@ def build_site(day: date, data_dir: Path, site_dir: Path, now: datetime, collect
         rows = forecasts(_Watched(history, pages), day)
         pages.finish()
         frozen = None
-        if rows or freezer.frozen(day) is not None:
+        published_none = _published_none(site_dir, day)
+        if (rows or freezer.frozen(day) is not None) and not (freezer.writes and published_none):
             frozen = freezer.freeze(day, forecasts_csv(rows, code_sha))
         ledger_path = site_dir / LEDGER
         published = ledger_path.read_bytes() if ledger_path.is_file() else None
         new_ledger = _ledger(freezer.writes, published, frozen, day)
+        if not freezer.writes and frozen is None and rows and not published_none and now < cutoff(day):
+            raise NotFrozenYet(f"{day.isoformat()} has forecasts the site run can still freeze, before midnight ending "
+                               "the day, Israel time: let the site run freeze the day, then sync, or build after "
+                               "midnight")
 
         basket_outcome = build_day(day, data_dir, site_dir, basket_path, now, revise, rebuild=False,
                                    min_items=min_items, collected_by=collected_by, write_pages=False)
@@ -452,7 +505,7 @@ def build_site(day: date, data_dir: Path, site_dir: Path, now: datetime, collect
     (site_dir / MARKER).write_text("", encoding="utf-8")
     return SiteOutcome(day=day, run_id=run_id, unchanged=unchanged, basket=basket_outcome, frozen=frozen,
                        scored=sorted(scores), pages=written, data=data, promotions_errors=errors, due=due_days,
-                       out_of_reach=far, scores_differ=differ, extraction_seconds=seconds, site_day=shown,
+                       out_of_reach=far, newly_out_of_reach=_newly(far, site_dir, day), scores_differ=differ, extraction_seconds=seconds, site_day=shown,
                        revised=revised)
 
 
@@ -476,7 +529,8 @@ def main(argv: list[str] | None = None) -> int:
         outcome = build_site(args.day, args.data, args.site, datetime.now(timezone.utc), args.collected_by,
                              ReadOnlyFreezer(args.data), revise=args.revise, rebuild=args.rebuild,
                              basket_path=args.basket, min_items=args.min_items)
-    except (BadBasket, BadPriceFile, ForecastsDiffer, MissingTable, NoStoreList, NotSynced, RevisionNeeded) as error:
+    except (BadBasket, BadPriceFile, ForecastsDiffer, MissingTable, NoStoreList, NotFrozenYet, NotSynced,
+            RevisionNeeded) as error:
         print(error, file=sys.stderr)
         return 1
     for slug, took in outcome.extraction_seconds.items():
