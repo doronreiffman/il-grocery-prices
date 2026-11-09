@@ -694,8 +694,9 @@ def _version(name: str, version: dict) -> str:
 def _gate(column: str, found: dict) -> str:
     if found["open"]:
         raise ValueError(f"the gate is open at {column}, and step one shows no odds")
-    conditions = "".join(f"<li>{text(CONDITIONS[key])}: {'holds' if holds else 'does not hold'}.</li>"
-                         for key, holds in found["conditions"].items())
+    held = found["conditions"]
+    conditions = "".join(f"<li>{text(CONDITIONS[key])}: {'holds' if held[key] else 'does not hold'}.</li>"
+                         for key in CONDITIONS)       # their order, not the mapping's: a file read back sorts its keys
     reasons = "".join(f"<li>{text(reason)}</li>" for reason in found["reasons"])
     return f"<p><b>{text(GATE_CLOSED)}</b></p><ul>{conditions}</ul><p>Why:</p><ul>{reasons}</ul>"
 
@@ -715,7 +716,8 @@ def scorecard_section(scorecard: dict) -> str:
         parts.append(f"<p>{text(SCORED_SO_FAR)}</p>")
     if not any(version["all"]["scored"] for found in columns.values() for version in found["versions"]):
         parts.append(f"<p><b>{text(NOTHING_SCORED)}</b></p>")
-    for key, found in columns.items():
+    for column in COLUMNS:       # their order, not the mapping's: the site-day file is written with its keys sorted
+        key, found = column.key, columns[column.key]
         body = [f"<h2>{text(found['name'])}</h2>", _gate(key, found["gate"])]
         body += [_version(found["name"], version) for version in found["versions"]] or [
             f"<p>{text(COLUMN_NOTHING_SCORED)}</p>"]
