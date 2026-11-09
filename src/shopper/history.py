@@ -71,8 +71,11 @@ REGISTRY = (("code", "VARCHAR"), ("column", "VARCHAR"), ("name", "VARCHAR"), ("s
             ("size_kind", "VARCHAR"), ("last_listed", "DATE"), ("last_wide", "DATE"), ("first_covered", "DATE"))
 REGISTRY_NULLABLE = ("size_amount", "size_kind", "last_wide")
 _REGISTRY_NAMES = ", ".join(f'"{name}"' for name, _ in REGISTRY)
+# The prices come as their text, each text made a Decimal once (`_Decimals`): DuckDB's own Decimals take about five
+# times as long to make, and a pass reads three a row, 36 million at full scale (the plan's Task 25a).
 _POINTS = """
-    SELECT code, "column", day, listed, low, high, listing, wide, on_promotion, next_start, promotions
+    SELECT code, "column", day, CAST(listed AS VARCHAR), CAST(low AS VARCHAR), CAST(high AS VARCHAR), listing, wide,
+           on_promotion, next_start, promotions
     FROM items ORDER BY code, "column", day
 """
 # Per (product, column) read: its latest day listed with that day's name and size, and its first and last wide days
@@ -169,6 +172,14 @@ class _Listing:
     first_wide: date | None = None
 
 
+class _Decimals(dict):
+    """A price's text to its Decimal, each text made once and the same object given after (None for None)."""
+
+    def __missing__(self, text: str | None) -> Decimal | None:
+        found = self[text] = None if text is None else Decimal(text)
+        return found
+
+
 class History:
     """The days read for `day`: every column-day, by (column, day), and the items tables read, each with its day."""
 
@@ -181,6 +192,7 @@ class History:
         """Every pair read, by code, then column, streamed from DuckDB."""
         if not self.tables:
             return
+        decimals = _Decimals()
         with self._connect() as con:
             result = con.execute(_POINTS)
             key, points = None, {}
@@ -190,9 +202,9 @@ class History:
                         if key is not None:
                             yield Pair(column=key[1], code=key[0], points=points)
                         key, points = (code, column), {}
-                    points[day] = Point(day=day, listed=listed, low=low, high=high, listing=listing, wide=wide,
-                                        on_promotion=on_promotion, next_start=next_start,
-                                        promotions=tuple(promotions or ()))
+                    # by position, in Point's order: a frozen dataclass takes keywords about twice as long
+                    points[day] = Point(day, decimals[listed], decimals[low], decimals[high], listing, wide,
+                                        on_promotion, next_start, tuple(promotions or ()))
             if key is not None:
                 yield Pair(column=key[1], code=key[0], points=points)
 

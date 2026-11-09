@@ -5,6 +5,7 @@ Task 8 and the second pre-flight's S1 and S4).
 The items tables here are written with Task 6's own columns and report (`shopper.items.COLUMNS`, `ColumnReport`,
 `ItemsReport`) through `basket.extract`'s writer; one test reads a table `shopper.items.write_items` wrote itself."""
 import json
+import random
 from dataclasses import asdict
 from datetime import date, timedelta
 from decimal import Decimal
@@ -16,9 +17,10 @@ import pytest
 from basket.extract import copy_sql, write_csv
 from basket.rules import MissingTable
 from shopper.columns import columns_of
-from shopper.history import (READ_DAYS, ColumnDay, Covered, History, Pair, Point, Window, covered, covered_path, load,
-                             window)
+from shopper.history import (BATCH, READ_DAYS, ColumnDay, Covered, History, Pair, Point, Window, covered, covered_path,
+                             load, window)
 from shopper.items import COLUMNS as ITEM_COLUMNS, NULLABLE, ColumnReport, ItemsReport, items_path
+import shopper_random
 
 DAY = date(2026, 11, 20)
 SHUF, RAMI = "shufersal", "ramilevy"
@@ -379,3 +381,46 @@ def test_a_history_is_its_day_and_column_days(tmp_path):
     found = History(DAY, _days(DEAL, [DAY, back(1)], holes=(back(1),)), {})
     assert (found.day, found.record_days(DEAL), list(found.pairs())) == (DAY, 1, [])
     assert covered(found, None, covered_path(tmp_path, DAY)) == {}   # no table read: the registry alone
+
+
+# The speedups (the plan's Task 25a): the code as it stood before each, kept here, against the code as it is
+
+_POINTS_BEFORE = """
+    SELECT code, "column", day, listed, low, high, listing, wide, on_promotion, next_start, promotions
+    FROM items ORDER BY code, "column", day
+"""
+
+
+def _pairs_before(history: History):
+    """`History.pairs` as it stood before Task 25a: DuckDB's own Decimals, each point made by keyword."""
+    if not history.tables:
+        return
+    with history._connect() as con:
+        result = con.execute(_POINTS_BEFORE)
+        key, points = None, {}
+        while batch := result.fetchmany(BATCH):
+            for code, column, day, listed, low, high, listing, wide, on_promotion, next_start, promotions in batch:
+                if (code, column) != key:
+                    if key is not None:
+                        yield Pair(column=key[1], code=key[0], points=points)
+                    key, points = (code, column), {}
+                points[day] = Point(day=day, listed=listed, low=low, high=high, listing=listing, wide=wide,
+                                    on_promotion=on_promotion, next_start=next_start,
+                                    promotions=tuple(promotions or ()))
+        if key is not None:
+            yield Pair(column=key[1], code=key[0], points=points)
+
+
+def test_the_pairs_stream_as_before(tmp_path):
+    """Task 25a: the stream reads each price as its text, made a Decimal once, and makes each point by position; the
+    pairs are the same as before, compared by `repr` so that each Decimal's places are compared too (5.40 is not
+    5.4 there), over two chains' random tables of 91 days (missing tables, holes, unread promotions, prices that
+    change, promotions with conditions), more rows than one fetch."""
+    rng = random.Random(8)
+    first = back(READ_DAYS)
+    for slug, codes in ((SHUF, 60), (RAMI, 40)):
+        shopper_random.write_tables(rng, tmp_path, slug, first, DAY, [shopper_random.code(n) for n in range(codes)])
+    history = load(tmp_path, DAY, [SHUF, RAMI])
+    found = list(history.pairs())
+    assert sum(len(pair.points) for pair in found) > BATCH
+    assert repr(found) == repr(list(_pairs_before(history)))

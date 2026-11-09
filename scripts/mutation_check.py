@@ -2777,6 +2777,8 @@ MUTATIONS = {
     "a day scored without its window's last table (q22 speed)": (SHOP_SCORE, 'if t < seen <= last}', 'if t < seen < last}'),
     "a day scored without its window's first table (q22 speed)": (SHOP_SCORE, 'if t < seen <= last}', 'if t + timedelta(days=1) < seen <= last}'),
     "every price drawn at the lowest's height (q22 speed)": (SHOP_PRODUCT, 'heights = {price: height(price) for price in', 'heights = {price: height(low) for price in'),
+    "a price's places dropped in the stream (q22 speed)": (SHOP_HISTORY, 'None if text is None else Decimal(text)', 'None if text is None else Decimal(text).normalize()'),
+    "the stores' range read high to low in the stream (q22 speed)": (SHOP_HISTORY, 'decimals[low], decimals[high]', 'decimals[high], decimals[low]'),
     # template: the basket's parameters
     "site bucket of any name": (BASKET_TEMPLATE, "AllowedPattern: 'il-grocery-prices-site-sitebucket-.+'", "AllowedPattern: '.+'"),
     "site bucket pattern takes the bare prefix": (BASKET_TEMPLATE, "AllowedPattern: 'il-grocery-prices-site-sitebucket-.+'", "AllowedPattern: 'il-grocery-prices-site-sitebucket-.*'"),
