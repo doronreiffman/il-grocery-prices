@@ -288,7 +288,7 @@ cfn-lint --regions il-central-1 -- template.yaml site-template.yaml
 python scripts/mutation_check.py
 ```
 
-The tests of `search.js` run it under Node, so `node` must be on the path (CI pins 22.11.0). The mutation check breaks each rule in turn and expects a test to fail. It edits source files in place while it runs, so run nothing else from the checkout meanwhile. CI runs all three on every push. `tests/test_template.py` pins the deploy settings safety depends on (the bucket's lock and privacy, the role's permissions, the schedules, the parameters) and checks this file's commands against them, `tests/test_basket_template.py` the basket function's: cfn-lint lets a misspelled schedule property through.
+The tests of `search.js` run it under Node, so `node` must be on the path (CI pins 22.11.0). The mutation check breaks each rule in turn and expects a test to fail. It edits source files in place while it runs, so run nothing else from the checkout meanwhile. CI runs the tests and cfn-lint on every push, with a check that every mutation's text is still found once in its file (`.github/workflows/ci.yml`); the full mutation check takes one to two hours, so it runs weekly on main, Saturday 03:00 UTC, and on demand from the Actions tab (`.github/workflows/mutations.yml`). `tests/test_template.py` pins the deploy settings safety depends on (the bucket's lock and privacy, the role's permissions, the schedules, the parameters) and checks this file's commands against them, `tests/test_basket_template.py` the basket function's: cfn-lint lets a misspelled schedule property through.
 
 ## Cost
 

@@ -21,5 +21,9 @@ jobs:
         with:
           node-version: "22.11.0"
       - run: pytest --cov=collector --cov=src/basket --cov=src/shopper --cov-fail-under=95
-      - run: python scripts/mutation_check.py
+      # The full mutation check runs weekly (mutations.yml); every push checks only that each planted bug's text is
+      # still found exactly once in its file, so a renamed or moved line cannot leave a mutation silently stale.
+      - name: Mutation check, staleness only
+        run: |
+          python -I -c "import importlib.util as u, sys; s = u.spec_from_file_location('m', 'scripts/mutation_check.py'); m = u.module_from_spec(s); s.loader.exec_module(m); bad = [n for n, ((f, _), old, _) in m.MUTATIONS.items() if (m.ROOT / f).read_text().count(old) != 1]; print(len(m.MUTATIONS), 'mutations;', bad or 'none stale'); sys.exit(1 if bad else 0)"
       - run: cfn-lint --regions il-central-1 -- template.yaml site-template.yaml

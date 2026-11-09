@@ -1,0 +1,29 @@
+name: Mutation check
+
+# The full mutation check: every planted bug in scripts/mutation_check.py, each expected to fail a test. It takes one to
+# two hours, so it runs weekly on main (Saturday 03:00 UTC) and on demand from the Actions tab, not on every push
+# (owner, 2026-11-09). Every push still runs the tests and the staleness check (ci.yml).
+
+on:
+  schedule:
+    - cron: "0 3 * * 6"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mutations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements-dev.txt
+      # Node is for the behaviour tests of search.js only, as in ci.yml.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.11.0"
+      - run: python scripts/mutation_check.py
