@@ -308,6 +308,20 @@ def test_a_record_page_cannot_be_compared_without_a_site_day_with_a_closed_score
     assert guard_site(site, bucket, PAGES)[-1] == "record.html is not in the build"
 
 
+def test_a_scorecard_with_a_figure_that_does_not_read_is_a_problem_never_a_crash(tmp_path):
+    """A figure that is no number (a Decimal error) and a version with no scored forecasts but a filled bin (a division
+    by zero) are both arithmetic errors of the renderer; the guard says the scorecard cannot be rendered, and exits 1
+    only because it names a problem."""
+    site, bucket = both(tmp_path)
+    for field, broken in (("error", "x"), ("scored", 0)):
+        card = _card()
+        whole = card["columns"][DEAL]["versions"][0]["all"]
+        (whole["calibration"] if field == "error" else whole)[field] = broken
+        (site / SITE_DAY).write_text(render_day(_site_day(scorecard=card)))
+        problem = guard_site(site, bucket, PAGES)[-1]
+        assert problem.startswith(f"{SITE_DAY}: its scorecard cannot be rendered (") and problem.endswith(")")
+
+
 # ---- the product pages (question H) ----
 
 def test_a_build_missing_a_published_product_page_is_refused(tmp_path):

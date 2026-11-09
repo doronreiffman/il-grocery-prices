@@ -24,7 +24,8 @@ gives the problems, one a line, in the order below; a published file the build l
    newest site-day file of the build, the same renderer that drew the page, so a page drawn from other numbers, or
    changed by hand, is refused. A problem names each column whose section differs, or says the difference is outside
    the columns. A page or a site-day file that is missing, a site-day file that does not read or whose scorecard cannot
-   be rendered (an open gate stops the page: step one shows no odds) is a problem too, never a crash.
+   be rendered (an open gate stops the page: step one shows no odds; a figure that is no number) is a problem too, never
+   a crash.
 7. `p/*.html`: every published product page key must be in the build (question H: a product that was covered keeps its
    page, and a build from a partly synced data folder lacks some). Only when the pages go up: a run for a day earlier
    than the site's latest uploads its data files and no page, and its registry lacks the products first covered after
@@ -94,7 +95,8 @@ def _record(site: Path) -> list[str]:
     name = f"site-days/{days[-1].name}"
     try:
         expected = scorecard_section(json.loads(days[-1].read_text(encoding="utf-8"))["scorecard"])
-    except (ValueError, LookupError, TypeError, AttributeError) as error:    # not JSON, no scorecard, an open gate
+    except (ArithmeticError, ValueError, LookupError, TypeError, AttributeError) as error:   # not JSON, no scorecard,
+        # an open gate, a figure that is no number, a version with no scored forecast and a filled bin
         return [f"{name}: its scorecard cannot be rendered ({error})"]
     shown = page.read_text(encoding="utf-8", errors="replace")
     if expected in shown:
