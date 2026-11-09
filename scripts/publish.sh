@@ -59,21 +59,29 @@ if [ -z "$distribution" ] || [ "$distribution" = None ]; then
 fi
 
 # The publish guard (shopper.guard; B12 and question H): a published record is replaced only by a revision of it,
-# the ledger only gains lines, and a published product page is never dropped. The bucket's day files, site-day
-# files, forecasts files with the ledger, and scores files are copied (a read) into a temporary folder, its product
-# page keys listed into a file, and both compared with the build's: a build into a site/ that sync.sh did not fill,
-# or from a data folder only partly synced, would otherwise write over what is published. On an empty bucket (the
-# first upload) each copy finds no object and exits 0, and the guard reads an empty folder: the CLI creates the
-# destination folder and returns 1 or 2 only for a failed or warned transfer (awscli 2.34.9,
-# customizations/s3/subcommands.py), so set -e stops here only on a real failure to read. The listing of an empty
-# prefix prints "None" (seen on 2026-11-09), which the guard reads as no page: it takes only p/*.html keys.
+# the ledger only gains lines, the pages never go up over a later published day, and a published product page is
+# never dropped. The bucket's day files, site-day files, forecasts files with the ledger, and scores files are copied
+# (a read) into a temporary folder, its product page keys listed into a file, and both compared with the build's: a
+# build into a site/ that sync.sh did not fill, or from a data folder only partly synced, would otherwise write over
+# what is published. So each read that fails stops the upload by its own test (exit 2), never by set -e alone: let
+# through, it would leave the guard comparing the build with an empty bucket, which passes anything. On an empty
+# bucket (the first upload) each copy finds no object and exits 0, and the guard reads an empty folder: the CLI
+# creates the destination folder and returns 1 or 2 only for a failed or warned transfer (awscli 2.34.9,
+# customizations/s3/subcommands.py), and either stops here. The listing of an empty prefix prints "None" (seen on
+# 2026-11-09), which the guard reads as no page: it takes only p/*.html keys.
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 for folder in days site-days forecasts scores; do
-  aws s3 cp "s3://$bucket/$folder/" "$tmp/published/$folder/" --recursive --profile "$PROFILE" --region "$REGION"
+  aws s3 cp "s3://$bucket/$folder/" "$tmp/published/$folder/" --recursive --profile "$PROFILE" --region "$REGION" || {
+    echo "the bucket's $folder/ could not be read; nothing uploaded" >&2
+    exit 2
+  }
 done
 aws s3api list-objects-v2 --bucket "$bucket" --prefix p/ --query 'Contents[].Key' --output text \
-  --profile "$PROFILE" --region "$REGION" > "$tmp/pages"
+  --profile "$PROFILE" --region "$REGION" > "$tmp/pages" || {
+  echo "the bucket's product pages could not be listed; nothing uploaded" >&2
+  exit 2
+}
 if ! PYTHONPATH=src "$PYTHON" -m shopper.guard "$SITE" "$tmp/published" "$tmp/pages"; then
   echo "the publish guard failed; nothing uploaded" >&2
   exit 1

@@ -28,6 +28,10 @@ from test_siteday import DEAL, FROZEN_AT, LATER, _card, _frozen, _site_day
 import test_shop_build as built
 
 SITE_DAY = f"site-days/{DAY.isoformat()}.json"
+NEXT_DAY = f"site-days/{(DAY + timedelta(days=1)).isoformat()}.json"
+PREVIOUS_DAY = f"site-days/{(DAY - timedelta(days=1)).isoformat()}.json"
+LATER_PUBLISHED = (f"{NEXT_DAY} is published, a later day than the build's newest ({SITE_DAY}): the pages show the "
+                   "site's latest day; run scripts/sync.sh and build that day")
 PAGES = ("p/2000000000046.html", "p/2000000000053.html")
 SCORED = date(2026, 11, 5)
 SCORES = gzip.compress(b"day,column,code,p,outcome\n2026-11-05,shufersal-deal,2000000000046,0.5,1\n", mtime=0)
@@ -358,6 +362,28 @@ def test_the_other_rules_apply_when_the_pages_do_not_go_up(tmp_path):
     assert len(guard_site(site, bucket, PAGES, with_pages=False)) == 1
 
 
+# ---- the latest day ----
+
+def test_an_earlier_day_over_a_later_published_day_is_refused(tmp_path):
+    """The pages show the site's latest day (Call 9): a build of an earlier day, or one into a site/ that sync.sh did
+    not fill with the later site-day file, would put its pages over the later day's. Its data files alone may go up
+    (`with_pages` false)."""
+    site, bucket = both(tmp_path)
+    (bucket / NEXT_DAY).write_bytes((bucket / SITE_DAY).read_bytes())    # the rule reads the names
+    assert guard_site(site, bucket, PAGES) == [LATER_PUBLISHED]
+    assert guard_site(site, bucket, PAGES, with_pages=False) == []
+
+
+def test_a_rerun_of_the_latest_day_or_a_later_day_passes(tmp_path):
+    """The build's newest site-day file is the one compared: a hand build's site/ holds every synced one."""
+    site, bucket = both(tmp_path)
+    for folder in (site, bucket):
+        (folder / PREVIOUS_DAY).write_text(render_day(_site_day(day=DAY - timedelta(days=1))))
+    assert guard_site(site, bucket, PAGES) == []                    # the latest day again
+    (bucket / SITE_DAY).unlink()
+    assert guard_site(site, bucket, PAGES) == []                    # a day after the published one
+
+
 # ---- all the rules, in order ----
 
 def test_every_rule_is_checked_and_named_in_order(tmp_path):
@@ -369,12 +395,13 @@ def test_every_rule_is_checked_and_named_in_order(tmp_path):
     (site / "forecasts/ledger.csv").unlink()
     (site / "record.html").unlink()
     (site / PAGES[0]).unlink()
+    (bucket / NEXT_DAY).write_bytes((bucket / SITE_DAY).read_bytes())    # the rule reads the names
     assert guard_site(site, bucket, PAGES) == [
         NOT_A_REVISION.format(f"days/{BASKET_DAY}"), NOT_A_REVISION.format(SITE_DAY),
         f"{site_key(DAY)} differs from the published file: a published forecasts file is never replaced",
         f"{scores_site_key(SCORED)} differs from the published file: a published scores file is never replaced",
         f"forecasts/ledger.csv is published and not in the build: {SYNC}",
-        "record.html is not in the build",
+        "record.html is not in the build", LATER_PUBLISHED,
         f"1 published product page is not in the build ({PAGES[0]}): a product page is never dropped; "
         "a build from a partly synced data folder lacks some"]
 

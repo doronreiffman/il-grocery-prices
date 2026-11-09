@@ -1,6 +1,7 @@
 """The shopper site's publish guard: before any upload, a build may not replace a published record, shorten the
-published ledger, show a record page its site-day file does not hold, or lose a published product page
-(docs/shopper-site.md, "Checks before upload"; the plan's Task 21, its question H and the second pre-flight's S17).
+published ledger, show a record page its site-day file does not hold, put its pages over a later published day, or lose
+a published product page (docs/shopper-site.md, "Checks before upload" and Call 9; the plan's Tasks 21 and 22, its
+question H and the second pre-flight's S17).
 
     PYTHONPATH=src python -m shopper.guard site <published data, copied from the bucket> <file of published p/ keys>
 
@@ -8,7 +9,8 @@ A build compares its numbers with the files in its own `site/` folder; a build i
 did not fill, or from a data folder only partly synced, sees none of what is published and would write over it. The
 upload scripts (the plan's Tasks 22 and 23) therefore copy the bucket's `days/`, `site-days/`, `forecasts/` and
 `scores/` into a temporary folder and list its `p/` keys into a file, and run this before any upload. `guard_site`
-gives the problems, one a line, in the order below; a published file the build lacks passes (nothing deletes):
+gives the problems, one a line, in the order below; a published file the build lacks passes (nothing deletes), but for
+the newest site-day file when the pages go up (7):
 
 1. `days/`, the basket's day files, and 2. `site-days/`, the site's: by `basket.guard.guard_days`, whose test serves
    both folders. A day file that differs from the published one must be a revision of it (`revised` an object, and more
@@ -26,11 +28,16 @@ gives the problems, one a line, in the order below; a published file the build l
    the columns. A page or a site-day file that is missing, a site-day file that does not read or whose scorecard cannot
    be rendered (an open gate stops the page: step one shows no odds; a figure that is no number) is a problem too, never
    a crash.
-7. `p/*.html`: every published product page key must be in the build (question H: a product that was covered keeps its
+7. The latest day: the published folder's newest site-day file may not be later than the build's newest (Call 9: the
+   pages show the site's latest day). A hand build of an earlier day, or one into a `site/` that sync.sh did not fill
+   with the later file, would otherwise put its pages over the later day's; the site check refuses an earlier day only
+   when the later file is in the build (Task 20). A rerun of the latest day has the same newest file, and a build with
+   no site-day file is rule 6's. Only when the pages go up, as rule 8.
+8. `p/*.html`: every published product page key must be in the build (question H: a product that was covered keeps its
    page, and a build from a partly synced data folder lacks some). Only when the pages go up: a run for a day earlier
    than the site's latest uploads its data files and no page, and its registry lacks the products first covered after
-   that day, so the caller passes `with_pages` false for it (S17) and this rule is not applied. A key that is not a
-   `p/*.html` key is no product page.
+   that day, so the caller passes `with_pages` false for it (S17) and rules 7 and 8 are not applied. A key that is not
+   a `p/*.html` key is no product page.
 
 Exit 0 with no problem; 1 with problems, one a line on stderr; 2 when the site folder or the file of keys is absent or
 the arguments are not three. A published folder that does not exist holds nothing (the bucket is empty before the first
@@ -61,7 +68,7 @@ def guard_site(site_dir: Path, published_dir: Path, published_pages: Iterable[st
                  for problem in guard_days(site / "site-days", published / "site-days")]
     problems += _replaced(site, published, "forecasts") + _replaced(site, published, "scores")
     problems += _ledger(site, published) + _record(site)
-    return problems + (_pages(site, published_pages) if with_pages else [])
+    return problems + (_latest(site, published) + _pages(site, published_pages) if with_pages else [])
 
 
 def _replaced(site: Path, published: Path, folder: str) -> list[str]:
@@ -104,6 +111,17 @@ def _record(site: Path) -> list[str]:
     differing = [section.group(1) for section in SECTION.finditer(expected) if section.group(0) not in shown]
     return [f"record.html differs from {name} in the scorecard of {key}" for key in differing] or [
         f"record.html differs from {name} in the scorecard outside the columns"]
+
+
+def _latest(site: Path, published: Path) -> list[str]:
+    """The published newest site-day file when it is a later day than the build's newest (the module's docstring, 7);
+    ISO dates sort as dates."""
+    built = sorted((site / "site-days").glob("*.json"))
+    shown = sorted((published / "site-days").glob("*.json"))
+    if not built or not shown or shown[-1].name <= built[-1].name:
+        return []
+    return [f"site-days/{shown[-1].name} is published, a later day than the build's newest (site-days/{built[-1].name}): "
+            "the pages show the site's latest day; run scripts/sync.sh and build that day"]
 
 
 def _pages(site: Path, published_pages: Iterable[str]) -> list[str]:

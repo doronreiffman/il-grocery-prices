@@ -4,7 +4,8 @@ ever reaches AWS here.
 The stand-in answers the identity check with the expected user (or `IDENTITY`); the site stack's outputs when
 `SITE_BUCKET` is set, else AWS's words for a stack that does not exist yet (as sync.sh quotes them); a recursive
 `s3 cp` from the bucket by copying that folder of `FAKE_BUCKET`, a local folder standing in for the bucket; the
-listing of the `p/` keys with `P_KEYS`, as `--output text` prints it; and an invalidation with its id. Every other call
+listing of the `p/` keys with `P_KEYS`, as `--output text` prints it; and an invalidation with its id. `FAIL_READ` names
+one read that fails instead, a folder's copy or `p` for the listing, as the CLI fails one. Every other call
 (each `s3 sync`) is recorded and does nothing. `publish.sh` runs with a stand-in `python` that records each call too and
 answers the site check with `CHECK_EXIT` (the check's own tests are `tests/test_shop_check.py`); every other module, the
 publish guard, runs for real (`shopper.guard`), over a build made as `tests/test_shop_guard.py` makes one.
@@ -26,7 +27,7 @@ from shopper.history import covered_path
 from shopper.items import items_path
 from shopper.score import summary_path
 from shopper.siteday import site_day_path
-from test_shop_guard import PAGES, a_bucket, a_site
+from test_shop_guard import LATER_PUBLISHED, NEXT_DAY, PAGES, a_bucket, a_site
 
 ROOT = Path(__file__).resolve().parent.parent
 ARN = "arn:aws:iam::137953273942:user/doron-admin"
@@ -51,8 +52,11 @@ case "$1 $2" in
     esac ;;
   "s3 cp")
     folder=${{3#s3://*/}}
+    if [ "$folder" = "${{FAIL_READ:-}}/" ]; then echo "fatal error: An error occurred (AccessDenied)" >&2; exit 1; fi
     if [ -d "$FAKE_BUCKET/$folder" ]; then mkdir -p "$4" && cp -R "$FAKE_BUCKET/$folder." "$4"; fi ;;
-  "s3api list-objects-v2") printf '%s' "$P_KEYS" ;;
+  "s3api list-objects-v2")
+    if [ "${{FAIL_READ:-}}" = p ]; then echo "An error occurred (AccessDenied)" >&2; exit 254; fi
+    printf '%s' "$P_KEYS" ;;
   "cloudfront create-invalidation") echo I1EXAMPLE ;;
 esac
 """
@@ -62,7 +66,8 @@ if [ "$2" = shopper.check ]; then exit "${CHECK_EXIT:-0}"; fi
 exec "$REAL_PYTHON" "$@"
 """
 # Variables the scripts or the stand-ins read, never taken from the environment the tests run in.
-_OWN = ("SITE_DIR", "PYTHON", "SITE_BUCKET", "IDENTITY", "DISTRIBUTION", "CHECK_EXIT", "P_KEYS", "FAKE_BUCKET")
+_OWN = ("SITE_DIR", "PYTHON", "SITE_BUCKET", "IDENTITY", "DISTRIBUTION", "CHECK_EXIT", "P_KEYS", "FAKE_BUCKET",
+        "FAIL_READ")
 
 
 def _run(tmp_path: Path, script: str, *args: str, **env: str) -> tuple[subprocess.CompletedProcess, list[list[str]]]:
@@ -290,6 +295,28 @@ def test_publish_sh_compares_the_build_with_the_published_ledger(tmp_path):
     (tmp_path / "published" / LEDGER).write_bytes((site / LEDGER).read_bytes() + b"2026-11-21,ab,2026-11-21T10:00:00Z\n")
     run, calls = _publish(tmp_path, site)
     assert run.returncode == 1 and f"{LEDGER} does not begin with the published ledger" in run.stderr
+    assert not _uploads(calls)
+
+
+@pytest.mark.parametrize(("read", "said"), [(folder, f"the bucket's {folder}/ could not be read")
+                                           for folder in ("days", "site-days", "forecasts", "scores")]
+                         + [("p", "the bucket's product pages could not be listed")])
+def test_publish_sh_stops_on_a_failed_read_of_the_bucket(tmp_path, read, said):
+    """A read of the bucket that fails stops the upload by its own test, not by `set -e` alone: taken for an empty
+    bucket, it would leave the guard comparing the build with nothing, and a published record could be replaced."""
+    run, calls = _publish(tmp_path, a_build(tmp_path), FAIL_READ=read)
+    assert run.returncode == 2 and f"{said}; nothing uploaded" in run.stderr
+    assert not _uploads(calls) and not _index(calls, lambda call: call[:3] == ["python", "-m", "shopper.guard"])
+
+
+def test_publish_sh_refuses_an_earlier_day_over_a_later_published_one(tmp_path):
+    """A build whose site/ lacks the later day the bucket holds (a wrong --day, or a folder sync.sh did not fill) is
+    refused by the guard before its pages go up over that day's."""
+    site = a_build(tmp_path)
+    (tmp_path / "published" / NEXT_DAY).write_text((site / sorted((site / "site-days").iterdir())[-1]).read_text())
+    run, calls = _publish(tmp_path, site)
+    assert run.returncode == 1 and "the publish guard failed; nothing uploaded" in run.stderr
+    assert LATER_PUBLISHED in run.stderr
     assert not _uploads(calls)
 
 
