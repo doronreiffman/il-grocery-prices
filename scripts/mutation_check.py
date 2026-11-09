@@ -196,6 +196,8 @@ CHAINS_FOR_SHOP_COLUMNS = ("src/basket/chains.py", ["tests/test_columns.py"])
 # The survey reads each store's latest promotion file through basket.extract.day_files, which its tests must catch too.
 EXTRACT_FOR_SHOP_SURVEY = ("src/basket/extract.py", ["tests/test_survey.py"])
 SYNC_SCRIPT = ("scripts/sync.sh", ["tests/test_scripts.py"])
+# The site run's timing script (Task 25a), its --make guard.
+TIME_SITE_RUN = ("scripts/time_site_run.py", ["tests/test_time_site_run.py"])
 EXTRACT = ("src/basket/extract.py", ["tests/test_extract.py"])
 DUCK = ("src/basket/duck.py", ["tests/test_duck.py"])
 EXTRACT_FOR_DUCK = ("src/basket/extract.py", ["tests/test_duck.py"])
@@ -2779,6 +2781,8 @@ MUTATIONS = {
     "every price drawn at the lowest's height (q22 speed)": (SHOP_PRODUCT, 'heights = {price: height(price) for price in', 'heights = {price: height(low) for price in'),
     "a price's places dropped in the stream (q22 speed)": (SHOP_HISTORY, 'None if text is None else Decimal(text)', 'None if text is None else Decimal(text).normalize()'),
     "the stores' range read high to low in the stream (q22 speed)": (SHOP_HISTORY, 'decimals[low], decimals[high]', 'decimals[high], decimals[low]'),
+    "--make deleting tables it did not make (q22 speed)": (TIME_SITE_RUN, '    if tables.exists() and not (work / MADE).is_file():\n', '    if False:\n'),
+    "--make refusing tables it made itself (q22 speed)": (TIME_SITE_RUN, ' and not (work / MADE).is_file():', ':'),
     # template: the basket's parameters
     "site bucket of any name": (BASKET_TEMPLATE, "AllowedPattern: 'il-grocery-prices-site-sitebucket-.+'", "AllowedPattern: '.+'"),
     "site bucket pattern takes the bare prefix": (BASKET_TEMPLATE, "AllowedPattern: 'il-grocery-prices-site-sitebucket-.+'", "AllowedPattern: 'il-grocery-prices-site-sitebucket-.*'"),

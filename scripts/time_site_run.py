@@ -5,10 +5,11 @@
 
 It runs the code of the tree it sits in (its `src/`), so a copy of the tree times that copy's code.
 
-`--make` writes the tables first, under <folder>/tables (any made before are removed): `--days` days of items tables
-for every chain, ending on DAY, each column at `--scale` times the items, wide and on-promotion counts of its report of
-7 November 2026 (REAL; 1.0 is 131,035 rows a day), every row a pair of its own (a column's codes are distinct, drawn
-from a pool of POOL codes times the scale), and the frozen forecasts file of the day scored. Names and barcodes are
+`--make` writes the tables first, under <folder>/tables: `--days` days of items tables for every chain, ending on DAY,
+each column at `--scale` times the items, wide and on-promotion counts of its report of 7 November 2026 (REAL; 1.0 is
+131,035 rows a day), every row a pair of its own (a column's codes are distinct, drawn from a pool of POOL codes times
+the scale), and the frozen forecasts file of the day scored. It replaces tables it made there before, which its marker
+<folder>/made.json names, and refuses a folder of tables without that marker, deleting nothing. Names and barcodes are
 synthetic: nothing from the archive is read or written. The listed price steps every 30 days; a wide item is on a
 promotion 7 days in 21; no column-day is a hole.
 
@@ -118,10 +119,14 @@ def _column_rows(key: str, index: int, step: int, pool: int, counts: tuple[int, 
 
 
 def make(work: Path, scale: float, days: int) -> None:
-    """The synthetic tables (the module's docstring) and the frozen file of SCORED."""
+    """The synthetic tables (the module's docstring) and the frozen file of SCORED. Tables already there are replaced
+    only when this script made them (its marker, MADE, beside them); any other folder is refused, nothing deleted."""
+    tables = work / "tables"
+    if tables.exists() and not (work / MADE).is_file():
+        raise SystemExit(f"{tables} is there and {work / MADE} is not: not tables this script made, so nothing is "
+                         "deleted; give --work a folder of its own")
     if days <= HORIZON:
         raise SystemExit(f"--days must be above {HORIZON}: the scored day's window must be held")
-    tables = work / "tables"
     shutil.rmtree(tables, ignore_errors=True)
     pool = max(round(POOL * scale), max(_scaled(counts[0], scale) for counts in REAL.values()))
     assert all(math.gcd(step, pool) == 1 for step in STEPS)
