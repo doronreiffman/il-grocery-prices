@@ -199,6 +199,8 @@ def test_logs_in_then_lists_one_request_at_a_time():
     assert portal.requested == []  # nothing until the first item is asked for
     next(listing)
     assert portal.requested == THROUGH_THE_LISTING
+    list(listing)
+    assert portal.requested == THROUGH_THE_LISTING  # none after the first row: a stopped poll reads on (ruling R40)
 
 
 @pytest.mark.parametrize("slug", ["ramilevy", "osherad", "yochananof"])
@@ -373,6 +375,19 @@ def test_listing_pages_from_where_the_last_answer_ended_until_the_total():
     assert [item.name.raw for item in listed] == NAMES
     assert portal.sent("POST", LISTING) == [listing_form(0, 5), listing_form(5, 5), listing_form(10, 5)]
     assert portal.requested == THROUGH_THE_LISTING + [("POST", LISTING)] * 2
+
+
+def test_every_answer_of_the_directory_is_read_before_the_first_row():
+    """Ruling R40: after a poll's own time stop the run reads the rest of the listing from memory, taking
+    nothing, so a directory that comes in several answers (1,826 entries in four on 2026-11-01) is read
+    to its last answer before the first row is given, and nothing is asked for after."""
+    http, portal = connect(file_page=served(file_html(5)))
+    listing = NcrSource("RamiLevi").listing(http, ("Stores", "PriceFull", "PromoFull", "Price", "Promo"))
+    first = next(listing)
+    assert portal.requested == THROUGH_THE_LISTING + [("POST", LISTING)] * 2
+    rest = list(listing)
+    assert portal.requested == THROUGH_THE_LISTING + [("POST", LISTING)] * 2
+    assert [item.name.raw for item in [first, *rest]] == NAMES
 
 
 def test_each_listing_answer_is_logged(caplog):

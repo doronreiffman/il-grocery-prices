@@ -79,23 +79,31 @@ are on, each with the update kinds its polls read), the check of a day also judg
 from every manifest of that day, polls included, and the names stored that day, and writes it into its
 own record as `update_day`; its alerts follow the morning's. Each chain's, in this order:
 
-- missing: names a poll run tried and failed (`failed`) that are still not stored and that no main or
-  retry run of that day listed (those were judged by that day's own check and are never reported
-  twice) → one `missing` alert, with the count and up to ten names.
+- missing: the update files of the day that no run stored and no main or retry run of that day listed
+  (those were judged by that day's own check and are never reported twice), in two parts: the names a
+  poll run tried and failed (`failed`), and the names a poll listed and never tried because it stopped
+  on time (`not_attempted`), less those in the first part → one `missing` alert, with the two counts
+  apart and up to ten names, the two parts' names sorted together (ruling R40). The never-tried names
+  are emailed only for a kind with no page records that day (collector.pages.has_pages): for a kind
+  with page records, Shufersal's once it polls, they are counted, not emailed, until its polls are
+  designed.
 - failed: an update kind no pass read in full that day (collector.pages.passes): for Shufersal, a pass
   whose pages joined up; for a chain without page records, a poll run that ended with no error and was
   not blocked, as R36 reads it. A day no poll ran fails too, so a lost schedule shows → one `failed`
   alert naming the lists. Left out when a poll run of the day was blocked: the stopped alert covers
   it (as R35).
 
-A name a poll listed and never tried because the run stopped on time (`not_attempted`) is counted, not
-emailed: the day's last run of a kind can leave such names, and the next pass is the next day's. The
-count (`not_tried`, per kind: such names not stored and not missing) is the measure of what the time
-rule costs. The record also holds each poll's outcome (`polls`), each kind's passes (`passes`: the
-runs that read each complete one, the runs of each that a page out of order ended unread, and the open
-one with what of the list it has not read), and `by_hour`, the day's stored files of each update kind
-counted by the hour in their names (collector.names.hour_of; "unknown" where it cannot be read), the
-measure of each chain's rhythm.
+The record's `not_tried` holds those never-tried names, per kind and sorted, a paged kind's included:
+the names in a poll's `not_attempted` that are not stored, not in `missing` and not listed by a main
+or retry run of the day (ruling R40). How many there are is the measure of what the time rule costs.
+The quick chains' are emailed because their listings are whole in memory: a poll of a listing that
+does not page reads the rest of it after its own time stop, from memory (collector.sources and
+collector.run), so it lists every name of its day it did not reach, and a name left in `not_tried` is
+a file of the day that no run stored. The record also holds each poll's outcome (`polls`), each kind's
+passes (`passes`: the runs that read each complete one, the runs of each that a page out of order
+ended unread, and the open one with what of the list it has not read), and `by_hour`, the day's stored
+files of each update kind counted by the hour in their names (collector.names.hour_of; "unknown" where
+it cannot be read), the measure of each chain's rhythm.
 """
 import json
 from collections import Counter
@@ -310,17 +318,20 @@ def _not_read_in_full(manifests: list[dict], retries: list[dict], kinds: tuple[s
 
 def _judge_updates(store, slug: str, day: date, manifests: list[dict],
                    kinds: tuple[str, ...]) -> tuple[list[Alert], dict]:
-    """The chain's update-day alerts and its section of the record (ruling R39): see the module's docstring."""
+    """The chain's update-day alerts and its section of the record (rulings R39 and R40): see the module's docstring."""
     polls = [manifest for manifest in manifests if manifest["mode"] == "poll"]
     stored_names = store.stored_names(slug, day)
     listed_by_morning = {name for manifest in manifests if manifest["mode"] in MORNING for name in manifest["listed"]}
     unstored = sorted({name for poll in polls for name in poll["failed"]} - stored_names - listed_by_morning)
-    untried = {name for poll in polls for name in poll["not_attempted"]} - stored_names - set(unstored)
+    untried = ({name for poll in polls for name in poll["not_attempted"]} - stored_names - set(unstored)
+               - listed_by_morning)
+    not_tried = {kind: sorted(_of_kind(untried, kind)) for kind in kinds}
+    emailed = [name for kind in kinds if not has_pages(manifests, kind) for name in not_tried[kind]]
     cut = {kind: passes(manifests, kind) for kind in kinds}
     unread_kinds = [kind for kind in kinds if all(one.read_by is None for one in cut[kind])]
     if any(poll["blocked"] for poll in polls):  # the stopped alert covers the day (as R35)
         unread_kinds = []
-    alerts = [Alert(slug, "missing", _unstored_text(slug, day, unstored))] if unstored else []
+    alerts = [Alert(slug, "missing", _lost_text(slug, day, unstored, emailed))] if unstored or emailed else []
     if unread_kinds:
         alerts.append(Alert(slug, "failed", _unread_text(slug, day, unread_kinds)))
     section = {
@@ -330,7 +341,7 @@ def _judge_updates(store, slug: str, day: date, manifests: list[dict],
                   for poll in polls],
         "passes": {kind: _passes_record(cut[kind], kind) for kind in kinds},
         "missing": unstored,
-        "not_tried": {kind: len(_of_kind(untried, kind)) for kind in kinds},
+        "not_tried": not_tried,
         "by_hour": {kind: _by_hour(stored_names, kind) for kind in kinds},
         "failed": unread_kinds or None,
     }
@@ -357,9 +368,16 @@ def _by_hour(stored_names: set[str], kind: str) -> dict[str, int]:
     return dict(sorted(hours.items()))
 
 
-def _unstored_text(slug: str, day: date, names: list[str]) -> str:
-    count = f"{len(names)} update file{'s' if len(names) != 1 else ''}"
-    return f"{slug}: {count} a poll run tried on {day.isoformat()} and did not store: {_quoted(names)}."
+def _lost_text(slug: str, day: date, failed: list[str], untried: list[str]) -> str:
+    """The update day's `missing` sentence (ruling R40): the files a poll tried and failed and those a poll stopped on
+    time before reaching, counted apart, an empty part left out, and the names of both sorted together."""
+    tried, never = len(failed), len(untried)
+    count = f"{tried + never} update file{'s' if tried + never != 1 else ''}"
+    parts = [f"{tried} tried and failed"] if tried else []
+    if never:
+        parts.append(f"{never} never tried: a poll stopped on time before reaching {'it' if never == 1 else 'them'}")
+    return (f"{slug}: {count} listed on {day.isoformat()} and not stored ({', '.join(parts)}): "
+            f"{_quoted(sorted([*failed, *untried]))}.")
 
 
 def _unread_text(slug: str, day: date, kinds: list[str]) -> str:

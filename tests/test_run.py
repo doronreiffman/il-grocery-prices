@@ -6,8 +6,9 @@ MemoryStore, which keeps S3Store's rules. Bodies are whole gzips holding the fix
 fixtures' UTF-16 XML), since check_payload unzips each one in full. FakePagedSource is FakeSource as a
 paged adapter (Shufersal's), reporting the pages it reads and the page requests that timed out. Three tests run
 the real Shufersal adapter over test_shufersal's fake network, where a listed name and its link's last segment
-differ. The last section (q23) holds a poll run to the kinds its chain polls, counts the names of other days and
-starts a paged poll from its pass.
+differ. The q23 section holds a poll run to the kinds its chain polls, counts the names of other days and starts a
+paged poll from its pass. The last section (q26) reads on through the rest of a listing that does not page after a
+poll's time stop, taking nothing, and holds what that read may meet; the time-stop tests run in both modes.
 """
 import dataclasses
 import functools
@@ -54,6 +55,10 @@ PRICE_3 = "PriceFull7290027600007-001-032-20261031-030000.gz"
 PRICE_4 = "PriceFull7290027600007-001-033-20261031-030000.gz"
 PROMO = "PromoFull7290027600007-001-030-20261031-030000.gz"
 UPDATE = "Price7290027600007-001-030-20261031-090000.gz"
+UPDATE_2 = "Price7290027600007-001-031-20261031-090000.gz"
+UPDATE_3 = "Price7290027600007-001-032-20261031-090000.gz"
+PROMO_UPDATE = "Promo7290027600007-001-030-20261031-090000.gz"
+YESTERDAY_UPDATE = "Price7290027600007-001-034-20261030-090000.gz"
 STORES = "Stores7290027600007-000-20261031-050500.xml"
 YESTERDAY = "PriceFull7290027600007-001-030-20261030-030000.gz"
 TOMORROW = "PriceFull7290027600007-001-030-20261101-030000.gz"
@@ -395,16 +400,20 @@ def test_listing_unreadable_after_some_files():
     assert result.listed == [PRICE] and result.not_attempted == []
 
 
-def test_listing_unreadable_from_a_download_stops_the_run():
-    """R23: Shufersal's expired-link refresh reads the listing again, and it can fail to read."""
-    source = FakeSource([item(PRICE), item(PROMO), item(PRICE_2)],
-                        {PROMO: ListingUnreadable("PromoFull page 1: no rows")})
-    result, store = collect(source)
+@pytest.mark.parametrize("mode", ["main", "poll"])
+def test_listing_unreadable_from_a_download_stops_the_run(mode):
+    """R23: Shufersal's expired-link refresh reads the listing again, and it can fail to read. Only a time stop lists
+    the rest of a poll's listing (ruling R40): this stop reads no further in either mode."""
+    source = FakeSource([item(UPDATE), item(PROMO_UPDATE), item(UPDATE_2)],
+                        {PROMO_UPDATE: ListingUnreadable("PromoFull page 1: no rows")})
+    result, store = collect(source, mode=mode, chain=POLLING, kinds=("Price", "Promo"))
     assert result.error == "listing unreadable: PromoFull page 1: no rows"
-    assert source.downloaded == [PRICE, PROMO]
-    assert result.failed == {PROMO: "listing unreadable: PromoFull page 1: no rows"}
-    assert set(stored_bodies(store)) == {PRICE}
+    assert source.downloaded == [UPDATE, PROMO_UPDATE]
+    assert result.failed == {PROMO_UPDATE: "listing unreadable: PromoFull page 1: no rows"}
+    assert set(stored_bodies(store)) == {UPDATE}
     assert source.given == 2
+    assert result.listed == [UPDATE, PROMO_UPDATE] and result.not_attempted == [] and result.blocked is None
+    assert (manifest(store)["listed"], manifest(store)["not_attempted"]) == (result.listed, result.not_attempted)
 
 
 def test_listing_http_error_fails_the_run():
@@ -451,17 +460,20 @@ def test_blocked_in_the_listing_latches_and_stops():
     assert manifest(store)["blocked"] == reason
 
 
-def test_blocked_on_a_download_latches_and_stops():
-    source = FakeSource([item(PRICE), item(PRICE_2), item(PROMO)], {PRICE_2: block()})
-    result, store = collect(source)
-    reason = f"HTTP 403: {PORTAL}/{PRICE_2}"
+@pytest.mark.parametrize("mode", ["main", "poll"])
+def test_blocked_on_a_download_latches_and_stops(mode):
+    """Only a time stop lists the rest of a poll's listing (ruling R40): a block reads no further in either mode."""
+    source = FakeSource([item(UPDATE), item(UPDATE_2), item(PROMO_UPDATE)], {UPDATE_2: block(f"{PORTAL}/{UPDATE_2}")})
+    result, store = collect(source, mode=mode, chain=POLLING, kinds=("Price", "Promo"))
+    reason = f"HTTP 403: {PORTAL}/{UPDATE_2}"
     assert result.blocked == reason and "SECRET" not in reason
     assert store.read_state(SLUG) == latch(reason)
-    assert source.downloaded == [PRICE, PRICE_2]
+    assert source.downloaded == [UPDATE, UPDATE_2]
     assert source.given == 2
-    assert result.failed == {PRICE_2: reason}
-    assert set(stored_bodies(store)) == {PRICE}
-    assert result.not_attempted == []
+    assert result.failed == {UPDATE_2: reason}
+    assert set(stored_bodies(store)) == {UPDATE}
+    assert result.not_attempted == [] and result.listed == [UPDATE, UPDATE_2] and result.error is None
+    assert (manifest(store)["listed"], manifest(store)["not_attempted"]) == (result.listed, result.not_attempted)
 
 
 def test_blocked_on_the_retry_latches():
@@ -588,51 +600,86 @@ def test_a_failed_store_costs_that_file_only():
 
 # ---- time running out ----
 
-def test_stops_before_timeout_and_records_not_attempted():
+@pytest.mark.parametrize("mode", ["main", "poll"])
+def test_stops_before_timeout_and_records_not_attempted(mode):
     """Plan, risk 2, with ruling R32's 90 s: after two files the next listing read leaves under 90 s;
-    the file it gave is not attempted, the listing is read no further, nothing is half-stored, the
-    manifest is written."""
+    the file it gave is not attempted, nothing is half-stored, the manifest is written. A main run reads
+    the listing no further; a poll run of a listing that does not page reads the rest of it, taking
+    nothing (ruling R40), so each name it did not reach is in `not_attempted`."""
     clock = Clock()
-    source = FakeSource([item(PRICE), item(PROMO), clock.set(89.9), item(PRICE_2), item(PRICE_3)])
-    result, store = collect(source, clock=clock)
-    assert source.downloaded == [PRICE, PROMO]
-    assert result.listed == [PRICE, PROMO, PRICE_2]
-    assert result.not_attempted == [PRICE_2]
-    assert source.given == 3
+    source = FakeSource([item(UPDATE), item(PROMO_UPDATE), clock.set(89.9), item(UPDATE_2), item(UPDATE_3)])
+    result, store = collect(source, clock=clock, mode=mode, chain=POLLING, kinds=("Price", "Promo"))
+    assert source.downloaded == [UPDATE, PROMO_UPDATE]
+    if mode == "main":
+        assert source.given == 3
+        assert result.listed == [UPDATE, PROMO_UPDATE, UPDATE_2]
+        assert result.not_attempted == [UPDATE_2]
+    else:
+        assert source.given == 4
+        assert result.listed == [UPDATE, PROMO_UPDATE, UPDATE_2, UPDATE_3]
+        assert result.not_attempted == [UPDATE_2, UPDATE_3]
     assert result.error == "stopped: under 90 s left"
-    assert set(stored_bodies(store)) == {PRICE, PROMO}
-    assert manifest(store)["not_attempted"] == [PRICE_2]
+    assert result.failed == {} and result.blocked is None
+    assert set(stored_bodies(store)) == {UPDATE, PROMO_UPDATE}
+    assert (manifest(store)["listed"], manifest(store)["not_attempted"]) == (result.listed, result.not_attempted)
     assert manifest(store)["error"] == "stopped: under 90 s left"
 
 
-def test_time_checked_between_listing_items():
+@pytest.mark.parametrize("mode", ["main", "poll"])
+def test_time_checked_between_listing_items(mode):
     """R23: a retry run that skips stored files reads page after page without a download; it stops
-    reading when time runs short, not at Lambda's deadline."""
+    reading when time runs short, not at Lambda's deadline. A poll run's listing that does not page is
+    read on, taking nothing (ruling R40): a name stored before the run is listed, not put in
+    `not_attempted`."""
     clock = Clock()
-    store = store_with(PRICE, PROMO, PRICE_2)
-    source = FakeSource([item(PRICE), clock.set(30), item(PROMO), item(PRICE_2), item(PRICE_3)])
-    result, _ = collect(source, store=store, clock=clock)
-    assert source.given == 2 and source.downloads == []
-    assert result.listed == [PRICE, PROMO]
-    assert result.not_attempted == [] and result.error == "stopped: under 90 s left"
+    store = store_with(UPDATE, PROMO_UPDATE, UPDATE_2)
+    source = FakeSource([item(UPDATE), clock.set(30), item(PROMO_UPDATE), item(UPDATE_2), item(UPDATE_3)])
+    result, _ = collect(source, store=store, clock=clock, mode=mode, chain=POLLING, kinds=("Price", "Promo"))
+    assert source.downloads == []
+    if mode == "main":
+        assert source.given == 2
+        assert result.listed == [UPDATE, PROMO_UPDATE]
+        assert result.not_attempted == []
+    else:
+        assert source.given == 4
+        assert result.listed == [UPDATE, PROMO_UPDATE, UPDATE_2, UPDATE_3]
+        assert result.not_attempted == [UPDATE_3]
+    assert result.error == "stopped: under 90 s left"
+    assert result.failed == {} and result.blocked is None
+    assert set(stored_bodies(store)) == {UPDATE, PROMO_UPDATE, UPDATE_2}
+    assert (manifest(store)["listed"], manifest(store)["not_attempted"]) == (result.listed, result.not_attempted)
 
 
-def test_time_checked_after_a_download():
+@pytest.mark.parametrize("mode", ["main", "poll"])
+def test_time_checked_after_a_download(mode):
     clock = Clock()
-    source = FakeSource([item(PRICE), item(PROMO), item(PRICE_2)], {PROMO: lambda: (clock.set(10)(), body(PROMO))[1]})
-    result, _ = collect(source, clock=clock)
-    assert source.downloaded == [PRICE, PROMO] and set(result.files) == {PRICE, PROMO}
-    assert source.given == 2 and result.not_attempted == []
+    source = FakeSource([item(UPDATE), item(PROMO_UPDATE), item(UPDATE_2)],
+                        {PROMO_UPDATE: lambda: (clock.set(10)(), body(PROMO_UPDATE))[1]})
+    result, store = collect(source, clock=clock, mode=mode, chain=POLLING, kinds=("Price", "Promo"))
+    assert source.downloaded == [UPDATE, PROMO_UPDATE] and set(result.files) == {UPDATE, PROMO_UPDATE}
+    if mode == "main":
+        assert source.given == 2 and result.listed == [UPDATE, PROMO_UPDATE]
+        assert result.not_attempted == []
+    else:
+        assert source.given == 3 and result.listed == [UPDATE, PROMO_UPDATE, UPDATE_2]
+        assert result.not_attempted == [UPDATE_2]
     assert result.error == "stopped: under 90 s left"
+    assert result.failed == {} and result.blocked is None
+    assert set(stored_bodies(store)) == {UPDATE, PROMO_UPDATE}
+    assert (manifest(store)["listed"], manifest(store)["not_attempted"]) == (result.listed, result.not_attempted)
 
 
-def test_time_short_at_the_start_reads_nothing():
-    source = FakeSource([item(PRICE)])
-    result, store = collect(source, clock=Clock(45))
-    assert source.given == 0 and source.downloads == []
-    assert result.listing_read_at is None and result.listed == []
+@pytest.mark.parametrize("mode", ["main", "poll"])
+def test_time_short_at_the_start_reads_nothing(mode):
+    """No listing was read, so a poll has none to read on: no exception, nothing listed."""
+    source = FakeSource([item(UPDATE)])
+    result, store = collect(source, clock=Clock(45), mode=mode, chain=POLLING, kinds=("Price", "Promo"))
+    assert source.given == 0 and source.downloads == [] and source.listing_calls == []
+    assert result.listing_read_at is None and result.listed == [] and result.not_attempted == []
     assert result.error == "stopped: under 90 s left"
+    assert result.failed == {} and result.blocked is None and stored_bodies(store) == {}
     assert manifest(store)["error"] == "stopped: under 90 s left"
+    assert (manifest(store)["listed"], manifest(store)["not_attempted"]) == (result.listed, result.not_attempted)
 
 
 def test_the_run_lends_the_adapter_its_own_time_check():
@@ -658,18 +705,22 @@ def test_out_of_time_in_the_listing_stops_the_run_as_time_does():
     assert manifest(store)["error"] == "stopped: under 90 s left"
 
 
-def test_out_of_time_in_a_download_fails_that_file_and_stops_the_run():
+@pytest.mark.parametrize("mode", ["main", "poll"])
+def test_out_of_time_in_a_download_fails_that_file_and_stops_the_run(mode):
     """Shufersal's refresh stopped short: the file was tried (its link had expired), so it is failed with why, not
-    tried again, and the run stops; the retry run lists it again."""
-    stop = OutOfTime(f"{PROMO}: its link expired; stopped before page 2 of the PromoFull listing")
-    source = FakeSource([item(PRICE), item(PROMO), item(PRICE_2)], {PROMO: stop})
-    result, store = collect(source)
-    assert source.downloaded == [PRICE, PROMO] and source.given == 2
-    assert result.failed == {PROMO: f"{PROMO}: its link expired; stopped before page 2 of the PromoFull listing: "
-                                     "under 90 s left"}
+    tried again, and the run stops; the retry run, or the next pass, lists it again. Shufersal's listing pages, so a
+    poll's is not read on after the stop either (ruling R40)."""
+    stop = OutOfTime(f"{PROMO_UPDATE}: its link expired; stopped before page 2 of the PromoFull listing")
+    source = FakePagedSource([item(UPDATE), item(PROMO_UPDATE), item(UPDATE_2)], {PROMO_UPDATE: stop})
+    result, store = collect(source, mode=mode, chain=POLLING, kinds=("Price", "Promo"))
+    assert source.downloaded == [UPDATE, PROMO_UPDATE] and source.given == 2
+    assert result.failed == {PROMO_UPDATE: f"{PROMO_UPDATE}: its link expired; stopped before page 2 of the PromoFull "
+                                           "listing: under 90 s left"}
     assert result.error == "stopped: under 90 s left" and result.blocked is None
-    assert result.not_attempted == [] and set(result.files) == {PRICE}
+    assert result.not_attempted == [] and set(result.files) == {UPDATE}
+    assert result.listed == [UPDATE, PROMO_UPDATE] and set(stored_bodies(store)) == {UPDATE}
     assert manifest(store)["failed"] == result.failed
+    assert (manifest(store)["listed"], manifest(store)["not_attempted"]) == (result.listed, result.not_attempted)
 
 
 def test_ninety_seconds_left_is_enough():
@@ -677,14 +728,23 @@ def test_ninety_seconds_left_is_enough():
     assert set(result.files) == {PRICE} and result.error is None
 
 
-def test_no_retry_under_ninety_seconds():
-    """The retry is a download too: with under 90 s left it is not tried, and the file is failed."""
+@pytest.mark.parametrize("mode", ["main", "poll"])
+def test_no_retry_under_ninety_seconds(mode):
+    """The retry is a download too: with under 90 s left it is not tried, and the file is failed. A poll then lists the
+    rest of its listing (ruling R40)."""
     clock = Clock()
-    source = FakeSource([item(PRICE), item(PROMO)], {PRICE: lambda: (clock.set(20)(), HttpError("timed out"))[1]})
-    result, _ = collect(source, clock=clock)
-    assert source.downloaded == [PRICE]
-    assert result.failed == {PRICE: "timed out; not tried again: under 90 s left"}
-    assert result.not_attempted == [] and result.error == "stopped: under 90 s left"
+    source = FakeSource([item(UPDATE), item(PROMO_UPDATE)],
+                        {UPDATE: lambda: (clock.set(20)(), HttpError("timed out"))[1]})
+    result, store = collect(source, clock=clock, mode=mode, chain=POLLING, kinds=("Price", "Promo"))
+    assert source.downloaded == [UPDATE]
+    assert result.failed == {UPDATE: "timed out; not tried again: under 90 s left"}
+    if mode == "main":
+        assert result.listed == [UPDATE] and result.not_attempted == []
+    else:
+        assert result.listed == [UPDATE, PROMO_UPDATE] and result.not_attempted == [PROMO_UPDATE]
+    assert result.error == "stopped: under 90 s left" and result.blocked is None
+    assert stored_bodies(store) == {}
+    assert (manifest(store)["listed"], manifest(store)["not_attempted"]) == (result.listed, result.not_attempted)
 
 
 # ---- the manifest, in every outcome ----
@@ -838,10 +898,10 @@ def stored_day(day, manifests=(), stored=()):
     return store
 
 
-def row(store, day=20261031, ends_page=False):
-    """A PriceFull row of `store` (a number) as Shufersal lists it: the name without .gz, the link to `<name>.gz`
-    (ruling R16)."""
-    raw = f"PriceFull7290027600007-001-{store:03d}-{day}-030000"
+def row(store, day=20261031, ends_page=False, kind="PriceFull"):
+    """A row of `kind` (PriceFull unless told) of `store` (a number) as Shufersal lists it: the name without .gz, the
+    link to `<name>.gz` (ruling R16)."""
+    raw = f"{kind}7290027600007-001-{store:03d}-{day}-030000"
     return Listed(parse_file_name(raw), f"{PORTAL}/{raw}.gz", ends_page)
 
 
@@ -1225,3 +1285,135 @@ def test_a_full_kinds_start_is_r37s_with_polls_beside():
     collect(source, store=stored_day(PAGES_DAY, [A, P1, P2, P3], stored), kinds=("PriceFull",), day=PAGES_DAY)
     assert source.starts == {"PriceFull": start_for([A], "PriceFull", stored)}
     assert start_for([A], "PriceFull", stored) == Start(page=12, furthest=name(221))  # a resume: not a fresh pass
+
+
+# ---- a poll's time stop: the rest of the listing listed (q26, ruling R40) ----
+
+UPDATES = ("Price", "Promo")
+
+
+def taking_time(clock, name, left=30):
+    """`name`'s download answer: its body, after leaving `left` seconds on `clock`."""
+    return {name: lambda: (clock.set(left)(), body(name))[1]}
+
+
+def test_a_polls_time_stop_in_a_download_lists_the_rest():
+    """The unpaged twin of the paged test above: an adapter's OutOfTime in a download fails that file, the run stops on
+    time, and a poll reads the rest of its listing, taking nothing."""
+    stop = OutOfTime(f"{PROMO_UPDATE}: its link expired; stopped before page 2 of the PromoFull listing")
+    source = FakeSource([item(UPDATE), item(PROMO_UPDATE), item(UPDATE_2)], {PROMO_UPDATE: stop})
+    result, store = collect(source, mode="poll", chain=POLLING, kinds=UPDATES)
+    assert source.given == 3
+    assert source.downloaded == [UPDATE, PROMO_UPDATE]
+    assert result.failed == {PROMO_UPDATE: f"{PROMO_UPDATE}: its link expired; stopped before page 2 of the PromoFull "
+                                           "listing: under 90 s left"}
+    assert result.listed == [UPDATE, PROMO_UPDATE, UPDATE_2] and result.not_attempted == [UPDATE_2]
+    assert result.error == "stopped: under 90 s left" and result.blocked is None
+    assert set(stored_bodies(store)) == {UPDATE}
+    assert (manifest(store)["listed"], manifest(store)["not_attempted"]) == (result.listed, result.not_attempted)
+
+
+def test_a_drained_row_is_classified_as_a_taken_one():
+    """Design, section 1: after the stop, a kind not asked for is skipped, a name of another day is counted in
+    `other_days` once, a repeat is skipped, and a new name of the day is listed and not attempted."""
+    clock = Clock()
+    source = FakeSource([item(UPDATE), item(PRICE), item(YESTERDAY_UPDATE), item(UPDATE), item(PROMO_UPDATE),
+                         item(YESTERDAY_UPDATE)], taking_time(clock, UPDATE))
+    result, store = collect(source, clock=clock, mode="poll", chain=POLLING, kinds=UPDATES)
+    assert source.given == 6
+    assert result.listed == [UPDATE, PROMO_UPDATE]
+    assert result.not_attempted == [PROMO_UPDATE]
+    assert result.other_days == {"2026-10-30": 1} and manifest(store)["other_days"] == {"2026-10-30": 1}
+    assert source.downloaded == [UPDATE] and set(stored_bodies(store)) == {UPDATE}
+    assert result.error == "stopped: under 90 s left"
+
+
+def test_a_paged_listing_is_not_drained():
+    """Design, section 1 (call 5): a paged listing's page records are what the resume and the joining read, so a poll
+    of one that stops on time mid-page reads no further: the page is taken as far as the run got, and the next page
+    is never reported."""
+    clock = Clock()
+    rows = [row(100, kind="Price"), row(101, kind="Price"), row(102, kind="Price"),
+            dataclasses.replace(row(103, kind="Price"), ends_page=True)]
+    source = FakePagedSource([report(1, rows[0].name.raw, rows[3].name.raw, rows=4, last_page=2, kind="Price"), *rows,
+                              report(2, row(104, kind="Price").name.raw, row(107, kind="Price").name.raw, rows=4,
+                                     kind="Price")],
+                             taking_time(clock, stored_name(rows[1])))
+    result, store = collect(source, clock=clock, mode="poll", chain=POLLING, kinds=("Price",))
+    assert source.given == 2
+    assert result.listed == [stored_name(rows[0]), stored_name(rows[1])]
+    assert result.not_attempted == []
+    assert len(result.pages) == 1 and result.pages[-1]["taken_through"] == row(101, kind="Price").name.raw
+    assert manifest(store)["pages"] == result.pages
+    assert result.error == "stopped: under 90 s left"
+
+
+def test_the_drain_ends_at_out_of_time_with_what_it_had():
+    """Design, call 11: an adapter that honours the lent time check can raise OutOfTime with no time left; the drain
+    ends there, the rows it read listed, and the run reads as the time stop it is."""
+    clock = Clock()
+    source = FakeSource([item(UPDATE), item(UPDATE_2), OutOfTime("before the NCR listing's answer from iDisplayStart 5000"),
+                         item(UPDATE_3)], taking_time(clock, UPDATE))
+    result, store = collect(source, clock=clock, mode="poll", chain=POLLING, kinds=UPDATES)
+    assert result.listed == [UPDATE, UPDATE_2]
+    assert result.not_attempted == [UPDATE_2]
+    assert result.error == "stopped: under 90 s left" and result.blocked is None
+    assert source.given == 2 and source.downloaded == [UPDATE]
+    assert manifest(store)["error"] == "stopped: under 90 s left"
+
+
+def test_a_fault_in_the_drain_fails_the_run_and_says_why():
+    """Design, call 11: anything else the listing raises after the stop means an adapter made a request it should not
+    have; the manifest must not read as a time stop (ruling R36 matches that text), so it says what was raised, the
+    rows drained before it stay listed, and the invocation fails."""
+    clock = Clock()
+    source = FakeSource([item(UPDATE), item(UPDATE_2), RuntimeError("a request after the stop"), item(UPDATE_3)],
+                        taking_time(clock, UPDATE))
+    store = MemoryStore()
+    with pytest.raises(RuntimeError, match="a request after the stop"):
+        collect(source, store=store, clock=clock, mode="poll", chain=POLLING, kinds=UPDATES)
+    record = manifest(store)
+    assert record["error"] == "unexpected error: RuntimeError: a request after the stop"
+    assert record["listed"] == [UPDATE, UPDATE_2] and record["not_attempted"] == [UPDATE_2]
+    assert source.given == 2 and source.downloaded == [UPDATE]
+
+
+def test_a_block_in_the_drain_latches_the_chain():
+    """Design, call 11: a block met after the stop latches the chain as the loop would, and ends the drain; the
+    manifest carries the time stop and the block."""
+    clock = Clock()
+    source = FakeSource([item(UPDATE), item(UPDATE_2), block(), item(UPDATE_3)], taking_time(clock, UPDATE))
+    result, store = collect(source, clock=clock, mode="poll", chain=POLLING, kinds=UPDATES)
+    reason = f"HTTP 403: {PORTAL}/{PRICE_2}"
+    assert result.blocked == reason and manifest(store)["blocked"] == reason
+    assert store.read_state(SLUG) == latch(reason)
+    assert result.error == "stopped: under 90 s left" and manifest(store)["error"] == "stopped: under 90 s left"
+    assert result.listed == [UPDATE, UPDATE_2] and result.not_attempted == [UPDATE_2]
+    assert source.given == 2 and source.downloaded == [UPDATE]
+
+
+def test_a_block_in_the_drain_whose_latch_cannot_be_written_says_so():
+    """As in the loop: the manifest keeps the block and says the latch was not written, and the invocation fails with
+    the store's error (the drain's own rule for anything else does not rewrite it)."""
+    clock = Clock()
+    source = FakeSource([item(UPDATE), item(UPDATE_2), block(), item(UPDATE_3)], taking_time(clock, UPDATE))
+    store = LatchFails()
+    with pytest.raises(ClientError, match="PutObject"):
+        collect(source, store=store, clock=clock, mode="poll", chain=POLLING, kinds=UPDATES)
+    record = manifest(store)
+    reason = f"HTTP 403: {PORTAL}/{PRICE_2}"
+    assert record["blocked"] == reason
+    assert record["error"].startswith("latch not written: ClientError: ") and "PutObject" in record["error"]
+    assert record["listed"] == [UPDATE, UPDATE_2] and record["not_attempted"] == [UPDATE_2]
+    assert store.read_state(SLUG) == {}
+
+
+def test_unparsed_stays_zero_after_a_drain():
+    """Ruling R13, design call 6: `unparsed` is 0 on every run that stopped, though the drain read the listing to its
+    end."""
+    clock = Clock()
+    source = FakeSource([UNPARSED, item(UPDATE), UNPARSED, item(UPDATE_2), UNPARSED], taking_time(clock, UPDATE))
+    result, store = collect(source, clock=clock, mode="poll", chain=POLLING, kinds=UPDATES)
+    assert source.unparsed == 3  # the drain read the listing to its end
+    assert result.unparsed == 0 and manifest(store)["unparsed"] == 0
+    assert result.not_attempted == [UPDATE_2]

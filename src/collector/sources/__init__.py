@@ -9,6 +9,10 @@ adapter that makes requests of its own beyond those (Shufersal's re-read of a ca
 of an NCR listing read) asks the check the run lends it, `short_of_time`, before each, and raises OutOfTime when it
 says so; the default, for a caller with no time limit, is never short.
 
+An adapter that is not a PagedSource makes no request after its first row, or asks `short_of_time` before each one it
+must make; after a poll's own time stop the run reads such a listing on, from memory, taking nothing (ruling R40).
+NCR's adapter reads its whole directory and Carrefour's its one page, checking every name, before giving the first row.
+
 A paged adapter (PagedSource: Shufersal's) also reports each listing page it reads (PageRead) and marks the last row
 it gives from each page (`Listed.ends_page`), so the run loop can record how far into the list a run got; the run
 loop tells it where to start each kind (Start). It reports to `on_timeout` each request for a listing page that passed
