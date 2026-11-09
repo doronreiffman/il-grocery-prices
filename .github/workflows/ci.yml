@@ -22,5 +22,5 @@ jobs:
           node-version: "22.11.0"
       - run: pytest --cov=collector --cov=src/basket --cov=src/shopper --cov-fail-under=95
       # The full mutation check runs weekly (mutations.yml); tests/test_mutation_targets.py, run with the tests above,
-      # checks on every push that each planted bug still points at real code and real tests.
+      # checks on every push that each planted bug still finds its text, exactly once, and the tests it names.
       - run: cfn-lint --regions il-central-1 -- template.yaml site-template.yaml
