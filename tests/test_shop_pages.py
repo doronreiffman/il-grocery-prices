@@ -27,6 +27,7 @@ from shopper.pages import (BASKET_PAGE, BASKET_SECTION, CONDITIONS, NO_DEALS, SC
                            FrontRow, front_rows_of, ordered, render_basket, render_front, render_method, render_record,
                            scorecard_section)
 from shopper.product import CHAIN_SPAN, page_path
+from shopper.items import HORIZON
 from shopper.record import scorecard
 from shopper.words import (ALWAYS, ALWAYS_SENTENCE, CREDIT_START, FINE_PRINT, FRONT_RULE, FRONT_TITLE, GAP_HEADING,
                            HIRING, NEVER, club_label, columns_tested, count_line, date_line, formats_note,
@@ -322,6 +323,18 @@ def test_the_method_page_names_the_stores_left_out_by_rule():
     assert "in a column's part" not in _method(exclusions=none_in_a_column) and "store 779" in _method()
 
 
+def test_the_method_pages_store_counts_are_the_store_lists():
+    """The final review's finding 7: the columns table counts each column's included stores by the day's store list
+    (`ColumnsToday.members`), store 779 among Express's, so its heading says so, and the paragraph on store 779 says
+    the table counts such a store, though none of its files counts: not "included today" beside "left out"."""
+    page = _method()
+    columns = re.search(r'<section id="columns">(.*?)</section>', page, re.DOTALL).group(1)
+    assert '<th scope="col">Included stores on today\'s store list</th>' in columns
+    assert "Included stores today" not in page
+    assert ("The table above counts by the store list, so such a store is among its column's included stores there, "
+            "though none of its files counts.") in columns
+
+
 def test_the_method_page_states_the_rules_with_the_codes_constants():
     """P1 to P10 and F1 to F11 in plain words, with the constants the code fixes (n0, the seed, the block, the
     draws)."""
@@ -465,6 +478,15 @@ def test_the_record_pages_tables_say_they_count_the_days_scored_so_far():
     assert SCORED_SO_FAR not in _record() and "<table" not in scorecard_section(scorecard([]))    # re-review, N1
 
 
+def test_the_scored_so_far_sentence_holds_whenever_the_page_is_built():
+    """Task 18's review and the final review's triage (364): the sentence is drawn from the scorecard alone, so it says
+    nothing the ledger would have to bear out: a page built 14 days or more after the last freeze (a late or backfill
+    build) has every frozen day scored, and "the latest days frozen are not in them yet" would be false there."""
+    assert SCORED_SO_FAR == ("Each column's tables below count only the days whose forecasts file has been scored so "
+                             f"far: a day's file is scored {HORIZON} days after it is frozen (the days frozen are "
+                             "counted further down).")
+
+
 def test_the_record_page_shows_calibration_and_a_sentence_per_bin_of_one_percent_or_more():
     """F8 and F11: the calibration table and an inline chart, hidden from screen readers; one sentence per bin holding
     1% or more of the version's scored forecasts, none for a bin under it."""
@@ -584,6 +606,18 @@ def test_basket_html_keeps_the_baskets_always_phrases_links_covered_items_only_a
     assert f'<a href="method.html#{BASKET_SECTION}">' in page
     assert f"<h1>{BASKET_TITLE}</h1>" in page and "<script" not in page
     assert 'href="p/' not in _basket_page(pages=())
+
+
+def test_basket_html_links_an_item_whose_code_has_leading_zeros():
+    """The final review's finding 12: the build's product pages go by the barcode with its leading zeros stripped, and
+    a basket item's code is as the basket file writes it, so the link compares the two stripped."""
+    zeros = replace(BASKET, items=tuple(replace(item, code="0" + item.code) for item in BASKET.items))
+    public = json.dumps(a_public())
+    for item in BASKET.items:                           # the day as the basket's build gives it for those codes
+        public = public.replace(f'"{item.code}"', f'"0{item.code}"')
+    page = render_basket(json.loads(public), zeros, EXCLUSIONS, BASKET_DAY, "12:03", {MILK})
+    assert f'<a href="{page_path(MILK)}">' in page
+    assert f'href="{page_path("0" + MILK)}"' not in page and page.count('href="p/') == 1
 
 
 def test_render_index_without_a_frame_is_unchanged():

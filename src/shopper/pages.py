@@ -26,28 +26,28 @@ shown (`shopper.words.shown_below`, as P7's first sentence works it), and the co
 print label; the top row's P7 sentences as one deal's story; the hiring line (question M (f)). The headers carry the
 ALWAYS phrases, so the page carries them on a morning with no row too.
 
-The method page: what a column is and the nine, with how each one's stores are chosen and how many are included today;
-the stores left out by rule, which of them sit in a column's part of the store list, and store 779 (Task 15's carry:
-ALWAYS_SENTENCE says this page names them); Carrefour's table, store by store, and how it was drawn; the included stores
-in no column, chain by chain, each by id and its listed name (with its sub-chain where the columns go by sub-chain); any
-column under the floor that day; P1 to P10 and F1 to F11 in plain words with the code's own constants; the NEVER list as
-`<ul id="never-words">`, the only place its phrases appear; what is measured and what is inferred; the law; how to
-reproduce a page; and the headline basket's method, `basket.page.method_parts` byte for byte, in a section whose id
-(`BASKET_SECTION`) is not its inner heading's (S6).
+The method page: what a column is and the nine, with how each one's stores are chosen and how many the day's store
+list includes; the stores left out by rule, which of them sit in a column's part of the store list, and store 779
+(Task 15's carry: ALWAYS_SENTENCE says this page names them); Carrefour's table, store by store, and how it was drawn;
+the included stores in no column, chain by chain, each by id and its listed name (with its sub-chain where the columns
+go by sub-chain); any column under the floor that day; P1 to P10 and F1 to F11 in plain words with the code's own
+constants; the NEVER list as `<ul id="never-words">`, the only place its phrases appear; what is measured and what is
+inferred; the law; how to reproduce a page; and the headline basket's method, `basket.page.method_parts` byte for
+byte, in a section whose id (`BASKET_SECTION`) is not its inner heading's (S6).
 
 The record page: `scorecard_section`, a function of the scorecard alone, so the guard can render it again from the
 site-day file (Task 21): how many columns are tested at once, the model versions scored so far (the scorecard's
 `versions_tried`, which counts the versions with a scored day: Task 14's carry), the version in force and the
-bootstrap's numbers; "No forecast has been scored yet." before any scored day; then per column its gate, closed (an open
-gate stops the page: step one shows no odds), its three conditions and whether each holds, with the reasons; and per
-model version the whole and each month (the days on time and late, the scored days, the forecasts, scored and
+bootstrap's numbers; "No forecast has been scored yet." before any scored day; then per column its gate, closed (an
+open gate stops the page: step one shows no odds), its three conditions and whether each holds, with the reasons; and
+per model version the whole and each month (the days on time and late, the scored days, the forecasts, scored and
 unscored, the outcome-1 share; the three Brier scores, the model's less each baseline's and the two skills, each with
 its 95% interval or "too few days"), the calibration as a table and an inline chart, and a sentence for each bin
-holding 1% or more of the version's scored forecasts (`shopper.record.holds_share`). Every column-pooled block of the
-scorecard is left out. After it: "Promotion fine print is not read yet."; the days the ledger names as frozen, on time
-(`shopper.freeze.on_time`) and late, the days since the first with no forecasts file, and where the record starts (the
-first day frozen on time, F6); every forecasts and scores file and the ledger, linked as test records, not advice; and
-the days read with each column's days short of price files, of promotion files, or with no table.
+holding 1% or more of the version's scored forecasts (`shopper.record.holds_share`). The scorecard has no
+column-pooled block to show. After it: "Promotion fine print is not read yet."; the days the ledger names as frozen,
+on time (`shopper.freeze.on_time`) and late, the days since the first with no forecasts file, and where the record
+starts (the first day frozen on time, F6); every forecasts and scores file and the ledger, linked as test records, not
+advice; and the days read with each column's days short of price files, of promotion files, or with no table.
 
 The basket page, `basket.html` (question M (c), (d)): the basket's index page (`basket.page.render_index`) in the site's
 frame: the site's band and credit line, an item linked to its product page only when the build has that page, and
@@ -65,6 +65,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from fractions import Fraction
 from html import escape
 
+from basket.barcode import normalize
 from basket.basket_file import Basket
 from basket.chains import EXCLUDED, SLUGS
 from basket.page import BASKET_STYLE, Frame, method_parts, render_index
@@ -115,8 +116,7 @@ CONDITIONS = {
 }
 TOO_FEW = "too few days"
 SCORED_SO_FAR = ("Each column's tables below count only the days whose forecasts file has been scored so far: a "
-                 f"day's file is scored {HORIZON} days after it is frozen, so the latest days frozen are not in them "
-                 "yet (the days frozen are counted further down).")
+                 f"day's file is scored {HORIZON} days after it is frozen (the days frozen are counted further down).")
 FILES_LABEL = ("These files are this site's test records of its forecasts, published so that anyone can check them; "
                "they are not advice.")
 # The method page: Shufersal's formats in no column on the fixed day, named where the design names them
@@ -323,7 +323,8 @@ LEFT_OUT_BY_RULE = ("The stores left out by rule are in no column either: the on
                     "\"Stores left out\" in its section below).")
 STORE_779 = ("A store is left out too on a day its price files are named under a sub-chain left out, whatever the "
              "store list says: on 2 and 7 November 2026, Shufersal's store 779, which the store list puts in Shufersal "
-             "Express, had its files named under Be's sub-chain.")
+             "Express, had its files named under Be's sub-chain. The table above counts by the store list, so such a "
+             "store is among its column's included stores there, though none of its files counts.")
 CARREFOUR_DRAWN = ("Carrefour's store list names no format. Its stores were grouped by the promotions they carry, "
                    "measured on 5 and 7 November 2026: two stores were joined when at least half of the promotions, "
                    "coupons aside, that either one carries are carried by both, and a group is the stores joined "
@@ -500,7 +501,7 @@ def _columns_section(columns: ColumnsToday, exclusions: Mapping[str, Sequence[St
                    f"<td>{text(_stores_of(column))}</td><td>{len(columns.members.get(column.key, ()))}</td></tr>"
                    for column in COLUMNS)
     table = ('<table class="columns"><thead><tr><th scope="col">Column</th><th scope="col">Chain</th>'
-             '<th scope="col">Its stores</th><th scope="col">Included stores today</th></tr></thead>'
+             '<th scope="col">Its stores</th><th scope="col">Included stores on today\'s store list</th></tr></thead>'
              f"<tbody>{rows}</tbody></table>")
     return _section("columns", "What a column is", f"<p>{text(COLUMN_INTRO)}</p>", f"<p>{text(COLUMNS_FIXED)}</p>",
                     _scroller("The columns", table),
@@ -807,8 +808,9 @@ def render_record(scorecard: dict, ledger_days: Mapping[date, datetime], files: 
 def render_basket(public: dict, basket: Basket, exclusions: Mapping[str, Sequence[Store]], day: date,
                   collected_by: str, product_pages: set[str]) -> str:
     """`basket.html` (the module's docstring): `public` the basket's day as its pages show it, `product_pages` the
-    barcodes whose page the build has."""
+    barcodes whose page the build has, leading zeros stripped, so an item's code is stripped to match (the final
+    review's finding 12)."""
     frame = Frame(band=band(day, ""), credit=credit(day, collected_by),
-                  item_link=lambda code: page_path(code) if code in product_pages else None,
+                  item_link=lambda code: page_path(normalize(code)) if normalize(code) in product_pages else None,
                   method_href=f"method.html#{BASKET_SECTION}", note=formats_note())
     return render_index(public, basket, exclusions, frame)

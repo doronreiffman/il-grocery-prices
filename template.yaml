@@ -582,8 +582,10 @@ Resources:
       MemorySize: 2048
       # Lambda's longest run; the schedules below are spaced by it.
       Timeout: 900
-      # /tmp holds one chain's price files of the day, its table and DuckDB's spill folder.
-      EphemeralStorage: {Size: 2048}
+      # /tmp holds an extraction's files of the day, its tables and DuckDB's spill folder, and the site
+      # run's 91 days of items tables, its pages and the day's prices tables: the site run's need is not
+      # measured yet, so the room is ample (docs/operations.md, "Sizing").
+      EphemeralStorage: {Size: 10240}
       # DuckDB, built by sam build from layer/; the function's own zip is src/ alone, so the record's
       # code fingerprint is the one computed on the Mac.
       Layers: [!Ref DuckDbLayer]

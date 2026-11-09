@@ -26,11 +26,12 @@ the tests can give the golden day's own. A promotion format change, or a promoti
 chain's promotions and not the run: its prices and items tables go up, its promotions folder's report naming the error.
 Whatever stops the run once the prices table is written (no store list, a failure in the shopper's steps), the files
 written so far go up before the error is raised, so the basket run keeps the chain's prices table as before the
-shopper's steps. Its summary, logged as one JSON line and returned, counts the files read and passed over, the stores
-and rows in the prices table and the rows whose price could not be read, and gives the prices extraction's own seconds
-(the fetch and the put left out) and the keys put; then the promotions' counts (None when they were not read), the
-promotions error (None when there was none), each column's items, wide items, hole and promotion hole, and the
-seconds of the promotions and of the items steps.
+shopper's steps; a put that fails then is logged as a warning, and the error raised is still the extraction's. Its
+summary, logged as one JSON line and returned, counts the files read and passed over, the stores and rows in the
+prices table and the rows whose price could not be read, and gives the prices extraction's own seconds (the fetch and
+the put left out) and the keys put; then the promotions' counts (None when they were not read), the promotions error
+(None when there was none), each column's items, wide items, hole and promotion hole, and the seconds of the
+promotions and of the items steps.
 
 The basket mode is the shopper site's run (the shopper plan's Task 23; the 12:33 event keeps "basket", question M
 (b)): it builds, checks, guards and publishes the site's whole day, the basket's day among it. In order:
@@ -356,13 +357,24 @@ def _extract(slug: str, day: date, deps: Deps, now: datetime, work: Path) -> dic
     deps.archive.fetch_store_list(slug, day, raw)  # None: the extraction refuses the chain after its prices table
     try:
         report = extract_chain_day(raw, slug, day, tables, table=CARREFOUR_TABLE)
-    finally:  # whatever stopped it, what the extraction wrote goes up: a chain stopped after its prices keeps them
-        keys = deps.archive.put_tables(slug, day, tables)
+    except BaseException:  # whatever stopped it, what it wrote goes up: a chain stopped after its prices keeps them
+        _put_written(deps, slug, day, tables)
+        raise
+    keys = deps.archive.put_tables(slug, day, tables)
     prices = report.prices
     return {"mode": "extract", "chain": slug, "day": day.isoformat(), "run_id": run_id, "files": len(prices.files),
             "skipped": len(prices.skipped), "stores": prices.stores, "rows": prices.rows,
             "unreadable_prices": prices.unreadable_prices, "seconds": round(report.seconds["prices"], 1),
             "keys": keys, **report.summary()}
+
+
+def _put_written(deps: Deps, slug: str, day: date, tables: Path) -> None:
+    """Put what a stopped extraction wrote. A put that fails too is logged as a warning and not raised, so the error
+    the run raises is the extraction's own (the final review's finding 6)."""
+    try:
+        deps.archive.put_tables(slug, day, tables)
+    except Exception as error:
+        log.warning("the tables the stopped extraction wrote did not go up: %s: %s", type(error).__name__, error)
 
 
 def _since(started: float) -> float:

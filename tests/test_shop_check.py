@@ -384,6 +384,18 @@ def test_an_unread_chain_without_p10s_sentence_fails(site, column):
                                 "were not read"]
 
 
+@pytest.mark.parametrize("chain", ['', ' data-chain="osherad"'])
+def test_p10_is_read_from_the_column_not_the_sections_chain_attribute(site, chain):
+    """The final review's finding 11: a section of an unread chain's column without P10's sentence fails though its
+    `data-chain` is missing or names another chain: the rule takes the chain from the column, so a markup slip cannot
+    skip it."""
+    in_section(site, MILK_PAGE, CITY, f'<p class="warn">{unreadable("carrefour")}</p>', "")
+    replace(site, MILK_PAGE, f'<section data-column="{CITY}" data-chain="carrefour">',
+            f'<section data-column="{CITY}"{chain}>')
+    assert check_site(site) == [f"{MILK_PAGE}: no P10 sentence in the section of {CITY}: carrefour's promotions "
+                                "were not read"]
+
+
 def test_a_read_chain_needs_no_p10_sentence(site):
     found = site_day(site)
     found["chains"]["carrefour"]["promotions_error"] = None

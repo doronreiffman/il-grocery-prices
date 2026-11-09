@@ -228,9 +228,11 @@ def last_across(column: str, day: date) -> str:
 
 
 def count_line(promotions: int, products: int, below: int) -> str:
-    """The front page's count line (question A: the products and those below are barcodes; question O's ending)."""
-    return (f"Today the five chains list {promotions:,} {_plural(promotions, 'promotion', 'promotions')} on "
-            f"{products:,} {_plural(products, 'product', 'products')}; {below:,} of them "
+    """The front page's count line (question A: the products and those below are barcodes; question O's ending). Its
+    promotions are those listed across a column today (`shopper.build`), so it says "across a store format" (the final
+    review's finding 4)."""
+    return (f"Today the five chains list {promotions:,} {_plural(promotions, 'promotion', 'promotions')} across a "
+            f"store format on {products:,} {_plural(products, 'product', 'products')}; {below:,} of them "
             f"{_plural(below, 'is', 'are')} below every listed price of the past 90 days in their store format.")
 
 

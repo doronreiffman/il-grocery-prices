@@ -35,10 +35,10 @@ Then by page. `index.html` and every `p/*.html` carry every ALWAYS phrase in the
 60,000 bytes (`MAX_PAGE`), and in each of its sections of a column (`data-column`): when the column's own gate is closed
 in the newest site-day file, F10's sentence naming the column (`no_odds_yet`), and once that is cut out, no odds word
 (`ODDS_WORDS`) in the text read, a word from its start, so with its other forms ("forecasts", "chances", "forecasting"),
-and the phrase "1 in" whole (N4: "21 in" and "1 inch" hold none); when the section's chain (`data-chain`) had its
-promotions unread that day, P10's sentence naming the chain (`unreadable`), on each of the chain's columns (question M
-(g): both Carrefour's). A section of a column the site-day file does not name is refused. A probability on a closed
-column's page is caught by the product page's tests (`tests/test_product.py`'s
+and the phrase "1 in" whole (N4: "21 in" and "1 inch" hold none); when the column's chain (read from the column, not
+the section's `data-chain`) had its promotions unread that day, P10's sentence naming the chain (`unreadable`), on
+each of the chain's columns (question M (g): both Carrefour's). A section of a column the site-day file does not name
+is refused. A probability on a closed column's page is caught by the product page's tests (`tests/test_product.py`'s
 `test_each_column_section_carries_f10_naming_the_column_and_no_probability`, the plan's Task 16), not here: no figure
 pattern tells it from P7's "34%" (N9). `basket.html` is held to the basket's index rules (`basket.check.index_problems`,
 naming basket.html: N3): the basket's ALWAYS phrases, and "Revised on" exactly when the newest `days/` file is revised.
@@ -64,6 +64,7 @@ from basket.check import INDEX, NOINDEX, NOT_ADVICE, PRONOUNS, NoPages, flatten,
 from basket.check import main as check_main
 from basket.page import HE_SPAN
 from shopper.build import LEDGER, MARKER, read_ledger
+from shopper.columns import BY_KEY
 from shopper.freeze import scores_site_key, site_key
 from shopper.product import CHAIN_SPAN, MAX_PAGE
 from shopper.search import PIECE_MAX
@@ -156,11 +157,13 @@ def _dated(raw: str, line: str) -> bool:
 
 def _section_problems(name: str, attributes: Mapping[str, str], body: str, shown: Mapping) -> list[str]:
     """A product page's section of a column: F10 when the column's gate is closed, P10 when its chain's promotions
-    were not read (the module's docstring)."""
-    column, chain = attributes["data-column"], attributes.get("data-chain")
+    were not read (the module's docstring). The chain is the column's, never the section's `data-chain`, so a markup
+    slip cannot skip P10 (the final review's finding 11)."""
+    column = attributes["data-column"]
     block = shown["columns"].get(column)
     if block is None:
         return [f"{name}: a section of {column!r}, which the site-day file does not name"]
+    chain = BY_KEY[column].slug
     read = flatten(strip_tags(body))
     problems = []
     if not block["gate"]["open"]:

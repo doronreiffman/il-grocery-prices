@@ -1,5 +1,7 @@
 """The columns: the nine store formats the shopper site shows, and which of a day's included stores each one holds
 (docs/shopper-site.md, "The column")."""
+import hashlib
+import json
 from collections import Counter
 from datetime import date
 
@@ -166,7 +168,11 @@ def test_a_column_under_the_floor_later_stays_a_column():
 
 
 def test_the_carrefour_table_is_the_measured_one():
+    """The table as drawn on 2026-11-08: its counts, and a digest of its (store, column) pairs in order, so that a store
+    moved from one column to the other, which keeps the counts, fails too (Task 4a's review)."""
     assert Counter(CARREFOUR_COLUMNS.values()) == {"carrefour-city": 75, "carrefour-market": 44}
+    pairs = json.dumps(sorted(CARREFOUR_COLUMNS.items())).encode()
+    assert hashlib.sha256(pairs).hexdigest() == "11d2d885e3000d5a7b5a02922615780b143d7b6ebec0e07c1411b25c669a7d5a"
     assert len(CARREFOUR_COLUMNS) == 75 + 44  # none in both
     assert all(key == store_key(key) and key.isdigit() for key in CARREFOUR_COLUMNS)  # store keys, no leading zero
     assert not {"471", "472", "473"} & set(CARREFOUR_COLUMNS)  # the online store and the type-2 stores

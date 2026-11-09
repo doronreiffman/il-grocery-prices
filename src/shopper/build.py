@@ -49,7 +49,9 @@ In order:
    count line's numbers and the chains whose files mark a restricted promotion. A covered product the read no longer
    holds gets its page after the pass, with no pair (Call 10: once covered, always a page, rebuilt daily). The pages are
    drawn into a folder apart and move into the site folder only once the day is published (9), so a refused build
-   leaves every page as it was.
+   leaves every page as it was. That folder, `shopper-pages-` and a random suffix, is made beside the site folder: in
+   Lambda inside the run's work folder, which the next run's start removes when a kill left it (the final review's
+   finding 2).
 6. The freeze (F6, question E): the day's forecasts file (`forecasts_csv`, rows sorted, the code fingerprint in every
    row) through `freezer.freeze`; a day with no forecast row freezes nothing (forecasts begin on a column's 30th day of
    records), unless the archive holds a file for it already, which the freezer then compares; the site run freezes
@@ -453,7 +455,7 @@ def build_site(day: date, data_dir: Path, site_dir: Path, now: datetime, collect
     gates = {key: Gate(**card["columns"][key]["gate"]) for key in card["columns"]}
     code_sha = code_fingerprint()
 
-    with tempfile.TemporaryDirectory(prefix="shopper-pages-") as staging:
+    with tempfile.TemporaryDirectory(prefix="shopper-pages-", dir=site_dir.parent) as staging:
         started = time.perf_counter()
         pages = _Pages(covered_now, history, collected_by, gates, errors, Path(staging) / "first")
         rows = forecasts(_Watched(history, pages), day)

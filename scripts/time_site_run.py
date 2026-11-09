@@ -157,7 +157,8 @@ def _remove(work: Path, *paths: Path) -> None:
 def make(work: Path, scale: float, days: int) -> None:
     """The synthetic tables (the module's docstring) and the frozen file of SCORED, into a work folder this script
     made, a new one or an empty one (`_claim`). The tables and the frozen file it made there before are deleted first
-    (`_remove`), so a link planted in their place is refused, never written through; the marker is written last."""
+    (`_remove`), so a link planted in their place is refused, never written through; the marker is written last, the
+    old one deleted first, so never through a hard link either."""
     _claim(work)
     if days <= HORIZON:
         raise SystemExit(f"--days must be above {HORIZON}: the scored day's window must be held")
@@ -196,6 +197,7 @@ def make(work: Path, scale: float, days: int) -> None:
                          n=n % 90, a_from="pair" if n % 90 >= 20 else "column")
                 for n, (column, code) in enumerate(rows)]
     (work / "frozen.csv.gz").write_bytes(forecasts_csv(stand_in, CODE_SHA))
+    (work / MADE).unlink(missing_ok=True)   # written anew, never through a hard link left in its place
     (work / MADE).write_text(json.dumps({"scale": scale, "days": days, "pool": pool,
                                          "rows_a_day": sum(_scaled(c[0], scale) for c in REAL.values()),
                                          "frozen_rows": len(stand_in)}))

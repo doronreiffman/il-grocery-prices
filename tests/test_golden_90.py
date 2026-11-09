@@ -128,8 +128,8 @@ def test_the_golden_pages_windows_and_gaps(golden):
     (_, row), = _front_rows(index)
     assert "Deal price ₪7.90 per unit" in row and "₪11.40" in row and "31%" in row
     assert " ".join(G3_STORY) in _text(index)
-    assert ("Today the five chains list 1 promotion on 1 product; 1 of them is below every listed price of the past 90 "
-            "days in their store format.") in _text(index)
+    assert ("Today the five chains list 1 promotion across a store format on 1 product; 1 of them is below every "
+            "listed price of the past 90 days in their store format.") in _text(index)
     page = golden.page(75, f"p/{G3}.html")
     sheli, deal = _text(_section(page, "shufersal-sheli")), _text(_section(page, "shufersal-deal"))
     assert " ".join(G3_STORY[:2]) in sheli and G3_STORY[2] in sheli

@@ -112,7 +112,7 @@ def test_a_day_without_a_scored_row_is_no_scored_day():
                        model_version="", target_version="", by_column={})
     assert brier([empty]) is None and brier([empty], DEAL) is None
     card = scorecard([empty])
-    assert card["versions_tried"] == 0 and card["all_columns"]["versions"] == []
+    assert card["versions_tried"] == 0 and "all_columns" not in card
     assert card["columns"][DEAL]["versions"] == []
 
 
@@ -358,11 +358,13 @@ def test_the_scorecard_counts_the_columns_tested():
 
 
 def test_the_scorecard_prints_the_bootstrap_and_the_version_in_force():
+    """Its blocks, and no block of every column pooled: the design defines no pooled Brier score, skill or interval
+    (Task 14's review; dropped in the final review's fix wave)."""
     card = scorecard([])
     assert card["bootstrap"] == {"block": 14, "draws": 10_000, "seed": 20261107, "level": 95, "min_days": 28}
     assert card["version_in_force"] == {"model_version": "1", "target_version": "1"}
     assert card["versions_tried"] == 0
-    assert card["all_columns"] == {"versions": []}
+    assert set(card) == {"columns_tested", "versions_tried", "version_in_force", "bootstrap", "columns"}
 
 
 def test_the_scorecard_by_month_with_a_late_day_shown_and_not_counted():
@@ -397,10 +399,10 @@ def test_the_scorecards_gate_is_the_columns_gate():
     assert Gate(**card["columns"][DEAL]["gate"]) == gate(days, DEAL)
 
 
-def test_every_column_pooled_has_its_own_rows():
+def test_each_column_has_its_own_rows_and_the_scorecard_none_pooled():
     days = [_day(n, {DEAL: _part("10", "12", "15"), RAMI: _part("30", "12", "15")}) for n in range(3)]
     card = scorecard(days)
-    assert card["all_columns"]["versions"][0]["all"]["brier"]["model"] == "0.200000000000"   # 40 / 200 a day
+    assert brier(days)[0] == D("0.2") and "all_columns" not in card     # pooled, 40 / 200 a day: never on the card
     assert card["columns"][DEAL]["versions"][0]["all"]["brier"]["model"] == "0.100000000000"
     assert card["columns"][RAMI]["versions"][0]["all"]["brier"]["model"] == "0.300000000000"
 

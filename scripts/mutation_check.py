@@ -94,7 +94,7 @@ EXTRACT_AFTER_CHECK = ("template.yaml", [_B + "test_extraction_starts_after_the_
 COLLECTED_BY_PINNED = ("template.yaml", [_B + "test_collected_by_is_the_extractions_start"])
 NO_DELETE_BASKET = ("template.yaml", [_B + "test_role_cannot_delete_bypass_the_lock_or_change_either_bucket"])
 READ_RECORDS_FOR_RETRY = ("template.yaml", [_B + "test_role_grants_exactly_what_the_code_does"])
-TMP_SIZE = ("template.yaml", [_B + "test_function_has_two_gb_two_gb_of_tmp_and_lambdas_longest_run"])
+TMP_SIZE = ("template.yaml", [_B + "test_function_has_two_gb_ten_gb_of_tmp_and_lambdas_longest_run"])
 LAYER_ATTACHED = ("template.yaml", [_B + "test_function_runs_the_basket_handler_on_python_313_arm64_with_the_layer"])
 BARCODE = ("src/basket/barcode.py", ["tests/test_barcode.py"])
 PRICEFILE = ("src/basket/pricefile.py", ["tests/test_pricefile.py"])
@@ -299,7 +299,13 @@ _NCR_ANSWER_BY_ANSWER = ("        length, fnames, total = _page_size(file_page),
                          "                    answer.append(Listed(name, DOWNLOAD + fname))\n"
                          "            yield from answer\n")
 
-# publish.sh's guard and its uploads, for the mutation that runs the guard after the upload (q22 publish).
+# publish.sh's guard and its uploads, for the mutation that runs the guard after the upload (q22 publish); the uploads'
+# order, for the one that puts the pages first again (the final review's finding 8).
+_PUBLISH_ORDER = ("upload --include '*.csv.gz' --content-type 'application/gzip'\n"
+                  "upload --include '*.csv' --content-type 'text/csv; charset=utf-8'\n"
+                  "upload --include '*.json' --content-type 'application/json; charset=utf-8'\n"
+                  "upload --include '*.js' --content-type 'text/javascript; charset=utf-8'\n"
+                  "upload --include '*.html' --content-type 'text/html; charset=utf-8'\n")
 _PUBLISH_GUARD = ('if ! PYTHONPATH=src "$PYTHON" -m shopper.guard "$SITE" "$tmp/published" "$tmp/pages"; then\n'
                   '  echo "the publish guard failed; nothing uploaded" >&2\n'
                   '  exit 1\n'
@@ -309,14 +315,18 @@ _PUBLISH_UPLOAD = ('# One allowlisted sync per kind of file, its content type se
                    "# nosniff), the types basket.site.CONTENT_TYPES gives the site run's uploads. The marker and anything else in the\n"
                    '# folder stay local. Browsers keep a file five minutes, so an upload shows within minutes of the invalidation. No\n'
                    '# sync here removes anything: a published file the build lacks stays (question H).\n'
+                   '# The data files go up first and the pages last, as the site run puts them (basket.site.upload): the forecasts and\n'
+                   '# scores files, the ledger, the day and site-day files with the search pieces, search.js, then the pages; so a stop\n'
+                   '# part-way never leaves a live page naming a file not yet up. Each upload that fails stops the script by its own\n'
+                   "# test, never by set -e alone, before the next upload and the invalidation (the final review's finding 8). A rerun\n"
+                   '# then passes the guard: what went up is the build\'s own bytes.\n'
                    'upload() {\n'
-                   '  aws s3 sync "$SITE/" "s3://$bucket/" --exclude \'*\' "$@" --cache-control \'max-age=300\' --profile "$PROFILE" --region "$REGION"\n'
+                   '  aws s3 sync "$SITE/" "s3://$bucket/" --exclude \'*\' "$@" --cache-control \'max-age=300\' --profile "$PROFILE" --region "$REGION" || {\n'
+                   '    echo "the upload of $2 failed: the kinds before it went up, none after it, and nothing was invalidated; run it again" >&2\n'
+                   '    exit 1\n'
+                   '  }\n'
                    '}\n'
-                   "upload --include '*.html' --content-type 'text/html; charset=utf-8'\n"
-                   "upload --include '*.json' --content-type 'application/json; charset=utf-8'\n"
-                   "upload --include '*.js' --content-type 'text/javascript; charset=utf-8'\n"
-                   "upload --include '*.csv' --content-type 'text/csv; charset=utf-8'\n"
-                   "upload --include '*.csv.gz' --content-type 'application/gzip'\n")
+                   + _PUBLISH_ORDER)
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
 MUTATIONS = {
@@ -1512,8 +1522,8 @@ MUTATIONS = {
     'unread promotions written as none on promotion (q22 items)': (SHOP_ITEMS, '        on = next_start = structs = None\n', '        on, next_start, structs = False, None, []\n'),
     'valid deals counted whether on the day or not (q22 items)': (SHOP_ITEMS, 'if link["in_day"] and struct["valid"]', 'if struct["valid"]'),
     'under the floor never named (q22 items)': (SHOP_ITEMS, 'under_floor=key in floor', 'under_floor=False'),
-    'the link of the lowest GroupID as text (q22 items)': (SHOP_ITEMS, 'by_number(link["group_id"]), link["code"]', 'link["group_id"], link["code"]'),
-    'a zero link shown over a kind link (q22 items)': (SHOP_ITEMS, '(link["kind"] is None, by_number(link["group_id"]), link["code"])', '(by_number(link["group_id"]), link["code"])'),
+    'the link of the lowest GroupID as text (q22 items)': (SHOP_ITEMS, 'by_number(link["group_id"]),\n                                        link["code"]', 'link["group_id"],\n                                        link["code"]'),
+    'a zero link shown over a kind link (q22 items)': (SHOP_ITEMS, 'link["wide"], link["kind"] is None, by_number(link["group_id"]),', 'link["wide"], by_number(link["group_id"]),'),
     'promotions listed by id before start (q22 items)': (SHOP_ITEMS, '(struct["start"], by_number(struct["promotion_id"]))', '(by_number(struct["promotion_id"]), struct["start"])'),
     'promotions of one start listed by id as text (q22 items)': (SHOP_ITEMS, '(struct["start"], by_number(struct["promotion_id"]))', '(struct["start"], struct["promotion_id"])'),
     'a percent-off deal priced without its stores (q22 items)': (SHOP_ITEMS, 'found = deal(slug, item, listed, stores)', 'found = deal(slug, item, listed, None)'),
@@ -1564,7 +1574,7 @@ MUTATIONS = {
     "the day's files of another kind than asked (q22 extract)": (ARCHIVE, 'return self._day_file_keys(slug, day, (kind,))', 'return self._day_file_keys(slug, day, ("PriceFull",))'),
     'promotion files not fetched (q22 extract)': (BASKET_HANDLER, 'EXTRACT_KINDS = ("PriceFull", "PromoFull")', 'EXTRACT_KINDS = ("PriceFull",)'),
     'the store list not fetched for the extract (q22 extract)': (BASKET_HANDLER, '    deps.archive.fetch_store_list(slug, day, raw)  # None: the extraction', '    pass  # None: the extraction'),
-    "the prices table not put when the shopper's steps fail (q22 extract)": (BASKET_HANDLER, '    finally:  # whatever stopped it, what the extraction wrote goes up: a chain stopped after its prices keeps them\n        keys = deps.archive.put_tables(slug, day, tables)\n', '    except ZeroDivisionError:\n        raise\n    keys = deps.archive.put_tables(slug, day, tables)\n'),
+    "the prices table not put when the shopper's steps fail (q22 extract)": (BASKET_HANDLER, '    except BaseException:  # whatever stopped it, what it wrote goes up: a chain stopped after its prices keeps them\n        _put_written(deps, slug, day, tables)\n        raise\n', '    except ZeroDivisionError:\n        raise\n'),
     "the extract's Carrefour table not the hand-kept one (q22 extract)": (BASKET_HANDLER, 'CARREFOUR_TABLE = CARREFOUR_COLUMNS  #', 'CARREFOUR_TABLE = {}  #'),
     'the extract given the hand-kept table whatever the module holds (q22 extract)': (BASKET_HANDLER, 'extract_chain_day(raw, slug, day, tables, table=CARREFOUR_TABLE)', 'extract_chain_day(raw, slug, day, tables)'),
     "the shopper's half left out of the extract summary (q22 extract)": (BASKET_HANDLER, '"keys": keys, **report.summary()}', '"keys": keys}'),
@@ -2125,7 +2135,7 @@ MUTATIONS = {
     'the files not linked (q22 pages)': (SHOP_PAGES, 'f"<p>{text(FILES_LABEL)}</p>", _files(files)),', 'f"<p>{text(FILES_LABEL)}</p>"),'),
     'the ledger not first among the files (q22 pages)': (SHOP_PAGES, 'for path in (*ledger, *forecasts, *scores, *others))', 'for path in (*forecasts, *ledger, *scores, *others))'),
     "a column's days short of price files not shown (q22 pages)": (SHOP_PAGES, '                 _ranges([found.day for found in mine if found.present and found.hole]),\n', '                 "none",\n'),
-    'basket items all linked (q22 pages)': (SHOP_PAGES, 'item_link=lambda code: page_path(code) if code in product_pages else None,', 'item_link=lambda code: page_path(code),'),
+    'basket items all linked (q22 pages)': (SHOP_PAGES, 'item_link=lambda code: page_path(normalize(code)) if normalize(code) in product_pages else None,', 'item_link=lambda code: page_path(normalize(code)),'),
     'the basket page without the formats sentence (q22 pages)': (SHOP_PAGES, 'method_href=f"method.html#{BASKET_SECTION}", note=formats_note())', 'method_href=f"method.html#{BASKET_SECTION}")'),
     "the frame's note left off the basket's table (q22 pages)": (PAGE_FOR_SHOP_PAGES, '    note = f"<p>{_prose(frame.note)}</p>" if frame is not None and frame.note else ""\n', '    note = ""\n'),
     "basket.html with the basket's own band (q22 pages)": (PAGE_FOR_SHOP_PAGES, '    return _page(frame.band, words.TITLE,', '    return _page(_band(f"<h1>{_text(words.TITLE)}</h1>", public), words.TITLE,'),
@@ -2732,7 +2742,7 @@ MUTATIONS = {
     "basket handler site bucket outside the prefix accepted": (BASKET_HANDLER, '        if not env["SITE_BUCKET"].startswith(SITE_BUCKET_PREFIX):\n', "        if False:\n"),
     "basket handler runs before the morning's check": (BASKET_HANDLER, "    if not deps.archive.day_checked(day):\n", "    if False:\n"),
     "basket handler work folder left behind": (BASKET_HANDLER, "            _remove(work)\n", "            pass\n"),
-    "basket handler table put before the extraction": (BASKET_HANDLER, '    try:\n        report = extract_chain_day(raw, slug, day, tables, table=CARREFOUR_TABLE)\n    finally:  # whatever stopped it, what the extraction wrote goes up: a chain stopped after its prices keeps them\n        keys = deps.archive.put_tables(slug, day, tables)\n',
+    "basket handler table put before the extraction": (BASKET_HANDLER, '    try:\n        report = extract_chain_day(raw, slug, day, tables, table=CARREFOUR_TABLE)\n    except BaseException:  # whatever stopped it, what it wrote goes up: a chain stopped after its prices keeps them\n        _put_written(deps, slug, day, tables)\n        raise\n    keys = deps.archive.put_tables(slug, day, tables)\n',
                                                        '    keys = deps.archive.put_tables(slug, day, tables)\n    report = extract_chain_day(raw, slug, day, tables, table=CARREFOUR_TABLE)\n'),
     "basket handler work folder removed only after a success": (BASKET_HANDLER, "        finally:\n            _remove(work)\n",
                                                                 "        except ZeroDivisionError:\n            raise\n        _remove(work)\n"),
@@ -2819,7 +2829,7 @@ MUTATIONS = {
     "basket role deletes in the site bucket": (NO_DELETE_BASKET, "- Sid: WriteSite\n              Effect: Allow\n              Action: s3:PutObject\n", "- Sid: WriteSite\n              Effect: Allow\n              Action: s3:DeleteObject\n"),
     "basket records not readable for a refused put": (READ_RECORDS_FOR_RETRY, '                - !Sub "${ArchiveBucket.Arn}/tables/*"\n                - !Sub "${ArchiveBucket.Arn}/basket/*"\n',
                                                       '                - !Sub "${ArchiveBucket.Arn}/tables/*"\n'),
-    "basket /tmp at 512 MB": (TMP_SIZE, "{Size: 2048}", "{Size: 512}"),
+    "basket /tmp at 512 MB": (TMP_SIZE, "{Size: 10240}", "{Size: 512}"),
     "basket function without the DuckDB layer": (LAYER_ATTACHED, "      Layers: [!Ref DuckDbLayer]\n", ""),
     # template: the basket function
     "basket function on x86": (BASKET_TEMPLATE, "Handler: basket.handler.handler\n      Runtime: python3.13\n      Architectures: [arm64]", "Handler: basket.handler.handler\n      Runtime: python3.13\n      Architectures: [x86_64]"),
@@ -2934,6 +2944,25 @@ MUTATIONS = {
     "mutation check shows the file, not a collection error's cause": (MUTATION_CHECK, '    exception = [line for line in lines if line.startswith("E ")]\n', '    exception = []\n'),
     "mutation check shows pytest's last line, not a missing test's id": (MUTATION_CHECK, '    error = [line for line in lines if line.startswith("ERROR")]\n', '    error = []\n'),
     "mutation check crashes on a signal's exit": (MUTATION_CHECK, '    try:\n        return ExitCode(returncode).name\n    except ValueError:', '    if True:\n        return ExitCode(returncode).name\n    if False:'),
+    # The final review's fix wave (Task 28): each break undoes one of its fixes.
+    "the product pages staged outside the run's work folder (q22 site run)": (SHOP_BUILD_FOR_BASKET_HANDLER, 'tempfile.TemporaryDirectory(prefix="shopper-pages-", dir=site_dir.parent)', 'tempfile.TemporaryDirectory(prefix="shopper-pages-")'),
+    "basket /tmp back at 2 GB (q22 template)": (TMP_SIZE, "{Size: 10240}", "{Size: 2048}"),
+    "the count line's promotions said to be every promotion (q22 words)": (SHOP_WORDS, "{_plural(promotions, 'promotion', 'promotions')} across a \"\n            f\"store format on {products:,}", "{_plural(promotions, 'promotion', 'promotions')} on \"\n            f\"{products:,}"),
+    "a failed put's error raised over the stopped extraction's (q22 extract)": (BASKET_HANDLER, "        deps.archive.put_tables(slug, day, tables)\n    except Exception as error:\n", "        deps.archive.put_tables(slug, day, tables)\n    except ZeroDivisionError as error:\n"),
+    "a failed put after a stopped extraction not logged (q22 extract)": (BASKET_HANDLER, '        log.warning("the tables the stopped extraction wrote did not go up: %s: %s", type(error).__name__, error)\n', "        pass\n"),
+    "a City store and a Market store swapped in Carrefour's table (q22 columns)": (CHAINS_FOR_SHOP_COLUMNS, '"906", "914", "981",\n)\n_CARREFOUR_MARKET = (\n    "2", ', '"906", "914", "2",\n)\n_CARREFOUR_MARKET = (\n    "981", '),
+    'a link at some stores shown over a wide one (q22 items)': (SHOP_ITEMS, 'key=lambda link: (not link["wide"], link["kind"] is None,', 'key=lambda link: (link["kind"] is None,'),
+    "the pooled block back on the scorecard (q22 F11)": (SHOP_RECORD, '        "bootstrap": {"block": BLOCK, "draws": DRAWS, "seed": SEED, "level": LEVEL, "min_days": MIN_DAYS},\n', '        "bootstrap": {"block": BLOCK, "draws": DRAWS, "seed": SEED, "level": LEVEL, "min_days": MIN_DAYS},\n        "all_columns": {"versions": _versions(summaries, None)},\n'),
+    "the store count headed as included today (q22 pages)": (SHOP_PAGES, "Included stores on today\\'s store list", "Included stores today"),
+    "the table's count of store 779 not said to be the store list's (q22 pages)": (SHOP_PAGES, "The table above counts by the store list, so such a", "The table above counts by the column, so such a"),
+    "the scored-so-far sentence claiming the latest days unscored (q22 pages)": (SHOP_PAGES, 'is scored {HORIZON} days after it is frozen (the days frozen are counted further down).")', 'is scored {HORIZON} days after it is frozen, so the latest days frozen are not in them yet (the days frozen are counted further down).")'),
+    "basket.html links by the code as written (q22 pages)": (SHOP_PAGES, "item_link=lambda code: page_path(normalize(code)) if normalize(code) in product_pages else None", "item_link=lambda code: page_path(code) if code in product_pages else None"),
+    "P10's chain read from the section's data-chain (q22 check)": (SHOP_CHECK, '    chain = BY_KEY[column].slug\n', '    chain = attributes.get("data-chain")\n'),
+    "the pages uploaded before the data files (q22 publish)": (PUBLISH_SCRIPT, _PUBLISH_ORDER, "".join(reversed(_PUBLISH_ORDER.splitlines(keepends=True)))),
+    "a failed upload stopped by set -e alone (q22 publish)": (PUBLISH_SCRIPT, ' --region "$REGION" || {\n    echo "the upload of $2 failed', ' --region "$REGION"\n  false && {\n    echo "the upload of $2 failed'),
+    "a failed upload let through (q22 publish)": (PUBLISH_SCRIPT, ' --region "$REGION" || {\n    echo "the upload of $2 failed', ' --region "$REGION" || true || {\n    echo "the upload of $2 failed'),
+    "the marker rewritten in place, through a hard link (q22 speed)": (TIME_SITE_RUN, "    (work / MADE).unlink(missing_ok=True)   # written anew, never through a hard link left in its place\n", ""),
+    # (the fix wave's end)
 }
 
 
