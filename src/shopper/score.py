@@ -33,7 +33,9 @@ The rows keep the frozen file's order (by column, then barcode); the CSV is gzip
 same rows give the same bytes. It goes to `scores/date=<t>/scores.csv.gz` in the archive, once and locked
 (`shopper.freeze.ArchiveFreezer.put_scores`), and with the archive's bytes to `scores/<t>.csv.gz` on the site. A row's
 pair is the history's for its column and barcode; an item the history holds no row of at all (no longer listed) is
-scored on its column's days alone, its outcome 0 unless the window holds more than 4 holes. The history must hold the
+scored on its column's days alone, its outcome 0 unless the window holds more than 4 holes. The build reads the pairs
+from the window's tables alone (`window_history`: those of t + 1 to t + 14, the only days `outcome` reads, every
+column-day kept), so the same file comes from 14 of the 91 days' rows (the plan's Task 25a). The history must hold the
 whole window: day t + 14 at most the history's day (else the outcome is not known yet, and `outcome` would read the days
 not yet there as holes) and day t + 1 at most READ_DAYS (90) days before it (`reaches`; else the window was not read): a
 ValueError otherwise, since a scores file is never rewritten; `due` never lists such a day. The target is version 1's
@@ -150,6 +152,14 @@ def _cells(result: Outcome) -> tuple:
         return 0, result.holes, "", "", "", ""
     evidence = "day only" if result.promotion_id is None else "day and PromotionID"
     return 1, result.holes, result.first_day.isoformat(), result.promotion_id or "", "", evidence
+
+
+def window_history(history: History, t: date) -> History:
+    """The history with only its items tables of t + 1 to t + HORIZON, the days `outcome` reads for day t, and every
+    column-day (the module's docstring): `scores_csv` gives day t's file from it as from the whole read."""
+    last = t + timedelta(days=HORIZON)
+    return History(history.day, history.column_days,
+                   {path: seen for path, seen in history.tables.items() if t < seen <= last})
 
 
 def scores_csv(frozen: Frozen, history: History) -> bytes:

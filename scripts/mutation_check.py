@@ -2773,6 +2773,9 @@ MUTATIONS = {
     "a day after d read, in the golden (q22 golden)": (FORECAST_FOR_SHOP_GOLDEN, '        result = outcome(pair, column_days, seen)\n', '        result = outcome(pair, column_days, seen + timedelta(days=1))\n'),
     "wide over the chain's counted stores, not the column's, in the golden (q22 golden)": (PROMOS_FOR_SHOP_GOLDEN, 'k.stores * 2 >= n.counted AS wide', 'k.stores * 2 >= (SELECT count(*) FROM store_columns) AS wide'),
     "the median over the chain's stores, not the column's, in the golden (q22 golden)": (ITEMS_FOR_SHOP_GOLDEN, 'JOIN store_columns c ON c.store = r.store', 'JOIN (SELECT DISTINCT col FROM store_columns) c ON true'),
+    # the speedups (the plan's Task 25a): each rule a speedup adds
+    "a day scored without its window's last table (q22 speed)": (SHOP_SCORE, 'if t < seen <= last}', 'if t < seen < last}'),
+    "a day scored without its window's first table (q22 speed)": (SHOP_SCORE, 'if t < seen <= last}', 'if t + timedelta(days=1) < seen <= last}'),
     # template: the basket's parameters
     "site bucket of any name": (BASKET_TEMPLATE, "AllowedPattern: 'il-grocery-prices-site-sitebucket-.+'", "AllowedPattern: '.+'"),
     "site bucket pattern takes the bare prefix": (BASKET_TEMPLATE, "AllowedPattern: 'il-grocery-prices-site-sitebucket-.+'", "AllowedPattern: 'il-grocery-prices-site-sitebucket-.*'"),

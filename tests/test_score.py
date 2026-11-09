@@ -10,6 +10,7 @@ import gzip
 import hashlib
 import io
 import json
+import random
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from fractions import Fraction
@@ -35,9 +36,11 @@ from shopper.score import (
     summarize,
     summary_json,
     summary_path,
+    window_history,
 )
 from test_forecast import CODES, DEAL, EXPRESS, SHELI, SHUF, _column_day, _forecast, _on, _point, _promotion
-from test_history import _row, _table
+from shopper_random import code, write_tables
+from test_history import SHUF_COLUMNS, _row, _table
 
 T = date(2026, 11, 30)                                   # the frozen day
 BUILD = T + timedelta(days=HORIZON)                      # 2026-12-14: the build that scores it
@@ -401,3 +404,26 @@ def test_a_summarys_time_is_its_ledger_lines():
 
 def test_the_summary_path():
     assert summary_path(Path("tables"), T) == Path("tables/scored/date=2026-11-30/summary.json")
+
+
+# The window's tables alone (the plan's Task 25a)
+
+def test_a_day_scores_the_same_from_its_windows_tables_alone(tmp_path):
+    """The build scores day t from the history's tables of t + 1 to t + 14 alone (`window_history`), the only days
+    `outcome` reads: the scores file is byte for byte the whole read's, over a random history read back through `load`
+    (holes, promotion holes, missing tables, unread promotions), with an outcome 1 on the window's first day alone, one
+    on its last day alone, one the day after it and items listed only before the window or not at all."""
+    first, edges = BUILD - timedelta(days=READ_DAYS), (on(1), on(HORIZON), on(HORIZON + 1), on(0), on(-30))
+    extra = tuple(Pair(column=DEAL, code=code(900 + n), points={seen: _on(seen)}) for n, seen in enumerate(edges))
+    codes = [code(n) for n in range(30)]
+    write_tables(random.Random(25), tmp_path, SHUF, first, BUILD + timedelta(days=1), codes, extra)
+    history = load(tmp_path, BUILD, [SHUF])
+    wanted = codes + [given.code for given in extra] + [code(999)]           # the last never listed
+    frozen = _frozen([_forecast(column, found) for column in SHUF_COLUMNS for found in wanted])
+    window = window_history(history, T)
+    assert sorted(set(window.tables.values())) == [seen for seen in sorted(set(history.tables.values()))
+                                                   if on(1) <= seen <= on(HORIZON)]
+    assert (window.day, window.column_days) == (history.day, history.column_days)
+    assert scores_csv(frozen, window) == scores_csv(frozen, history)
+    outcomes = {(row[0], row[1]): row[len(FILE_FIELDS)] for row in _rows_of(scores_csv(frozen, window))[1:]}
+    assert [outcomes[(DEAL, given.code)] for given in extra] == ["1", "1", "0", "0", "0"]

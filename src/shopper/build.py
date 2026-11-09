@@ -36,12 +36,12 @@ In order:
    table of the day) and the covered registry (`covered`), carried from the latest registry before the day and written
    for the day under `tables/covered/date=<day>/`.
 3. Scoring, only when `freezer.writes`: each due day (`shopper.score.due`: frozen, its window closed, no summary, its
-   window within the read), oldest first, is scored from the history (`scores_csv`), its scores file put once through
-   the freezer, and the bytes the archive then holds published; its summary (`summarize` of those bytes) is written
-   under `tables/scored/date=<t>/` after the put. A stored scores file whose rows differ (ScoresDiffer) is the record:
-   its bytes are published, the summary is made from them, the build goes on, and the outcome carries the message for
-   the site run to alert with after the upload. Frozen days whose window the read no longer holds (`out_of_reach`) are
-   listed, in the outcome and the site-day file, and never scored.
+   window within the read), oldest first, is scored from the history's tables of its window (`window_history`,
+   `scores_csv`), its scores file put once through the freezer, and the bytes the archive then holds published; its
+   summary (`summarize` of those bytes) is written under `tables/scored/date=<t>/` after the put. A stored scores file
+   whose rows differ (ScoresDiffer) is the record: its bytes are published, the summary is made from them, the build
+   goes on, and the outcome carries the message for the site run to alert with after the upload. Frozen days whose
+   window the read no longer holds (`out_of_reach`) are listed, in the outcome and the site-day file, and never scored.
 4. The scorecard (`shopper.record.scorecard`) over the summaries of the days the build's day can know of, t + 14 at most
    the day, so an earlier day's rebuild gives the scorecard it had (F3); each column's gate is read from it.
 5. One pass over the pairs (`History.pairs`, the build's longest step) serves the forecasts (`shopper.forecast.forecasts`)
@@ -119,7 +119,8 @@ from shopper.pages import (ColumnsToday, Counts, FrontRow, front_rows_of, render
                            render_record)
 from shopper.product import page_path, render_product, running_today
 from shopper.record import Gate, scorecard
-from shopper.score import DaySummary, due, out_of_reach, read_summary, scores_csv, summarize, summary_json, summary_path
+from shopper.score import (DaySummary, due, out_of_reach, read_summary, scores_csv, summarize, summary_json,
+                           summary_path, window_history)
 from shopper.search import SCRIPT, browse_pages, pieces
 from shopper.siteday import Inputs, publish_site_day, site_day, site_day_path, write_site_day
 
@@ -306,7 +307,7 @@ def _previous_registry(tables_dir: Path, day: date) -> date | None:
 def _score(freezer, t: date, history: History, tables_dir: Path) -> tuple[bytes, str | None]:
     """Day t scored (the module's docstring, 3): the bytes the site publishes, and ScoresDiffer's message or None."""
     frozen = freezer.frozen(t)
-    body = scores_csv(frozen, history)
+    body = scores_csv(frozen, window_history(history, t))
     message = None
     try:
         stored = freezer.put_scores(t, body)
