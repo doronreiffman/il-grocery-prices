@@ -1,6 +1,6 @@
 """The site side of the scheduled build (`basket.site`): the published files read back, the latest day on the site,
-the site run's upload (its data files always, its pages only for the site's latest day, the fixed pages among them),
-every site file put through the pool with the content type and cache-control `scripts/publish.sh` sets, one
+the site run's upload (its data files always, the record files among them in a call of their own before the files that
+name them, its pages only for the site's latest day, the fixed pages among them), every site file put through the pool with the content type and cache-control `scripts/publish.sh` sets, one
 invalidation, and nothing deleted.
 
 The rules run on MemorySite and on S3Site over test_store's FakeS3 and a fake CloudFront client, which must give
@@ -17,8 +17,10 @@ import pytest
 from botocore.exceptions import ClientError
 from botocore.stub import Stubber
 
-from basket.site import (CACHE_CONTROL, CONTENT_TYPES, FIXED_PAGES, HTML, JSON, UPLOAD_WORKERS, MemorySite, S3Site, _Site,
-                         day_key, day_of)
+from basket.site import (CACHE_CONTROL, CONTENT_TYPES, FIXED_PAGES, HTML, JSON, UPLOAD_WORKERS, MemorySite,
+                         RecordsNotUploaded, S3Site, _Site, day_key, day_of, is_record)
+from shopper.build import LEDGER
+from shopper.freeze import scores_site_key, site_key
 from test_store import FakeS3, client_error
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -79,6 +81,9 @@ FIXED = ("index.html", "method.html", "record.html", "basket.html", "search.js")
 # A site run's data files of the day, as `shopper.build` lists them new: they go up whatever the day.
 DATA = ["forecasts/2026-11-03.csv.gz", "forecasts/ledger.csv", "scores/2026-10-20.csv.gz", "site-days/2026-11-03.json",
         "days/2026-11-03.json"]
+# Of them, the record files, which go up first, and the files that name them (the task review's finding 1).
+RECORDS = ["forecasts/2026-11-03.csv.gz", "scores/2026-10-20.csv.gz"]
+NAMING = ["forecasts/ledger.csv", "site-days/2026-11-03.json", "days/2026-11-03.json"]
 # Its pages under the page folders, in the order the upload takes them: by folder, then by name.
 FOLDER_PAGES = ["p/2000000000046.html", "p/2000000000053.html", "browse/05d0.html", "browse/other.html",
                 "search/05d0.json", "search/pieces.json"]
@@ -105,6 +110,21 @@ def shopper_files(folder: Path, count: int) -> list[str]:
         (folder / key).parent.mkdir(parents=True, exist_ok=True)
         (folder / key).write_bytes(key.encode())
     return keys
+
+
+def refused_puts(site, refused: set[str]) -> list[str]:
+    """The key of each put the site makes from now on, from whichever thread, in the order they run; a put of a key in
+    `refused` fails, as when the bucket does not answer."""
+    puts, put = [], site._put
+
+    def put_or_refuse(key, *rest):
+        if key in refused:
+            raise OSError(f"{key}: the site bucket did not answer")
+        puts.append(key)
+        put(key, *rest)
+
+    site._put = put_or_refuse
+    return puts
 
 
 def recorded_puts(site) -> list[str]:
@@ -199,7 +219,7 @@ def test_upload_puts_the_data_files_then_every_page_with_its_content_type(site, 
     then the fixed pages, each with its content type by its last suffix and max-age=300; nothing else of the folder
     (the published copies, the marker)."""
     keys = site.upload(built(tmp_path), DATA, with_pages=True)
-    assert keys == [*DATA, *FOLDER_PAGES, *FIXED]
+    assert keys == [*RECORDS, *NAMING, *FOLDER_PAGES, *FIXED]
     assert held(site) == {key: (key.encode(), TYPES[Path(key).suffix], CACHE_CONTROL) for key in keys}
 
 
@@ -227,12 +247,40 @@ def test_upload_for_an_earlier_day_puts_the_data_files_only(site, tmp_path):
     it is not to put may be missing from the folder."""
     on_site(site, "index.html", b"the later day's page")
     site_dir = built(tmp_path)
-    assert site.upload(site_dir, DATA, with_pages=False) == DATA
+    assert site.upload(site_dir, DATA, with_pages=False) == [*RECORDS, *NAMING]
     assert held(site)["index.html"] == (b"the later day's page", HTML, CACHE_CONTROL)
     assert sorted(held(site)) == sorted([*DATA, "index.html"])
     for key in (*FIXED, *FOLDER_PAGES):
         (site_dir / key).unlink()
-    assert site.upload(site_dir, DATA, with_pages=False) == DATA
+    assert site.upload(site_dir, DATA, with_pages=False) == [*RECORDS, *NAMING]
+
+
+def test_a_record_file_is_a_forecasts_or_a_scores_file():
+    """The record files are each day's forecasts file and scores file, as `shopper.freeze` names them on the site; the
+    ledger, the day files and the pages are not."""
+    assert is_record(site_key(DAY)) and is_record(scores_site_key(EARLIER))
+    for key in (LEDGER, "site-days/2026-11-03.json", "days/2026-11-03.json", "index.html", "p/2000000000046.html",
+                "search/pieces.json", "forecasts/2026-11-03.csv"):
+        assert not is_record(key)
+
+
+def test_upload_puts_the_record_files_before_the_files_that_name_them(site, tmp_path):
+    """The task review's finding 1: the record files go up in a call of their own, every put of it ended before the
+    ledger, the site-day and day files and the pages, which name them, are put."""
+    puts = refused_puts(site, set())
+    assert site.upload(built(tmp_path), DATA, with_pages=True) == [*RECORDS, *NAMING, *FOLDER_PAGES, *FIXED]
+    assert sorted(puts[:len(RECORDS)]) == sorted(RECORDS)
+
+
+@pytest.mark.parametrize("refused", RECORDS)
+def test_a_failed_record_put_stops_the_upload_before_anything_that_names_it(site, tmp_path, refused):
+    """A record put that fails stops the upload (RecordsNotUploaded, naming what failed): the other record may be up,
+    nothing that names one is, so the ledger can never name a file the site lacks."""
+    refused_puts(site, {refused})
+    with pytest.raises(RecordsNotUploaded, match=re.escape(refused)) as raised:
+        site.upload(built(tmp_path), DATA, with_pages=True)
+    assert str(raised.value).startswith("a record file did not go up, so nothing that names it was put: OSError: ")
+    assert set(held(site)) <= set(RECORDS) - {refused}
 
 
 def test_upload_puts_only_the_data_files_it_is_given(site, tmp_path):
