@@ -609,7 +609,10 @@ Resources:
             # The extractions read the day's price files and the basket run the tables, the store
             # lists and the manifests. Both look for the day's check record first by listing checks/,
             # which ListArchive covers; no check record is read. A locked put of a record that S3
-            # refuses is compared through head_object, which needs s3:GetObject.
+            # refuses is compared through head_object, which needs s3:GetObject. The freezer reads a
+            # stored forecasts or scores file back, and its time, to say whether a new file is the
+            # same, so those two folders are read here as well. tables/ holds every kind of table,
+            # the shopper site's items, covered and scored ones included, so it takes no new line.
             - Sid: ReadArchive
               Effect: Allow
               Action: s3:GetObject
@@ -618,38 +621,64 @@ Resources:
                 - !Sub "${ArchiveBucket.Arn}/manifests/*"
                 - !Sub "${ArchiveBucket.Arn}/tables/*"
                 - !Sub "${ArchiveBucket.Arn}/basket/*"
+                - !Sub "${ArchiveBucket.Arn}/forecasts/*"
+                - !Sub "${ArchiveBucket.Arn}/scores/*"
             # Each chain's table and report of the day: plain puts, replacing an earlier run's.
             - Sid: WriteTables
               Effect: Allow
               Action: s3:PutObject
               Resource: !Sub "${ArchiveBucket.Arn}/tables/*"
-            # The basket run's records: written once and locked, each put setting its own retain-until
-            # date, which needs s3:PutObjectRetention, as the collector's locked writes do.
+            # The basket run's records, and the shopper site's day of forecasts and day of scores:
+            # written once and locked, each put setting its own retain-until date, which needs
+            # s3:PutObjectRetention, as the collector's locked writes do. A forecast is only worth
+            # scoring if it cannot be replaced after the day it forecasts.
             - Sid: WriteOnceLockedRecords
               Effect: Allow
               Action:
                 - s3:PutObject
                 - s3:PutObjectRetention
-              Resource: !Sub "${ArchiveBucket.Arn}/basket/*"
+              Resource:
+                - !Sub "${ArchiveBucket.Arn}/basket/*"
+                - !Sub "${ArchiveBucket.Arn}/forecasts/*"
+                - !Sub "${ArchiveBucket.Arn}/scores/*"
             # Lists a day's files and the check records; without it, S3 answers a missing table with
             # 403 instead of 404.
             - Sid: ListArchive
               Effect: Allow
               Action: s3:ListBucket
               Resource: !GetAtt ArchiveBucket.Arn
-            # The site's published copy of the day, which the run's numbers are compared with.
-            - Sid: ReadPublishedDays
+            # The site's published copy of the day, which the run's numbers are compared with, and
+            # the published files the guard checks a new upload against: the shopper site's day
+            # files, its forecasts and ledger, and its scores.
+            - Sid: ReadPublished
               Effect: Allow
               Action: s3:GetObject
-              Resource: !Sub "arn:aws:s3:::${SiteBucketName}/days/*"
-            # The two pages and the day files; nothing else in the site bucket.
+              Resource:
+                - !Sub "arn:aws:s3:::${SiteBucketName}/days/*"
+                - !Sub "arn:aws:s3:::${SiteBucketName}/site-days/*"
+                - !Sub "arn:aws:s3:::${SiteBucketName}/forecasts/*"
+                - !Sub "arn:aws:s3:::${SiteBucketName}/scores/*"
+            # What the build puts up and nothing else in the site bucket: the five fixed pages (named
+            # one by one), the product, browse and search files under their folders, and the day
+            # files, forecasts, ledger and scores. Put, never delete: a page the build no longer
+            # writes stays, and the site bucket's lifecycle rule expires only old versions of the
+            # pages a morning rebuilds.
             - Sid: WriteSite
               Effect: Allow
               Action: s3:PutObject
               Resource:
                 - !Sub "arn:aws:s3:::${SiteBucketName}/index.html"
                 - !Sub "arn:aws:s3:::${SiteBucketName}/method.html"
+                - !Sub "arn:aws:s3:::${SiteBucketName}/record.html"
+                - !Sub "arn:aws:s3:::${SiteBucketName}/basket.html"
+                - !Sub "arn:aws:s3:::${SiteBucketName}/search.js"
+                - !Sub "arn:aws:s3:::${SiteBucketName}/p/*"
+                - !Sub "arn:aws:s3:::${SiteBucketName}/browse/*"
+                - !Sub "arn:aws:s3:::${SiteBucketName}/search/*"
                 - !Sub "arn:aws:s3:::${SiteBucketName}/days/*"
+                - !Sub "arn:aws:s3:::${SiteBucketName}/site-days/*"
+                - !Sub "arn:aws:s3:::${SiteBucketName}/forecasts/*"
+                - !Sub "arn:aws:s3:::${SiteBucketName}/scores/*"
             # Finds the site's latest day; without it, S3 answers a day not yet published with 403
             # instead of 404.
             - Sid: ListSite

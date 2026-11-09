@@ -46,7 +46,6 @@ from botocore.exceptions import ClientError
 
 from collector.store import MISSING, error_code
 
-PAGES = ("index.html", "method.html")   # the basket's two pages: read only by tests/test_basket_template.py's role test
 FIXED_PAGES = ("index.html", "method.html", "record.html", "basket.html", "search.js")   # the pre-flight's S14
 PAGE_FOLDERS = ("p", "browse", "search")   # the product pages, the browse pages and the search pieces
 UPLOAD_WORKERS = 16

@@ -5,10 +5,18 @@ cfn-lint (run in CI) checks the template is valid CloudFormation; it cannot know
 private or that only this distribution may read it, so those settings are asserted here. The template is read
 with cfn-lint's decoder, as `tests/test_template.py` reads the collector's.
 """
+from datetime import date
 from pathlib import Path
 
 import pytest
 from cfnlint.decode import decode
+
+from basket.site import FIXED_PAGES, day_key
+from shopper.build import LEDGER
+from shopper.freeze import scores_site_key, site_key
+from shopper.product import page_path
+from shopper.search import browse_path, pieces
+from shopper.siteday import site_day_path
 
 TEMPLATE = Path(__file__).parent.parent / "site-template.yaml"
 CACHING_OPTIMIZED = "658327ea-f89d-4fab-a63d-7e88639e58f6"  # aws cloudfront list-cache-policies --type managed
@@ -59,6 +67,43 @@ def test_the_bucket_keeps_every_version_of_a_published_file(resources):
     # A day file holds its revision reason and its earlier figures (B12): an upload that replaces it must leave
     # the published one recoverable.
     assert resources["SiteBucket"]["Properties"]["VersioningConfiguration"] == {"Status": "Enabled"}
+
+
+def _rebuilt_prefixes() -> list[str]:
+    """What a morning's build writes again under the same key: the product, browse and search folders, and the fixed
+    pages, each named from the code's own keys."""
+    folders = {key.split("/", 1)[0] + "/" for key in (page_path("2000000000046"), browse_path("\u05d0"), *pieces({}))}
+    return sorted(folders | set(FIXED_PAGES))
+
+
+def _record_keys() -> list[str]:
+    """The files that are written once for a day (or only grow) and kept in every version."""
+    day = date(2026, 11, 7)
+    return [day_key(day), site_day_path(Path(), day).as_posix(), site_key(day), LEDGER, scores_site_key(day)]
+
+
+def test_old_versions_of_rebuilt_pages_expire_after_30_days(resources):
+    # The bucket keeps every version (B12's second guard), and a morning rebuilds every product, browse and search
+    # file and the fixed pages: their older versions would pile up. Only a noncurrent version expires; the current
+    # file never does, and nothing moves to another storage class.
+    config = resources["SiteBucket"]["Properties"]["LifecycleConfiguration"]
+    assert set(config) == {"Rules"}
+    rules = config["Rules"]
+    assert len(rules) == 8
+    assert sorted(rule["Prefix"] for rule in rules) == _rebuilt_prefixes()
+    assert len({rule["Id"] for rule in rules}) == 8
+    for rule in rules:
+        assert set(rule) == {"Id", "Status", "Prefix", "NoncurrentVersionExpiration"}, rule  # no ExpirationInDays, no transition
+        assert rule["Status"] == "Enabled", rule
+        assert rule["NoncurrentVersionExpiration"] == {"NoncurrentDays": 30}, rule
+
+
+def test_no_lifecycle_prefix_matches_a_record_key(resources):
+    # The day files, the forecasts and their ledger, and the scores are a record: every version of them stays (question H).
+    assert _record_keys() == ["days/2026-11-07.json", "site-days/2026-11-07.json", "forecasts/2026-11-07.csv.gz",
+                              "forecasts/ledger.csv", "scores/2026-11-07.csv.gz"]
+    for rule in resources["SiteBucket"]["Properties"]["LifecycleConfiguration"]["Rules"]:
+        assert not [key for key in _record_keys() if key.startswith(rule["Prefix"])], rule["Prefix"]
 
 
 def test_no_principal_is_anyone(template):
