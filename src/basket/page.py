@@ -32,7 +32,10 @@ A chain out of the ranking (B8) shows `too_few` in place of a bar; its prices ar
 and a note says why.
 
 Hebrew. A Hebrew name is wrapped whole in <span dir="rtl" lang="he"> (`HE_SPAN`), and so is every run of Hebrew in
-a sentence (a store's name); the shopper site's check reads what such a span holds for markup only.
+a sentence (a store's name); the shopper site's check reads what such a span holds for markup only. In the shopper
+site's frame (a `Frame` for the index page, a `page` for the method's parts) each store left out by rule is named
+whole in that span, Latin letters and all ("שופרסל ONLINE"), since a chain's store name is the chain's text, not the
+site's (its Call 11); the basket's own pages keep their bytes.
 
 The shopper site's frame (`Frame`; the shopper plan's Task 18, its question M (c) and (d) and the second pre-flight's
 S6). The shopper site shows the same index page as `basket.html` in its own frame: with a frame, the header band is
@@ -256,7 +259,7 @@ def render_index(public: dict, basket: Basket, exclusions: Mapping[str, Sequence
     parts.append(f'<p class="lede">{_prose(words.PRICES_SENTENCE)}</p>')
     parts.append(_bars(chains, compare))
     parts.append(_table(public, basket, chains, compare, frame))
-    parts.append(_notes(public, basket, exclusions, chains))
+    parts.append(_notes(public, basket, exclusions, chains, whole=frame is not None))
     if frame is None:
         return _page(_band(f"<h1>{_text(words.TITLE)}</h1>", public), words.TITLE, parts, _credit(public))
     credit = f'<p>{_prose(frame.credit)} <a href="{_escape(frame.method_href)}">{_text(words.METHOD_LINK)}</a></p>'
@@ -296,7 +299,8 @@ def method_parts(basket: Basket, exclusions: Mapping[str, Sequence[Store]], publ
             _section('<h2 id="basket">The basket</h2>', f"<p>{_prose(words.basket_intro(basket))}</p>",
                      _basket_table(basket)),
             _section("<h2>Stores left out</h2>",
-                     *(_excluded(slug, exclusions.get(slug, ())) for slug in words.CHAIN_NAMES)),
+                     *(_excluded(slug, exclusions.get(slug, ()), whole=page is not None)
+                       for slug in words.CHAIN_NAMES)),
             _section(f"<h2>What {_text(page or 'this page')} does not claim</h2>", f"<ul>{not_claimed}</ul>"),
             _section("<h2>The law</h2>", f"<p>{_prose(words.LAW)}</p>"),
             _section("<h2>To reproduce this number</h2>",
@@ -398,6 +402,25 @@ def _prose(text: str) -> str:
     return "".join(out) + _text(text[end:])
 
 
+def _prose_naming(text: str, names: Sequence[str]) -> str:
+    """`text` as `_prose` writes it, but each of `names` quoted in it (“…”) wrapped whole (`_he`): the shopper site's
+    frame (the module's docstring). With no names, `_prose`'s bytes."""
+    if not names:
+        return _prose(text)
+    longest_first = sorted(set(names), key=len, reverse=True)
+    quoted = re.compile("\u201c(" + "|".join(map(re.escape, longest_first)) + ")\u201d")
+    out, end = [], 0
+    for found in quoted.finditer(text):
+        out += [_prose(text[end:found.start()]), "\u201c", _he(found.group(1)), "\u201d"]
+        end = found.end()
+    return "".join(out) + _prose(text[end:])
+
+
+def _named(slug: str, stores: Sequence[Store], whole: bool) -> list[str]:
+    """The names of the chain's stores left out by number, which its lines quote, when they are to be wrapped whole."""
+    return [store.name for store in stores if store.id in EXCLUDED[slug].stores] if whole else []
+
+
 def _ordered(chains: dict) -> list[tuple[str, dict]]:
     return sorted(chains.items(), key=lambda pair: (pair[1]["rank"] is None, pair[1]["rank"] or 0, pair[0]))
 
@@ -493,19 +516,20 @@ def _table(public: dict, basket: Basket, chains: list[tuple[str, dict]], compare
 
 
 def _notes(public: dict, basket: Basket, exclusions: Mapping[str, Sequence[Store]],
-           chains: list[tuple[str, dict]]) -> str:
-    """The items left out and why, chains out of the ranking, the stores each chain rests on, the median sentence."""
+           chains: list[tuple[str, dict]], whole: bool = False) -> str:
+    """The items left out and why, chains out of the ranking, the stores each chain rests on, the median sentence;
+    `whole` names each store left out by number whole (the shopper site's frame)."""
     lines = [words.left_out_line(LeftOut(**each), basket) for each in public["left_out"]] or [words.NOTHING_LEFT_OUT]
     lines += [words.out_note(slug, chain["with_file"], chain["included"]) for slug, chain in chains
               if not chain["in_ranking"]]
-    lines += [words.stores_line(slug, chain["included"], chain["with_file"], exclusions.get(slug, ()))
-              for slug, chain in chains]
+    shown = [_prose(line) for line in lines]
+    shown += [_prose_naming(words.stores_line(slug, chain["included"], chain["with_file"], exclusions.get(slug, ())),
+                            _named(slug, exclusions.get(slug, ()), whole)) for slug, chain in chains]
     double_coded = words.double_coded_line({slug: sum(price["double_coded"] for price in chain["items"].values())
                                             for slug, chain in chains})
-    if double_coded:
-        lines.append(double_coded)
-    lines.append(words.MEDIAN_SENTENCE)
-    items = "".join(f"<li>{_prose(line)}</li>" for line in lines)
+    shown += [_prose(line) for line in ([double_coded] if double_coded else [])]
+    shown.append(_prose(words.MEDIAN_SENTENCE))
+    items = "".join(f"<li>{line}</li>" for line in shown)
     return (f'<section class="notes"><h2>Notes</h2><ul>{items}</ul>'
             f"{_day_link(date.fromisoformat(public['day']))}</section>")
 
@@ -530,9 +554,10 @@ def _basket_table(basket: Basket) -> str:
             f'<th scope="col">Category</th></tr></thead><tbody>{rows}</tbody></table></div>')
 
 
-def _excluded(slug: str, stores: Sequence[Store]) -> str:
-    """A chain's stores left out (B2), and the names of those left out with their sub-chain."""
-    line = f"<p>{_prose(words.excluded_line(slug, stores))}</p>"
+def _excluded(slug: str, stores: Sequence[Store], whole: bool = False) -> str:
+    """A chain's stores left out (B2), and the names of those left out with their sub-chain; `whole` names each store
+    left out by number whole (the shopper site's frame)."""
+    line = f"<p>{_prose_naming(words.excluded_line(slug, stores), _named(slug, stores, whole))}</p>"
     grouped = [store for store in stores if store.id not in EXCLUDED[slug].stores]
     if not grouped:
         return line

@@ -7,8 +7,10 @@ the hand build (the read-only freezer), with three things a real morning has and
 promotions not read today, with milk listed at both Carrefour columns, so P10's sentence is on both of milk's
 Carrefour sections (question M (g)); a published ledger naming an earlier frozen day and the day itself, whose files
 went up on their own day and are not in the build (B5); and a day scored 14 days back, listed in the site-day file's
-`scored_days`, whose scores file is not in the build either (B2). Each test copies the site and breaks one thing.
-Names, barcodes and prices are synthetic."""
+`scored_days`, whose scores file is not in the build either (B2). Each test copies the site and breaks one thing; a
+test of a store's name renames the store in a copy of the data's store list and builds the site again. Names,
+barcodes and prices are synthetic."""
+import gzip
 import json
 import re
 import shutil
@@ -39,28 +41,39 @@ EARLIER = DAY - timedelta(days=20)                    # a day frozen before, its
 T = DAY - timedelta(days=14)                          # the day scored on DAY, its scores file up since DAY
 MILK_PAGE = page_path(MILK)
 CITY, MARKET = "carrefour-city", "carrefour-market"
+BODY = _frozen_file(((OSHER, EGGS),))
+FROZEN = [Frozen(day=day, body=BODY, sha256=_sha(BODY), frozen_at=at, on_time=True, status="same")   # as published
+          for day, at in ((EARLIER, datetime(2025, 12, 12, 10, 33, 7, tzinfo=timezone.utc)), (DAY, STAMP))]
+ONLINE = "\u05e9\u05d5\u05e4\u05e8\u05e1\u05dc ONLINE"          # store 413's name in the tree's store list
+
+
+def build(data: Path, site: Path) -> Path:
+    """The site the hand build writes from `data`, beside the published ledger of the two frozen days."""
+    _published_ledger(site, *FROZEN)
+    build_site(DAY, data, site, NOW, "11:48", ReadOnlyFreezer(data), basket_path=BASKET, min_items=1)
+    return site
 
 
 @pytest.fixture(scope="module")
-def built(tmp_path_factory) -> Path:
-    """The site (the module's docstring), built once."""
+def tree(tmp_path_factory) -> tuple[Path, Path]:
+    """The data folder and the site (the module's docstring), built once."""
     root = tmp_path_factory.mktemp("built")
     data = golden_tree(root / "golden")
     for slug in SLUGS:
         extract_chain_day(data / "raw", slug, DAY, data / "tables")
     _history(data, 40)
     _table(data / "tables", "carrefour", DAY, rows=[_row(CITY, MILK, "7.20"), _row(MARKET, MILK, "7.35")], error=ERROR)
-    body = _frozen_file(((OSHER, EGGS),))
-    earlier = Frozen(day=EARLIER, body=body, sha256=_sha(body),
-                     frozen_at=datetime(2025, 12, 12, 10, 33, 7, tzinfo=timezone.utc), on_time=True, status="same")
-    site = root / "site"
-    _published_ledger(site, earlier, _synced(data, DAY, body, STAMP))
+    assert _synced(data, DAY, BODY, STAMP) == FROZEN[1]
     path = summary_path(data / "tables", T)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(summary_json(DaySummary(day=T, frozen_at=datetime(2025, 12, 18, 10, 33, tzinfo=timezone.utc),
                                              on_time=True, model_version="1", target_version="1", by_column={})))
-    build_site(DAY, data, site, NOW, "11:48", ReadOnlyFreezer(data), basket_path=BASKET, min_items=1)
-    return site
+    return data, build(data, root / "site")
+
+
+@pytest.fixture(scope="module")
+def built(tree) -> Path:
+    return tree[1]
 
 
 @pytest.fixture
@@ -134,18 +147,20 @@ def test_markup_inside_a_chains_span_fails(site, inside, more):
     assert check_site(site) == [f"{MILK_PAGE}: {problem}" for problem in ["markup inside a chain's span", *more]]
 
 
-def test_a_store_named_with_a_never_word_passes(site):
-    """Call 11 (the task review's finding 1): basket.page's span for a Hebrew name holds the names of the stores left out
-    by rule, as their chains publish them, on basket.html and method.html; it is read for markup only, as CHAIN_SPAN."""
-    opening = HE_SPAN.split("{}")[0]
-    for name in ("basket.html", "method.html"):
-        path = site / name
-        text = path.read_text(encoding="utf-8")
-        found = re.search(f"store 413 \u201c{re.escape(opening)}([^<]*)</span>", text)
-        assert found, name                                                   # the premise: the store left out by rule
-        path.write_text(text.replace(found.group(0), found.group(0).replace(found.group(1), "Trick Mall US")),
-                        encoding="utf-8")
+@pytest.mark.parametrize("store", ["Trick Mall US", ONLINE + " US"])
+def test_a_store_left_out_by_rule_named_with_a_never_word_passes(tree, tmp_path, store):
+    """Call 11 (the task review's finding 1, the re-review's probe): a store left out by rule is named on basket.html
+    and method.html as its chain publishes it, Latin letters and all, whole in basket.page's span for a Hebrew name, and
+    so read for markup only. The store is renamed in Shufersal's store list, and the site built again from it."""
+    data = Path(shutil.copytree(tree[0], tmp_path / "data"))
+    listed = next((data / "raw" / "chain=shufersal" / f"date={DAY.isoformat()}").glob("Stores*.gz"))
+    xml = gzip.decompress(listed.read_bytes()).decode()
+    assert xml.count(f"<StoreName>{ONLINE}</StoreName>") == 1
+    listed.write_bytes(gzip.compress(xml.replace(ONLINE, store).encode(), mtime=0))
+    site = build(data, tmp_path / "site")
     assert check_site(site) == []
+    for name in ("basket.html", "method.html"):
+        assert f"store 413 \u201c{HE_SPAN.format(store)}\u201d" in (site / name).read_text(encoding="utf-8"), name
 
 
 def test_markup_inside_the_baskets_hebrew_span_fails(site):

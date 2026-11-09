@@ -11,11 +11,11 @@ day comes from the newest site-day file, `site-days/<day>.json` (ISO dates sort 
 each chain's promotions error and every day scored to date. Every `.html` under the folder is checked:
 
 - Each chain's span must hold no markup, `<` or `>`: `CHAIN_SPAN`, which holds every chain-supplied text, escaped, and
-  `basket.page.HE_SPAN`, the basket's span for a Hebrew name, which on `basket.html` and `method.html` holds the names
-  of the stores left out by rule as their chains publish them (Call 11). Then it is cut out, so a chain's own words
-  count for no rule below: a product or a store named with a NEVER phrase or the word "us" passes, and no phrase a page
-  must carry can come from a chain's text. A span holding markup is refused and left in, so what it holds is read as
-  the page's own.
+  `basket.page.HE_SPAN`, the basket's span for a Hebrew name, in which `basket.html` and `method.html` (the shopper
+  site's frame) name each store left out by rule whole, as its chain publishes it, Latin letters and all (Call 11).
+  Then it is cut out, so a chain's own words count for no rule below: a product or a store named with a NEVER phrase
+  or the word "us" passes, and no phrase a page must carry can come from a chain's text. A span holding markup is
+  refused and left in, so what it holds is read as the page's own.
 - No NEVER phrase as written or as read, except inside `method.html`'s `<ul id="never-words">`, whose items must be
   NEVER, in order, and which is cut out before the phrases are sought; "we", "our" and "us" never, as whole words in
   the text read.

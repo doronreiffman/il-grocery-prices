@@ -165,6 +165,9 @@ SHOP_BUILD = ("src/shopper/build.py", ["tests/test_shop_build.py"])
 # break of either.
 SHOP_CHECK = ("src/shopper/check.py", ["tests/test_shop_check.py"])
 CHECK_BASKET_FOR_SHOP_CHECK = ("src/basket/check.py", ["tests/test_shop_check.py"])
+# basket.page names the stores left out by number whole in its Hebrew span inside the shopper site's frame (Task 20,
+# fix round 2): the check's tests must catch a name left to its Hebrew runs.
+PAGE_FOR_SHOP_CHECK = ("src/basket/page.py", ["tests/test_shop_check.py"])
 # The guard (Task 21): shopper/guard.py with its tests; the basket's guard (basket.guard.guard_days) serves the site's days
 # too, so its revision test must be caught breaking by the shopper guard's tests as well.
 SHOP_GUARD = ("src/shopper/guard.py", ["tests/test_shop_guard.py"])
@@ -2165,6 +2168,12 @@ MUTATIONS = {
     "a link that is not a URL passed over (q22 check)": (SHOP_CHECK, '    if link is None:\n        return f"{name}: a link that is not a URL: {url!r}"', "    if link is None:\n        return None"),
     "odds words matched only whole (q22 check)": (SHOP_CHECK, '+ (r"\\b" if " " in word else "")', '+ r"\\b"'),
     "the phrase 1 in matched as a stem (q22 check)": (SHOP_CHECK, '+ (r"\\b" if " " in word else "")', '+ ""'),
+    # Task 20, fix round 2: a store left out by number named whole in the shopper's frame, the basket's own pages as before
+    "a by-number store's name on basket.html left to its Hebrew runs (q22 check)": (PAGE_FOR_SHOP_CHECK, "_notes(public, basket, exclusions, chains, whole=frame is not None)", "_notes(public, basket, exclusions, chains, whole=False)"),
+    "a by-number store's name on method.html left to its Hebrew runs (q22 check)": (PAGE_FOR_SHOP_CHECK, "_excluded(slug, exclusions.get(slug, ()), whole=page is not None)", "_excluded(slug, exclusions.get(slug, ()), whole=False)"),
+    "a store's name in the frame wrapped by its Hebrew runs only (q22 check)": (PAGE_FOR_SHOP_CHECK, '"\\u201c", _he(found.group(1)), "\\u201d"', '"\\u201c", _prose(found.group(1)), "\\u201d"'),
+    "the basket's own index naming its stores whole (q22 pages)": (PAGE_FOR_SHOP_PAGES, "_notes(public, basket, exclusions, chains, whole=frame is not None)", "_notes(public, basket, exclusions, chains, whole=True)"),
+    "the basket's own method naming its stores whole (q22 pages)": (PAGE_FOR_SHOP_PAGES, "_excluded(slug, exclusions.get(slug, ()), whole=page is not None)", "_excluded(slug, exclusions.get(slug, ()), whole=True)"),
     "sections never read (q22 check)": (SHOP_CHECK, '                if "data-column" in found:\n', "                if False:\n"),
     "P10 not required of an unread chain's sections (q22 check)": (SHOP_CHECK, "    if unread and not says(unreadable(chain), read):\n", "    if False:\n"),
     "P10 required of every chain's sections (q22 check)": (SHOP_CHECK, '    unread = chain in shown["chains"] and shown["chains"][chain]["promotions_error"] is not None\n', '    unread = chain in shown["chains"]\n'),
