@@ -23,6 +23,21 @@ Resources:
       # (B12); scripts/publish.sh refuses such an upload first, and this is the second guard.
       VersioningConfiguration:
         Status: Enabled
+      # Versioning keeps every version of a file, and a morning rebuilds every product, browse and search
+      # file and the fixed pages, so their old versions would pile up for ever. A version that a newer
+      # upload replaced expires 30 days after (the shopper site's Q10); the current file never does. The
+      # rules name the rebuilt files only: the day files, forecasts, ledger and scores are a record, and
+      # every version of them stays (question H), so no prefix here may be a prefix of one of their keys.
+      LifecycleConfiguration:
+        Rules:
+          - {Id: old-product-pages, Status: Enabled, Prefix: p/, NoncurrentVersionExpiration: {NoncurrentDays: 30}}
+          - {Id: old-browse-pages, Status: Enabled, Prefix: browse/, NoncurrentVersionExpiration: {NoncurrentDays: 30}}
+          - {Id: old-search-pieces, Status: Enabled, Prefix: search/, NoncurrentVersionExpiration: {NoncurrentDays: 30}}
+          - {Id: old-front-page, Status: Enabled, Prefix: index.html, NoncurrentVersionExpiration: {NoncurrentDays: 30}}
+          - {Id: old-method-page, Status: Enabled, Prefix: method.html, NoncurrentVersionExpiration: {NoncurrentDays: 30}}
+          - {Id: old-record-page, Status: Enabled, Prefix: record.html, NoncurrentVersionExpiration: {NoncurrentDays: 30}}
+          - {Id: old-basket-page, Status: Enabled, Prefix: basket.html, NoncurrentVersionExpiration: {NoncurrentDays: 30}}
+          - {Id: old-search-script, Status: Enabled, Prefix: search.js, NoncurrentVersionExpiration: {NoncurrentDays: 30}}
 
   SiteOriginAccessControl:
     Type: AWS::CloudFront::OriginAccessControl

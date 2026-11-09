@@ -17,12 +17,17 @@ import pytest
 from cfnlint.decode import decode
 
 from basket import handler
-from basket.archive import record_key, table_key
+from basket.archive import COVERED, SCORED, TABLES, kind_key, record_key, table_key
 from basket.chains import SLUGS
 from basket.duck import MEMORY_LIMIT_VAR, TEMP_DIRECTORY_VAR
 from basket.handler import REQUIRED, SITE_BUCKET_PREFIX, Config, Deps, run
-from basket.site import PAGES, day_key
+from basket.site import FIXED_PAGES, day_key
 from collector.store import RETENTION_DAYS, manifest_key, raw_key
+from shopper.build import LEDGER
+from shopper.freeze import archive_key, scores_archive_key, scores_site_key, site_key
+from shopper.product import page_path
+from shopper.search import browse_path, pieces
+from shopper.siteday import site_day_path
 from test_template import DAILY, ISRAEL, TEMPLATE, _actions, _prefix, _resources
 
 ROOT = Path(__file__).parent.parent
@@ -158,22 +163,25 @@ def test_role_cannot_delete_bypass_the_lock_or_change_either_bucket(basket_state
 
 
 def test_role_grants_exactly_what_the_code_does(basket_statements):
-    """Reads of the archive's raw files, manifests, tables and basket records (a refused locked put of a record is
-    compared through head_object, which needs s3:GetObject); plain puts of the tables; locked puts of the records
-    (each sets its retain-until date, which needs s3:PutObjectRetention); a list of the archive, which is all the
-    check-record gate needs; reads of the site's day files, puts of its two pages and day files, a list of it; one
-    distribution's invalidation."""
+    """Reads of the archive's raw files, manifests, tables, basket records and the day's forecasts and scores (a
+    refused locked put of a record is compared through head_object, which needs s3:GetObject); plain puts of the
+    tables; locked puts of the records, forecasts and scores (each sets its retain-until date, which needs
+    s3:PutObjectRetention); a list of the archive, which is all the check-record gate needs; reads of the site's
+    published day files, forecasts and scores for the guard; puts of its fixed pages, product, browse and search
+    files, day files, forecasts and scores, a list of it; one distribution's invalidation."""
     archive = [{"Fn::Sub": "${ArchiveBucket.Arn}/" + folder + "/*"}
-               for folder in ("raw", "manifests", "tables", "basket")]
+               for folder in ("raw", "manifests", "tables", "basket", "forecasts", "scores")]
+    locked = [{"Fn::Sub": "${ArchiveBucket.Arn}/" + folder + "/*"} for folder in ("basket", "forecasts", "scores")]
+    published = [_site(folder + "/*") for folder in ("days", "site-days", "forecasts", "scores")]
+    pages = [_site(page) for page in ("index.html", "method.html", "record.html", "basket.html", "search.js")]
     by_sid = {statement["Sid"]: (sorted(_actions(statement)), _resources(statement)) for statement in basket_statements}
     assert by_sid == {
         "ReadArchive": (["s3:GetObject"], archive),
         "WriteTables": (["s3:PutObject"], [{"Fn::Sub": "${ArchiveBucket.Arn}/tables/*"}]),
-        "WriteOnceLockedRecords": (["s3:PutObject", "s3:PutObjectRetention"],
-                                   [{"Fn::Sub": "${ArchiveBucket.Arn}/basket/*"}]),
+        "WriteOnceLockedRecords": (["s3:PutObject", "s3:PutObjectRetention"], locked),
         "ListArchive": (["s3:ListBucket"], [{"Fn::GetAtt": ["ArchiveBucket", "Arn"]}]),
-        "ReadPublishedDays": (["s3:GetObject"], [_site("days/*")]),
-        "WriteSite": (["s3:PutObject"], [_site("index.html"), _site("method.html"), _site("days/*")]),
+        "ReadPublished": (["s3:GetObject"], published),
+        "WriteSite": (["s3:PutObject"], pages + [_site(folder + "/*") for folder in ("p", "browse", "search")] + published),
         "ListSite": (["s3:ListBucket"], [{"Fn::Sub": SITE}]),
         "Invalidate": (["cloudfront:CreateInvalidation"],
                        [{"Fn::Sub": "arn:aws:cloudfront::${AWS::AccountId}:distribution/${SiteDistributionId}"}]),
@@ -187,12 +195,21 @@ def test_role_prefixes_are_the_codes_keys(basket_statements):
     day = date(2026, 11, 1)
     by_sid = {statement["Sid"]: _resources(statement) for statement in basket_statements}
     table, record = table_key("shufersal", day, "prices.parquet"), record_key(day, "r")
-    read = [raw_key("shufersal", day, "x"), manifest_key(day, "shufersal", "r"), table, record]
+    frozen, scored = archive_key(day), scores_archive_key(day)
+    read = [raw_key("shufersal", day, "x"), manifest_key(day, "shufersal", "r"), table, record, frozen, scored]
     assert by_sid["ReadArchive"] == [_prefix(key) for key in read]
+    # Every kind of table, the shopper site's two of no chain included, is under tables/, which the role names once.
+    tables = [kind_key(kind, "shufersal", day, name) for kind, names in TABLES.items() for name in names]
+    tables += [kind_key(kind, None, day, name) for kind, name in (COVERED, SCORED)]
+    assert [_prefix(key) for key in tables] == [_prefix(table)] * len(tables)
     assert by_sid["WriteTables"] == [_prefix(table)]
-    assert by_sid["WriteOnceLockedRecords"] == [_prefix(record)]
-    assert by_sid["ReadPublishedDays"] == [_site_prefix(day_key(day))]
-    assert by_sid["WriteSite"] == [_site(page) for page in PAGES] + [_site_prefix(day_key(day))]
+    assert by_sid["WriteOnceLockedRecords"] == [_prefix(record), _prefix(frozen), _prefix(scored)]
+    site_day = site_day_path(Path(), day).as_posix()
+    published = [_site_prefix(key) for key in (day_key(day), site_day, site_key(day), scores_site_key(day))]
+    assert _site_prefix(LEDGER) == _site_prefix(site_key(day))  # the ledger is a forecasts/ file
+    assert by_sid["ReadPublished"] == published
+    built = [page_path("2000000000046"), browse_path("\u05d0"), *pieces({})]
+    assert by_sid["WriteSite"] == [_site(page) for page in FIXED_PAGES] + [_site_prefix(key) for key in built] + published
 
 
 # --- the parameters ---
