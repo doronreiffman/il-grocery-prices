@@ -16,7 +16,9 @@ covered registry it carried forward (None for none); then:
   goes on every section of a chain's columns, so it stays per chain. The error is published by its kind, its file and
   its field, never a value (`public_error`; the task review's finding 2): the kind is "file not read" when the message
   is one of `basket.pricefile`'s for a file that does not read, else "format changed"; the file is named only when the
-  message names one the collector names (`collector.names.parse_file_name`), and the field only when the message's
+  message names one the collector names, by its published name (`collector.names.parse_file_name` of
+  `collector.store.published_name`, as the house reads a stored name: a conflict copy, the published name with a dot
+  and 12 hex digits, is the copy read when it is the latest), and the field only when the message's
   first word is one of the fields the chains' files are known to carry, or a level of them
   (`shopper.promotions.KNOWN_FIELDS`). Whatever a chain puts in a field or a tag therefore stays out of the public file;
   the whole message, with the value, goes to the run's log and its alert only (the items table's private report and
@@ -61,6 +63,7 @@ from basket.chains import SLUGS
 from basket.page import render_day
 from basket.record import NOT_COMPARED, comparable, money
 from collector.names import parse_file_name
+from collector.store import published_name
 from shopper.columns import BY_KEY, COLUMNS
 from shopper.deals import to_agora
 from shopper.freeze import Frozen, utc_text
@@ -104,9 +107,9 @@ def public_error(slug: str, message: str) -> dict:
     (the module's docstring)."""
     rest = message.removeprefix(f"{slug}: ")
     head, said, tail = rest.partition(": ")
-    file = None
-    if said and parse_file_name(head) is not None:
-        file, rest = head, tail
+    file, published = None, published_name(head)    # a conflict copy is named by its published name
+    if said and parse_file_name(published) is not None:
+        file, rest = published, tail
     word = rest.split(" ", 1)[0]
     return {"kind": "file not read" if rest.startswith(UNREADABLE) else "format changed", "file": file,
             "field": word if word in FIELD_NAMES else None}

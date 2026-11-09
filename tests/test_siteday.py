@@ -149,6 +149,19 @@ def test_a_promotion_file_that_does_not_read_is_published_as_such(data):
     assert found == {"kind": "file not read", "file": FILE, "field": None}
 
 
+
+def test_a_conflict_copy_is_named_by_its_published_name():
+    """A conflict copy is stored as its published name with a dot and 12 hex digits (collector.store) and is the copy
+    `basket.extract.day_files` reads when it is the latest: its error is published under the published name, a file that
+    does not read as such, and a format change with its field (the re-review's fix-round finding)."""
+    copy = f"{FILE}.0123456789ab"
+    with pytest.raises(BadPriceFile) as refused:
+        read_items(copy, b"<html><body>\xd7\x9e</body></html>")
+    assert public_error("carrefour", f"carrefour: {refused.value}") == {
+        "kind": "file not read", "file": FILE, "field": None}
+    assert public_error("carrefour", f"carrefour: {copy}: RewardType {VALUE} not seen in the chain's files") == {
+        "kind": "format changed", "file": FILE, "field": "RewardType"}
+
 def test_each_columns_gate_is_its_own_never_its_chains():
     """The site check reads a column's gate from its own block (the amendment's "Where the key lives"): Deal's gate
     is Deal's, though Sheli, of the same chain, has none of its days."""
