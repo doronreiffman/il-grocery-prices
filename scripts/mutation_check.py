@@ -1771,6 +1771,7 @@ MUTATIONS = {
     "a split letter not found by its second letter (q22 search)": (SHOP_SEARCH_JS, "  if (letters.length > 1 && pieces.includes(", "  if (false && pieces.includes("),
     "matches out of name order (q22 search)": (SHOP_SEARCH_JS, "    .sort(byName)\n", ""),
     "more than 50 matches (q22 search)": (SHOP_SEARCH_JS, "    .slice(0, MAX_SHOWN);", "    .slice(0, MAX_SHOWN + 1);"),
+    "the cap's line saying the first 50 (q22 search)": (SHOP_SEARCH_JS, '"<p>Showing up to " + MAX_SHOWN + " names.', '"<p>Showing the first " + MAX_SHOWN + ".'),
     "only the first name matched (q22 search)": (SHOP_SEARCH_JS, "entry.slice(2).some(", "entry.slice(2, 3).some("),
     "leading zeros kept in a barcode (q22 search)": (SHOP_SEARCH_JS, '  return typed.replace(/^0+/, "") || null;', "  return typed;"),
     "a barcode of 7 digits asked for (q22 search)": (SHOP_SEARCH_JS, "[0-9]{8,14}", "[0-9]{7,14}"),
@@ -2088,7 +2089,8 @@ MUTATIONS = {
     'a weighed deal per unit in the words (q22 words)': (SHOP_WORDS, '"kg": "per kilogram"}', '"kg": "per unit"}'),
     'a listed price without before promotions (q22 words)': (SHOP_WORDS, 'return f"Listed price ₪{money(price)}, before promotions, as listed', 'return f"Listed price ₪{money(price)}, as listed'),
     "the chart's key naming the chain (q22 words)": (SHOP_WORDS, 'return ALWAYS[0], f"a promotion {across(column)}"', 'return ALWAYS[0], f"a promotion listed across {CHAIN_NAMES[BY_KEY[column].slug]}"'),
-    "the stores' range labelled a listed price (q22 words)": (SHOP_WORDS, 'return f"stores ₪{money(low)}', 'return f"listed price ₪{money(low)}'),
+    "the stores' range labelled a listed price (q22 words)": (SHOP_WORDS, 'return f"stores\' deal prices ₪{money(low)}', 'return f"listed price ₪{money(low)}'),
+    "the stores' deal prices labelled as the listed price's range (q22 words)": (SHOP_WORDS, 'return f"stores\' deal prices ₪{money(low)}', 'return f"stores ₪{money(low)}'),
     "the changes' window length ignored (q22 P7)": (SHOP_MEASURES, '    first = day - timedelta(days=length)\n', '    first = day - timedelta(days=RECENT_DAYS)\n'),
     "the gap's changes over the 90 days (q22 P7)": (SHOP_MEASURES, 'changes=changes(pair, column_days, day, RECENT_DAYS))', 'changes=changes(pair, column_days, day, READ_DAYS))'),
     # shopper: the front, method, record and basket pages, and the basket's frame, parts and build (q22 pages)

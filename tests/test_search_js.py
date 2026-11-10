@@ -194,7 +194,8 @@ def test_the_list_stops_at_50_and_says_so():
                  "search/05d7.json": {"status": 200, "body": [_entry(f"72900{i:08d}", f"חלב {i:02d}") for i in range(60)]}}
     html = _page([{"value": "חל"}], responses)["html"]
     assert html.count("<li>") == 50
-    assert "first 50" in html
+    # deploy prep: exactly 50 matches show the line too, so it never says there are more
+    assert "<p>Showing up to 50 names. Type more of the name to narrow them.</p>" in html
 
 
 def test_a_list_that_cannot_be_fetched_says_so_and_is_fetched_again_on_the_next_key():

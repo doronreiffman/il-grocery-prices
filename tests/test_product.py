@@ -398,7 +398,7 @@ def test_each_promotion_today_with_its_conditions_from_the_fields():
     assert items == [
         "<b>Deal price ₪3.33 per unit</b>, buy 3<small>club members only, and the chain's card holders only, "
         f"{FROM_FIELDS}; minimum spend ₪150.00, {FROM_FIELDS}; {FINE_PRINT}</small><small>{MORNING}</small>",
-        f"<b>Deal price ₪4.40 per unit</b>, stores ₪4.35 to ₪4.60<small>{FINE_PRINT}</small>"
+        f"<b>Deal price ₪4.40 per unit</b>, stores' deal prices ₪4.35 to ₪4.60<small>{FINE_PRINT}</small>"
         f"<small>{MORNING}; {AT_SOME_STORES}</small>"]
     assert "PLACEHOLDER-DESCRIPTION" not in page            # the chain's text is not shown
 

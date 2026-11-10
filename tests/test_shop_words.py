@@ -227,8 +227,9 @@ def test_the_short_sentences():
     assert window_note(Window(1, date(2026, 11, 19), (), True)) == "1 day of records since 19 November 2026"
     assert window_note(Window(0, None, (), True)) == "no days of records"
     assert starts_on(date(2026, 11, 9)) == "Listed to start on 9 November 2026."
+    # deploy prep: B5's median is over the stores whose file lists the item, not over all the included stores
     assert formats_note() == ("The product pages show Shufersal's and Carrefour's store formats apart; the basket "
-                              "takes each chain's median over all its included stores.")
+                              "takes each chain's median over its included stores whose file lists the item.")
     # deploy prep: no closing rule is built (F9 states none), so the sentence names none
     assert columns_tested(9) == ("Nine columns are tested at once: the more are tested, the likelier one passes the "
                                  "gate by luck.")
@@ -471,7 +472,8 @@ def test_the_product_pages_labels():
     assert deal_price(Fraction(10, 3), "unit") == "Deal price ₪3.33 per unit"
     assert deal_price(Fraction("4.34") / 3, "kg") == "Deal price ₪1.45 per kilogram"
     assert buy(Decimal("3.000")) == "buy 3" and buy(Decimal("1.500")) == "buy 1.5"
-    assert stores_range(Decimal("4.355"), Decimal("4.6")) == "stores ₪4.36 to ₪4.60"
+    # deploy prep: never the listed price's own "stores ₪X to ₪Y" beside it in the same section
+    assert stores_range(Decimal("4.355"), Decimal("4.6")) == "stores' deal prices ₪4.36 to ₪4.60"
     assert minimum_spend(Decimal("150")) == "minimum spend ₪150.00"
     assert (NOT_LISTED, ACROSS_HEADING, BROWSE_LINK, BARCODE) == (
         "not listed today", "Today at each column, in name order", "Browse by first letter", "Barcode")

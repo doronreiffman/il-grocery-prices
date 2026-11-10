@@ -205,8 +205,9 @@ def buy(quantity: Decimal) -> str:
 
 
 def stores_range(low: Decimal, high: Decimal) -> str:
-    """A percent-off deal's range over the stores carrying it (S4), labelled as the stores', never a listed price."""
-    return f"stores ₪{money(low)} to ₪{money(high)}"
+    """A percent-off deal's range over the stores carrying it (S4), labelled as the stores' deal prices, never a listed
+    price nor the listed price's own range beside it (deploy prep)."""
+    return f"stores' deal prices ₪{money(low)} to ₪{money(high)}"
 
 
 def minimum_spend(amount: Decimal) -> str:
@@ -284,8 +285,8 @@ def starts_on(start: date) -> str:
 def formats_note() -> str:
     """The basket page's sentence: the basket keeps each chain's median (the amendment's S1)."""
     split = joined([f"{CHAIN_NAMES[slug]}'s" for slug in SLUGS if len(columns_of(slug)) > 1])
-    return (f"The product pages show {split} store formats apart; the basket takes each chain's median over all its "
-            "included stores.")
+    return (f"The product pages show {split} store formats apart; the basket takes each chain's median over its "
+            "included stores whose file lists the item.")
 
 
 def columns_tested(count: int) -> str:

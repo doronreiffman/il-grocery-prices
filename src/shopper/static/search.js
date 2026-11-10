@@ -89,7 +89,7 @@ function listing(found) {
   const rows = found.map(([code, title]) =>
     "<li>" + link(code, "<span class=\"as-listed\" lang=\"he\" dir=\"rtl\">" + escapeHtml(title) + "</span>") +
     " <small>" + escapeHtml(code) + "</small></li>");
-  const more = found.length === MAX_SHOWN ? "<p>Showing the first " + MAX_SHOWN + ". Type more of the name to narrow them.</p>" : "";
+  const more = found.length === MAX_SHOWN ? "<p>Showing up to " + MAX_SHOWN + " names. Type more of the name to narrow them.</p>" : "";
   return "<ul>" + rows.join("") + "</ul>" + more;
 }
 
