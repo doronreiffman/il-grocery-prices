@@ -553,6 +553,8 @@ In Lambda, measured on the first run (2026-11-03, the 2026-11-02 day, by hand): 
 | Yochananof's extraction | 476,502 | 20.9 (23.5) | same |
 | The basket run | | 6.0 | same |
 
+A Mac run shows that a Lambda run fits only with DuckDB held to Lambda's threads as well as to its 1,200 MB: the Mac's DuckDB runs on the Mac's 8 threads, Lambda's on fewer (how many it reads at 2,048 MB is not logged: UNVERIFIED, one or two), and a query can need more memory on fewer threads. On 2026-11-10 the items step's per-item price lists did: three chains' extractions ran out of DuckDB's memory in Lambda after passing on the Mac under the same limit, and, once fixed, passed on the Mac at 2 threads ([shopper-site-plan.md](shopper-site-plan.md), "Deviations", the deploy's entry). The Mac figures below were made at 8 threads.
+
 Step one's measurements, to note here at its manual runs ("Deploying step one", below):
 
 - **Shufersal's extraction, with its promotions and items.** On the Mac, 249.5 s (prices 91.8, promotions 150.9, items 6.3), a peak of 977 MiB resident, DuckDB's temp folder at most 42 MiB and the tables' folders at most 539 MiB, with DuckDB held to 1,200 MB ([shopper-site-plan.md](shopper-site-plan.md), "Deviations", Task 5's review fix round 2 and Task 7): at Lambda's measured 1.1 times, about 275 s of the 900, and about 760 MiB of `/tmp`'s 10,240 MB with the day's raw files. In Lambda, to note: the summary's `seconds`, `promotion_seconds` and `items_seconds`, and the `REPORT` line's `Duration` and `Max Memory Used`. Above about 600 s of the 900, the plan's answer is a promotions run of its own per chain at 12:03, on the owner's word ([shopper-site-plan.md](shopper-site-plan.md), question L).
