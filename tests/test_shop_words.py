@@ -99,6 +99,9 @@ def test_the_lists_are_the_designs_verbatim():
     # true of a product page's prices with the stores left out by rule (Deal's online store 413, Express's 779), which
     # the method page names (fix round 1, ruling 5); in the site's public words, no "column"
     assert "apart from the stores left out by rule" in ALWAYS_SENTENCE and METHOD_TITLE in ALWAYS_SENTENCE
+    # deploy prep: the method page gives the rules (by the store list, and by a file's name, store 779's case) but names
+    # only the stores the store list leaves out and store 779, never a later store left out by its files' names
+    assert f"({METHOD_TITLE} gives the rules)" in ALWAYS_SENTENCE and "names them" not in ALWAYS_SENTENCE
     assert "column" not in ALWAYS_SENTENCE
     never = _quoted(_line(DESIGN, "Never: "))
     basket_part = never[:never.index("the chain charges") + 1]

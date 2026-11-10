@@ -28,7 +28,7 @@ ALWAYS phrases, so the page carries them on a morning with no row too.
 
 The method page: what a column is and the nine, with how each one's stores are chosen and how many the day's store
 list includes; the stores left out by rule, which of them sit in a column's part of the store list, and store 779
-(Task 15's carry: ALWAYS_SENTENCE says this page names them); Carrefour's table, store by store, and how it was drawn;
+(Task 15's carry: ALWAYS_SENTENCE says this page gives the rules); Carrefour's table, store by store, and how it was drawn;
 the included stores in no column, chain by chain, each by id and its listed name (with its sub-chain where the columns
 go by sub-chain); any column under the floor that day; P1 to P10 and F1 to F11 in plain words with the code's own
 constants; the NEVER list as `<ul id="never-words">`, the only place its phrases appear; what is measured and what is
@@ -573,10 +573,13 @@ def _never_section() -> str:
 
 def _reproduce_section(day: date, code_sha: str) -> str:
     site_day = f"site-days/{day.isoformat()}.json"
-    take = (f"Take each chain's full price and promotion files and its store list of the day and the {READ_DAYS} days "
-            f"before it, as the chains published them, this site's code on GitHub at the fingerprint {code_sha}")
+    take = (f"Take each chain's full price and promotion files and its store list of every day from {READ_DAYS} days "
+            "before this site's first day to the day, as the chains published them, this site's code on GitHub at the "
+            f"fingerprint {code_sha}")
     same = ("and the rules above: the same files and code give the same numbers on every page, the record's "
-            "intervals to rounding (F8). The day's inputs are named in")
+            f"intervals to rounding (F8). A page's measures read the day and the {READ_DAYS} days before it; which "
+            "products have a page, their names and sizes, and when each was last seen listed across a column come from "
+            "a record carried from day to day since the site's first. The day's inputs are named in")
     rest = ("; the forecasts and scores files and the ledger, linked from the record page, let anyone recompute the "
             "record.")
     return _section("reproduce", "To reproduce a page",

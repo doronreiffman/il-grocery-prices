@@ -2271,7 +2271,9 @@ MUTATIONS = {
     'the column intro making every format a column (q22 pages)': (SHOP_PAGES, 'f"each of their formats with at least {FLOOR} included stores on the store lists of {_day(FIXED_ON)} "', '"each format "'),
     "the column intro's floor undated (q22 pages)": (SHOP_PAGES, 'included stores on the store lists of {_day(FIXED_ON)} "', 'included stores "'),
     'the column intro claiming every measure on the page (q22 pages)': (SHOP_PAGES, '"on the front, product and record pages is a column\'s: which products are covered, listed prices, "', '"here is a column\'s: which products are covered, listed prices, "'),
-    "the reproduce sentence without the intervals' rounding (q22 pages)": (SHOP_PAGES, 'same numbers on every page, the record\'s "\n            "intervals to rounding (F8). The day\'s inputs are named in")', 'same numbers on every page. The day\'s inputs are named in")'),
+    "the reproduce sentence without the intervals' rounding (q22 pages)": (SHOP_PAGES, 'same numbers on every page, the record\'s "\n            f"intervals to rounding (F8). A page', 'same numbers on every page. "\n            f"A page'),
+    'the reproduce sentence taking the 90 days alone (q22 pages)': (SHOP_PAGES, 'store list of every day from {READ_DAYS} days "\n            "before this site\'s first day to the day, as', 'store list of the day and the {READ_DAYS} days "\n            "before it, as'),
+    'the always sentence saying the method page names the stores (q22 words)': (SHOP_WORDS, 'f"({METHOD_TITLE} gives the rules); every', 'f"({METHOD_TITLE} names them); every'),
     'the days read said of this page (q22 pages)': (SHOP_PAGES, 'said = (f"The site\'s build reads the {len(days)} days from', 'said = (f"This page reads the {len(days)} days from'),
     # The site check (Task 20): every rule's condition made false, and the task's named breaks
     "markup inside a chain's span allowed: a chain span cut out unchecked (q22 check)": (SHOP_CHECK, "        if MARKUP.search(found.group(1)):\n", "        if False:\n"),

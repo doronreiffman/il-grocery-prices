@@ -315,9 +315,10 @@ def test_the_method_page_lists_each_column_its_stores_and_the_stores_in_none():
 
 
 def test_the_method_page_names_the_stores_left_out_by_rule():
-    """ALWAYS_SENTENCE says this page names the stores left out by rule (Task 15's carry): the basket's list of them,
-    which of them sit in a column's part of the store list (Deal's store 413, Rami Levy's 39), and Express's store 779,
-    left out through its files' names while the list puts it in Express."""
+    """ALWAYS_SENTENCE says this page gives the rules that leave stores out (Task 15's carry; deploy prep): the store
+    list's rule with the basket's list of the stores it leaves out, which of them sit in a column's part of the store
+    list (Deal's store 413, Rami Levy's 39), and the file-name rule with Express's store 779, left out through its
+    files' names while the list puts it in Express."""
     page = _method()
     columns = re.search(r'<section id="columns">(.*?)</section>', page, re.DOTALL).group(1)
     assert "Shufersal's store 413 (Shufersal Deal) and Rami Levy's store 39 (Rami Levy)" in columns
@@ -354,6 +355,13 @@ def test_the_method_page_states_the_rules_with_the_codes_constants():
     assert "0123456789ab" in page and 'href="site-days/2026-11-02.json"' in page
     reproduce = re.search(r'<section id="reproduce">(.*?)</section>', page, re.DOTALL).group(1)
     assert "the same numbers on every page, the record's intervals to rounding (F8)." in reproduce    # review, 4
+    # deploy prep: true on any day, past the archive's 91st day too: which products have a page, their names and sizes,
+    # and when each was last seen listed across a column come from the covered registry, carried from day to day
+    assert ("Take each chain's full price and promotion files and its store list of every day from 90 days before "
+            "this site's first day to the day, as the chains published them,") in reproduce
+    assert ("A page's measures read the day and the 90 days before it; which products have a page, their names and "
+            "sizes, and when each was last seen listed across a column come from a record carried from day to day "
+            "since the site's first.") in reproduce
 
 
 def test_the_method_page_carries_the_baskets_method_as_its_own_section():

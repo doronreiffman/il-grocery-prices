@@ -6,7 +6,8 @@ N7 and N23; Task 9's review rulings on P8's count, a change's dates and the runs
 The lists. ALWAYS holds the four phrases the design puts beside every listed price and every promotion, and
 ALWAYS_SENTENCE holds all four in one fixed sentence, so a product page carries them even for a product listed nowhere
 today (S7). It is written for the product pages, whose listed prices are a store format's medians with the stores left
-out by rule (such as Shufersal Deal's online store) set aside, as the method page names them; never for basket.html,
+out by rule (such as Shufersal Deal's online store) set aside, by the rules the method page gives (it names the stores
+the store list leaves out and store 779, not a later store left out by its files' names); never for basket.html,
 whose prices are each chain's median and which keeps the basket's own sentence. NEVER is the basket's list followed
 by the design's own, unchanged in step one: a bare "will" would trip the method page's plain sentences, and step three's
 odds line revisits F11's "will" and "likely" (N23). ODDS_WORDS are the words a closed column's section may hold only
@@ -119,7 +120,7 @@ RECORD_TITLE = "Track record"
 ALWAYS = ("listed price", "as listed in the chain's price files", "before promotions", "listed in the morning's files")
 ALWAYS_SENTENCE = ("Every listed price here is as listed in the chain's price files, before promotions: the median "
                    "across the stores of its store format that list the item, apart from the stores left out by rule "
-                   f"({METHOD_TITLE} names them); every promotion is as listed in the morning's files.")
+                   f"({METHOD_TITLE} gives the rules); every promotion is as listed in the morning's files.")
 # S7: the four ALWAYS phrases in one sentence, for every product page (never basket.html: the module's docstring)
 NEVER = BASKET_NEVER + ("fake", "fake discount", "fake sale", "real deal", "scam", "rip-off", "trick", "inflated",
                         "misleading", "deceptive", "pretends", "true price", "you save", "best deal", "guaranteed",
