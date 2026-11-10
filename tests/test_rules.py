@@ -132,10 +132,11 @@ def test_median_ignores_an_outlier(tmp_path):
 
 def test_chain_prices_fit_a_small_memory_on_one_thread(tmp_path):
     """Lambda runs DuckDB on few threads under DUCKDB_MEMORY_LIMIT (1,200 MB): on 2026-11-10 the items step ran out
-    of memory there on 1 November's Shufersal, Rami Levy and Carrefour (about 37 stores an item), where the Mac's 8
-    threads passed. A list sorted per item as DuckDB builds it holds more than the cap at one or two threads; built
-    unsorted and sorted once whole, it fits. Here 2,000 items at 40 stores each under 32 MB on one thread: the
-    sorted-as-built list ran out of memory up to 48 MB, the sorted-after one fitted from 12 MB."""
+    of memory there on 1 November's Shufersal, Rami Levy and Carrefour (26 to 38 stores an item on average), where
+    the Mac's 8 threads passed. A list sorted per item as DuckDB builds it held more than the cap at two threads (and
+    Shufersal's at one); built unsorted and sorted once whole, it fits. Here 2,000 items at 40 stores each under 32 MB
+    on one thread, then two: the sorted-as-built list ran out of memory up to 96 MB on one thread (it fitted at 128),
+    the sorted-after one fitted from 12 MB on one thread and 16 on two."""
     stores = [str(number) for number in range(1, 41)]
     codes = [f"7290000{index:06d}" for index in range(2000)]
     rows = [row(store, code, f"{(index * 7 + int(store)) % 90 + 1}.90")
@@ -144,6 +145,9 @@ def test_chain_prices_fit_a_small_memory_on_one_thread(tmp_path):
         con.execute("SET memory_limit = '32MB'")
         con.execute("SET threads = 1")
         prices = chain_prices(con, None)
+        con.execute("SET threads = 2")
+        on_two = chain_prices(con, None)
+    assert on_two == prices
     assert len(prices) == 2000
     ordered = sorted(Decimal(f"{(7 + int(store)) % 90 + 1}.90") for store in stores)  # the second item, codes[1]
     assert prices[("a", normalize(codes[1]))] == ChainPrice(

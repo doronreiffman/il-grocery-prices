@@ -553,7 +553,7 @@ In Lambda, measured on the first run (2026-11-03, the 2026-11-02 day, by hand): 
 | Yochananof's extraction | 476,502 | 20.9 (23.5) | same |
 | The basket run | | 6.0 | same |
 
-A Mac run shows that a Lambda run fits only with DuckDB held to Lambda's threads as well as to its 1,200 MB: the Mac's DuckDB runs on the Mac's 8 threads, Lambda's on fewer (how many it reads at 2,048 MB is not logged: UNVERIFIED, one or two), and a query can need more memory on fewer threads. On 2026-11-10 the items step's per-item price lists did: three chains' extractions ran out of DuckDB's memory in Lambda after passing on the Mac under the same limit, and, once fixed, passed on the Mac at 2 threads ([shopper-site-plan.md](shopper-site-plan.md), "Deviations", the deploy's entry). The Mac figures below were made at 8 threads.
+A Mac run shows that a Lambda run fits only with DuckDB held to Lambda's threads as well as to its 1,200 MB: the Mac's DuckDB runs on the Mac's 8 threads, Lambda's on fewer (how many it reads at 2,048 MB is not logged: UNVERIFIED, most likely 2), and the memory a query needs changes with the thread count, not always in one direction: check at 1 and at 2 threads until Lambda's count is known. On 2026-11-10 the items step's per-item price lists ran three chains' extractions out of DuckDB's memory in Lambda after passing on the Mac under the same limit (on the Mac they ran out at 2 threads; at 1 only Shufersal's did), and, once fixed, passed on the Mac at 1, 2 and 8 threads ([shopper-site-plan.md](shopper-site-plan.md), "Deviations", the deploy's entry). The Mac figures below were made at 8 threads.
 
 Step one's measurements, to note here at its manual runs ("Deploying step one", below):
 
