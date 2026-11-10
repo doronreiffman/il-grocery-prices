@@ -93,6 +93,7 @@ N0 = 30                 # the blend's constant: the pair's own share weighs n / 
 DAYS_SINCE_CAP = 60     # days since the last run ended, counted as this above it ("60 or more", question F (a))
 A_MIN_DAYS = 20         # baseline A is the pair's share from this many closed days, else the column's (F5)
 PLACES = 6              # the forecasts file's decimals for a probability, half up
+AHEAD = range(1, HORIZON + 1)   # the window's days after a day t: t + 1 to t + HORIZON, never t itself (F1)
 FILE_FIELDS = ("column", "barcode", "p_model", "p_a", "p_b", "b_says", "days_since", "n", "a_from",
                "model_version", "target_version", "n0", "code_sha")   # named apart from shopper.columns.COLUMNS
 
@@ -120,15 +121,18 @@ def _running(point: Point) -> list[str]:
             if found["wide"] and found["kind"] is not None and found["start"] <= point.day <= found["end"]]
 
 
-def outcome(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: date) -> Outcome:
-    """F1 for the pair on `day`, over days day + 1 to day + HORIZON at the pair's column (the module's docstring)."""
+def _read(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: date) -> tuple[bool, Point | None]:
+    """A day as the target reads it at the pair's column: whether it is a hole, and the pair's point (None if none)."""
+    return _hole(column_days, pair.column, day), pair.points.get(day)
+
+
+def _judged(window: Sequence[tuple[bool, Point | None]]) -> Outcome:
+    """F1 over a window's days in day order, each as `_read` gives it (the module's docstring)."""
     holes, first = 0, None
-    for ahead in range(1, HORIZON + 1):
-        seen = day + timedelta(days=ahead)
-        if _hole(column_days, pair.column, seen):
+    for hole, point in window:
+        if hole:
             holes += 1
             continue
-        point = pair.points.get(seen)
         if first is None and point is not None and point.on_promotion:
             first = point
     if holes > MAX_HOLES:
@@ -139,12 +143,15 @@ def outcome(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: 
     return Outcome(value=1, holes=holes, first_day=first.day, promotion_id=min(wide, key=by_number, default=None))
 
 
-def eligible(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: date) -> str:
-    """Who gets a forecast on `day`: "hole", "not_wide", "on_promotion", "starts_soon" or "yes" (the module's
-    docstring)."""
-    if _hole(column_days, pair.column, day):
+def outcome(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: date) -> Outcome:
+    """F1 for the pair on `day`, over days day + 1 to day + HORIZON at the pair's column (the module's docstring)."""
+    return _judged([_read(pair, column_days, day + timedelta(days=ahead)) for ahead in AHEAD])
+
+
+def _answer(hole: bool, point: Point | None) -> str:
+    """Who gets a forecast on a day, read as `_read` gives it (the module's docstring)."""
+    if hole:
         return "hole"
-    point = pair.points.get(day)
     if point is None or not point.wide:
         return "not_wide"
     if point.on_promotion:
@@ -154,16 +161,26 @@ def eligible(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day:
     return "yes"
 
 
+def eligible(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: date) -> str:
+    """Who gets a forecast on `day`: "hole", "not_wide", "on_promotion", "starts_soon" or "yes" (the module's
+    docstring)."""
+    return _answer(*_read(pair, column_days, day))
+
+
 def closed_days(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay],
                 day: date) -> list[tuple[date, Outcome]]:
     """The days t from day - READ_DAYS to day - HORIZON on which the pair is eligible and whose windows hold at most
-    MAX_HOLES holes, each with its outcome, earliest first."""
+    MAX_HOLES holes, each with its outcome, earliest first. Each day of day - READ_DAYS to day is read once and every
+    t's answer and window taken from those readings, not looked up again for each t (the plan's Task 25a)."""
+    start = day - timedelta(days=READ_DAYS)
+    read = [_read(pair, column_days, start + timedelta(days=n)) for n in range(READ_DAYS + 1)]
     found = []
     for back in range(READ_DAYS, HORIZON - 1, -1):
         seen = day - timedelta(days=back)
-        if eligible(pair, column_days, seen) != "yes":
+        at = READ_DAYS - back                                       # seen's reading in `read`
+        if _answer(*read[at]) != "yes":
             continue
-        result = outcome(pair, column_days, seen)
+        result = _judged(read[at + AHEAD.start:at + AHEAD.stop])
         if result.value is not None:
             found.append((seen, result))
     return found

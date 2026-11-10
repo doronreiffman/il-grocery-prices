@@ -9,15 +9,18 @@ docstring."""
 import csv
 import gzip
 import io
+import random
 from datetime import date, timedelta
 from decimal import Decimal
 from fractions import Fraction
 
+from shopper import forecast
 from shopper.forecast import (A_MIN_DAYS, DAYS_SINCE_CAP, FILE_FIELDS, FIRST_RECORD_DAY, MAX_HOLES, MODEL_VERSION, N0,
                               TARGET_VERSION, Forecast, Outcome, closed_days, eligible, forecasts, forecasts_csv,
                               outcome)
 from shopper.history import READ_DAYS, ColumnDay, History, Pair, Point, load
-from shopper.items import HORIZON
+from shopper.items import HORIZON, by_number
+import shopper_random
 from test_history import _row, _table
 
 DAY = date(2026, 11, 30)
@@ -616,3 +619,72 @@ def test_golden_forecasts_are_pinned_to_the_version_name():
 
 def test_the_models_fixed_values():
     assert (MODEL_VERSION, N0, DAYS_SINCE_CAP, A_MIN_DAYS) == ("1", 30, 60, 20)
+
+
+# Task 25a's speedup of `closed_days`: the code as it stood before, kept here, against the code as it is
+
+def _outcome_before(pair, column_days, day):
+    """`outcome` as it stood before Task 25a."""
+    holes, first = 0, None
+    for ahead in range(1, HORIZON + 1):
+        seen = day + timedelta(days=ahead)
+        if forecast._hole(column_days, pair.column, seen):
+            holes += 1
+            continue
+        point = pair.points.get(seen)
+        if first is None and point is not None and point.on_promotion:
+            first = point
+    if holes > MAX_HOLES:
+        return Outcome(value=None, holes=holes, first_day=None, promotion_id=None)
+    if first is None:
+        return Outcome(value=0, holes=holes, first_day=None, promotion_id=None)
+    wide = forecast._running(first)
+    return Outcome(value=1, holes=holes, first_day=first.day, promotion_id=min(wide, key=by_number, default=None))
+
+
+def _eligible_before(pair, column_days, day):
+    """`eligible` as it stood before Task 25a."""
+    if forecast._hole(column_days, pair.column, day):
+        return "hole"
+    point = pair.points.get(day)
+    if point is None or not point.wide:
+        return "not_wide"
+    if point.on_promotion:
+        return "on_promotion"
+    if point.next_start is not None:
+        return "starts_soon"
+    return "yes"
+
+
+def _closed_days_before(pair, column_days, day):
+    """`closed_days` as it stood before Task 25a: each t's answer and window looked up day by day."""
+    found = []
+    for back in range(READ_DAYS, HORIZON - 1, -1):
+        seen = day - timedelta(days=back)
+        if _eligible_before(pair, column_days, seen) != "yes":
+            continue
+        result = _outcome_before(pair, column_days, seen)
+        if result.value is not None:
+            found.append((seen, result))
+    return found
+
+
+def test_closed_days_outcomes_and_answers_as_before():
+    """Task 25a: `closed_days` reads each of the 91 days once and takes every t's answer and window from those
+    readings; `outcome` and `eligible` read through the same two rules. Over random pairs (holes of every kind, days
+    with no column-day, unread promotions, evidence of every shape) the answers are the same as before, for every t
+    and both ends of the window, and some t are left out for more than four holes."""
+    rng = random.Random(10)
+    first, last = ahead(-READ_DAYS - 2), ahead(HORIZON + 2)
+    unscored = closed = 0
+    for n in range(300):
+        column = (DEAL, EXPRESS, SHELI)[n % 3]
+        column_days = shopper_random.column_days(rng, column, SHUF, first, last)
+        pair = shopper_random.pair(rng, column, shopper_random.code(n), first, last)
+        assert closed_days(pair, column_days, DAY) == _closed_days_before(pair, column_days, DAY)
+        for seen in shopper_random.days(first, last):
+            assert outcome(pair, column_days, seen) == _outcome_before(pair, column_days, seen)
+            assert eligible(pair, column_days, seen) == _eligible_before(pair, column_days, seen)
+            unscored += outcome(pair, column_days, seen).value is None
+        closed += len(closed_days(pair, column_days, DAY))
+    assert unscored > 100 and closed > 3000

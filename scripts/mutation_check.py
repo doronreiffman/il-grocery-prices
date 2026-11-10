@@ -1815,8 +1815,8 @@ MUTATIONS = {
     "a double quote not escaped (q22 search)": (SHOP_SEARCH_JS, r'"\"": "&quot;", ', ""),
     "an apostrophe not escaped (q22 search)": (SHOP_SEARCH_JS, ''', "'": "&#39;"''', ""),
     # shopper: the forecast's target per column, who gets a forecast, inputs pinned to the day (q22 F1, F2, F3)
-    'the horizon fifteen days (q22 F1)': (SHOP_FORECAST, '    for ahead in range(1, HORIZON + 1):\n', '    for ahead in range(1, HORIZON + 2):\n'),
-    'the day itself in the window (q22 F1)': (SHOP_FORECAST, '    for ahead in range(1, HORIZON + 1):\n', '    for ahead in range(0, HORIZON + 1):\n'),
+    'the horizon fifteen days (q22 F1)': (SHOP_FORECAST, 'AHEAD = range(1, HORIZON + 1) ', 'AHEAD = range(1, HORIZON + 2) '),
+    'the day itself in the window (q22 F1)': (SHOP_FORECAST, 'AHEAD = range(1, HORIZON + 1) ', 'AHEAD = range(0, HORIZON + 1) '),
     'at some stores counted (q22 F1)': (SHOP_FORECAST, 'if first is None and point is not None and point.on_promotion:', 'if first is None and point is not None and (point.on_promotion or point.promotions):'),
     'five holes scored (q22 F1)': (SHOP_FORECAST, '    if holes > MAX_HOLES:\n', '    if holes > MAX_HOLES + 1:\n'),
     'a hole read from the chain, not the column (q22 F1)': (SHOP_FORECAST, '    found = column_days.get((column, day))\n    return found is None', '    found = column_days.get((column, day))\n    found = next((c for c in column_days.values() if found and c.day == day and c.slug == found.slug and not c.record), found)\n    return found is None'),
@@ -1834,15 +1834,15 @@ MUTATIONS = {
     'a forecast for an item on promotion (q22 F2)': (SHOP_FORECAST, '    if point.on_promotion:\n', '    if False:\n'),
     'a forecast for an item starting soon (q22 F2)': (SHOP_FORECAST, '    if point.next_start is not None:\n', '    if False:\n'),
     'a forecast at some stores (q22 F2)': (SHOP_FORECAST, '    if point is None or not point.wide:\n', '    if point is None:\n'),
-    'a forecast on a hole day (q22 F2)': (SHOP_FORECAST, '    if _hole(column_days, pair.column, day):\n        return "hole"\n', '    if False:\n        return "hole"\n'),
+    'a forecast on a hole day (q22 F2)': (SHOP_FORECAST, '    if hole:\n        return "hole"\n', '    if False:\n        return "hole"\n'),
     'on promotion answered before not wide (q22 F2)': (SHOP_FORECAST, '    if point is None or not point.wide:\n        return "not_wide"\n    if point.on_promotion:\n        return "on_promotion"\n', '    if point is not None and point.on_promotion:\n        return "on_promotion"\n    if point is None or not point.wide:\n        return "not_wide"\n'),
     'an item starting soon answered before one on promotion (q22 F2)': (SHOP_FORECAST, '    if point.on_promotion:\n        return "on_promotion"\n    if point.next_start is not None:\n        return "starts_soon"\n', '    if point.next_start is not None:\n        return "starts_soon"\n    if point.on_promotion:\n        return "on_promotion"\n'),
     'a closed day at d - 13 (q22 F3)': (SHOP_FORECAST, '    for back in range(READ_DAYS, HORIZON - 1, -1):\n', '    for back in range(READ_DAYS, HORIZON - 2, -1):\n'),
     'a closed day at d - 91 (q22 F3)': (SHOP_FORECAST, '    for back in range(READ_DAYS, HORIZON - 1, -1):\n', '    for back in range(READ_DAYS + 1, HORIZON - 1, -1):\n'),
     'closed days newest first (q22 F3)': (SHOP_FORECAST, '    for back in range(READ_DAYS, HORIZON - 1, -1):\n', '    for back in range(HORIZON, READ_DAYS + 1):\n'),
-    'a day after d read (q22 F3)': (SHOP_FORECAST, '        result = outcome(pair, column_days, seen)\n', '        result = outcome(pair, column_days, seen + timedelta(days=1))\n'),
+    'a day after d read (q22 F3)': (SHOP_FORECAST, '        result = _judged(read[at + AHEAD.start:at + AHEAD.stop])\n', '        result = _judged(read[at + 1 + AHEAD.start:at + 1 + AHEAD.stop])\n'),
     'a closed day with five holes kept (q22 F3)': (SHOP_FORECAST, '        if result.value is not None:\n', '        if True:\n'),
-    'a closed day not eligible kept (q22 F3)': (SHOP_FORECAST, '        if eligible(pair, column_days, seen) != "yes":\n            continue\n', '        if False:\n            continue\n'),
+    'a closed day not eligible kept (q22 F3)': (SHOP_FORECAST, '        if _answer(*read[at]) != "yes":\n            continue\n', '        if False:\n            continue\n'),
     # shopper: the version 1 model, its two baselines and the forecasts file, per column (q22 F4, F5)
     'n0 of 3 (q22 F4)': (SHOP_FORECAST, 'N0 = 30 ', 'N0 = 3 '),
     'the weight on the hazard (q22 F4)': (SHOP_FORECAST, 'p=weight * a + (1 - weight) * rate', 'p=weight * rate + (1 - weight) * a'),
@@ -2915,10 +2915,10 @@ MUTATIONS = {
     # the golden 90 days: the breaks of "the horizon fifteen days (q22 F1)", "n0 of 3 (q22 F4)", "front page at or below the
     # low (q22 front)", "a day after d read (q22 F3)", "wide over the chain's counted stores, not the column's (q22
     # promotions table)" and "the median over the chain's stores, not the column's (q22 P2)", the golden alone to catch them
-    "the horizon fifteen days, in the golden (q22 golden)": (FORECAST_FOR_SHOP_GOLDEN, '    for ahead in range(1, HORIZON + 1):\n', '    for ahead in range(1, HORIZON + 2):\n'),
+    "the horizon fifteen days, in the golden (q22 golden)": (FORECAST_FOR_SHOP_GOLDEN, 'AHEAD = range(1, HORIZON + 1) ', 'AHEAD = range(1, HORIZON + 2) '),
     "n0 of 3, in the golden (q22 golden)": (FORECAST_FOR_SHOP_GOLDEN, 'N0 = 30 ', 'N0 = 3 '),
     "front page at or below the low, in the golden (q22 golden)": (MEASURES_FOR_SHOP_GOLDEN, 'to_agora(deal.price) < Decimal(money(min(long.listed)))', 'to_agora(deal.price) <= Decimal(money(min(long.listed)))'),
-    "a day after d read, in the golden (q22 golden)": (FORECAST_FOR_SHOP_GOLDEN, '        result = outcome(pair, column_days, seen)\n', '        result = outcome(pair, column_days, seen + timedelta(days=1))\n'),
+    "a day after d read, in the golden (q22 golden)": (FORECAST_FOR_SHOP_GOLDEN, '        result = _judged(read[at + AHEAD.start:at + AHEAD.stop])\n', '        result = _judged(read[at + 1 + AHEAD.start:at + 1 + AHEAD.stop])\n'),
     "wide over the chain's counted stores, not the column's, in the golden (q22 golden)": (PROMOS_FOR_SHOP_GOLDEN, 'k.stores * 2 >= n.counted AS wide', 'k.stores * 2 >= (SELECT count(*) FROM store_columns) AS wide'),
     "the median over the chain's stores, not the column's, in the golden (q22 golden)": (ITEMS_FOR_SHOP_GOLDEN, 'JOIN store_columns c ON c.store = r.store', 'JOIN (SELECT DISTINCT col FROM store_columns) c ON true'),
     # the speedups (the plan's Task 25a): each rule a speedup adds
@@ -2928,6 +2928,7 @@ MUTATIONS = {
     "a price's places dropped in the stream (q22 speed)": (SHOP_HISTORY, 'None if text is None else Decimal(text)', 'None if text is None else Decimal(text).normalize()'),
     "the stores' range read high to low in the stream (q22 speed)": (SHOP_HISTORY, 'decimals[low], decimals[high]', 'decimals[high], decimals[low]'),
     "a window's days taken for 90 days whatever its length (q22 speed)": (SHOP_HISTORY, '    for seen in _days_before(day, length):\n', '    for seen in _days_before(day, READ_DAYS):\n'),
+    "a closed day's answer read from the day after (q22 speed)": (SHOP_FORECAST, '        if _answer(*read[at]) != "yes":\n', '        if _answer(*read[at + 1]) != "yes":\n'),
     "--make deleting tables it did not make (q22 speed)": (TIME_SITE_RUN, '    if work.exists() and not _marked(work) and (not work.is_dir() or any(work.iterdir())):\n', '    if False:\n'),
     "--make refusing tables it made itself (q22 speed)": (TIME_SITE_RUN, ' and not _marked(work) and (not work.is_dir()', ' and (not work.is_dir()'),
     "a delete through a symlink (q22 speed)": (TIME_SITE_RUN, '            if work.joinpath(*parts[:depth]).is_symlink():\n', '            if False:\n'),
