@@ -589,7 +589,7 @@ def _never_section() -> str:
 def _reproduce_section(day: date, code_sha: str) -> str:
     site_day = f"site-days/{day.isoformat()}.json"
     # the archive holds no day before the collector's first morning, 1 November 2026: the build reads such a day as a
-    # hole; and the registry carried from day to day was built each day by that day's code (the owner, 2026-11-10)
+    # hole (the owner, 2026-11-10)
     take = (f"Take each chain's full price and promotion files and its store list of every day from {READ_DAYS} days "
             "before this site's first day to the day (this site has none from before 1 November 2026, when its "
             "collection began, and reads such a day as one without records), as the chains published them, this "
@@ -597,8 +597,7 @@ def _reproduce_section(day: date, code_sha: str) -> str:
     same = ("and the rules above: the same files and code give the same numbers on every page, the record's "
             f"intervals to rounding (F8). A page's measures read the day and the {READ_DAYS} days before it; which "
             "products have a page, their names and sizes, and when each was last seen listed across a column come from "
-            "a record carried from day to day since the site's first, each day built by the code its site-day file "
-            "names. The day's inputs are named in")
+            "a record carried from day to day since the site's first. The day's inputs are named in")
     rest = ("; the forecasts and scores files and the ledger, linked from the record page, let anyone recompute the "
             "record.")
     return _section("reproduce", "To reproduce a page",

@@ -2314,7 +2314,6 @@ MUTATIONS = {
     "the row note silent on a hole morning (q22 pages)": (SHOP_PAGES, '"a morning with files from at least half its stores, with its deal', '"with its deal'),
     "the row note silent on the deal price read (q22 pages)": (SHOP_PAGES, 'half its stores, with its deal price read, on an item', 'half its stores, on an item'),
     "the empty table naming the conditions, not the note (q22 pages)": (SHOP_PAGES, 'NO_DEALS = "No promotion meets the rule and the note above today."', 'NO_DEALS = "No promotion meets the rule and the conditions above today."'),
-    "the carried record's code not named (q22 pages)": (SHOP_PAGES, 'since the site\'s first, each day built by the code its site-day file "\n            "names. The', 'since the site\'s first. The'),
     'the always sentence saying the method page names the stores (q22 words)': (SHOP_WORDS, 'f"({METHOD_TITLE} gives the rules); every', 'f"({METHOD_TITLE} names them); every'),
     'the days read said of this page (q22 pages)': (SHOP_PAGES, 'said = (f"The site\'s build reads the {len(days)} days from', 'said = (f"This page reads the {len(days)} days from'),
     # The site check (Task 20): every rule's condition made false, and the task's named breaks
