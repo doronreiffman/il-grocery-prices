@@ -108,6 +108,7 @@ from basket.units import plain
 from basket.words import CHAIN_NAMES, METHOD_TITLE, NEVER as BASKET_NEVER, joined
 from shopper.columns import BY_KEY, COLUMNS, columns_of
 from shopper.deals import to_agora
+from shopper.forecast import FIRST_RECORD_DAY
 from shopper.history import READ_DAYS, ColumnDay, Pair, Window, window
 from shopper.measures import (MIN_FRONT_DAYS, RECENT_DAYS, Change, Gap, Run, changes, days_since, gaps, promoted_today,
                               promotion_days_of, promotion_points, runs_of, whole)
@@ -175,10 +176,11 @@ def credit(day: date, collected_by: str) -> str:
 
 
 def no_odds_yet(column: str) -> str:
-    """F10's fixed sentence, naming the column (the amendment's "Words")."""
-    return (f"No odds yet for {BY_KEY[column].name}. Every day this site freezes a forecast for each item and "
-            "scores it two weeks later; the odds appear here once they beat two rules of thumb over 90 days "
-            f"({RECORD_TITLE}).")
+    """F10's fixed sentence, naming the column (the amendment's "Words"): forecasts start on a column's 30th day of
+    records and are frozen only on the days F2 allows, never "every day" (the owner, 2026-11-10)."""
+    return (f"No odds yet for {BY_KEY[column].name}. From a store format's {FIRST_RECORD_DAY}th day of records, this "
+            "site freezes forecasts on each day its rules allow and scores them two weeks later; the odds appear here "
+            f"once they beat two rules of thumb over 90 days ({RECORD_TITLE}).")
 
 
 def unreadable(slug: str) -> str:

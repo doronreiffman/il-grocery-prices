@@ -143,6 +143,12 @@ def test_credit_date_line_and_f10_are_the_designs():
     for column in COLUMNS:
         assert no_odds_yet(column.key) == f10.replace("for Shufersal.", f"for {column.name}.")
     assert "two weeks later" in f10
+    # deploy prep (the owner, 2026-11-10): forecasts are frozen from a format's 30th day of records (FIRST_RECORD_DAY), on
+    # the days F2 allows, never "every day"
+    assert no_odds_yet("shufersal-deal") == (
+        "No odds yet for Shufersal Deal. From a store format's 30th day of records, this site freezes forecasts on each "
+        "day its rules allow and scores them two weeks later; the odds appear here once they beat two rules of thumb "
+        "over 90 days (Track record).")
     # P10's sentence, per chain (on each of its columns: question M (g))
     p10 = _found(r'\("(Promotions from Carrefour\'s files could not be read today)"\)')
     assert unreadable("carrefour") == p10 + "."
