@@ -402,11 +402,14 @@ def test_the_method_page_states_the_rules_with_the_codes_constants():
     assert "the same numbers on every page, the record's intervals to rounding (F8)." in reproduce    # review, 4
     # deploy prep: true on any day, past the archive's 91st day too: which products have a page, their names and sizes,
     # and when each was last seen listed across a column come from the covered registry, carried from day to day
+    # the owner's words (2026-11-10): the archive holds no day before the collection's first, and the record carried
+    # from day to day was built each day by that day's code, which its site-day file names
     assert ("Take each chain's full price and promotion files and its store list of every day from 90 days before "
-            "this site's first day to the day, as the chains published them,") in reproduce
+            "this site's first day to the day (this site has none from before 1 November 2026, when its collection "
+            "began, and reads such a day as one without records), as the chains published them,") in reproduce
     assert ("A page's measures read the day and the 90 days before it; which products have a page, their names and "
             "sizes, and when each was last seen listed across a column come from a record carried from day to day "
-            "since the site's first.") in reproduce
+            "since the site's first, each day built by the code its site-day file names.") in reproduce
 
 
 def test_the_method_page_carries_the_baskets_method_as_its_own_section():
