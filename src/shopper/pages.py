@@ -8,12 +8,13 @@ The front page's rows (question A under S1). A row is a (column, product): `fron
 in name order, the product's lowest deal there, compared exactly, among its promotions running today (P3, read as the
 product pages read them, `shopper.product.running_today`) that pass the front page's test (`shopper.measures.on_front`:
 listed across the column, the price read, a record at the column today, at least 20 days of records in the 30 before
-today, the deal as shown below every listed price of the 90 as shown). So a product can show four
-Shufersal rows, each against its own column's median; a column with no record today (a hole, S1) has none. `ordered`
-sorts the rows by the depth they show, a whole percent ("under 1%" as 0), deepest first, a row with no shown gap last,
-then by the exact depth (`shopper.measures.depth`), then by column in name order, then by barcode as a number. A row keeps the promotion's restrictions, programmes and minimum spend for its conditions and the filters.
-`Counts` holds the count line's three numbers (the site-day file's; the build counts them): the wide promotions listed
-today, distinct by chain and id, their barcodes, and the barcodes with a front row.
+today, the deal as shown below every listed price of the 90 as shown). So a product can show four Shufersal rows, each
+against its own column's median; a column with no record today (a hole, S1) has none. `ordered` sorts the rows by the
+depth they show, a whole percent ("under 1%" as 0), deepest first, a row with no shown gap last, then by the exact depth
+(`shopper.measures.depth`), then by column in name order, then by barcode as a number. A row keeps the promotion's
+restrictions, programmes and minimum spend for its conditions and the filters. `Counts` holds the count line's three
+numbers (the site-day file's; the build counts them): the wide promotions listed today, distinct by chain and id, their
+barcodes, and the barcodes with a front row.
 
 The front page, top to bottom: the title and the rule in the store format's words (question O), what a row needs; the
 count line; the search box, `<input id="q">` with exactly `<script src="search.js" defer></script>`, the one script, and

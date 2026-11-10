@@ -131,8 +131,8 @@ def test_ordered_by_the_shown_percent_then_the_exact_depth():
     unit against ₪0.20 shows ₪0.05, 25%, though its exact depth is 27.5%, so ₪7.40 against ₪10.00 (26%) comes first;
     ₪7.48 against ₪10.00 shows 25% too, with an exact depth of 25.2%, so it follows the first 25%."""
     def row(column, listed, price):
-        found, = front_rows_of(CODE, "T", {column: _pair(column, _listed(listed), promotions=[_struct(price)])}, _days(),
-                               DAY)
+        pairs = {column: _pair(column, _listed(listed), promotions=[_struct(price)])}
+        found, = front_rows_of(CODE, "T", pairs, _days(), DAY)
         return found
     x, z, y, u = row(DEAL, "0.20", "0.145"), row(SHELI, "10.00", "7.40"), row(CITY, "10.00", "7.48"), row(
         MARKET, "100.00", "99.99")
