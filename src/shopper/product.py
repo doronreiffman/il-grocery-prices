@@ -30,7 +30,8 @@ its column and its chain (`data-column`, `data-chain`), headed with the column's
   morning's files", and "at some stores" when fewer than half the column's counted stores carry it, or on a hole
   morning, whose few files cannot tell whether a promotion is listed across the column (deploy prep: every promotion
   of a hole is "at some stores"). The chain's own description is not shown.
-- `starts_on` when the items row lists a wide promotion starting in the next 14 days (F2, Call 22).
+- `starts_on` when the items row lists a wide promotion starting in the next 14 days (F2, Call 22); none on a hole
+  morning, whose few files cannot tell whether a promotion is listed across the column (deploy prep).
 - "The deal against its listed prices": P7's first two sentences for each valid deal of a wide promotion today, then
   its third, the pair's changes in the past 30 days, once, since it is the same for every deal (Task 16, round 2); none
   on a hole morning.
@@ -235,7 +236,7 @@ def _section(key: str, covered: Covered, pair: Pair | None, column_days: Mapping
     running = running_today(point, day)
     if running:
         parts.append(f'<ul class="deals">{"".join(_promotion(struct, today.record) for struct in running)}</ul>')
-    if point is not None and point.next_start is not None:
+    if point is not None and point.next_start is not None and today.record:   # a hole's few files judge no start
         parts.append(f"<p>{text(starts_on(point.next_start))}</p>")
     measured = []
     for struct in running:

@@ -366,7 +366,8 @@ RULES = (
      "prices of ₪0.01 or less dropped as placeholders; the lowest and highest store prices are shown beside it. A "
      "column whose files that day come from fewer than half its included stores is a hole: its prices are shown as "
      "from too few files, no listed price is claimed, every promotion that day is shown \"at some stores\", without "
-     "P7's facts, and the day counts in no window, front page or forecast."),
+     "P7's facts, no promotion is said to be listed to start, and the day counts in no window, front page or "
+     "forecast."),
     ("P3 A promotion.",
      "A promotion in a chain's full promotion files of the day (each counted store's latest), linked to the product's "
      "barcode through its groups' items, whose start is on or before the day and whose end is on or after it. A "

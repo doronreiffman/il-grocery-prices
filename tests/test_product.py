@@ -388,22 +388,29 @@ def test_a_hole_day_says_no_last_listed_across():
 def test_a_hole_morning_lists_no_promotion_across_the_column():
     """Deploy prep (the owner, 2026-11-10): on a morning that is a hole for a column (files from 5 of its 20 stores),
     whether a promotion is listed across the column is judged over those few files, so every promotion in its section
-    shows "at some stores", none gets P7's sentences and P9's cell lists none; the section's too-few-files line stays,
+    shows "at some stores", none gets P7's sentences and P9's cell lists none; nor is a promotion said to be listed to
+    start (the items row's `next_start`, judged wide over the same few files); the section's too-few-files line stays,
     and another column's day with records is as before."""
-    covered, pairs = _typical()
+    covered, typical = _typical()
+    start = DAY + timedelta(days=9)                     # each column's items row lists a wide promotion to start
+    pairs = {key: replace(pair, points={**pair.points, DAY: replace(pair.points[DAY], next_start=start)})
+             for key, pair in typical.items()}
     page = _render(covered, pairs, column_days=_days(holes=[(DEAL, DAY)]))
     body = _sections(page)[DEAL]
     assert too_few(5, STORES) in body
+    assert "Listed to start" not in body
     items = re.findall(r"<li>(.*?)</li>", re.search(r'<ul class="deals">(.*?)</ul>', body, re.DOTALL).group(1))
     assert items == ["<b>Deal price ₪7.90 per unit</b><small>club members only, from the chain's fields; "
                      f"{FINE_PRINT}</small><small>{MORNING}; {AT_SOME_STORES}</small>"]
     assert GAP_HEADING not in body and "Deal price ₪7.90:" not in body
     cell = dict(CELL.findall(re.search(r'<section class="across">(.*?)</section>', page, re.DOTALL).group(1)))[DEAL]
     assert cell == f"₪11.90<small>{too_few(5, STORES)}</small>"
-    # the same day with records: listed across, P7's sentences, and the deal in P9's cell
+    assert _sections(page)[RAMI].count(starts_on(start)) == 1                    # another column's day with records
+    # the same day with records: listed across, P7's sentences, the start date, and the deal in P9's cell
     page = _render(covered, pairs)
     body = _sections(page)[DEAL]
     assert f"<small>{MORNING}</small>" in body and AT_SOME_STORES not in body
+    assert body.count(starts_on(start)) == 1
     assert GAP_HEADING in body and "Deal price ₪7.90: ₪4.00, 34%, below" in body
     cell = dict(CELL.findall(re.search(r'<section class="across">(.*?)</section>', page, re.DOTALL).group(1)))[DEAL]
     assert "Deal price ₪7.90 per unit" in cell
