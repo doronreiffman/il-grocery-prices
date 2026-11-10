@@ -42,8 +42,9 @@ P7, three sentences, no verdict word. The deal against the 30-day median: "Deal 
 or "not below" when the shown deal is not under the shown median. The lows, each over the days of records its window
 holds, in the change sentence's window words (P6, deploy prep), said once when both windows hold the same days, and the
 days at or below the deal, counted on the shown figures: "The lowest listed price was ₪11.90 in the 30 days before today
-and ₪10.90 in the 90 days before today; listed at ₪7.90 or less on 0 of the 90.", or at launch "The lowest listed price
-was ₪10.00 on the 15 days of records since 1 November 2026 before today; listed at ₪7.90 or less on 0 of the 15." The
+and ₪10.90 in the 90 days before today; listed at ₪7.90 or less on 0 of the 90 days with records.", or at launch "The
+lowest listed price was ₪10.00 on the 15 days of records since 1 November 2026 before today; listed at ₪7.90 or less
+on 0 of the 15 days of records." The
 changes: a change is one in the shown figures (a median of ₪1.445 moving to ₪1.45 is none: both show ₪1.45); "The listed
 price rose from ₪10.90 to ₪11.90 on 28 October 2026." between two consecutive days with records; across a gap in the
 records the change lies somewhere between the two days, so both are given ("rose from ₪10.90 (15 November 2026) to
@@ -390,8 +391,9 @@ def gap_sentences(gap: Gap) -> tuple[str, str, str]:
     lows = f"₪{money(gap.low90)} {_window_phrase(gap.window90, READ_DAYS)}"
     if gap.window30.days != gap.window90.days:          # else the same days: every one of the 90's is in the 30
         lows = f"₪{money(gap.low30)} {_window_phrase(gap.window30, RECENT_DAYS)} and {lows}"
-    second = (f"The lowest listed price was {lows}; listed at ₪{deal} or less on {at_or_below} of the "
-              f"{gap.window90.days}.")
+    count = gap.window90.days                          # P6's "of the N days with records", or "of records" if short
+    days = f"{count} {_plural(count, 'day', 'days')} {'of' if gap.window90.short else 'with'} records"
+    second = f"The lowest listed price was {lows}; listed at ₪{deal} or less on {at_or_below} of the {days}."
     return first, second, _changes_sentence(gap.changes, gap.window30, RECENT_DAYS)
 
 
