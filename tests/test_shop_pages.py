@@ -195,12 +195,15 @@ def test_the_lead_line_under_the_title():
     """The owner's plain words (2026-11-10): the title, then one lead line, the headline area's only sentence: how
     many products made the list (the site-day file's `below`), or why none did: none can appear yet, or none made it
     today. The rule's detail, and the count of products on promotion, are the fold-out's."""
-    lead = f'<h1 id="deals">{FRONT_TITLE}</h1>\n<p class="lede">{{}}</p>\n<section class="search">'
-    assert lead.format("410 products made the list today.") in _front()
-    assert lead.format("1 product made the list today.") in _front(counts=Counts(1, 1, 1))
+    # the owner's final framing (2026-11-10, 22:30): the question, what it is checked against, then how many passed
+    lead = ('<h1 id="deals">Is it actually a deal?</h1>\n'
+            '<p class="sub">Promotions checked against up to 3 months of shelf prices.</p>\n'
+            '<p class="lede">{}</p>\n<section class="search">')
+    assert lead.format("410 passed today.") in _front()
+    assert lead.format("1 passed today.") in _front(counts=Counts(1, 1, 1))
     empty = Counts(11_255, 14_060, 0)
-    assert lead.format("None made the list today.") in _front(rows=[], counts=empty)
-    assert lead.format("None yet: a product needs 20 days of price history before it can appear here.") in _front(
+    assert lead.format("None passed today.") in _front(rows=[], counts=empty)
+    assert lead.format("None yet: a product needs 20 days of price history first.") in _front(
         rows=[], counts=empty, ready=False)
     assert lead.format(lead_line(410, True)) in _front(ready=False)             # a row: its column is ready
     assert "6,210" not in re.search(r'<p class="lede">.*?</p>', _front()).group(0)
@@ -261,8 +264,8 @@ def test_the_fold_out_holds_every_condition_of_the_rule():
     assert "<details open" not in page and page.count("<details") == 1
     rules = "".join(f"<li>{rule}</li>" for rule in FRONT_RULES)
     assert fold == (
-        "<summary>How a deal gets on this list</summary>"
-        "<p>A deal is on this list only when all of these are true at the store format in its row:</p>"
+        "<summary>How a deal passes</summary>"
+        "<p>A deal passes only when all of these are true at the store format in its row:</p>"
         f"<ul>{rules}</ul>"
         "<p>The 90 days and the 30 days count only days when at least half of the format's stores sent price files.</p>"
         "<p>\"Hide club-only deals\" hides the deals the chains' fields mark for club members, the chain's card holders "

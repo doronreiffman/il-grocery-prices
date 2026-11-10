@@ -128,7 +128,7 @@ def test_the_golden_pages_windows_and_gaps(golden):
     (_, row), = _front_rows(index)
     assert "Deal price ₪7.90 per unit" in row and "₪11.40" in row and "31%" in row
     assert " ".join(G3_STORY) in _text(index)
-    assert "1 product made the list today." in _text(index)
+    assert "1 passed today." in _text(index)
     assert ("Today the five chains list 1 promotion carried by at least half of a store format's stores, on 1 "
             "product.") in _text(index)
     page = golden.page(75, f"p/{G3}.html")

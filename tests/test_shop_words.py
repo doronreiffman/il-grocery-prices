@@ -24,8 +24,8 @@ from shopper.history import READ_DAYS, Window, window
 from shopper.measures import Run, days_since, gap, gaps, promoted_today, promotion_days, promotion_points, runs
 from shopper.promotions import RESTRICTIONS
 from shopper.words import (ALWAYS, ALWAYS_SENTENCE, AT_SOME_STORES, CHAINS_LINE, CREDIT_START, FINE_PRINT, FROM_FIELDS,
-                           FROM_TEXT, FRONT_TITLE, GAP_HEADING, HIRING, HISTORY_HEADING, METHOD_TITLE, NEVER,
-                           ODDS_WORDS, PRICE_NOT_READ, RECORD_TITLE, SITE_NAME, TARGET_PHRASES, across, as_listed,
+                           FROM_TEXT, FRONT_SUBTITLE, FRONT_TITLE, GAP_HEADING, HIRING, HISTORY_HEADING, METHOD_TITLE,
+                           NEVER, ODDS_WORDS, PRICE_NOT_READ, RECORD_TITLE, SITE_NAME, TARGET_PHRASES, across, as_listed,
                            columns_tested, credit, date_line, date_range, formats_note, gap_sentences,
                            history_sentences, last_across, lead_line, marked_none, no_odds_yet, price_history,
                            promotions_line, starts_on, targets, unreadable, window_note)
@@ -161,18 +161,21 @@ def test_credit_date_line_and_f10_are_the_designs():
 
 
 def test_the_front_title_and_lead_line_are_the_owners_plain_words():
-    """The owner's plain words (2026-11-10) and the review round after them: the title says what a visitor gets, and
-    one lead line under it says how many products made the list (the site-day file's `below`: those passing every
-    front condition), in one of three forms, with no total beside it, since the products on promotion the build counts
-    are only those carried by at least half of a format's stores (the fold-out's count says so). "Appear here", not
-    "listed here": "listed" is the site's word for shelf prices. The design quotes each form."""
-    assert FRONT_TITLE == "Lowest shelf price in 3 months"   # the owner, 2026-11-10: READ_DAYS, 90 days, as 3 months
-    assert lead_line(37, True) == _found(r'one lead line under it: "([^"]+)"') == "37 products made the list today."
-    assert lead_line(1, True) == "1 product made the list today."
-    assert lead_line(1_000, True) == "1,000 products made the list today."
-    # no deal: before some store format has 20 days of records in the 30, none can appear yet
-    assert lead_line(0, False) == "None yet: a product needs 20 days of price history before it can appear here."
-    assert lead_line(0, True) == "None made the list today."
+    """The owner's final framing (2026-11-10, 22:30): the site asks whether a promotion is actually a deal. The title
+    is that question; a line under it says what each promotion is checked against, "up to" 3 months (READ_DAYS, 90
+    days), since the records start on 1 November 2026 and the 90-day window holds fewer days until late January; the
+    lead line says how many passed (the site-day file's `below`: those passing every front condition), with no total
+    beside it, since the products on promotion the build counts are only those carried by at least half of a format's
+    stores (the fold-out's count says so). The design quotes each form."""
+    assert FRONT_TITLE == _quoted(_line(DESIGN, "The public names (Q4)"))[0] == "Is it actually a deal?"
+    assert FRONT_SUBTITLE == "Promotions checked against up to 3 months of shelf prices."
+    assert f'"{FRONT_SUBTITLE}"' in DESIGN
+    assert lead_line(37, True) == _found(r'one lead line under it: "([^"]+)"') == "37 passed today."
+    assert lead_line(1, True) == "1 passed today."
+    assert lead_line(1_000, True) == "1,000 passed today."
+    # no deal: before some store format has 20 days of records in the 30, none can pass yet
+    assert lead_line(0, False) == "None yet: a product needs 20 days of price history first."
+    assert lead_line(0, True) == "None passed today."
     assert lead_line(37, False) == lead_line(37, True)                   # a row says enough: its column is ready
     for form in (lead_line(0, False), lead_line(0, True)):
         assert f'"{form}"' in DESIGN
@@ -769,7 +772,7 @@ def _every_sentence() -> list[str]:
                  _history(listed, [back(n) for n in (30, 29, 28, 20, 19, 18)], unread=[back(21)], holes=[back(27)],
                           today=False)]
     slugs = list(CHAIN_NAMES)
-    return [SITE_NAME, CHAINS_LINE, FRONT_TITLE, GAP_HEADING, HISTORY_HEADING, METHOD_TITLE, RECORD_TITLE,
+    return [SITE_NAME, CHAINS_LINE, FRONT_TITLE, FRONT_SUBTITLE, GAP_HEADING, HISTORY_HEADING, METHOD_TITLE, RECORD_TITLE,
             ALWAYS_SENTENCE, FROM_FIELDS, FROM_TEXT, FINE_PRINT, PRICE_NOT_READ, AT_SOME_STORES,
             *TARGET_PHRASES.values(), *(name for name, _ in HIRING), formats_note(), columns_tested(9),
             columns_tested(1), credit(FRIDAY, "12:03"), date_line(FRIDAY), lead_line(410, True), lead_line(1, True),

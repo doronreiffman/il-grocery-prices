@@ -16,8 +16,9 @@ restrictions, programmes and minimum spend for its conditions and the filters. `
 numbers (the site-day file's; the build counts them): the wide promotions listed today, distinct by chain and id, their
 barcodes, and the barcodes with a front row.
 
-The front page, top to bottom, in the owner's plain words (2026-11-10): the title; the lead line
-(`shopper.words.lead_line`), the headline area's one sentence, its "None yet" form while no column has a record on
+The front page, top to bottom, in the owner's plain words (2026-11-10): the title, the owner's question; the line under
+it (`shopper.words.FRONT_SUBTITLE`), what each promotion is checked against; the lead line
+(`shopper.words.lead_line`), how many passed, its "None yet" form while no column has a record on
 MIN_FRONT_DAYS of the RECENT_DAYS before the day (`front_ready`: a product's days of records at a column are days the
 column has one, so none can pass the front test's days before then); the search box, `<input id="q">` with exactly
 `<script src="search.js" defer></script>`, the one script, and a link to the browse pages, which need none; the
@@ -91,10 +92,10 @@ from shopper.measures import MIN_FRONT_DAYS, RECENT_DAYS, Gap, depth, gap, on_fr
 from shopper.product import CHAIN_SPAN, field_conditions, page_path, running_today
 from shopper.record import BIN_OFF, BIN_SHARE, BLOCK, CAL_MAX, DRAWS, GATE_DAYS, LEVEL, MIN_DAYS, SEED, holds_share
 from shopper.shell import band, page, text
-from shopper.words import (BROWSE_LINK, FINE_PRINT, FRONT_TITLE, GAP_HEADING, HIRING, METHOD_TITLE, MORNING, NEVER,
-                           NUMBER_WORDS, RECORD_TITLE, SITE_NAME, buy, columns_tested, credit, date_range, deal_price,
-                           formats_note, gap_sentences, lead_line, marked_none, no_odds_yet, percent_text,
-                           promotions_line, shown_below, unreadable)
+from shopper.words import (BROWSE_LINK, FINE_PRINT, FRONT_SUBTITLE, FRONT_TITLE, GAP_HEADING, HIRING, METHOD_TITLE,
+                           MORNING, NEVER, NUMBER_WORDS, RECORD_TITLE, SITE_NAME, buy, columns_tested, credit,
+                           date_range, deal_price, formats_note, gap_sentences, lead_line, marked_none, no_odds_yet,
+                           percent_text, promotions_line, shown_below, unreadable)
 
 BASKET_SECTION = "headline-basket"     # the basket's method on the method page: not its inner heading's id, "basket"
 BASKET_PAGE = "the basket page"        # what the basket's method section speaks of on the method page
@@ -109,10 +110,10 @@ FRONT_HEADS = ("Product", "Store", "Deal", "Typical price", "Below by", "Conditi
 TABLE_NOTE = (f"Typical price: the {RECENT_DAYS}-day median listed price before promotions, as listed in the chain's "
               "price files. Below by: how far the deal is under the typical price. "
               f"Deals {MORNING}.")                             # the four ALWAYS phrases, under the table
-RULES_TITLE = "How a deal gets on this list"
+RULES_TITLE = "How a deal passes"
 # required, not enough on their own (the review round, 2026-11-10): the shown figures' rounding, a deal price above
 # ₪0.01 (P4), one row per format's lowest deal
-RULES_INTRO = "A deal is on this list only when all of these are true at the store format in its row:"
+RULES_INTRO = "A deal passes only when all of these are true at the store format in its row:"
 # every condition `shopper.measures.on_front` applies: the deal as shown below every listed price of the 90 as shown;
 # the promotion wide; the column's day no hole; the deal price read; the 30-day window's days
 FRONT_RULES = (
@@ -156,6 +157,7 @@ section small { display: block; color: var(--text-3); font-size: .8125rem; }
 .lede { font-size: 1.0625rem; color: var(--text-2); }
 """
 FRONT_STYLE = PAGE_STYLE + """
+.sub { color: var(--text-3); }
 .search label { display: block; font-weight: 600; margin-bottom: var(--s2); }
 .search input { width: 100%; max-width: 32rem; font: inherit; padding: var(--s2) var(--s3); border-radius: 6px;
                 border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); }
@@ -352,7 +354,7 @@ def render_front(rows: Iterable[FrontRow], counts: Counts, day: date, collected_
     promotion today, `browse` a browse page's path for the link to them, None when there is none, `ready` whether a
     product could pass the front test's days (`front_ready`)."""
     shown = ordered(rows)
-    parts = [f'<h1 id="deals">{text(FRONT_TITLE)}</h1>',
+    parts = [f'<h1 id="deals">{text(FRONT_TITLE)}</h1>', f'<p class="sub">{text(FRONT_SUBTITLE)}</p>',
              f'<p class="lede">{text(lead_line(counts.below, ready))}</p>',
              _search(browse), _deals(shown, counts, club_marking_none)]
     if shown:

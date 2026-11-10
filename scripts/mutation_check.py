@@ -3026,10 +3026,10 @@ MUTATIONS = {
     # (the fix wave's end)
     # The front page in plain words (the owner, 2026-11-10): each break undoes one of its rules.
     'the lead line\'s "None yet" never said (front words)': (SHOP_WORDS, '    if not ready:\n        return f"None yet:', '    if False:\n        return f"None yet:'),
-    'the lead line\'s "None yet" said beside a row (front words)': (SHOP_WORDS, '    if below:\n        return f"{below:,} {_plural', '    if below and ready:\n        return f"{below:,} {_plural'),
-    "the lead line's rows said as none (front words)": (SHOP_WORDS, '    if below:\n        return f"{below:,} {_plural', '    if False:\n        return f"{below:,} {_plural'),
-    'the title\'s 90 days said as other than 3 months (front words)': (SHOP_WORDS, 'in {READ_DAYS // 30} months"', 'in {READ_DAYS // 31} months"'),
-    'the lead line without thousands separators (front words)': (SHOP_WORDS, 'return f"{below:,} {_plural', 'return f"{below} {_plural'),
+    'the lead line\'s "None yet" said beside a row (front words)': (SHOP_WORDS, '    if below:\n        return f"{below:,} passed today."', '    if below and ready:\n        return f"{below:,} passed today."'),
+    "the lead line's rows said as none (front words)": (SHOP_WORDS, '    if below:\n        return f"{below:,} passed today."', '    if False:\n        return f"{below:,} passed today."'),
+    "the subtitle's 90 days said as other than 3 months (front words)": (SHOP_WORDS, 'up to {READ_DAYS // 30} months of', 'up to {READ_DAYS // 31} months of'),
+    'the lead line without thousands separators (front words)': (SHOP_WORDS, 'return f"{below:,} passed today."', 'return f"{below} passed today."'),
     'the lead line\'s "None yet" days not the front test\'s (front words)': (SHOP_WORDS, 'a product needs {MIN_FRONT_DAYS} days', 'a product needs {RECENT_DAYS} days'),
     'the promotions line said to be every promotion (front words)': (SHOP_WORDS, '{_plural(promotions, \'promotion\', \'promotions\')} carried by at "\n            f"least half of a store format\'s stores, on {products:,}', '{_plural(promotions, \'promotion\', \'promotions\')} on "\n            f"{products:,}'),
     'the chains marking none named out of slug order (front words)': (SHOP_WORDS, 'for slug in SLUGS if slug in set(marking_none)]\n    return f"Today', 'for slug in sorted(marking_none)]\n    return f"Today'),
@@ -3057,13 +3057,13 @@ MUTATIONS = {
     "the chains' line left off the header (front words)": (SHELL_FOR_SHOP_PAGES, '<p class="dateline">{text(CHAINS_LINE)}</p>', ''),
     "the build's front always ready (front words)": (SHOP_BUILD, 'ready=front_ready(history.column_days, day)),', 'ready=True),'),
     "the build's front never ready (front words)": (SHOP_BUILD, 'ready=front_ready(history.column_days, day)),', 'ready=False),'),
-    "the lead line's one product said as products (front words)": (SHOP_WORDS, "{_plural(below, 'product', 'products')} made the list today.", 'products made the list today.'),
-    'the lead line\'s "None yet" saying listed here (front words)': (SHOP_WORDS, 'before it can appear here."', 'before it can be listed here."'),
     "the club note's chains said to mark none (front words)": (SHOP_WORDS, 'files mark no deal this way." if named', 'files mark none." if named'),
     'the note under the table without what Below by is (front words)': (SHOP_PAGES, '"price files. Below by: how far the deal is under the typical price. "', '"price files. "'),
-    "the fold-out's rules said to be enough on their own (front words)": (SHOP_PAGES, '"A deal is on this list only when all of these', '"A deal is on this list when all of these'),
+    "the fold-out's rules said to be enough on their own (front words)": (SHOP_PAGES, '"A deal passes only when all of these', '"A deal passes when all of these'),
     "the fold-out without the windows' days with records (front words)": (SHOP_PAGES, 'f"<p>{text(WINDOWS_NOTE)}</p><p>{text(club)}</p>', 'f"<p>{text(club)}</p>'),
     'the windows sentence naming the 30 days twice (front words)': (SHOP_PAGES, 'WINDOWS_NOTE = (f"The {READ_DAYS} days and the', 'WINDOWS_NOTE = (f"The {RECENT_DAYS} days and the'),
+    'the subtitle\'s "up to" dropped (front words)': (SHOP_WORDS, 'checked against up to {READ_DAYS // 30}', 'checked against {READ_DAYS // 30}'),
+    'the subtitle left off the front page (front words)': (SHOP_PAGES, 'f\'<p class="sub">{text(FRONT_SUBTITLE)}</p>\',', ''),
     # (the front page's end)
 }
 

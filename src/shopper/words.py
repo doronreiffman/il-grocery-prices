@@ -19,9 +19,11 @@ Names. A column is named by `shopper.columns` ("Shufersal Deal"; a whole chain b
 The site's name is "Deal or No Deal" (question J, as the owner changed it on 2026-11-10), one constant, so a rename is
 one line; every page's header names the five chains under it (`CHAINS_LINE`) and then the day (`date_line`).
 
-The front page in plain words (the owner, 2026-11-10, and the review round after them). The title says what a visitor
-gets; one lead line under it (`lead_line`) says how many products made the list, the site-day file's `below`, or why
-none did, with no total beside it: the products on promotion the build counts are only those carried by at least half
+The front page in plain words (the owner, 2026-11-10, the review round after them, and the owner's final framing that
+evening: is the promotion a shopper sees actually a deal?). The title asks that question; a line under it
+(`FRONT_SUBTITLE`) says what each promotion is checked against, "up to" 3 months of shelf prices, since the records
+start on 1 November 2026 and the 90-day window holds fewer days until late January; one lead line (`lead_line`) says
+how many passed, the site-day file's `below`, or why none did, with no total beside it: the products on promotion the build counts are only those carried by at least half
 of a format's stores, which the fold-out's count says (`promotions_line`, the final review's finding 4). The rule in
 full is the fold-out's (`shopper.pages`), in the store format's words, since a deal is tested against its own column's
 listed prices and another format of the same chain may list the item lower (question O).
@@ -132,7 +134,9 @@ from shopper.promotions import RESTRICTIONS
 
 SITE_NAME = "Deal or No Deal"                       # question J, as the owner changed it on 2026-11-10
 CHAINS_LINE = " · ".join(CHAIN_NAMES[slug] for slug in SLUGS)              # every page's header, under the name
-FRONT_TITLE = f"Lowest shelf price in {READ_DAYS // 30} months"   # Q4, the owner's words of 2026-11-10: READ_DAYS (90) as 3 months
+FRONT_TITLE = "Is it actually a deal?"           # Q4, the owner's final framing of 2026-11-10
+# under the title: READ_DAYS (90) as 3 months, "up to" while the records hold fewer (they start on 1 November 2026)
+FRONT_SUBTITLE = f"Promotions checked against up to {READ_DAYS // 30} months of shelf prices."
 GAP_HEADING = "The deal against its listed prices"                        # Q4
 HISTORY_HEADING = "How often it goes on promotion"                        # Q4
 RECORD_TITLE = "Track record"
@@ -254,16 +258,15 @@ def last_across(column: str, day: date) -> str:
 
 
 def lead_line(below: int, ready: bool) -> str:
-    """The front page's lead line (the owner's plain words, 2026-11-10, and the owner's call after the review round;
-    question A: the products are barcodes): `below` products made the list, the barcodes with a front row, each passing
-    every front condition. With none: "None yet" while no column can have a product with MIN_FRONT_DAYS days of
-    records in the RECENT_DAYS (`ready` false: `shopper.pages.front_ready`), else none made it today. "Appear here",
-    never "listed here": "listed" is the site's word for shelf prices."""
+    """The front page's lead line (the owner's final framing, 2026-11-10; question A: the products are barcodes):
+    `below` passed, the barcodes with a front row, each passing every front condition. With none: "None yet" while no
+    column can have a product with MIN_FRONT_DAYS days of records in the RECENT_DAYS (`ready` false:
+    `shopper.pages.front_ready`), else none passed today. Never "listed": the site's word for shelf prices."""
     if below:
-        return f"{below:,} {_plural(below, 'product', 'products')} made the list today."
+        return f"{below:,} passed today."
     if not ready:
-        return f"None yet: a product needs {MIN_FRONT_DAYS} days of price history before it can appear here."
-    return "None made the list today."
+        return f"None yet: a product needs {MIN_FRONT_DAYS} days of price history first."
+    return "None passed today."
 
 
 def promotions_line(promotions: int, products: int) -> str:
