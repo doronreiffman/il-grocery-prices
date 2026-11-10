@@ -1,13 +1,17 @@
-"""The mutation check's runner (`scripts/mutation_check.py`): what counts as caught, and its guard on duplicate names.
+"""The mutation check's runner (`scripts/mutation_check.py`): what counts as caught, its time limit, and its guard on
+duplicate names.
 
 A mutation is caught only when pytest says a test failed (exit 1). Any other non-zero exit means pytest could not run
 the tests as asked: a test id that no longer exists (4), a module that no longer imports (2), no tests collected (5).
 That proves nothing about the rule, so it is an error, not a catch (it happened on 2026-11-01: a renamed test's old id
-passed as caught). `main` is driven here with a fake `subprocess.run` whose exit code the mutated file sets, over a
-file of the test's own, so no real mutation runs.
+passed as caught). A run still going at the time limit is killed and counts as caught (q25): a break that makes a test
+hang is a break the tests noticed. `main` is driven here with a fake `subprocess.run` whose exit code the mutated file
+sets, over a file of the test's own, so no real mutation runs; the one run that hangs is a real process that sleeps.
 """
 import importlib.util
+import signal
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -133,3 +137,74 @@ def test_a_duplicate_name_stops_the_check_before_anything_runs(check, tmp_path, 
 
 def test_the_real_mutations_have_no_duplicate_names(check):
     assert check.duplicate_names(SCRIPT.read_text()) == []
+
+
+REAL_RUN = subprocess.run
+HANG = [sys.executable, "-c", "import time; time.sleep(30)"]  # a pytest stuck on a planted pause, as far as the check sees
+
+
+def test_a_run_past_the_time_limit_is_killed_and_counts_as_caught(check, tmp_path, monkeypatch, capsys):
+    """A break that makes a test hang is a break the tests noticed: the run is stopped at the limit, its process is
+    killed and waited for (not left running), the mutation is CAUGHT and says why, and the next mutation runs. The
+    hanging run is a real process given a half-second limit; the other is faked as above."""
+    rule = tmp_path / "rule.py"
+    rule.write_text("LIMIT = 0\n")
+    limits, started = [], []
+
+    class Recorded(subprocess.Popen):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            started.append(self)
+
+    def run(args, **kwargs):
+        limits.append(kwargs.get("timeout"))
+        assert kwargs.get("timeout") == 0.5, "the run was not given the limit"  # fails at once instead of in 30 s
+        if rule.read_text() == "LIMIT = 9\n":
+            return REAL_RUN(HANG, **kwargs)
+        return fake_pytest(rule, [])(args, **kwargs)
+
+    monkeypatch.setattr(check, "ROOT", tmp_path)
+    monkeypatch.setattr(check, "MUTATIONS", mutations(hangs=9, caught=1))
+    monkeypatch.setattr(check.subprocess, "run", run)
+    monkeypatch.setattr(subprocess, "Popen", Recorded)
+    assert check.main([], limit=0.5) == 0
+    assert limits == [0.5, 0.5]
+    assert [process.args for process in started] == [HANG]
+    assert started[0].returncode == -signal.SIGKILL  # killed at the limit and waited for
+    assert rule.read_text() == "LIMIT = 0\n"
+    assert capsys.readouterr().out.splitlines() == ["CAUGHT hangs (timed out after 0.5 s)", "CAUGHT caught",
+                                                    "Files restored. Every mutation was caught."]
+
+
+def limited(rule: Path, limits: list):
+    """fake_pytest, recording the time limit each run is given."""
+    def run(args, **kwargs):
+        limits.append(kwargs.get("timeout"))
+        return fake_pytest(rule, [])(args, **kwargs)
+    return run
+
+
+def test_a_run_under_the_time_limit_is_judged_by_its_exit_as_before(check, tmp_path, monkeypatch, capsys):
+    rule = tmp_path / "rule.py"
+    rule.write_text("LIMIT = 0\n")
+    limits = []
+    monkeypatch.setattr(check, "ROOT", tmp_path)
+    monkeypatch.setattr(check, "MUTATIONS", mutations(caught=1, missed=0, renamed=4))
+    monkeypatch.setattr(check.subprocess, "run", limited(rule, limits))
+    assert check.main([], limit=0.5) == 1
+    assert limits == [0.5, 0.5, 0.5]
+    assert capsys.readouterr().out.splitlines() == [
+        "CAUGHT caught", "MISSED missed",
+        "ERROR  renamed: pytest exited 4 (USAGE_ERROR), not a test failure: ERROR: not found",
+        "Files restored. Missed: ['missed'] Errors: ['renamed']"]
+
+
+def test_every_run_has_the_measured_limit_unless_given_another(check, tmp_path, monkeypatch):
+    rule = tmp_path / "rule.py"
+    rule.write_text("LIMIT = 0\n")
+    limits = []
+    monkeypatch.setattr(check, "ROOT", tmp_path)
+    monkeypatch.setattr(check, "MUTATIONS", mutations(first=1, second=1))
+    monkeypatch.setattr(check.subprocess, "run", limited(rule, limits))
+    assert check.main([]) == 0
+    assert limits == [check.TIME_LIMIT, check.TIME_LIMIT]
