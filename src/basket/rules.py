@@ -200,9 +200,14 @@ def _bound(codes: Sequence[str] | None) -> list:
 def chain_prices(con: duckdb.DuckDBPyConnection, codes: Sequence[str] | None,
                  rows: str = "rows") -> dict[tuple[str, str], ChainPrice]:
     """Per (chain, normalized code) listed in the view `rows`, keyed by its `chain` column: the chain's price for the
-    item (B5), one price a store; for the normalized `codes`, or with None for every code."""
+    item (B5), one price a store; for the normalized `codes`, or with None for every code.
+
+    Each item's prices are listed unsorted and the whole list sorted after (`list_sort`), not sorted as DuckDB builds
+    it (`ORDER BY` inside `list`): on Lambda's one or two threads the second held more than DUCKDB_MEMORY_LIMIT for a
+    big chain's day (the items step on 2026-11-10), the first fits. The median and the ends read only the sorted
+    prices, so which store comes first among equal prices does not matter."""
     found = con.execute(f"""
-        SELECT chain, code_norm, list(price ORDER BY price, store), count(*), count(*) FILTER (WHERE codes > 1)
+        SELECT chain, code_norm, list_sort(list(price)), count(*), count(*) FILTER (WHERE codes > 1)
         FROM ({store_prices_sql(rows, codes is not None)})
         GROUP BY chain, code_norm ORDER BY chain, code_norm
     """, _bound(codes)).fetchall()

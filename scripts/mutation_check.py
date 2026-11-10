@@ -2617,6 +2617,8 @@ MUTATIONS = {
     "rules median takes the lower middle": (RULES, "return (ordered[middle - 1] + ordered[middle]) / 2", "return ordered[middle - 1]"),
     "rules a double-coded store weighs twice": (RULES, '" GROUP BY chain, code_norm, store")', '" GROUP BY chain, code_norm, store, code")'),
     "rules a double-coded store at its higher price": (RULES, "min(price) AS price", "max(price) AS price"),
+    "rules prices sorted as DuckDB builds the list (Lambda memory)": (RULES, "list_sort(list(price))", "list(price ORDER BY price, store)"),
+    "rules prices left unsorted (Lambda memory)": (RULES, "list_sort(list(price))", "list(price)"),
     "rules coverage guard at a third": (RULES, "    return listing * 2 >= with_file", "    return listing * 3 >= with_file"),
     "rules size guard ignores a chain": (RULES, "sizes.get((day.slug, code)) for day in ranking}", "sizes.get((day.slug, code)) for day in ranking[:-1]}"),
     "rules unstated size blocks": (RULES, "if size is not None and size != item.size", "if size != item.size"),
