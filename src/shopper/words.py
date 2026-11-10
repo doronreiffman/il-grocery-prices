@@ -47,11 +47,13 @@ lowest listed price over the 15 days of records before today (the first on 1 Nov
 ₪7.90 or less on 0 of them.", or with a short 90-day window beside a full 30-day one "… in the 30 days before today and
 ₪9.00 over the 39 days of records before today (the first on 12 October 2026); listed at ₪7.90 or less on 0 of those
 39."; one day of records: "The listed price on the one day of records before today (5 November 2026) was ₪10.00, above
-₪7.90." The
-changes: a change is one in the shown figures (a median of ₪1.445 moving to ₪1.45 is none: both show ₪1.45); "The listed
-price rose from ₪10.90 to ₪11.90 on 28 October 2026." between two consecutive days with records; across a gap in the
-records the change lies somewhere between the two days, so both are given ("rose from ₪10.90 (15 November 2026) to
-₪11.90 (17 November 2026)"), never one date the files cannot pin; several in day order, joined by "then". With none:
+₪7.90." ("at ₪7.90" or "below ₪7.90" when it was, as shown), a 30-day window of one day beside more in the 90 "on the
+one day of records before today (19 November 2026)", and a short window's note "one day of records since 19 November
+2026", never "1 day". The changes: a change is one in the shown figures (a median of ₪1.445 moving to ₪1.45 is none:
+both show ₪1.45); "The listed price rose from ₪10.90 to ₪11.90 on 28 October 2026." between two consecutive days with
+records; across a gap in the records the change lies somewhere between the two days, so both are given ("rose from
+₪10.90 (15 November 2026) to ₪11.90 (17 November 2026)"), never one date the files cannot pin; several in day order,
+joined by "then". With none:
 "The listed price did not change in the 30 days before today." when each of the 30 has a record, else "did not change on
 the 25 days with records of the 30 before today" (or a short window's words), since the files say nothing of the other
 days.
@@ -270,10 +272,12 @@ def targets(restrictions: Sequence[str]) -> str:
 
 
 def window_note(window: Window) -> str:
-    """A short window's days (P6): "23 days of records since 1 November 2026"."""
+    """A short window's days (P6): "23 days of records since 1 November 2026"; one day spelled "one day of records
+    since 19 November 2026", as P7's one-day form spells it (deploy prep)."""
     if window.since is None:
         return "no days of records"
-    return f"{window.days} {_plural(window.days, 'day', 'days')} of records since {_day(window.since)}"
+    count = "one day" if window.days == 1 else f"{window.days} days"
+    return f"{count} of records since {_day(window.since)}"
 
 
 def _the_days(window: Window) -> str:
@@ -412,12 +416,14 @@ def _lows(gap: Gap, deal: Decimal) -> str:
     """P7's second sentence: the lowest listed price over each window's days of records, said once when both windows
     hold the same days, and on how many of the 90's days with records the item was listed at or below the deal, both
     as shown (P6's "of the N days with records": "of them", "of those 45", or "of the 90 days with records" for a full
-    window); one day of records is said as that day's price, never "0 of the 1 day"."""
+    window); one day of records is said as that day's price, never "0 of the 1 day", and above, at or below the deal,
+    the true one of the three on the figures shown (deploy prep)."""
     long = gap.window90
-    at_or_below = sum(1 for listed in long.listed if _shown(listed) <= deal)
     if long.days == 1:                                  # the 30's one day too: a gap needs a day of records in the 30
-        where = "at or below" if at_or_below else "above"
-        return f"The listed price {_one_day(long)} was ₪{money(gap.low90)}, {where} ₪{deal}."
+        listed = _shown(gap.low90)
+        where = "above" if listed > deal else "at" if listed == deal else "below"
+        return f"The listed price {_one_day(long)} was ₪{listed}, {where} ₪{deal}."
+    at_or_below = sum(1 for listed in long.listed if _shown(listed) <= deal)
     if gap.window30.days == long.days:                  # the same days: every one of the 90's is in the 30
         return (f"The lowest listed price {_over(long, READ_DAYS)} was ₪{money(gap.low90)}; listed at ₪{deal} or "
                 f"less on {at_or_below} of them.")
