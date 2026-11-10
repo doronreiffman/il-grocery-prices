@@ -136,7 +136,8 @@ def test_chain_prices_fit_a_small_memory_on_one_thread(tmp_path):
     the Mac's 8 threads passed. A list sorted per item as DuckDB builds it held more than the cap at two threads (and
     Shufersal's at one); built unsorted and sorted once whole, it fits. Here 2,000 items at 40 stores each under 32 MB
     on one thread, then two: the sorted-as-built list ran out of memory up to 96 MB on one thread (it fitted at 128),
-    the sorted-after one fitted from 12 MB on one thread and 16 on two."""
+    the sorted-after one fitted from 12 MB on one thread and 16 on two. Measured on DuckDB 1.5.6: on any DuckDB upgrade,
+    measure both again, since only the old query's running out of memory here catches the mutation that brings it back."""
     stores = [str(number) for number in range(1, 41)]
     codes = [f"7290000{index:06d}" for index in range(2000)]
     rows = [row(store, code, f"{(index * 7 + int(store)) % 90 + 1}.90")
