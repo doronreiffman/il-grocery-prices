@@ -1746,6 +1746,7 @@ MUTATIONS = {
     'a low said on its days with records, not over them (q22 words)': (SHOP_WORDS, 'return f"over the {window.days} days with records of the', 'return f"on the {window.days} days with records of the'),
     "a short window's low without its first day (q22 words)": (SHOP_WORDS, 'days of records before today (the first on {_day(window.since)})"', 'days of records before today"'),
     "a short window's low said as one with gaps (q22 words)": (SHOP_WORDS, '    if window.short:\n        return f"over the', '    if False:\n        return f"over the'),
+    "the 30's one day of records beside more in the 90 said as a count of days (q22 words)": (SHOP_WORDS, '    if window.days == 1:', '    if False:'),
     'one day of records said as a count of days (q22 words)': (SHOP_WORDS, '    if long.days == 1:', '    if False:'),
     "one day's price above the deal said at or below it (q22 words)": (SHOP_WORDS, 'where = "at or below" if at_or_below else "above"', 'where = "at or below"'),
     "one day's price at or below the deal said above it (q22 words)": (SHOP_WORDS, 'where = "at or below" if at_or_below else "above"', 'where = "above"'),

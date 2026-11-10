@@ -389,12 +389,20 @@ def _changes_sentence(found: Sequence[Change], recent: Window, length: int) -> s
     return f"The listed price {', then '.join(_change(change) for change in stated[-CHANGES_SHOWN:])}{tail}."
 
 
+def _one_day(window: Window) -> str:
+    """A window of one day of records, said as that day: "on the one day of records before today (5 November 2026)"."""
+    return f"on the one day of records before today ({_day(window.since)})"
+
+
 def _over(window: Window, length: int) -> str:
     """The days a low is over (P7's second sentence), by the window kinds of the change sentence (P6): all of them when
     each has a record; else "over" its days with records, never "on", which could read as the price on every one of
-    them, and a short window's first day after its count (the owner, 2026-11-10)."""
+    them, and a short window's first day after its count (the owner, 2026-11-10); one day of records as that day, as
+    the one-day form says it (deploy prep)."""
     if window.days == length:
         return _window_phrase(window, length)                       # "in the 30 days before today"
+    if window.days == 1:                                            # the 30's one day beside more in the 90
+        return _one_day(window)
     if window.short:
         return f"over the {window.days} days of records before today (the first on {_day(window.since)})"
     return f"over the {window.days} days with records of the {length} before today"
@@ -409,8 +417,7 @@ def _lows(gap: Gap, deal: Decimal) -> str:
     at_or_below = sum(1 for listed in long.listed if _shown(listed) <= deal)
     if long.days == 1:                                  # the 30's one day too: a gap needs a day of records in the 30
         where = "at or below" if at_or_below else "above"
-        return (f"The listed price on the one day of records before today ({_day(long.since)}) was "
-                f"₪{money(gap.low90)}, {where} ₪{deal}.")
+        return f"The listed price {_one_day(long)} was ₪{money(gap.low90)}, {where} ₪{deal}."
     if gap.window30.days == long.days:                  # the same days: every one of the 90's is in the 30
         return (f"The lowest listed price {_over(long, READ_DAYS)} was ₪{money(gap.low90)}; listed at ₪{deal} or "
                 f"less on {at_or_below} of them.")

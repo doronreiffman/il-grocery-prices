@@ -353,6 +353,16 @@ def test_the_lows_say_the_days_of_records_each_is_over():
         "at ₪7.90 or less on 60 of the 90 days with records.")
 
 
+def test_one_day_of_records_in_the_30_beside_more_in_the_90():
+    """Deploy prep (the main session's call, 2026-11-10): a 30-day window of one day of records beside a longer 90-day
+    one says its one day as the one-day form does, "on the one day of records before today (19 November 2026)", never
+    "over the 1 days of records before today (the first on …)"."""
+    found = gap_sentences(_gap("7.90", {back(1): "10.00", **listed_from(31, 70, "9.00")}))
+    assert found[1] == ("The lowest listed price was ₪10.00 on the one day of records before today (19 November 2026) "
+                        "and ₪9.00 over the 41 days of records before today (the first on 11 September 2026); listed at "
+                        "₪7.90 or less on 0 of those 41.")
+
+
 def test_p7_changes_in_order_and_across_a_hole():
     """Task 9's review: a change is dated on its day only when the two record days are consecutive; across a hole both
     record days are given, never one date the files cannot pin."""
