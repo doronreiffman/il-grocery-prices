@@ -366,6 +366,8 @@ def test_the_method_page_states_the_rules_with_the_codes_constants():
         assert figure in rules, figure
     assert unreadable("carrefour") in rules and no_odds_yet(DEAL).split(".")[0] in rules
     assert 'as money and a whole percent ("under 1%" when a gap above ₪0 rounds to 0%);' in rules      # deploy prep
+    assert ('no listed price is claimed, every promotion that day is shown "at some stores", without P7\'s facts, and '
+            "the day counts in no window") in rules                                                     # deploy prep
     assert "{" not in rules and "}" not in rules                    # every constant written in, none left as a name
     # P7's front test as built (deploy prep): 20 days of records in the past 30, the low over the past 90
     assert ("the item has at least 20 days of records in the past 30, with the deal price as shown below every listed "

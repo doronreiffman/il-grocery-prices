@@ -27,11 +27,13 @@ its column and its chain (`data-column`, `data-chain`), headed with the column's
   the stores' range for percent off; or "price not read" alone when the deal is not valid, never a price beside it
   (P4); then its conditions, each with its source (P5): the restrictions by `targets` with every programme's name in
   its span, the minimum spend, and "fine print not read" always (step one reads no fine print); then "as listed in the
-  morning's files", and "at some stores" when fewer than half the column's counted stores carry it. The chain's own
-  description is not shown.
+  morning's files", and "at some stores" when fewer than half the column's counted stores carry it, or on a hole
+  morning, whose few files cannot tell whether a promotion is listed across the column (deploy prep: every promotion
+  of a hole is "at some stores"). The chain's own description is not shown.
 - `starts_on` when the items row lists a wide promotion starting in the next 14 days (F2, Call 22).
 - "The deal against its listed prices": P7's first two sentences for each valid deal of a wide promotion today, then
-  its third, the pair's changes in the past 30 days, once, since it is the same for every deal (Task 16, round 2).
+  its third, the pair's changes in the past 30 days, once, since it is the same for every deal (Task 16, round 2); none
+  on a hole morning.
 - "How often it goes on promotion": P8's sentences, F10's sentence naming the column (the gate is closed in step one:
   an open gate stops the page, since step one has no odds line), the listed-price history as text
   (`price_history`, the changes of the 90-day window, the newest five with the count of the rest) and a chart of it.
@@ -43,7 +45,7 @@ listed across the column marked beneath (P8's days: `shopper.measures.promotion_
 
 P9's row: "Today at each column, in name order", a cell for each of the nine columns, listing the product or not: its
 listed price today or "not listed today" (on a hole, the price under `too_few`, or `too_few` alone), and the deal price
-of each wide promotion today ("price not read" when not valid) with its conditions in the section's words, each with
+of each wide promotion today, none on a hole ("price not read" when not valid) with its conditions in the section's words, each with
 its source (the programmes' names left to the section), and "fine print not read". Sorted by name, never by price;
 no ranking word.
 
@@ -133,8 +135,9 @@ def field_conditions(struct: Mapping, programmes: bool = True) -> list[str]:
     return found
 
 
-def _promotion(struct: Mapping) -> str:
-    """One promotion today in its section (the module's docstring)."""
+def _promotion(struct: Mapping, record: bool) -> str:
+    """One promotion today in its section (the module's docstring); `record` False on a hole morning, when every one is
+    "at some stores"."""
     deal = _valid(struct)
     if deal is None:
         head = f"<b>{text(PRICE_NOT_READ)}</b>"
@@ -145,7 +148,8 @@ def _promotion(struct: Mapping) -> str:
         if deal.low is not None and deal.high is not None:
             head += f", {text(stores_range(deal.low, deal.high))}"
     conditions = "; ".join([*field_conditions(struct), text(FINE_PRINT)])
-    listed = text(MORNING) if struct["wide"] else f"{text(MORNING)}; {text(AT_SOME_STORES)}"
+    across = struct["wide"] and record
+    listed = text(MORNING) if across else f"{text(MORNING)}; {text(AT_SOME_STORES)}"
     return f"<li>{head}<small>{conditions}</small><small>{listed}</small></li>"
 
 
@@ -226,16 +230,17 @@ def _section(key: str, covered: Covered, pair: Pair | None, column_days: Mapping
     parts = [f"<h2>{text(column.name)}</h2>"]
     if column.slug in promotions_errors:
         parts.append(f'<p class="warn">{text(unreadable(column.slug))}</p>')
-    parts.append(_today(key, column_days[(key, day)], point, covered))
+    today = column_days[(key, day)]
+    parts.append(_today(key, today, point, covered))
     running = running_today(point, day)
     if running:
-        parts.append(f'<ul class="deals">{"".join(_promotion(struct) for struct in running)}</ul>')
+        parts.append(f'<ul class="deals">{"".join(_promotion(struct, today.record) for struct in running)}</ul>')
     if point is not None and point.next_start is not None:
         parts.append(f"<p>{text(starts_on(point.next_start))}</p>")
     measured = []
     for struct in running:
         deal = _valid(struct)
-        if struct["wide"] and deal is not None:
+        if struct["wide"] and today.record and deal is not None:
             found = gap(deal.price, pair, column_days, day)
             if found is not None:
                 measured.append(gap_sentences(found))
@@ -270,7 +275,7 @@ def _cell(key: str, pair: Pair | None, column_days: Mapping[tuple[str, date], Co
         shown = f"₪{money(point.listed)}{few}"
     deals = []
     for struct in running_today(point, day):
-        if not struct["wide"]:
+        if not (struct["wide"] and today.record):           # a hole lists no promotion across the column
             continue
         deal = _valid(struct)
         said = PRICE_NOT_READ if deal is None else deal_price(deal.price, deal.per)

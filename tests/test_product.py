@@ -385,6 +385,30 @@ def test_a_hole_day_says_no_last_listed_across():
     assert last_across(RAMI, back(1)) in _sections(_render(registry, {DEAL: pairs[DEAL], RAMI: Pair(
         column=RAMI, code=CODE, points=gone)}))[RAMI]
 
+def test_a_hole_morning_lists_no_promotion_across_the_column():
+    """Deploy prep (the owner, 2026-11-10): on a morning that is a hole for a column (files from 5 of its 20 stores),
+    whether a promotion is listed across the column is judged over those few files, so every promotion in its section
+    shows "at some stores", none gets P7's sentences and P9's cell lists none; the section's too-few-files line stays,
+    and another column's day with records is as before."""
+    covered, pairs = _typical()
+    page = _render(covered, pairs, column_days=_days(holes=[(DEAL, DAY)]))
+    body = _sections(page)[DEAL]
+    assert too_few(5, STORES) in body
+    items = re.findall(r"<li>(.*?)</li>", re.search(r'<ul class="deals">(.*?)</ul>', body, re.DOTALL).group(1))
+    assert items == ["<b>Deal price ₪7.90 per unit</b><small>club members only, from the chain's fields; "
+                     f"{FINE_PRINT}</small><small>{MORNING}; {AT_SOME_STORES}</small>"]
+    assert GAP_HEADING not in body and "Deal price ₪7.90:" not in body
+    cell = dict(CELL.findall(re.search(r'<section class="across">(.*?)</section>', page, re.DOTALL).group(1)))[DEAL]
+    assert cell == f"₪11.90<small>{too_few(5, STORES)}</small>"
+    # the same day with records: listed across, P7's sentences, and the deal in P9's cell
+    page = _render(covered, pairs)
+    body = _sections(page)[DEAL]
+    assert f"<small>{MORNING}</small>" in body and AT_SOME_STORES not in body
+    assert GAP_HEADING in body and "Deal price ₪7.90: ₪4.00, 34%, below" in body
+    cell = dict(CELL.findall(re.search(r'<section class="across">(.*?)</section>', page, re.DOTALL).group(1)))[DEAL]
+    assert "Deal price ₪7.90 per unit" in cell
+
+
 def test_each_promotion_today_with_its_conditions_from_the_fields():
     """P4, P5, S3: the deal price, buy N, the stores' range for percent off; the restrictions by `targets` from the
     fields with the programmes beside them; the minimum spend; then the fine print, the morning's files and, when the
