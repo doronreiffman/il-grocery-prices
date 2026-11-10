@@ -26,19 +26,19 @@ The gap (P7). With no day of records in the past 30 there is none (`gap` gives N
 The deal is a `Fraction`, and the measures read it exactly (the pre-flight's S6): 3 for ₪4.34 is 1.4466... a unit,
 below a listed ₪1.45, though its two places say 1.45. The front page's test is the one exception (below).
 
-The front page's test (Q3 (b), the design's rule): the deal is wide in the column (carried by at least half its counted
-stores), valid (P4), the item has at least MIN_FRONT_DAYS (20) days of records in the past 90 at the column, and the
-deal is below every listed price of those days (strictly: a deal equal to the 90-day low is not). The front page says
-so in words, and the product page states the figures it shows, so the test compares them as shown: the deal's price to
+The front page's test (Q3 (b), the design's rule, with the owner's deploy-prep answer of 2026-11-10): the deal is wide
+in the column (carried by at least half its counted stores), valid (P4), the item has at least MIN_FRONT_DAYS (20) days
+of records in the past 30 at the column, P6's line for a 30-day window that is not short (so the 30-day median a row
+shows rests on 20 days or more, and 20 of the 30 are 20 of the 90 too), and the deal is below every listed price of
+the past 90 days with records (strictly: a deal equal to the 90-day low is not). The front page says so in words, and the product page states the figures it shows, so the test compares them as shown: the deal's price to
 the agora, half up (`shopper.deals.to_agora`), against the 90-day low as shown (`basket.record.money`). 3 for ₪4.34
 (1.4466...) is below a ₪1.45 low exactly, but both show ₪1.45, so it is not on the front page (Task 15's review, fix
 round 2). As shown is stricter than exact, never looser: a price shown below the shown low is below the low itself.
 The exact price still ranks the rows (`depth`). A listed price raised shortly before the promotion cannot lift the
 90-day low. S1 adds that the page's own day must be a record at the
-column: on a hole day the prices are from too few files and the column has no front row. The row shows the 30-day
-median and is ordered by `depth`, so the item also needs a day of records in the past 30: wherever `on_front` says
-yes, `gap` is a gap (Task 9's review). The words "in the same store
-format" (question O) are the words module's.
+column: on a hole day the prices are from too few files and the column has no front row. Wherever `on_front` says
+yes, `gap` is a gap (Task 9's review): the 30-day window holds 20 days. The words "in the same store format" (question
+O) are the words module's.
 
 The promotion history (P8), over the 90-day window. A run is a maximal sequence of consecutive counted days on
 promotion (`Point.on_promotion`: a promotion carried by at least half the column's counted stores, with a kind, running
@@ -63,7 +63,7 @@ from basket.rules import median
 from shopper.deals import Deal, to_agora
 from shopper.history import READ_DAYS, ColumnDay, Pair, Point, Window, counted, window
 
-MIN_FRONT_DAYS = 20     # the front page's test: at least this many days of records in the past 90 (Q3 (b))
+MIN_FRONT_DAYS = 20     # the front page's test: at least this many days of records in the past 30 (Q3 (b), deploy prep)
 RECENT_DAYS = 30        # P7's short window: the median and the changes
 
 
@@ -143,10 +143,10 @@ def on_front(deal: Deal, wide: bool, pair: Pair, column_days: Mapping[tuple[str,
     today = column_days.get((pair.column, day))
     if not (wide and deal.valid and deal.price is not None and today is not None and today.record):
         return False
-    if not window(pair, column_days, day, RECENT_DAYS).days:     # no 30-day median to show: `gap` is None
+    if window(pair, column_days, day, RECENT_DAYS).days < MIN_FRONT_DAYS:     # a 30-day median of 20 days or more
         return False
     long = window(pair, column_days, day, READ_DAYS)
-    return long.days >= MIN_FRONT_DAYS and to_agora(deal.price) < Decimal(money(min(long.listed)))
+    return to_agora(deal.price) < Decimal(money(min(long.listed)))
 
 
 def promotion_points(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: date) -> list[Point]:

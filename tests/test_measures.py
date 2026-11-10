@@ -8,7 +8,7 @@ from decimal import Decimal
 from fractions import Fraction
 
 from shopper.deals import Deal
-from shopper.history import ColumnDay, Pair, Point, Window, window
+from shopper.history import ENOUGH, ColumnDay, Pair, Point, Window, window
 from shopper.measures import (MIN_FRONT_DAYS, RECENT_DAYS, Change, Gap, Run, changes, days_since, depth, gap, gaps,
                               on_front, promoted_today, promotion_days, promotion_points, runs)
 
@@ -194,32 +194,32 @@ def test_changes_over_a_window_of_any_length():
 
 # The front page's test (Q3 (b))
 
-def test_the_front_page_needs_twenty_days():
-    assert MIN_FRONT_DAYS == 20
+def test_the_front_page_needs_twenty_days_of_records_in_the_past_30():
+    """Deploy prep (the owner, 2026-11-10): a front row needs at least 20 days of records in the 30-day window, P6's
+    line for a 30-day window that is not short, so the 30-day median the row shows rests on 20 days or more (it once
+    needed 20 in the 90 and one in the 30, and could show one day's price). 20 of the 30 are 20 of the 90 too."""
+    assert MIN_FRONT_DAYS == 20 == ENOUGH[RECENT_DAYS]
     assert not _on_front(_deal("7.90"), listed_from(1, 19, "10.00"))
     assert _on_front(_deal("7.90"), listed_from(1, 20, "10.00"))
     assert _on_front(_deal("7.90"), listed_from(1, 21, "10.00"))
-    # the 20 are of the past 90 days, not of the past 30
-    assert _on_front(_deal("7.90"), {**listed_from(1, 5, "10.00"), **listed_from(40, 54, "10.00")})
-    assert not _on_front(_deal("7.90"), listed_from(91, 120, "10.00"))      # beyond the 90 days
-
-
-def test_the_front_page_needs_a_day_of_records_in_the_past_30():
-    """The row shows the 30-day median, so the gap must exist: twenty days of the 90, all before the 30, are not enough."""
+    # twenty of the 90, or more, with fewer than twenty in the 30, are not enough
+    assert not _on_front(_deal("7.90"), {**listed_from(1, 5, "10.00"), **listed_from(40, 54, "10.00")})
+    assert not _on_front(_deal("7.90"), {**listed_from(1, 19, "10.00"), **listed_from(31, 90, "10.00")})
     assert not _on_front(_deal("7.90"), listed_from(40, 59, "10.00"))
-    assert not _on_front(_deal("7.90"), listed_from(31, 50, "10.00"))       # the day before the window's first
-    assert _on_front(_deal("7.90"), {back(30): "10.00", **listed_from(31, 49, "10.00")})   # the window's first day
-    assert _on_front(_deal("7.90"), {back(1): "10.00", **listed_from(31, 49, "10.00")})    # its last day
-    # a hole in the one day the 30 hold leaves the window empty
-    listed = {back(30): "10.00", **listed_from(31, 49, "10.00")}
-    assert not _on_front(_deal("7.90"), listed, holes=[back(30)])
+    assert not _on_front(_deal("7.90"), listed_from(91, 120, "10.00"))      # beyond the 90 days
+    # the window's first and last days count, the day before its first does not
+    assert _on_front(_deal("7.90"), listed_from(11, 30, "10.00"))
+    assert not _on_front(_deal("7.90"), listed_from(12, 31, "10.00"))
+    # the 90-day low still decides: 20 days of the 30 at 10.00, an older 7.50 in the 90
+    assert not _on_front(_deal("7.90"), {**listed_from(1, 20, "10.00"), **listed_from(60, 61, "7.50")})
+    assert _on_front(_deal("7.40"), {**listed_from(1, 20, "10.00"), **listed_from(60, 61, "7.50")})
 
 
 def test_every_front_row_has_a_gap_to_show():
     """Task 18 orders the rows by `depth(gap)`: wherever `on_front` says yes, `gap` is a gap."""
     deal = _deal("7.90")
     for listed in (listed_from(1, 20, "10.00"), listed_from(1, 90, "10.00"), listed_from(40, 59, "10.00"),
-                   {back(30): "10.00", **listed_from(31, 49, "10.00")}, {back(31): "10.00", **listed_from(32, 51, "10.00")},
+                   listed_from(11, 30, "10.00"), {back(31): "10.00", **listed_from(32, 51, "10.00")},
                    listed_from(1, 19, "10.00")):
         pair, column_days = _pair(DEAL, listed), _days(DEAL, [DAY, *listed])
         if on_front(deal, True, pair, column_days, DAY):

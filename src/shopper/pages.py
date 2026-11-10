@@ -7,8 +7,8 @@ site's root; every chain-supplied text (a product's name, a programme's, a store
 The front page's rows (question A under S1). A row is a (column, product): `front_rows_of` gives at most one per column,
 in name order, the product's lowest deal there, compared exactly, among its promotions running today (P3, read as the
 product pages read them, `shopper.product.running_today`) that pass the front page's test (`shopper.measures.on_front`:
-listed across the column, the price read, a record at the column today, at least 20 days of records in the 90 before
-today and one in the 30, the deal as shown below every listed price of the 90 as shown). So a product can show four
+listed across the column, the price read, a record at the column today, at least 20 days of records in the 30 before
+today, the deal as shown below every listed price of the 90 as shown). So a product can show four
 Shufersal rows, each against its own column's median; a column with no record today (a hole, S1) has none. `ordered`
 sorts the rows by depth, deepest first (`shopper.measures.depth`, exact), then by column in name order, then by barcode
 as a number. A row keeps the promotion's restrictions, programmes and minimum spend for its conditions and the filters.
@@ -93,7 +93,7 @@ GITHUB = HIRING[-1][1]
 # The front page's own words
 RULE_LINE = f"The rule: {FRONT_RULE}."
 FRONT_NOTE = (f"Each deal is a promotion carried by at least half of its store format's stores with files that day, on "
-              f"an item with at least {MIN_FRONT_DAYS} days of records there in the {READ_DAYS} days before today.")
+              f"an item with at least {MIN_FRONT_DAYS} days of records there in the {RECENT_DAYS} days before today.")
 SEARCH_LABEL = "Find a product by name or barcode"
 ALL_COLUMNS = "All columns"
 CLUB_FILTER = "Hide club-only and other restricted deals"
@@ -392,8 +392,8 @@ RULES = (
      f"change in the listed price in the past {RECENT_DAYS} days, dated where two consecutive days with records pin "
      f"it, else given with both days. Depth is ({RECENT_DAYS}-day median − deal price) ÷ that median. The front page "
      "lists a deal when it is listed across its column, its price is read (P4), the column has a record today, and the "
-     f"item has at least {MIN_FRONT_DAYS} days of records in the past {READ_DAYS}, one of them in the past "
-     f"{RECENT_DAYS}, with the deal price as shown below every listed price of those days as shown. Its rows are "
+     f"item has at least {MIN_FRONT_DAYS} days of records in the past {RECENT_DAYS}, with the deal price as shown below "
+     f"every listed price of the past {READ_DAYS} days as shown. Its rows are "
      "sorted by depth, deepest first; a product listed across several columns can have a row at each."),
     ("P8 Promotion history.",
      f"Over the {READ_DAYS} days before today, at the column: the days on a promotion listed across it, of the days "

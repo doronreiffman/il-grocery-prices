@@ -96,7 +96,7 @@ The pages.
   prices the median is the mean of the 15th and 16th, (10.90 + 11.90)/2 = 11.40; 11.40 - 7.90 = 3.50, and 3.50/11.40 =
   30.7%: 31%. The 90-day window (days -15 to 74) holds days 1 to 74, 74 days, its low 10.90, no day at or below 7.90.
   One change in the 30 days: 10.90 to 11.90 on day 60, day 59 a day with records. Its front row: wide (2 of 2), valid
-  (7.90 between 0.01 and 23.80), today a record, 74 >= 20 days, 7.90 below 10.90. The count line: one promotion
+  (7.90 between 0.01 and 23.80), today a record, 30 >= 20 days of records in the 30, 7.90 below the 90's 10.90. The count line: one promotion
   (Shufersal's 30) on one product, one below. Deal's 9.90, with no promotion, has no row.
 - 26 March (day 85), G4 at Rami Levy: 75.00/1.5 = 50.00 a kilogram, "buy 1.5"; the 30-day window (days 55 to 84) lists
   69.90 throughout: 19.90 below, 19.90/69.90 = 28.5%: 28%; the 90-day window, days 1 to 84 but 40 and 41: 82 days. The

@@ -89,7 +89,7 @@ def test_a_column_has_one_row_its_lowest_deal_passing_the_front_test():
 
 def test_a_row_only_for_a_deal_passing_the_front_test_and_running_today():
     """A promotion at some stores, one whose price was not read, one starting tomorrow and one ended yesterday give no
-    row; nor does a column with 19 days of records in the 90 (Task 9's test, read through the front page)."""
+    row; nor does a column with 19 days of records in the 30 (Task 9's test, read through the front page)."""
     tomorrow, yesterday = DAY + timedelta(days=1), DAY - timedelta(days=1)
     deals = [_struct("7.90", wide=False), _struct("7.90", valid=False, why="the rate and the price disagree"),
              _struct("7.90", start=tomorrow), _struct("7.90", start=back(9), end=yesterday)]
@@ -167,7 +167,11 @@ def test_the_front_page_says_the_rule_in_the_formats_words():
     assert f">{FRONT_TITLE}</h1>" in page
     assert f"The rule: {FRONT_RULE}." in page
     assert count_line(1840, 6210, 410) in page
-    assert "in the same store format" in FRONT_RULE and count_line(1, 1, 1).endswith("in their store format.")
+    assert "in the same store format" in FRONT_RULE and count_line(1, 1, 1).endswith(
+        "in their store format, on an item with at least 20 days of records there in the past 30.")
+    # what a row needs, in the front test's own days (deploy prep: 20 of the 30, so its 30-day median is not short)
+    assert ("<p>Each deal is a promotion carried by at least half of its store format's stores with files that day, on "
+            "an item with at least 20 days of records there in the 30 days before today.</p>") in page
 
 
 def test_a_front_row_shows_its_deal_median_depth_and_conditions():
@@ -351,6 +355,9 @@ def test_the_method_page_states_the_rules_with_the_codes_constants():
                    "at least 90 scored days", "at most 0.03", "more than 4 holes", "d + 1 to d + 14"):
         assert figure in rules, figure
     assert unreadable("carrefour") in rules and no_odds_yet(DEAL).split(".")[0] in rules
+    # P7's front test as built (deploy prep): 20 days of records in the past 30, the low over the past 90
+    assert ("the item has at least 20 days of records in the past 30, with the deal price as shown below every listed "
+            "price of the past 90 days as shown.") in rules
     assert "rebuilt every morning, which says when it was last seen listed across each column" in rules   # deploy prep
     assert "0123456789ab" in page and 'href="site-days/2026-11-02.json"' in page
     reproduce = re.search(r'<section id="reproduce">(.*?)</section>', page, re.DOTALL).group(1)

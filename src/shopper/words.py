@@ -104,7 +104,7 @@ from basket.words import CHAIN_NAMES, METHOD_TITLE, NEVER as BASKET_NEVER, joine
 from shopper.columns import BY_KEY, COLUMNS, columns_of
 from shopper.deals import to_agora
 from shopper.history import READ_DAYS, ColumnDay, Pair, Window, window
-from shopper.measures import (RECENT_DAYS, Change, Gap, Run, changes, days_since, gaps, promoted_today,
+from shopper.measures import (MIN_FRONT_DAYS, RECENT_DAYS, Change, Gap, Run, changes, days_since, gaps, promoted_today,
                               promotion_days, promotion_points, runs, whole)
 from shopper.promotions import RESTRICTIONS
 
@@ -236,10 +236,13 @@ def last_across(column: str, day: date) -> str:
 def count_line(promotions: int, products: int, below: int) -> str:
     """The front page's count line (question A: the products and those below are barcodes; question O's ending). Its
     promotions are those listed across a column today (`shopper.build`), so it says "across a store format" (the final
-    review's finding 4)."""
+    review's finding 4); those below are the products with a front row, so it names the front test's days of records
+    (deploy prep), and a product below every listed price with fewer is not one it counts."""
     return (f"Today the five chains list {promotions:,} {_plural(promotions, 'promotion', 'promotions')} across a "
             f"store format on {products:,} {_plural(products, 'product', 'products')}; {below:,} of them "
-            f"{_plural(below, 'is', 'are')} below every listed price of the past 90 days in their store format.")
+            f"{_plural(below, 'is', 'are')} below every listed price of the past {READ_DAYS} days in their store "
+            f"format, on {_plural(below, 'an item', 'items')} with at least {MIN_FRONT_DAYS} days of records there in "
+            f"the past {RECENT_DAYS}.")
 
 
 def club_label(marking_none: Sequence[str]) -> str:
