@@ -149,17 +149,24 @@ def on_front(deal: Deal, wide: bool, pair: Pair, column_days: Mapping[tuple[str,
     return to_agora(deal.price) < Decimal(money(min(long.listed)))
 
 
-def promotion_points(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: date) -> list[Point]:
-    """The 90-day window's counted points on whose day the column's promotions were read."""
-    return [point for point in counted(pair, column_days, day, READ_DAYS)
+def promotion_points(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: date,
+                     length: int = READ_DAYS) -> list[Point]:
+    """The window's counted points (the 90-day window's, or `length` days') on whose day the column's promotions were
+    read."""
+    return [point for point in counted(pair, column_days, day, length)
             if not column_days[(pair.column, point.day)].promo_hole]
 
 
 def runs(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: date) -> list[Run]:
     """The runs on promotion over P6's 90-day window, in day order (the module's docstring)."""
+    return runs_of(promotion_points(pair, column_days, day))
+
+
+def runs_of(points: Sequence[Point]) -> list[Run]:
+    """The runs over `promotion_points`' points, in day order (the module's docstring)."""
     found: list[Run] = []
     start = end = None
-    for point in promotion_points(pair, column_days, day):
+    for point in points:
         if not point.on_promotion:
             if start is not None:
                 found.append(Run(start, end))
@@ -185,12 +192,17 @@ def days_since(runs: Sequence[Run], day: date) -> int | None:
 
 def promotion_days(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: date) -> tuple[int, int]:
     """(the days on a wide promotion, the days with records whose promotions were read), over the 90-day window."""
-    points = promotion_points(pair, column_days, day)
+    return promotion_days_of(promotion_points(pair, column_days, day))
+
+
+def promotion_days_of(points: Sequence[Point]) -> tuple[int, int]:
+    """`promotion_days` over `promotion_points`' points."""
     return sum(1 for point in points if point.on_promotion), len(points)
 
 
 def promoted_today(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: date) -> bool | None:
-    """Whether the pair is on a wide promotion on `day` itself, read as `promotion_points` reads a day of the window;
-    None when that rule would not read it (no record at the column, no listed price, its promotions not read)."""
-    seen = promotion_points(pair, column_days, day + timedelta(days=1))
-    return seen[-1].on_promotion if seen and seen[-1].day == day else None
+    """Whether the pair is on a wide promotion on `day` itself, read as `promotion_points` reads a day of the window
+    (a window of that one day, so what it holds is `day`'s point or nothing); None when that rule would not read it (no
+    record at the column, no listed price, its promotions not read)."""
+    seen = promotion_points(pair, column_days, day + timedelta(days=1), 1)
+    return seen[-1].on_promotion if seen else None

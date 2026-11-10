@@ -107,7 +107,7 @@ from shopper.columns import BY_KEY, COLUMNS, columns_of
 from shopper.deals import to_agora
 from shopper.history import READ_DAYS, ColumnDay, Pair, Window, window
 from shopper.measures import (MIN_FRONT_DAYS, RECENT_DAYS, Change, Gap, Run, changes, days_since, gaps, promoted_today,
-                              promotion_days, promotion_points, runs, whole)
+                              promotion_days_of, promotion_points, runs_of, whole)
 from shopper.promotions import RESTRICTIONS
 
 SITE_NAME = "Five chains, listed prices"                                  # question J
@@ -425,9 +425,10 @@ def history_sentences(pair: Pair, column_days: Mapping[tuple[str, date], ColumnD
     now = (f"On {across} today, {MORNING}.",) if today else ()
     if not records.days:
         return now
-    on, read = promotion_days(pair, column_days, day)
+    points = promotion_points(pair, column_days, day)     # the window's days whose promotions were read, read once
+    on, read = promotion_days_of(points)
     unread = records.days - read
-    found = runs(pair, column_days, day)
+    found = runs_of(points)
     if found or unread:
         note = f" (promotions could not be read on {unread})" if unread else ""
         count = f"On {across} on {on} of {_count(records)}{note}, {MORNING}."
@@ -436,7 +437,7 @@ def history_sentences(pair: Pair, column_days: Mapping[tuple[str, date], ColumnD
     sentences = [*now, count]
     if not found:
         return tuple(sentences)
-    read_days = {point.day for point in promotion_points(pair, column_days, day)}
+    read_days = {point.day for point in points}
     one = timedelta(days=1)
 
     def pinned_start(run: Run) -> bool:

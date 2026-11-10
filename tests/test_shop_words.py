@@ -7,6 +7,7 @@ N4, N7 and N23; Task 9's review rulings on P8's count, a change's dates and the 
 The design's quoted sentences are read from docs/shopper-site.md (and the plan's answers from
 docs/shopper-site-plan.md), so a change on either side shows. The pairs and column-days are built as
 tests/test_measures.py builds them."""
+import random
 import re
 from datetime import date, timedelta
 from decimal import Decimal
@@ -17,9 +18,10 @@ import pytest
 
 from basket.check import PRONOUNS, flatten, strip_tags
 from basket.words import CHAIN_NAMES, NEVER as BASKET_NEVER
-from shopper.columns import COLUMNS
-from shopper.history import Window
-from shopper.measures import gap
+from shopper import words
+from shopper.columns import BY_KEY, COLUMNS
+from shopper.history import READ_DAYS, Window, window
+from shopper.measures import Run, days_since, gap, gaps, promoted_today, promotion_days, promotion_points, runs
 from shopper.promotions import RESTRICTIONS
 from shopper.words import (ALWAYS, ALWAYS_SENTENCE, AT_SOME_STORES, CREDIT_START, FINE_PRINT, FROM_FIELDS, FROM_TEXT,
                            FRONT_RULE, FRONT_TITLE, GAP_HEADING, HIRING, HISTORY_HEADING, METHOD_TITLE, NEVER,
@@ -29,6 +31,7 @@ from shopper.words import (ALWAYS, ALWAYS_SENTENCE, AT_SOME_STORES, CREDIT_START
                            targets, unreadable, window_note)
 from shopper.words import (ACROSS_HEADING, BARCODE, BROWSE_LINK, CHANGES_SHOWN, NOT_LISTED, PER, buy, chart_key,
                            deal_price, listed_price, minimum_spend, percent_text, shown_below, stores_range)
+import shopper_random
 from test_measures import DAY, DEAL, _days, _pair, back, listed_from
 
 ROOT = Path(__file__).parent.parent
@@ -746,3 +749,106 @@ def test_the_last_run_is_the_last_seen_when_today_is_not_known():
             "Run before today: 10 to 15 November 2026.",
             "The last run seen ended on 15 November 2026, 5 days ago.")
     assert _history(listed, pinned, today=False)[2] == "The last run ended on 15 November 2026, 5 days ago."
+
+
+# Task 25a's speedup of `history_sentences`: the code as it stood before, kept here, against the code as it is
+
+def _promoted_today_before(pair, column_days, day):
+    """`shopper.measures.promoted_today` as it stood before Task 25a: the 90-day window ending on the day read."""
+    seen = promotion_points(pair, column_days, day + timedelta(days=1))
+    return seen[-1].on_promotion if seen and seen[-1].day == day else None
+
+
+def _runs_before(pair, column_days, day):
+    """`shopper.measures.runs` as it stood before Task 25a."""
+    found = []
+    start = end = None
+    for point in promotion_points(pair, column_days, day):
+        if not point.on_promotion:
+            if start is not None:
+                found.append(Run(start, end))
+                start = None
+            continue
+        if start is None:
+            start = point.day
+        end = point.day
+    if start is not None:
+        found.append(Run(start, end))
+    return found
+
+
+def _history_sentences_before(pair, column_days, day):
+    """`history_sentences` as it stood before Task 25a: the window's promotion days read four times."""
+    name = BY_KEY[pair.column].name
+    across = f"a promotion listed across {name}"
+    records = window(pair, column_days, day, READ_DAYS)
+    today = _promoted_today_before(pair, column_days, day)
+    now = (f"On {across} today, {words.MORNING}.",) if today else ()
+    if not records.days:
+        return now
+    on, read = promotion_days(pair, column_days, day)
+    unread = records.days - read
+    found = _runs_before(pair, column_days, day)
+    if found or unread:
+        note = f" (promotions could not be read on {unread})" if unread else ""
+        count = f"On {across} on {on} of {words._count(records)}{note}, {words.MORNING}."
+    else:
+        count = f"No promotion listed across {name} in {words._count(records)}."
+    sentences = [*now, count]
+    if not found:
+        return tuple(sentences)
+    read_days = {point.day for point in promotion_points(pair, column_days, day)}
+    one = timedelta(days=1)
+
+    def pinned_start(run):
+        return run.start - one in read_days
+
+    def pinned_end(run):
+        return run.end + one in read_days or (run.end + one == day and today is not None)
+
+    first = day - timedelta(days=READ_DAYS)
+    unseen = [first + timedelta(days=n) for n in range(READ_DAYS) if first + timedelta(days=n) not in read_days]
+
+    def hidden(after, before):
+        return any(after < each < before for each in unseen)
+
+    last = found[-1]
+    outside = (hidden(first - one, found[0].start) or hidden(last.end, day)
+               or any(hidden(earlier.end, later.start) for earlier, later in zip(found, found[1:])))
+    shown = [words._run(run.start, run.end, not pinned_start(run), not pinned_end(run)) for run in found]
+    sentences.append(f"{words._plural(len(found), 'Run', 'Runs')}{' seen' if outside else ''} before today: "
+                     f"{'; '.join(shown)}.")
+    if len(found) > 1:
+        between = [f"{'at most ' if hidden(earlier.end, later.start) else ''}{days}"
+                   for earlier, later, days in zip(found, found[1:], gaps(found))]
+        sentences.append(f"Days between runs: {'; '.join(between)}.")
+    ended = today is False or any(seen > last.end for seen in read_days)
+    if not today and ended:
+        ago = days_since(found, day)
+        ago_text = f"{ago} {words._plural(ago, 'day', 'days')} ago"
+        seen = hidden(last.end, day) or today is None
+        the_last = f"The last run{' seen' if seen else ''} ended on {words._day(last.end)}"
+        if pinned_end(last):
+            sentences.append(f"{the_last}, {ago_text}.")
+        else:
+            sentences.append(f"{the_last} or later, at most {ago_text}.")
+    return tuple(sentences)
+
+
+def test_the_promotion_history_reads_its_days_once_and_says_the_same():
+    """Task 25a: `history_sentences` reads the window's days whose promotions were read once, not four times, and
+    `promoted_today` reads its one day through the same rule; `runs` and `promotion_days` read through `runs_of` and
+    `promotion_days_of`. Over random pairs (holes, promotion holes, unread promotions, days not listed, runs at both
+    ends of the window, today on, off or unknown) every sentence and answer is the same as before."""
+    rng = random.Random(9)
+    said = set()
+    for n in range(400):
+        column = COLUMNS[n % len(COLUMNS)]
+        column_days = shopper_random.column_days(rng, column.key, column.slug, back(READ_DAYS + 1), DAY)
+        pair = shopper_random.pair(rng, column.key, shopper_random.code(n), back(READ_DAYS + 1), DAY)
+        assert promoted_today(pair, column_days, DAY) == _promoted_today_before(pair, column_days, DAY)
+        assert runs(pair, column_days, DAY) == _runs_before(pair, column_days, DAY)
+        found = words.history_sentences(pair, column_days, DAY)
+        assert found == _history_sentences_before(pair, column_days, DAY)
+        said |= {sentence.split(" ")[0] for sentence in found}
+    assert {"On", "Runs", "Days", "The"} <= said
