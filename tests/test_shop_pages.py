@@ -179,7 +179,7 @@ def test_the_front_page_has_the_always_phrases_and_one_script():
     assert NO_DEALS in _front(rows=[]) and NO_DEALS not in _front()
     # deploy prep: the empty table says that no promotion passes the rule, never that no deal is listed, under a count
     # line of thousands of promotions; the owner's words (2026-11-10) name the rule line and the row note above it
-    assert f'<td colspan="6">No promotion meets the rule and the conditions above today.</td>' in _front(rows=[])
+    assert f'<td colspan="6">No promotion meets the rule and the note above today.</td>' in _front(rows=[])
     empty = _front(rows=[])
     assert empty.index(RULE_LINE) < empty.index(FRONT_NOTE) < empty.index(NO_DEALS)
 
@@ -192,9 +192,12 @@ def test_the_front_page_says_the_rule_in_the_formats_words():
     assert count_line(1840, 6210, 410) in page
     assert "in the same store format" in FRONT_RULE and count_line(1, 1, 1).endswith(
         "in their store format, on an item with at least 20 days of records there in the past 30.")
-    # what a row needs, in the front test's own days (deploy prep: 20 of the 30, so its 30-day median is not short)
+    # what a row needs, in the front test's own days (deploy prep: 20 of the 30, so its 30-day median is not short),
+    # and every other condition `on_front` applies beside the rule line's: a morning that is no hole for the format, and
+    # the deal price read (the owner, 2026-11-10)
     assert ("<p>Each deal is a promotion carried by at least half of its store format's stores with files that day, on "
-            "an item with at least 20 days of records there in the 30 days before today.</p>") in page
+            "a morning with files from at least half its stores, with its deal price read, on an item with at least 20 "
+            "days of records there in the 30 days before today.</p>") in page
 
 
 def test_a_front_row_shows_its_deal_median_depth_and_conditions():

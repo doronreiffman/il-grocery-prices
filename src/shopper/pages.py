@@ -93,13 +93,16 @@ BASKET_PAGE = "the basket page"        # what the basket's method section speaks
 GITHUB = HIRING[-1][1]
 # The front page's own words
 RULE_LINE = f"The rule: {FRONT_RULE}."
+# every condition `shopper.measures.on_front` applies beside the rule line's: the promotion wide, the morning no hole
+# for the format, the deal price read, the 30-day window's days (the owner, 2026-11-10)
 FRONT_NOTE = (f"Each deal is a promotion carried by at least half of its store format's stores with files that day, on "
-              f"an item with at least {MIN_FRONT_DAYS} days of records there in the {RECENT_DAYS} days before today.")
+              "a morning with files from at least half its stores, with its deal price read, on an item with at least "
+              f"{MIN_FRONT_DAYS} days of records there in the {RECENT_DAYS} days before today.")
 SEARCH_LABEL = "Find a product by name or barcode"
 ALL_COLUMNS = "All columns"
 CLUB_FILTER = "Hide club-only and other restricted deals"
 SPEND_FILTER = "Hide deals with a minimum spend (from the chains' fields)"   # it reads `min_spend`, the fields' alone
-NO_DEALS = "No promotion meets the rule and the conditions above today."     # the rule line and the row note above
+NO_DEALS = "No promotion meets the rule and the note above today."     # the rule line and FRONT_NOTE above
 FRONT_HEADS = (("Product", ""), ("Column", ""), ("Promotion", MORNING),
                (f"{RECENT_DAYS}-day median listed price", "before promotions, as listed in the chain's price files"),
                (f"Below the {RECENT_DAYS}-day median", ""), ("Conditions", ""))
