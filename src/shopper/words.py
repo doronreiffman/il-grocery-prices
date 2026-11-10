@@ -38,18 +38,19 @@ bound, wherever it sits.
 
 P7, three sentences, no verdict word. The deal against the 30-day median: "Deal price ₪7.90: ₪4.00, 34%, below the
 30-day median listed price of ₪11.90 (of the 30 days with records before today).", the amount and the whole percent
-(half up) worked from the median and the deal as shown, or "not below" when the shown deal is not under the shown
-median. The lows, each over the days of records its window holds, in the change sentence's window words (P6, deploy
-prep), said once when both windows hold the same days, and the days at or below the deal, counted on the shown
-figures: "The lowest listed price was ₪11.90 in the 30 days before today and ₪10.90 in the 90 days before today;
-listed at ₪7.90 or less on 0 of the 90.", or at launch "The lowest listed price was ₪10.00 on the 15 days of records
-since 1 November 2026 before today; listed at ₪7.90 or less on 0 of the 15." The changes: a change is one in the shown figures (a median of ₪1.445 moving to ₪1.45 is none: both show
-₪1.45); "The listed price rose from ₪10.90 to ₪11.90 on 28 October 2026." between two consecutive days with records;
-across a gap in the records the change lies somewhere between the two days, so both are given ("rose from ₪10.90 (15
-November 2026) to ₪11.90 (17 November 2026)"), never one date the files cannot pin; several in day order, joined by
-"then". With none: "The listed price did not change in the 30 days before today." when each of the 30 has a record,
-else "did not change on the 25 days with records of the 30 before today" (or a short window's words), since the files
-say nothing of the other days.
+(half up) worked from the median and the deal as shown ("under 1%" for a gap above ₪0 that rounds to 0%: deploy prep),
+or "not below" when the shown deal is not under the shown median. The lows, each over the days of records its window
+holds, in the change sentence's window words (P6, deploy prep), said once when both windows hold the same days, and the
+days at or below the deal, counted on the shown figures: "The lowest listed price was ₪11.90 in the 30 days before today
+and ₪10.90 in the 90 days before today; listed at ₪7.90 or less on 0 of the 90.", or at launch "The lowest listed price
+was ₪10.00 on the 15 days of records since 1 November 2026 before today; listed at ₪7.90 or less on 0 of the 15." The
+changes: a change is one in the shown figures (a median of ₪1.445 moving to ₪1.45 is none: both show ₪1.45); "The listed
+price rose from ₪10.90 to ₪11.90 on 28 October 2026." between two consecutive days with records; across a gap in the
+records the change lies somewhere between the two days, so both are given ("rose from ₪10.90 (15 November 2026) to
+₪11.90 (17 November 2026)"), never one date the files cannot pin; several in day order, joined by "then". With none:
+"The listed price did not change in the 30 days before today." when each of the 30 has a record, else "did not change on
+the 25 days with records of the 30 before today" (or a short window's words), since the files say nothing of the other
+days.
 
 The listed-price history on a product page (`price_history`, the plan's Task 16): P7's change sentence over the 90-day
 window, every change of the window (`shopper.measures.changes`) on the same rules: the shown figures, both days across
@@ -329,6 +330,13 @@ def shown_below(gap: Gap) -> tuple[Decimal, int] | None:
     return amount, whole(100 * Fraction(amount) / Fraction(median))
 
 
+def percent_text(percent: int) -> str:
+    """A shown gap's whole percent as the pages write it (`shown_below`'s, never None): "under 1%" when the gap is
+    above ₪0 but rounds to 0%, never "₪0.10, 0%, below" (deploy prep); P7's first sentence and the front page's depth
+    column both write it so."""
+    return "under 1%" if percent == 0 else f"{percent}%"
+
+
 def _against_median(gap: Gap) -> str:
     """The deal against the 30-day median, worked from both as shown (`shown_below`)."""
     said = f"the 30-day median listed price of ₪{_shown(gap.median30)}"
@@ -336,7 +344,7 @@ def _against_median(gap: Gap) -> str:
     if found is None:
         return f"not below {said}"
     amount, percent = found
-    return f"₪{amount}, {percent}%, below {said}"
+    return f"₪{amount}, {percent_text(percent)}, below {said}"
 
 
 def _change(change: Change) -> str:

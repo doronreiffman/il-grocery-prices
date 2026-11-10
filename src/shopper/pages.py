@@ -16,24 +16,24 @@ as a number. A row keeps the promotion's restrictions, programmes and minimum sp
 today, distinct by chain and id, their barcodes, and the barcodes with a front row.
 
 The front page, top to bottom: the title and the rule in the store format's words (question O), what a row needs; the
-count line; the search box, `<input id="q">` with exactly `<script src="search.js" defer></script>`, the one script,
-and a link to the browse pages, which need none; the filters, CSS only: a radio for all the columns and one per column,
-and two checkboxes, the club-only one (hiding every restricted promotion, question K, with `club_label` beside it) and
-the minimum-spend one, each ruled by a `:checked` sibling selector over the rows' `data-column`, `data-club` and
-`data-spend`; the table, a row each: the product's link with its name, the column, the deal price per unit or
-kilogram with "buy N", the column's 30-day median listed price, the depth as a whole percent worked from the figures
-shown (`shopper.words.shown_below`, as P7's first sentence works it), and the conditions with their source and the fine
-print label; the top row's P7 sentences as one deal's story; the hiring line (question M (f)). The headers carry the
-ALWAYS phrases, so the page carries them on a morning with no row too.
+count line; the search box, `<input id="q">` with exactly `<script src="search.js" defer></script>`, the one script, and
+a link to the browse pages, which need none; the filters, CSS only: a radio for all the columns and one per column, and
+two checkboxes, the club-only one (hiding every restricted promotion, question K, with `club_label` beside it) and the
+minimum-spend one, each ruled by a `:checked` sibling selector over the rows' `data-column`, `data-club` and
+`data-spend`; the table, a row each: the product's link with its name, the column, the deal price per unit or kilogram
+with "buy N", the column's 30-day median listed price, the depth as a whole percent worked from the figures shown
+(`shopper.words.shown_below`, as P7's first sentence works it; "under 1%" for a gap that rounds to 0%), and the
+conditions with their source and the fine print label; the top row's P7 sentences as one deal's story; the hiring line
+(question M (f)). The headers carry the ALWAYS phrases, so the page carries them on a morning with no row too.
 
-The method page: what a column is and the nine, with how each one's stores are chosen and how many the day's store
-list includes; the stores left out by rule, which of them sit in a column's part of the store list, and store 779
-(Task 15's carry: ALWAYS_SENTENCE says this page gives the rules); Carrefour's table, store by store, and how it was drawn;
-the included stores in no column, chain by chain, each by id and its listed name (with its sub-chain where the columns
-go by sub-chain); any column under the floor that day; P1 to P10 and F1 to F11 in plain words with the code's own
-constants; the NEVER list as `<ul id="never-words">`, the only place its phrases appear; what is measured and what is
-inferred; the law; how to reproduce a page; and the headline basket's method, `basket.page.method_parts` byte for
-byte, in a section whose id (`BASKET_SECTION`) is not its inner heading's (S6).
+The method page: what a column is and the nine, with how each one's stores are chosen and how many the day's store list
+includes; the stores left out by rule, which of them sit in a column's part of the store list, and store 779 (Task 15's
+carry: ALWAYS_SENTENCE says this page gives the rules); Carrefour's table, store by store, and how it was drawn; the
+included stores in no column, chain by chain, each by id and its listed name (with its sub-chain where the columns go by
+sub-chain); any column under the floor that day; P1 to P10 and F1 to F11 in plain words with the code's own constants;
+the NEVER list as `<ul id="never-words">`, the only place its phrases appear; what is measured and what is inferred; the
+law; how to reproduce a page; and the headline basket's method, `basket.page.method_parts` byte for byte, in a section
+whose id (`BASKET_SECTION`) is not its inner heading's (S6).
 
 The record page: `scorecard_section`, a function of the scorecard alone, so the guard can render it again from the
 site-day file (Task 21): how many columns are tested at once, the model versions scored so far (the scorecard's
@@ -85,7 +85,7 @@ from shopper.shell import band, page, text
 from shopper.words import (BROWSE_LINK, FINE_PRINT, FRONT_RULE, FRONT_TITLE, GAP_HEADING, HIRING, METHOD_TITLE,
                            MORNING, NEVER, NUMBER_WORDS, RECORD_TITLE, SITE_NAME, buy, club_label, columns_tested,
                            count_line, credit, date_range, deal_price, formats_note, gap_sentences, no_odds_yet,
-                           shown_below, unreadable)
+                           percent_text, shown_below, unreadable)
 
 BASKET_SECTION = "headline-basket"     # the basket's method on the method page: not its inner heading's id, "basket"
 BASKET_PAGE = "the basket page"        # what the basket's method section speaks of on the method page
@@ -256,7 +256,7 @@ def _row(row: FrontRow) -> str:
     deal = row.deal
     said = text(deal_price(deal.price, deal.per)) + (f", {text(buy(deal.buy))}" if deal.buy != 1 else "")
     shown = shown_below(row.gap)
-    percent = "" if shown is None else f"{shown[1]}%"
+    percent = "" if shown is None else percent_text(shown[1])
     conditions = "; ".join([*field_conditions({"restrictions": row.restrictions, "programmes": row.programmes,
                                                "min_spend": row.min_spend}), text(FINE_PRINT)])
     marks = (' data-club=""' if row.restrictions else "") + (' data-spend=""' if row.min_spend is not None else "")
@@ -387,14 +387,15 @@ RULES = (
      "days of records since 1 November 2026\"), and every count over days says \"of the N days with records\"."),
     ("P7 The gap.",
      f"Three measured facts about a deal listed across its column: its price against the {RECENT_DAYS}-day median "
-     f"listed price, as money and a whole percent; the lowest listed price of the past {RECENT_DAYS} and {READ_DAYS} "
-     f"days, and on how many of the {READ_DAYS} days with records the item was listed at or below the deal; and each "
+     "listed price, as money and a whole percent (\"under 1%\" when a gap above ₪0 rounds to 0%); the lowest listed "
+     f"price of the past {RECENT_DAYS} and {READ_DAYS} days, and on how many of the {READ_DAYS} days with records the "
+     "item was listed at or below the deal; and each "
      f"change in the listed price in the past {RECENT_DAYS} days, dated where two consecutive days with records pin "
      f"it, else given with both days. Depth is ({RECENT_DAYS}-day median − deal price) ÷ that median. The front page "
      "lists a deal when it is listed across its column, its price is read (P4), the column has a record today, and the "
-     f"item has at least {MIN_FRONT_DAYS} days of records in the past {RECENT_DAYS}, with the deal price as shown below "
-     f"every listed price of the past {READ_DAYS} days as shown. Its rows are "
-     "sorted by depth, deepest first; a product listed across several columns can have a row at each."),
+     f"item has at least {MIN_FRONT_DAYS} days of records in the past {RECENT_DAYS}, with the deal price as shown "
+     f"below every listed price of the past {READ_DAYS} days as shown. Its rows are sorted by depth, deepest first; a "
+     "product listed across several columns can have a row at each."),
     ("P8 Promotion history.",
      f"Over the {READ_DAYS} days before today, at the column: the days on a promotion listed across it, of the days "
      "with records; each run of consecutive days on promotion (a day the files say nothing of, a hole, a day the "

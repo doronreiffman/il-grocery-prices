@@ -192,6 +192,16 @@ def test_a_front_row_shows_its_deal_median_depth_and_conditions():
             f"from the chain's fields; {FINE_PRINT}") in row
 
 
+def test_a_front_rows_gap_under_half_a_percent_is_under_one_percent():
+    """Deploy prep: ₪99.90 against a 90-day low and a 30-day median of ₪100.00 passes the front test; its cell says
+    "under 1%", as P7's first sentence does, never "0%"; the site-day file keeps the whole percent's number."""
+    rows = front_rows_of(CODE, "T", {DEAL: _pair(DEAL, _listed("100.00"), promotions=[_struct("99.90")])}, _days(), DAY)
+    assert shown_below(rows[0].gap) == (Decimal("0.10"), 0)
+    row = re.search(r"<tr data-column[^>]*>(.*?)</tr>", _front(rows=rows), re.DOTALL).group(1)
+    assert "<td>under 1%</td>" in row and "<td>0%</td>" not in row
+    assert "₪0.10, under 1%, below the 30-day median listed price of ₪100.00" in _front(rows=rows)
+
+
 def test_the_filters_need_no_script():
     """A radio per column and one for all, the club-only and minimum-spend checkboxes, `club_label` beside the first,
     each input ruled by CSS alone (`:checked` and the sibling combinator); a row says what the filters read."""
@@ -355,6 +365,8 @@ def test_the_method_page_states_the_rules_with_the_codes_constants():
                    "at least 90 scored days", "at most 0.03", "more than 4 holes", "d + 1 to d + 14"):
         assert figure in rules, figure
     assert unreadable("carrefour") in rules and no_odds_yet(DEAL).split(".")[0] in rules
+    assert 'as money and a whole percent ("under 1%" when a gap above ₪0 rounds to 0%);' in rules      # deploy prep
+    assert "{" not in rules and "}" not in rules                    # every constant written in, none left as a name
     # P7's front test as built (deploy prep): 20 days of records in the past 30, the low over the past 90
     assert ("the item has at least 20 days of records in the past 30, with the deal price as shown below every listed "
             "price of the past 90 days as shown.") in rules

@@ -28,7 +28,7 @@ from shopper.words import (ALWAYS, ALWAYS_SENTENCE, AT_SOME_STORES, CREDIT_START
                            gap_sentences, history_sentences, last_across, no_odds_yet, price_history, starts_on,
                            targets, unreadable, window_note)
 from shopper.words import (ACROSS_HEADING, BARCODE, BROWSE_LINK, CHANGES_SHOWN, NOT_LISTED, PER, buy, chart_key,
-                           deal_price, listed_price, minimum_spend, stores_range)
+                           deal_price, listed_price, minimum_spend, percent_text, shown_below, stores_range)
 from test_measures import DAY, DEAL, _days, _pair, back, listed_from
 
 ROOT = Path(__file__).parent.parent
@@ -373,9 +373,24 @@ def test_p7_figures_are_the_shown_figures():
     assert up[1].endswith("listed at ₪1.45 or less on 30 of the 30.")
     # 3 for ₪10 (3.3333...), shown ₪3.33, against a median of ₪3.335 shown ₪3.34: ₪0.01 below, and no day at or below
     down = gap_sentences(_gap(Fraction(10, 3), listed_from(1, 30, "3.335")))
-    assert down[0].startswith("Deal price ₪3.33: ₪0.01, 0%, below the 30-day median listed price of ₪3.34 ")
+    assert down[0].startswith("Deal price ₪3.33: ₪0.01, under 1%, below the 30-day median listed price of ₪3.34 ")
     assert down[1].endswith("listed at ₪3.33 or less on 0 of the 30.")
 
+
+
+def test_a_gap_that_rounds_to_zero_percent_is_under_one_percent():
+    """Deploy prep (the owner, 2026-11-10): a gap above ₪0 whose whole percent rounds to 0 says "under 1%", never
+    "₪0.10, 0%, below"; from half a percent it is a whole percent as before. `shown_below` keeps the number."""
+    assert percent_text(0) == "under 1%" and percent_text(1) == "1%" and percent_text(34) == "34%"
+    tiny = _gap("99.51", listed_from(1, 30, "100.00"))                      # ₪0.49, 0.49%
+    assert shown_below(tiny) == (Decimal("0.49"), 0)
+    assert gap_sentences(tiny)[0] == ("Deal price ₪99.51: ₪0.49, under 1%, below the 30-day median listed price of "
+                                      "₪100.00 (of the 30 days with records before today).")
+    half = _gap("99.50", listed_from(1, 30, "100.00"))                      # ₪0.50, 0.5%: 1%, half up
+    assert shown_below(half) == (Decimal("0.50"), 1)
+    assert gap_sentences(half)[0].startswith("Deal price ₪99.50: ₪0.50, 1%, below ")
+    assert gap_sentences(_gap("100.00", listed_from(1, 30, "100.00")))[0].startswith(
+        "Deal price ₪100.00: not below the 30-day median")
 
 
 def _price_history(listed, holes=()):
