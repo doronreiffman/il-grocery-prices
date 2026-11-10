@@ -24,10 +24,10 @@ from shopper.product import BOTTOM, CHAIN_SPAN, DAY_WIDTH, MARK, MAX_PAGE, TOP, 
 from shopper.shell import text
 from shopper.record import Gate
 from shopper.search import browse_pages, browse_path
-from shopper.words import (ACROSS_HEADING, ALWAYS, ALWAYS_SENTENCE, AT_SOME_STORES, FINE_PRINT, FROM_FIELDS,
-                           GAP_HEADING, HISTORY_HEADING, MORNING, NEVER, NOT_LISTED, ODDS_WORDS, PRICE_NOT_READ,
-                           SITE_NAME, chart_key, credit, date_line, gap_sentences, last_across, no_odds_yet,
-                           price_history, starts_on, unreadable)
+from shopper.words import (ACROSS_HEADING, ALWAYS, ALWAYS_SENTENCE, AT_SOME_STORES, CHAINS_LINE, FINE_PRINT,
+                           FROM_FIELDS, GAP_HEADING, HISTORY_HEADING, MORNING, NEVER, NOT_LISTED, ODDS_WORDS,
+                           PRICE_NOT_READ, SITE_NAME, chart_key, credit, date_line, gap_sentences, last_across,
+                           no_odds_yet, price_history, starts_on, unreadable)
 import shopper_random
 
 DAY = date(2026, 11, 20)
@@ -560,7 +560,7 @@ def test_the_shell_band_and_footer():
     page = _render(covered, pairs)
     assert page.startswith("<!doctype html>") and '<meta name="robots" content="noindex">' in page
     assert (f'<header class="band"><div class="wrap"><a href="../index.html">{SITE_NAME}</a>'
-            f'<p class="dateline">{date_line(DAY)}</p></div></header>') in page
+            f'<p class="dateline">{CHAINS_LINE}</p><p class="dateline">{date_line(DAY)}</p></div></header>') in page
     footer = re.search(r"<footer>(.*?)</footer>", page, re.DOTALL).group(1)
     assert credit(DAY, "12:03") in footer
     links = re.findall(r'<a href="([^"]+)">([^<]+)</a>', footer)

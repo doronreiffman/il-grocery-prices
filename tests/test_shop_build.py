@@ -209,18 +209,45 @@ def test_every_product_link_resolves_to_a_page_the_build_wrote(tmp_path):
 
 
 def test_the_front_page_has_the_days_row_and_count_line(tmp_path):
-    """Milk's ₪3.00 at Osher Ad, below every listed price of its 40 days of records: one row, and the count line's
-    numbers (one promotion listed across a column today, on one product, one of them on the front page)."""
+    """Milk's ₪3.00 at Osher Ad, below every listed price of its 40 days of records: one row, and the counts (one
+    promotion listed across a column today, on one product, one of them on the front page): the lead line's and the
+    fold-out's (the owner's plain words, 2026-11-10)."""
     data, site = tree(tmp_path), tmp_path / "site"
     _build(data, site)
     front = _text(site / "index.html")
-    assert ("Today the five chains list 1 promotion across a store format on 1 product; 1 of them is below every "
-            "listed price") in front
+    assert "1 of the 1 product on promotion today is below every price of the past 90 days." in front
+    assert ("Today the five chains list 1 promotion carried by at least half of a store format's stores, on 1 "
+            "product.") in front
     found = _site_day(site)
     assert found["counts"] == {"promotions": 1, "products": 1, "below": 1}
     assert [(row["column"], row["barcode"], row["deal"]) for row in found["front_rows"]] == [(OSHER, MILK, "3.00")]
     assert found["columns"][OSHER]["counts"]["front_rows"] == 1
     assert "Osher Ad's files mark none" not in front                    # its promotion is for club members
+
+
+def test_the_lead_line_says_none_yet_before_a_column_has_20_days_of_records(tmp_path):
+    """The golden day alone: no column has a record before today, so no product can be listed yet, and the lead line
+    says so (`shopper.pages.front_ready`, from the history's column-days), never that none is below."""
+    data, site = tree(tmp_path, history=False), tmp_path / "site"
+    _build(data, site)
+    front = _text(site / "index.html")
+    assert "None yet: a product needs 20 days of price history before it can be listed here." in front
+    assert "None today" not in front
+
+
+def test_the_lead_line_says_none_today_once_a_column_has_20_days_of_records(tmp_path):
+    """Osher Ad's 40 days of records, milk's deal at ₪7.00 above its listed ₪6.15: no row, and the lead line says none
+    of the products on promotion today is below, not "None yet"."""
+    data, site = tree(tmp_path), tmp_path / "site"
+    above = {**DEAL, "price": "7.00", "price_exact": "7"}
+    _table(data / "tables", OSHER, DAY, rows=[_row(OSHER, MILK, "6.15", on_promotion=True, promotions=[above]),
+                                              _row(OSHER, PASTA, "4.90"), _row(OSHER, EGGS, "11.60"),
+                                              _row(OSHER, B, "9.90", wide=False), _row(OSHER, C, "2.50", wide=False)])
+    _build(data, site)
+    assert _site_day(site)["counts"] == {"promotions": 1, "products": 1, "below": 0}
+    front = _text(site / "index.html")
+    assert ("None today: none of the 1 product on promotion today is below every price of the past 90 days."
+            in front)
 
 
 def test_the_record_page_counts_the_day_just_frozen(tmp_path):

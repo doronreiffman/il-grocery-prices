@@ -62,7 +62,7 @@ from shopper.forecast import FIRST_RECORD_DAY, Forecast, forecasts, forecasts_cs
 from shopper.freeze import Frozen  # noqa: E402
 from shopper.history import History, covered, covered_path, load  # noqa: E402
 from shopper.items import COLUMNS as ITEM_COLUMNS, HORIZON, ColumnReport, ItemsReport, items_path  # noqa: E402
-from shopper.pages import render_front  # noqa: E402
+from shopper.pages import front_ready, render_front  # noqa: E402
 from shopper.record import Gate, scorecard  # noqa: E402
 from shopper.score import read_summary, summary_path  # noqa: E402
 from shopper.search import browse_pages, pieces  # noqa: E402
@@ -383,7 +383,8 @@ def main(argv: list[str] | None = None) -> int:
             shutil.move(staging / path, target)
         browse = browse_pages(found, DAY, COLLECTED_BY)
         fixed = {"index.html": render_front(pages.rows, pages.counts(), DAY, COLLECTED_BY, pages.marking_none(),
-                                            next(iter(browse), None)), **browse, **pieces(found)}
+                                            next(iter(browse), None), ready=front_ready(history.column_days, DAY)),
+                 **browse, **pieces(found)}
         for path, page in fixed.items():
             build._write(site, path, page)
         sizes = sorted((site / path).stat().st_size for path in pages.written)

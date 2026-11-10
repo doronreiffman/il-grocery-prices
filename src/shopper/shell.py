@@ -3,9 +3,10 @@ pages (docs/shopper-site.md, "What a visitor sees", its paragraph on every page;
 
 Every page is one HTML file in English: `noindex` until the owner launches, light and dark colour schemes, one style
 block (`basket.page.BASE_STYLE`, the rules the basket's pages share, then the page type's own), the header band with
-the site's name linking to the front page over the date line (`shopper.words.date_line`), the main part, and the
-footer with the credit line (`shopper.words.credit`) and the page's links. No script and nothing loaded from elsewhere:
-`search.js`, the site's one script, belongs to the front page alone. `up` is the path from the page's folder to the
+the site's name linking to the front page over the chains' line (`shopper.words.CHAINS_LINE`) and the date line
+(`shopper.words.date_line`), both in the date line's style, the main part, and the footer with the credit line
+(`shopper.words.credit`) and the page's links. No script and nothing loaded from elsewhere: `search.js`, the site's one
+script, belongs to the front page alone. `up` is the path from the page's folder to the
 site's root, "../" for `p/` and `browse/` and "" for the root pages, so every link resolves in the build.
 
 The shell lives in its own module so that the front page's module can import the product pages' `page_path` while
@@ -16,7 +17,7 @@ from datetime import date
 from html import escape
 
 from basket.page import BASE_STYLE
-from shopper.words import SITE_NAME, credit, date_line
+from shopper.words import CHAINS_LINE, SITE_NAME, credit, date_line
 
 
 def text(value: str) -> str:
@@ -25,10 +26,10 @@ def text(value: str) -> str:
 
 
 def band(day: date, up: str) -> str:
-    """The header band: the site's name linking to the front page, over the date line (`basket.html`'s too, in the
-    basket's frame)."""
+    """The header band: the site's name linking to the front page, over the chains' line and the date line
+    (`basket.html`'s too, in the basket's frame)."""
     return (f'<header class="band"><div class="wrap"><a href="{up}index.html">{text(SITE_NAME)}</a>'
-            f'<p class="dateline">{text(date_line(day))}</p></div></header>')
+            f'<p class="dateline">{text(CHAINS_LINE)}</p><p class="dateline">{text(date_line(day))}</p></div></header>')
 
 
 def page(title: str, main: str, day: date, collected_by: str, links: Sequence[tuple[str, str]], style: str = "",

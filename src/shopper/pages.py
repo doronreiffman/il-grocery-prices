@@ -12,20 +12,27 @@ today, the deal as shown below every listed price of the 90 as shown). So a prod
 against its own column's median; a column with no record today (a hole, S1) has none. `ordered` sorts the rows by the
 depth they show, a whole percent ("under 1%" as 0), deepest first, a row with no shown gap last, then by the exact depth
 (`shopper.measures.depth`), then by column in name order, then by barcode as a number. A row keeps the promotion's
-restrictions, programmes and minimum spend for its conditions and the filters. `Counts` holds the count line's three
+restrictions, programmes and minimum spend for its conditions and the filters. `Counts` holds the front page's three
 numbers (the site-day file's; the build counts them): the wide promotions listed today, distinct by chain and id, their
 barcodes, and the barcodes with a front row.
 
-The front page, top to bottom: the title and the rule in the store format's words (question O), what a row needs; the
-count line; the search box, `<input id="q">` with exactly `<script src="search.js" defer></script>`, the one script, and
-a link to the browse pages, which need none; the filters, CSS only: a radio for all the columns and one per column, and
-two checkboxes, the club-only one (hiding every restricted promotion, question K, with `club_label` beside it) and the
-minimum-spend one, each ruled by a `:checked` sibling selector over the rows' `data-column`, `data-club` and
-`data-spend`; the table, a row each: the product's link with its name, the column, the deal price per unit or kilogram
-with "buy N", the column's 30-day median listed price, the depth as a whole percent worked from the figures shown
-(`shopper.words.shown_below`, as P7's first sentence works it; "under 1%" for a gap that rounds to 0%), and the
-conditions with their source and the fine print label; the top row's P7 sentences as one deal's story; the hiring line
-(question M (f)). The headers carry the ALWAYS phrases, so the page carries them on a morning with no row too.
+The front page, top to bottom, in the owner's plain words (2026-11-10): the title; the lead line
+(`shopper.words.lead_line`), the headline area's one sentence, its "None yet" form while no column has a record on
+MIN_FRONT_DAYS of the RECENT_DAYS before the day (`front_ready`: a product's days of records at a column are days the
+column has one, so none can pass the front test's days before then); the search box, `<input id="q">` with exactly
+`<script src="search.js" defer></script>`, the one script, and a link to the browse pages, which need none; the
+filters, CSS only: a radio for all the stores (the columns) and one per column, and two checkboxes, the club-only one
+(hiding every restricted promotion, question K) and the minimum-spend one, each ruled by a `:checked` sibling selector
+over the rows' `data-column`, `data-club` and `data-spend`; the table, a row each: the product's link with its name, the
+column (its "Store"), the deal price per unit or kilogram with "buy N", the column's 30-day median listed price (its
+"Typical price"), the depth as a whole percent worked from the figures shown (`shopper.words.shown_below`, as P7's
+first sentence works it; "under 1%" for a gap that rounds to 0%), and the conditions with their source and the fine
+print label; directly under the table, one note carrying the four ALWAYS phrases, so the page carries them on a
+morning with no row too; a fold-out, `<details>`, closed, needing no script: every condition
+`shopper.measures.on_front` applies, in the store format's words (question O), what the two filters hide and the
+chains whose files mark no restricted promotion today (`shopper.words.marked_none`), the day's promotions and products
+(`shopper.words.promotions_line`), and the method page; the top row's P7 sentences as one deal's story; the hiring line
+(question M (f)).
 
 The method page: what a column is and the nine, with how each one's stores are chosen and how many the day's store list
 includes; the stores left out by rule, which of them sit in a column's part of the store list, and store 779 (Task 15's
@@ -83,29 +90,38 @@ from shopper.measures import MIN_FRONT_DAYS, RECENT_DAYS, Gap, depth, gap, on_fr
 from shopper.product import CHAIN_SPAN, field_conditions, page_path, running_today
 from shopper.record import BIN_OFF, BIN_SHARE, BLOCK, CAL_MAX, DRAWS, GATE_DAYS, LEVEL, MIN_DAYS, SEED, holds_share
 from shopper.shell import band, page, text
-from shopper.words import (BROWSE_LINK, FINE_PRINT, FRONT_RULE, FRONT_TITLE, GAP_HEADING, HIRING, METHOD_TITLE,
-                           MORNING, NEVER, NUMBER_WORDS, RECORD_TITLE, SITE_NAME, buy, club_label, columns_tested,
-                           count_line, credit, date_range, deal_price, formats_note, gap_sentences, no_odds_yet,
-                           percent_text, shown_below, unreadable)
+from shopper.words import (BROWSE_LINK, FINE_PRINT, FRONT_TITLE, GAP_HEADING, HIRING, METHOD_TITLE, MORNING, NEVER,
+                           NUMBER_WORDS, RECORD_TITLE, SITE_NAME, buy, columns_tested, credit, date_range, deal_price,
+                           formats_note, gap_sentences, lead_line, marked_none, no_odds_yet, percent_text,
+                           promotions_line, shown_below, unreadable)
 
 BASKET_SECTION = "headline-basket"     # the basket's method on the method page: not its inner heading's id, "basket"
 BASKET_PAGE = "the basket page"        # what the basket's method section speaks of on the method page
 GITHUB = HIRING[-1][1]
-# The front page's own words
-RULE_LINE = f"The rule: {FRONT_RULE}."
-# every condition `shopper.measures.on_front` applies beside the rule line's: the promotion wide, the morning no hole
-# for the format, the deal price read, the 30-day window's days (the owner, 2026-11-10)
-FRONT_NOTE = (f"Each deal is a promotion carried by at least half of its store format's stores with files that day, on "
-              "a morning with files from at least half its stores, with its deal price read, on an item with at least "
-              f"{MIN_FRONT_DAYS} days of records there in the {RECENT_DAYS} days before today.")
-SEARCH_LABEL = "Find a product by name or barcode"
-ALL_COLUMNS = "All columns"
-CLUB_FILTER = "Hide club-only and other restricted deals"
-SPEND_FILTER = "Hide deals with a minimum spend (from the chains' fields)"   # it reads `min_spend`, the fields' alone
-NO_DEALS = "No promotion meets the rule and the note above today."     # the rule line and FRONT_NOTE above
-FRONT_HEADS = (("Product", ""), ("Column", ""), ("Promotion", MORNING),
-               (f"{RECENT_DAYS}-day median listed price", "before promotions, as listed in the chain's price files"),
-               (f"Below the {RECENT_DAYS}-day median", ""), ("Conditions", ""))
+# The front page's own words (the owner's plain words, 2026-11-10): plain labels; the rule in full in the fold-out
+SEARCH_LABEL = "Find a product: name or barcode"
+ALL_STORES = "All stores"
+CLUB_FILTER = "Hide club-only deals"
+SPEND_FILTER = "Hide deals with a minimum spend"
+NO_DEALS = "No deals to show."                 # the lead line above says why
+FRONT_HEADS = ("Product", "Store", "Deal", "Typical price", "Below by", "Conditions")
+TABLE_NOTE = (f"Typical price: the {RECENT_DAYS}-day median listed price before promotions, as listed in the chain's "
+              f"price files. Deals {MORNING}.")                # the four ALWAYS phrases, under the table
+RULES_TITLE = "How a deal gets on this list"
+RULES_INTRO = "A deal is on this list when all of these hold at the store format its row names:"
+# every condition `shopper.measures.on_front` applies: the deal as shown below every listed price of the 90 as shown;
+# the promotion wide; the column's day no hole; the deal price read; the 30-day window's days
+FRONT_RULES = (
+    f"Its deal price is below every listed price the product had at that store format in the {READ_DAYS} days before "
+    "today.",
+    "At least half of the format's stores that sent price files today carry the promotion.",
+    "At least half of the format's stores sent price files today.",
+    "Its deal price could be read.",
+    f"The product had a listed price there on at least {MIN_FRONT_DAYS} of the {RECENT_DAYS} days before today.")
+CLUB_NOTE = (f'"{CLUB_FILTER}" hides the deals the chains\' fields mark for club members, the chain\'s card holders or '
+             "some customers only.")                         # question K: every restricted promotion, `data-club`
+SPEND_NOTE = f'"{SPEND_FILTER}" hides the deals whose fields give a minimum spend.'    # `min_spend`, the fields' alone
+RULES_LINK = f"All the rules: {METHOD_TITLE}"
 # The record page's own words
 FINE_PRINT_UNREAD = "Promotion fine print is not read yet."
 NOTHING_SCORED = "No forecast has been scored yet."
@@ -137,7 +153,11 @@ FRONT_STYLE = PAGE_STYLE + """
                 border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); }
 .deals > input { margin: 0 var(--s1) var(--s3) 0; }
 .deals > label { margin-right: var(--s4); }
-.deals > small { display: inline; }
+.deals .note { margin: var(--s3) 0 0; color: var(--text-2); font-size: .9375rem; }
+.deals details { margin: var(--s4) 0 0; }
+.deals summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+.deals details ul { padding-left: 1.25rem; margin: var(--s3) 0; }
+.deals details li { margin: 0 0 var(--s2); }
 table.front { min-width: 52rem; }
 .story-head { font-weight: 600; }
 .hiring { margin-top: var(--s5); }
@@ -180,8 +200,8 @@ class FrontRow:
 
 @dataclass(frozen=True)
 class Counts:
-    """The count line's numbers (question A): the wide promotions listed today, distinct by chain and id; their
-    barcodes; the barcodes with a front row."""
+    """The front page's numbers (question A; the site-day file's `counts`): the wide promotions listed today, distinct
+    by chain and id; their barcodes; the barcodes with a front row."""
     promotions: int
     products: int
     below: int
@@ -234,6 +254,18 @@ def front_rows_of(code: str, title: str, pairs: Mapping[str, Pair], column_days:
     return rows
 
 
+def front_ready(column_days: Mapping[tuple[str, date], ColumnDay], day: date) -> bool:
+    """Whether some column has a record on at least MIN_FRONT_DAYS of the RECENT_DAYS days before `day`: a product's
+    days of records at a column are days the column has a record (P6), so before then no product can pass the front
+    test's days (`shopper.measures.on_front`), and the lead line says none can be listed yet."""
+    first = day - timedelta(days=RECENT_DAYS)
+    held: dict[str, int] = {}
+    for (column, seen), found in column_days.items():
+        if first <= seen < day and found.record:
+            held[column] = held.get(column, 0) + 1
+    return any(count >= MIN_FRONT_DAYS for count in held.values())
+
+
 def _by_shown(row: FrontRow) -> tuple[bool, int]:
     """A row's place by the depth it shows: its whole percent (`shown_below`; "under 1%" is 0), deepest first, and a
     row with no shown gap last."""
@@ -253,13 +285,12 @@ def _search(browse: str | None) -> str:
             f'<input id="q" type="search" autocomplete="off"><script src="search.js" defer></script>{link}</section>')
 
 
-def _filters(marking_none: Sequence[str]) -> str:
+def _filters() -> str:
     """The radios and checkboxes, siblings of the table, so CSS alone filters its rows (the module's docstring)."""
-    radios = [f'<input type="radio" name="column" id="f-all" checked><label for="f-all">{text(ALL_COLUMNS)}</label>']
+    radios = [f'<input type="radio" name="column" id="f-all" checked><label for="f-all">{text(ALL_STORES)}</label>']
     radios += [f'<input type="radio" name="column" id="f-{column.key}"><label for="f-{column.key}">{text(column.name)}'
                "</label>" for column in COLUMNS]
-    checks = [f'<input type="checkbox" id="f-club"><label for="f-club">{text(CLUB_FILTER)}</label> '
-              f"<small>({text(club_label(marking_none))})</small>",
+    checks = [f'<input type="checkbox" id="f-club"><label for="f-club">{text(CLUB_FILTER)}</label>',
               f'<input type="checkbox" id="f-spend"><label for="f-spend">{text(SPEND_FILTER)}</label>']
     return "".join(radios) + "<br>" + "".join(checks)
 
@@ -277,12 +308,22 @@ def _row(row: FrontRow) -> str:
             f"<td>₪{money(row.gap.median30)}</td><td>{percent}</td><td>{conditions}</td></tr>")
 
 
-def _deals(rows: Sequence[FrontRow], marking_none: Sequence[str]) -> str:
-    heads = "".join(f'<th scope="col">{text(head)}' + (f"<small>{text(note)}</small>" if note else "") + "</th>"
-                    for head, note in FRONT_HEADS)
+def _rules(counts: Counts, marking_none: Sequence[str]) -> str:
+    """The fold-out under the table's note (the module's docstring): closed until opened, with no script."""
+    rules = "".join(f"<li>{text(rule)}</li>" for rule in FRONT_RULES)
+    club = " ".join(part for part in (CLUB_NOTE, marked_none(marking_none)) if part)
+    return (f"<details><summary>{text(RULES_TITLE)}</summary><p>{text(RULES_INTRO)}</p><ul>{rules}</ul>"
+            f"<p>{text(club)}</p><p>{text(SPEND_NOTE)}</p>"
+            f"<p>{text(promotions_line(counts.promotions, counts.products))}</p>"
+            f'<p><a href="method.html">{text(RULES_LINK)}</a></p></details>')
+
+
+def _deals(rows: Sequence[FrontRow], counts: Counts, marking_none: Sequence[str]) -> str:
+    heads = "".join(f'<th scope="col">{text(head)}</th>' for head in FRONT_HEADS)
     body = "".join(_row(row) for row in rows) or f'<tr><td colspan="{len(FRONT_HEADS)}">{text(NO_DEALS)}</td></tr>'
     table = f'<table class="front"><thead><tr>{heads}</tr></thead><tbody>{body}</tbody></table>'
-    return f'<section class="deals">{_filters(marking_none)}{_scroller(FRONT_TITLE, table)}</section>'
+    return (f'<section class="deals">{_filters()}{_scroller(FRONT_TITLE, table)}<p class="note">{text(TABLE_NOTE)}</p>'
+            f"{_rules(counts, marking_none)}</section>")
 
 
 def _story(row: FrontRow) -> str:
@@ -298,14 +339,14 @@ def _hiring() -> str:
 
 
 def render_front(rows: Iterable[FrontRow], counts: Counts, day: date, collected_by: str,
-                 club_marking_none: Sequence[str], browse: str | None = None) -> str:
+                 club_marking_none: Sequence[str], browse: str | None = None, *, ready: bool) -> str:
     """`index.html` (the module's docstring); `club_marking_none` the chains (slugs) whose files mark no restricted
-    promotion today, `browse` a browse page's path for the link to them, None when there is none."""
+    promotion today, `browse` a browse page's path for the link to them, None when there is none, `ready` whether a
+    product could pass the front test's days (`front_ready`)."""
     shown = ordered(rows)
-    parts = [f'<h1 id="deals">{text(FRONT_TITLE)}</h1>', f'<p class="lede">{text(RULE_LINE)}</p>',
-             f"<p>{text(FRONT_NOTE)}</p>",
-             f"<p>{text(count_line(counts.promotions, counts.products, counts.below))}</p>",
-             _search(browse), _deals(shown, club_marking_none)]
+    parts = [f'<h1 id="deals">{text(FRONT_TITLE)}</h1>',
+             f'<p class="lede">{text(lead_line(counts.products, counts.below, ready))}</p>',
+             _search(browse), _deals(shown, counts, club_marking_none)]
     if shown:
         parts.append(_story(shown[0]))
     parts.append(_hiring())

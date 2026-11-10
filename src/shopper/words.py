@@ -16,10 +16,15 @@ F10's sentence aside, of every odds word.
 
 Names. A column is named by `shopper.columns` ("Shufersal Deal"; a whole chain by its own name); a chain by
 `basket.words.CHAIN_NAMES`. F10's sentence names the column, P10's the chain, on each of its columns (question M (g)).
-The front page's rule and its count line say "in the same store format" and "in their store format", since a deal is
+The site's name is "Deal or No Deal" (question J, as the owner changed it on 2026-11-10), one constant, so a rename is
+one line; every page's header names the five chains under it (`CHAINS_LINE`) and then the day (`date_line`).
+
+The front page in plain words (the owner, 2026-11-10). The title says what a visitor gets; one lead line under it
+(`lead_line`) gives the site-day file's numbers, the products with a front row of the products on promotion today, or
+why there is no row; the rule in full is the fold-out's (`shopper.pages`), in the store format's words, since a deal is
 tested against its own column's listed prices and another format of the same chain may list the item lower (question
-O). The site's name, "Five chains, listed prices" (question J), stays true of nine columns: they are the formats of five
-chains.
+O). The fold-out's count of promotions (`promotions_line`) says they are carried by at least half of a store format's
+stores, as the build counts them (the final review's finding 4).
 
 Counts over days (P6). Every count over a window's days is out of its days with records: "of the N days with records
 before today", N the days of the window (which ends the day before the page's day) on which the column has a record and
@@ -104,8 +109,9 @@ listed across Shufersal Deal".
 
 Conditions (P5, question K and S3). A promotion's restrictions read from `ClubID` are K's phrase for each code present,
 joined in the order club, card, other ("club members only, and some customers only"); the programmes' names go beside
-them, as published, in the chain's own span (the product page's). The club-only filter's label names the chains whose
-files mark no restricted promotion that day ("from the chains' fields; Shufersal's files mark none").
+them, as published, in the chain's own span (the product page's). The front page's fold-out names the chains whose
+files mark no restricted promotion that day ("Today Shufersal's files mark none.", `marked_none`), after what the
+club-only filter hides.
 """
 from collections.abc import Mapping, Sequence
 from datetime import date, timedelta
@@ -124,12 +130,9 @@ from shopper.measures import (MIN_FRONT_DAYS, RECENT_DAYS, Change, Gap, Run, cha
                               promotion_days_of, promotion_points, runs_of, whole)
 from shopper.promotions import RESTRICTIONS
 
-SITE_NAME = "Five chains, listed prices"                                  # question J
-FRONT_TITLE = "Deals below their recent listed prices"                    # Q4
-# P7, Q3; "in the same store format": question O
-# "every listed price", the site's term for a column's median: the test compares the daily medians (deploy prep)
-FRONT_RULE = ("promotion prices lower than every listed price of the item in the same store format over the past 90 "
-              "days with records")
+SITE_NAME = "Deal or No Deal"                       # question J, as the owner changed it on 2026-11-10
+CHAINS_LINE = " · ".join(CHAIN_NAMES[slug] for slug in SLUGS)              # every page's header, under the name
+FRONT_TITLE = f"Deals below every price of the past {READ_DAYS} days"      # Q4, as the owner changed it on 2026-11-10
 GAP_HEADING = "The deal against its listed prices"                        # Q4
 HISTORY_HEADING = "How often it goes on promotion"                        # Q4
 RECORD_TITLE = "Track record"
@@ -175,8 +178,8 @@ def _plural(count: int, one: str, many: str) -> str:
 
 
 def date_line(day: date) -> str:
-    """The line under the site's name in every page's header."""
-    return f"from the chains' price and promotion files of {day:%A %-d %B %Y}"
+    """The last line of every page's header, under the site's name and the chains' line."""
+    return f"Prices of {day:%A %-d %B %Y}"
 
 
 def credit(day: date, collected_by: str) -> str:
@@ -250,24 +253,33 @@ def last_across(column: str, day: date) -> str:
     return f"last seen listed across {BY_KEY[column].name} on {_day(day)}"
 
 
-def count_line(promotions: int, products: int, below: int) -> str:
-    """The front page's count line (question A: the products and those below are barcodes; question O's ending). Its
-    promotions are those listed across a column today (`shopper.build`), so it says "across a store format" (the final
-    review's finding 4); those below are the products with a front row, so it names the front test's days of records
-    (deploy prep), and a product below every listed price with fewer is not one it counts; "with records", the rule
-    line's words, since the low is over the days with records alone (the owner, 2026-11-10)."""
-    return (f"Today the five chains list {promotions:,} {_plural(promotions, 'promotion', 'promotions')} across a "
-            f"store format on {products:,} {_plural(products, 'product', 'products')}; {below:,} of them "
-            f"{_plural(below, 'is', 'are')} below every listed price of the past {READ_DAYS} days with records in "
-            f"their store format, on {_plural(below, 'an item', 'items')} with at least {MIN_FRONT_DAYS} days of "
-            f"records there in the past {RECENT_DAYS}.")
+def lead_line(products: int, below: int, ready: bool) -> str:
+    """The front page's lead line (the owner's plain words, 2026-11-10; question A: the products and those below are
+    barcodes): `below` of `products`, the products with a front row of those on a promotion listed across a column
+    today (`shopper.build`). With no row: "None yet" while no column can have a product with MIN_FRONT_DAYS days of
+    records in the RECENT_DAYS (`ready` false: `shopper.pages.front_ready`), else "None today"."""
+    if below:
+        return (f"{below:,} of the {products:,} {_plural(products, 'product', 'products')} on promotion today "
+                f"{_plural(below, 'is', 'are')} below every price of the past {READ_DAYS} days.")
+    if not ready:
+        return f"None yet: a product needs {MIN_FRONT_DAYS} days of price history before it can be listed here."
+    return (f"None today: none of the {products:,} {_plural(products, 'product', 'products')} on promotion today is "
+            f"below every price of the past {READ_DAYS} days.")
 
 
-def club_label(marking_none: Sequence[str]) -> str:
-    """The club-only filter's label (question K), naming the chains (slugs) whose files mark no restricted promotion."""
+def promotions_line(promotions: int, products: int) -> str:
+    """The front page's fold-out count: the promotions listed across a column today, distinct by chain and id, and
+    their products (`shopper.build`), said as what they are, carried by at least half of a format's stores (the final
+    review's finding 4), never every promotion in the chains' files."""
+    return (f"Today the five chains list {promotions:,} {_plural(promotions, 'promotion', 'promotions')} carried by at "
+            f"least half of a store format's stores, on {products:,} {_plural(products, 'product', 'products')}.")
+
+
+def marked_none(marking_none: Sequence[str]) -> str:
+    """The fold-out's sentence after what the club-only filter hides (question K): the chains (slugs) whose files mark
+    no restricted promotion today, in slug order; "" when every chain's files mark one."""
     named = [f"{CHAIN_NAMES[slug]}'s" for slug in SLUGS if slug in set(marking_none)]
-    label = "from the chains' fields"
-    return f"{label}; {joined(named)} files mark none" if named else label
+    return f"Today {joined(named)} files mark none." if named else ""
 
 
 def targets(restrictions: Sequence[str]) -> str:

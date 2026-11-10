@@ -23,12 +23,12 @@ from shopper.columns import BY_KEY, COLUMNS
 from shopper.history import READ_DAYS, Window, window
 from shopper.measures import Run, days_since, gap, gaps, promoted_today, promotion_days, promotion_points, runs
 from shopper.promotions import RESTRICTIONS
-from shopper.words import (ALWAYS, ALWAYS_SENTENCE, AT_SOME_STORES, CREDIT_START, FINE_PRINT, FROM_FIELDS, FROM_TEXT,
-                           FRONT_RULE, FRONT_TITLE, GAP_HEADING, HIRING, HISTORY_HEADING, METHOD_TITLE, NEVER,
+from shopper.words import (ALWAYS, ALWAYS_SENTENCE, AT_SOME_STORES, CHAINS_LINE, CREDIT_START, FINE_PRINT, FROM_FIELDS,
+                           FROM_TEXT, FRONT_TITLE, GAP_HEADING, HIRING, HISTORY_HEADING, METHOD_TITLE, NEVER,
                            ODDS_WORDS, PRICE_NOT_READ, RECORD_TITLE, SITE_NAME, TARGET_PHRASES, across, as_listed,
-                           club_label, columns_tested, count_line, credit, date_line, date_range, formats_note,
-                           gap_sentences, history_sentences, last_across, no_odds_yet, price_history, starts_on,
-                           targets, unreadable, window_note)
+                           columns_tested, credit, date_line, date_range, formats_note, gap_sentences,
+                           history_sentences, last_across, lead_line, marked_none, no_odds_yet, price_history,
+                           promotions_line, starts_on, targets, unreadable, window_note)
 from shopper.words import (ACROSS_HEADING, BARCODE, BROWSE_LINK, CHANGES_SHOWN, NOT_LISTED, PER, buy, chart_key,
                            deal_price, listed_price, minimum_spend, percent_text, shown_below, stores_range)
 import shopper_random
@@ -118,8 +118,10 @@ def test_the_lists_are_the_designs_verbatim():
     k = _line(PLAN, "- (Owner, 2026-11-07: as recommended.) **K.")
     assert tuple(TARGET_PHRASES) == tuple(RESTRICTIONS.values())
     assert tuple(TARGET_PHRASES.values()) == tuple(_quoted(k)[:3])
-    # question J, still true of nine columns: they are the formats of five chains
-    assert f'Recommended working title: "{SITE_NAME}"' in PLAN and len(CHAIN_NAMES) == 5
+    # question J, as the owner changed it on 2026-11-10: one constant, so a rename is one line
+    assert SITE_NAME == "Deal or No Deal"
+    j = _line(PLAN, "- (Owner, 2026-11-07: as recommended.) **J.")
+    assert f'Changed by the owner on 2026-11-10: "{SITE_NAME}"' in j
     # question M (f): the hiring line, its LinkedIn link the README's
     assert HIRING == (("Built by Doron Reiffman", "https://www.linkedin.com/in/doronreiffman"),
                       ("How this is made", "method.html"), ("Track record", "record.html"),
@@ -135,7 +137,10 @@ def test_credit_date_line_and_f10_are_the_designs():
         "the files of 25 December 2026, collected by 11:48 Israel time. Listed prices and listed promotions, not a "
         "promise of what a till charges. Not shopping advice.")
     assert date_line(FRIDAY) == _found(r'the date line: "([^"]+)"')
-    assert date_line(date(2026, 11, 9)) == "from the chains' price and promotion files of Monday 9 November 2026"
+    assert date_line(date(2026, 11, 10)) == "Prices of Tuesday 10 November 2026"       # the owner, 2026-11-10
+    # the chains' line under the site's name, in slug order (the owner, 2026-11-10)
+    assert CHAINS_LINE == "Shufersal · Rami Levy · Osher Ad · Carrefour · Yochananof"
+    assert CHAINS_LINE == _found(r'the five chains\' names \("([^"]+)"\)')
     # F10, naming the column (the amendment's "Words": "No odds yet for Shufersal Deal.")
     f10 = _found(r'one fixed sentence: "(No odds yet for Shufersal\. [^"]+)"')
     assert '("No odds yet for Shufersal Deal.")' in DESIGN
@@ -155,57 +160,49 @@ def test_credit_date_line_and_f10_are_the_designs():
     assert unreadable("ramilevy") == "Promotions from Rami Levy's files could not be read today."
 
 
-def test_the_front_rule_and_count_line_name_the_store_format():
-    """Question O: a deal is tested against its own column's listed prices, so the words say "in the same store
-    format" and "in their store format"; another format of the same chain may list the item lower. Deploy prep: "every
-    listed price", the site's term for a column's median, since the test compares the deal with the daily medians, never
-    a single store's price (`shopper.measures.on_front`)."""
-    rule = _found(r'with the rule under it \("([^"]+)"')
-    assert FRONT_RULE == rule == ("promotion prices lower than every listed price of the item in the same store format "
-                                  "over the past 90 days with records")
-    assert f'"{FRONT_RULE}"' in PLAN
-    # the count line, as the design now quotes it (the final review's finding 4: "across a store format"; deploy prep:
-    # the front test's own days, so K is every product the line describes, and the owner's "with records", the rule
-    # line's own words, since the low is over the days with records alone)
-    assert count_line(1840, 6210, 410) == _found(r'a count line \("([^"]+)"') + "."
-    assert count_line(1840, 6210, 410).endswith(
-        "410 of them are below every listed price of the past 90 days with records in their store format, on items "
-        "with at least 20 days of records there in the past 30.")
+def test_the_front_title_and_lead_line_are_the_owners_plain_words():
+    """The owner's plain words (2026-11-10): the title says what a visitor gets, and one lead line under it gives the
+    site-day file's numbers, `below` of `products`, in one of three forms; the full rule is the fold-out's
+    (`shopper.pages`). The design quotes each form."""
+    assert FRONT_TITLE == "Deals below every price of the past 90 days"
+    assert lead_line(14_060, 37, True) == _found(r'one lead line under it: "([^"]+)"') == (
+        "37 of the 14,060 products on promotion today are below every price of the past 90 days.")
+    assert lead_line(1, 1, True) == "1 of the 1 product on promotion today is below every price of the past 90 days."
+    assert lead_line(1_234_567, 1_000, True) == ("1,000 of the 1,234,567 products on promotion today are below every "
+                                                 "price of the past 90 days.")
+    # no deal: before some store format has 20 days of records in the 30, none can be listed yet
+    assert lead_line(14_060, 0, False) == ("None yet: a product needs 20 days of price history before it can be listed "
+                                           "here.")
+    assert lead_line(14_060, 0, True) == ("None today: none of the 14,060 products on promotion today is below every "
+                                          "price of the past 90 days.")
+    assert lead_line(1, 0, True) == ("None today: none of the 1 product on promotion today is below every price of the "
+                                     "past 90 days.")
+    assert lead_line(14_060, 37, False) == lead_line(14_060, 37, True)    # a row says enough: its column is ready
+    for form in (lead_line(14_060, 0, False), lead_line(14_060, 0, True)):
+        assert f'"{form}"' in DESIGN
 
 
-def test_the_count_line_says_its_promotions_are_listed_across_a_store_format():
-    """The final review's finding 4: the count is of the promotions listed across a column today (`shopper.build`'s
-    count line), not every promotion in the chains' files, most of which run at some stores only; so the line says
-    what it counts, as every other sentence of the site does."""
-    for promotions in (1, 1840):
-        line = count_line(promotions, 6210, 410)
-        noun = "promotion" if promotions == 1 else "promotions"
-        assert f"list {promotions:,} {noun} across a store format on 6,210 products;" in line
+def test_the_promotions_line_says_what_it_counts():
+    """The final review's finding 4, kept in the fold-out's plain words: the count is of the promotions listed across a
+    column today (`shopper.build`), carried by at least half of a store format's stores, not every promotion in the
+    chains' files, most of which run at some stores only."""
+    assert promotions_line(1840, 6210) == _found(r'today\'s counts \("([^"]+)"\)') == (
+        "Today the five chains list 1,840 promotions carried by at least half of a store format's stores, on 6,210 "
+        "products.")
+    assert promotions_line(1, 1) == ("Today the five chains list 1 promotion carried by at least half of a store "
+                                     "format's stores, on 1 product.")
+    assert promotions_line(1_234_567, 21_973) == ("Today the five chains list 1,234,567 promotions carried by at least "
+                                                  "half of a store format's stores, on 21,973 products.")
 
 
-def test_count_line_with_thousands_separators():
-    assert count_line(1_234_567, 21_973, 1_000) == (
-        "Today the five chains list 1,234,567 promotions across a store format on 21,973 products; 1,000 of them are "
-        "below every listed price of the past 90 days with records in their store format, on items with at least 20 "
-        "days of records there in the past 30.")
-    assert count_line(1, 1, 1) == ("Today the five chains list 1 promotion across a store format on 1 product; 1 of "
-                                   "them is below every listed price of the past 90 days with records in their store "
-                                   "format, on an item with at least 20 days of records there in the past 30.")
-    assert count_line(2, 2, 0).endswith(" 0 of them are below every listed price of the past 90 days with records in "
-                                        "their store format, on items with at least 20 days of records there in the "
-                                        "past 30.")
-    assert count_line(0, 0, 0).startswith(
-        "Today the five chains list 0 promotions across a store format on 0 products; 0 of them are ")
-
-
-def test_club_label_names_the_chains_marking_none():
-    k = _line(PLAN, "- (Owner, 2026-11-07: as recommended.) **K.")
-    assert f'("{club_label(["shufersal"])}"' in k
-    assert club_label([]) == "from the chains' fields"
-    assert club_label(["yochananof", "shufersal"]) == ("from the chains' fields; Shufersal's and Yochananof's files "
-                                                      "mark none")
-    assert club_label(["osherad", "ramilevy", "carrefour"]) == ("from the chains' fields; Rami Levy's, Osher Ad's and "
-                                                                "Carrefour's files mark none")
+def test_marked_none_names_the_chains_marking_none():
+    """Question K's label, now a sentence of the fold-out: the chains whose files mark no restricted promotion today,
+    in slug order; nothing when every chain marks one."""
+    assert marked_none([]) == ""
+    assert marked_none(["shufersal"]) == "Today Shufersal's files mark none."
+    assert marked_none(["yochananof", "shufersal"]) == "Today Shufersal's and Yochananof's files mark none."
+    assert marked_none(["osherad", "ramilevy", "carrefour"]) == ("Today Rami Levy's, Osher Ad's and Carrefour's files "
+                                                                 "mark none.")
 
 
 def test_targets_join_every_code_present():
@@ -775,11 +772,12 @@ def _every_sentence() -> list[str]:
                  _history(listed, [back(n) for n in (30, 29, 28, 20, 19, 18)], unread=[back(21)], holes=[back(27)],
                           today=False)]
     slugs = list(CHAIN_NAMES)
-    return [SITE_NAME, FRONT_TITLE, FRONT_RULE, GAP_HEADING, HISTORY_HEADING, METHOD_TITLE, RECORD_TITLE,
+    return [SITE_NAME, CHAINS_LINE, FRONT_TITLE, GAP_HEADING, HISTORY_HEADING, METHOD_TITLE, RECORD_TITLE,
             ALWAYS_SENTENCE, FROM_FIELDS, FROM_TEXT, FINE_PRINT, PRICE_NOT_READ, AT_SOME_STORES,
             *TARGET_PHRASES.values(), *(name for name, _ in HIRING), formats_note(), columns_tested(9),
-            columns_tested(1), credit(FRIDAY, "12:03"), date_line(FRIDAY), count_line(1840, 6210, 410),
-            count_line(1, 1, 1), club_label([]), club_label(slugs), club_label(["shufersal"]),
+            columns_tested(1), credit(FRIDAY, "12:03"), date_line(FRIDAY), lead_line(6210, 410, True),
+            lead_line(1, 1, True), lead_line(6210, 0, False), lead_line(6210, 0, True), promotions_line(1840, 6210),
+            promotions_line(1, 1), marked_none(slugs), marked_none(["shufersal"]),
             targets(list(TARGET_PHRASES)), targets(["club", "other"]), starts_on(FRIDAY),
             window_note(Window(23, FRIDAY, (), True)),
             *(text for column in COLUMNS for text in (no_odds_yet(column.key), across(column.key),
