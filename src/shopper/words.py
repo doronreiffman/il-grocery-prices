@@ -24,9 +24,10 @@ chains.
 Counts over days (P6). Every count over a window's days is out of its days with records: "of the N days with records
 before today", N the days of the window (which ends the day before the page's day) on which the column has a record and
 the product a listed price; a short window (fewer than 20 of 30, or 60 of 90) says instead "of the 23 days of records
-since 1 November 2026 before today"; P7's lows say "of them", "of those 85" or "of the 90 days with records".
-P7 and P8 count the 90-day window's days the same way, so a section never shows two numbers for its days with records:
-the days whose promotions could not be read are said beside the count, never taken out of it (Task 9's review,
+since 1 November 2026 before today", and one day of records says that day after "before today": "the one day of records
+before today (19 November 2026)", never "since" it (q31); P7's lows say "of them", "of those 85" or "of the 90 days with
+records". P7 and P8 count the 90-day window's days the same way, so a section never shows two numbers for its days with
+records: the days whose promotions could not be read are said beside the count, never taken out of it (Task 9's review,
 ruling 1).
 
 What the words state (Task 15's review, fix round 1): never more than the figures shown and the records support. Every
@@ -38,32 +39,34 @@ a gap in the records beside it (a hole, a day the product is not listed, a day w
 bound, wherever it sits.
 
 P7, three sentences, no verdict word. The deal against the 30-day median: "Deal price ₪7.90: ₪4.00, 34%, below the
-30-day median listed price of ₪11.90 (of the 30 days with records before today).", the amount and the whole percent
-(half up) worked from the median and the deal as shown ("under 1%" for a gap above ₪0 that rounds to 0%: deploy prep),
-or "not below" when the shown deal is not under the shown median. The lows, each over the days of records its window
-holds, by the change sentence's window kinds (P6, deploy prep), said once when both windows hold the same days, and the
-days at or below the deal, counted on the shown figures: "The lowest listed price was ₪11.90 in the 30 days before today
-and ₪10.90 in the 90 days before today; listed at ₪7.90 or less on 0 of the 90 days with records.", or at launch "The
-lowest listed price over the 15 days of records before today (the first on 1 November 2026) was ₪10.00; listed at
-₪7.90 or less on 0 of them.", or with a short 90-day window beside a full 30-day one "… in the 30 days before today and
-₪9.00 over the 39 days of records before today (the first on 12 October 2026); listed at ₪7.90 or less on 0 of those
-39."; one day of records: "The listed price on the one day of records before today (5 November 2026) was ₪10.00, above
-₪7.90." ("at ₪7.90" or "below ₪7.90" when it was, as shown), a 30-day window of one day beside more in the 90 "on the
-one day of records before today (19 November 2026)", and a short window's note "one day of records since 19 November
-2026", never "1 day". The changes: a change is one in the shown figures (a median of ₪1.445 moving to ₪1.45 is none:
-both show ₪1.45); "The listed price rose from ₪10.90 to ₪11.90 on 28 October 2026." between two consecutive days with
-records; across a gap in the records the change lies somewhere between the two days, so both are given ("rose from
+30-day median listed price of ₪11.90 (of the 30 days with records before today).", with one day of records "(of the one
+day of records before today, 19 November 2026)", the date after a comma inside the brackets (q31), the amount and the
+whole percent (half up) worked from the median and the deal as shown ("under 1%" for a gap above ₪0 that rounds to 0%:
+deploy prep), or "not below" when the shown deal is not under the shown median. The lows, each over the days of records
+its window holds, by the change sentence's window kinds (P6, deploy prep), said once when both windows hold the same
+days, and the days at or below the deal, counted on the shown figures: "The lowest listed price was ₪11.90 in the 30
+days before today and ₪10.90 in the 90 days before today; listed at ₪7.90 or less on 0 of the 90 days with records.", or
+at launch "The lowest listed price over the 15 days of records before today (the first on 1 November 2026) was ₪10.00;
+listed at ₪7.90 or less on 0 of them.", or with a short 90-day window beside a full 30-day one "… in the 30 days before
+today and ₪9.00 over the 39 days of records before today (the first on 12 October 2026); listed at ₪7.90 or less on 0 of
+those 39."; one day of records: "The listed price on the one day of records before today (5 November 2026) was ₪10.00,
+above ₪7.90." ("below ₪7.90" when it was, as shown, and "the same as the deal price" at it: q31), a 30-day window of one
+day beside more in the 90 "on the one day of records before today (19 November 2026)"; a short window's note
+(`window_note`) spells one day "one day of records since 19 November 2026", never "1 day", though a count over one day
+says it as that day (q31). The changes: a change is one in the shown figures (a median of ₪1.445 moving to ₪1.45 is
+none: both show ₪1.45); "The listed price rose from ₪10.90 to ₪11.90 on 28 October 2026." between two consecutive days
+with records; across a gap in the records the change lies somewhere between the two days, so both are given ("rose from
 ₪10.90 (15 November 2026) to ₪11.90 (17 November 2026)"), never one date the files cannot pin; several in day order,
-joined by "then". With none:
-"The listed price did not change in the 30 days before today." when each of the 30 has a record, else "did not change on
-the 25 days with records of the 30 before today" (or a short window's words), since the files say nothing of the other
-days.
+joined by "then". With none: "The listed price did not change in the 30 days before today." when each of the 30 has a
+record, else "did not change on the 25 days with records of the 30 before today" (or a short window's words), since the
+files say nothing of the other days; over one day of records nothing is said, since one day has nothing to compare
+(q31), though a change from a record before the 30 to its one day is.
 
 The listed-price history on a product page (`price_history`, the plan's Task 16): P7's change sentence over the 90-day
 window, every change of the window (`shopper.measures.changes`) on the same rules: the shown figures, both days across
 a gap in the records. With none: "The listed price did not change in the 90 days before today." when each of the 90
 has a record, else "did not change on the 85 days with records of the 90 before today" (or a short window's words);
-with no day of records in the 90, nothing.
+with no day of records in the 90, or one (q31), nothing.
 
 Both change lists (P7's and the history's) show at most CHANGES_SHOWN (5) changes, the newest, in day order and in
 the same words (Task 16, round 2: a page of nine columns whose prices change daily stays under 60 KB). When more were
@@ -74,19 +77,23 @@ P8, from the 90-day window (`shopper.measures`), naming the column as the amendm
 by fewer than half the column's stores is never denied: "On a promotion listed across Shufersal Deal on 12 of the 87
 days with records before today, as listed in the morning's files." ("(promotions could not be read on 2)" before the
 comma when some were not read), or "No promotion listed across Shufersal Deal in the 87 days with records before today."
-when none was seen and every day was read; "Runs seen before today: 3 to 9 November 2026; 24 to 30 November 2026."
-(three of the 90 days not read, one of them outside the runs: "Runs before today:" only when every day outside them was
-read); "Days between runs: 14."; "The last run ended on 30 November 2026, 6 days ago." A run's start is pinned only when
-the day before it is a day with records whose promotions were read, and its end only when the day after it is (or is
-today, read): otherwise the start is "from 22 August 2026 or earlier", the end "to 19 November 2026 or later" and the
-days since its end "at most 3 days ago". A day of the window the files say nothing of (a hole, a day the product is not
-listed, a day whose promotions were not read) could hold a one-day run nobody saw (fix round 2): one inside the days
-between two runs makes them "at most 7"; one after the last run, or a today the files say nothing of, makes it "the last
-run seen"; one anywhere outside the runs makes the list "Runs seen before today:". Such a day inside a run hides none. A
-run reaching yesterday when today's files list the product on a wide promotion is not over: the section says so first
-("On a promotion listed across Shufersal Deal today, as listed in the morning's files.") and says no end. Nor is an end
-said when no day after the run was read (today's files saying nothing either way): the run may still be on. With no day
-of records in the 90 there is no history to count.
+when none was seen and every day was read. One day of records is said as that day (q31): "On a promotion listed across
+Shufersal Deal on the one day of records before today (19 November 2026), as listed in the morning's files.", "No
+promotion listed across Shufersal Deal on the one day of records before today (19 November 2026).", or, its promotions
+not read, "Promotions could not be read on the one day of records before today (19 November 2026).". "Runs seen before
+today: 3 to 9 November 2026; 24 to 30 November 2026." (three of the 90 days not read, one of them outside the runs:
+"Runs before today:" only when every day outside them was read); "Days between runs: 14."; "The last run ended on 30
+November 2026, 6 days ago." A run's start is pinned only when the day before it is a day with records whose promotions
+were read, and its end only when the day after it is (or is today, read): otherwise the start is "from 22 August 2026 or
+earlier", the end "to 19 November 2026 or later" and the days since its end "at most 3 days ago". A day of the window
+the files say nothing of (a hole, a day the product is not listed, a day whose promotions were not read) could hold a
+one-day run nobody saw (fix round 2): one inside the days between two runs makes them "at most 7"; one after the last
+run, or a today the files say nothing of, makes it "the last run seen"; one anywhere outside the runs makes the list
+"Runs seen before today:". Such a day inside a run hides none. A run reaching yesterday when today's files list the
+product on a wide promotion is not over: the section says so first ("On a promotion listed across Shufersal Deal today,
+as listed in the morning's files.") and says no end. Nor is an end said when no day after the run was read (today's
+files saying nothing either way): the run may still be on. With no day of records in the 90 there is no history to
+count.
 
 The product page's labels (Task 16): the design's and the brief's phrases put together, never a claim of their own.
 Today's listed price carries "before promotions" and "as listed in the chain's price files" (`listed_price`); a deal's
@@ -274,7 +281,8 @@ def targets(restrictions: Sequence[str]) -> str:
 
 def window_note(window: Window) -> str:
     """A short window's days (P6): "23 days of records since 1 November 2026"; one day spelled "one day of records
-    since 19 November 2026", as P7's one-day form spells it (deploy prep)."""
+    since 19 November 2026", never "1 day" (deploy prep), though a count over one day says it as that day (`_count`,
+    q31)."""
     if window.since is None:
         return "no days of records"
     count = "one day" if window.days == 1 else f"{window.days} days"
@@ -288,8 +296,14 @@ def _the_days(window: Window) -> str:
     return f"the {window.days} {_plural(window.days, 'day', 'days')} with records"
 
 
-def _count(window: Window) -> str:
-    """`_the_days`, said to be before today: P6's window ends the day before the page's day."""
+def _count(window: Window, inside: bool = False) -> str:
+    """`_the_days`, said to be before today: P6's window ends the day before the page's day. One day of records is said
+    as that day, its date after "before today" (q31): "the one day of records before today (19 November 2026)", or
+    "the one day of records before today, 19 November 2026" `inside` a sentence's own brackets, so none nest; never
+    "since 19 November 2026 before today"."""
+    if window.days == 1:                                            # q31: one date form for one day
+        when = f", {_day(window.since)}" if inside else f" ({_day(window.since)})"
+        return f"the one day of records before today{when}"
     return f"{_the_days(window)} before today"
 
 
@@ -381,13 +395,14 @@ def _unchanged(recent: Window, length: int) -> str:
     return f"The listed price did not change {_window_phrase(recent, length)}."
 
 
-def _changes_sentence(found: Sequence[Change], recent: Window, length: int) -> str:
+def _changes_sentence(found: Sequence[Change], recent: Window, length: int) -> str | None:
     """The changes the shown figures show, the newest CHANGES_SHOWN in day order, joined by "then", with a tail when
     more were seen; or that there was none over `recent`, a window of `length` days (P7's third sentence, and the
-    product page's history over the 90)."""
+    product page's history over the 90); None when there was none over one day of records, which has nothing to
+    compare (q31)."""
     stated = [change for change in found if _shown(change.before) != _shown(change.after)]
     if not stated:
-        return _unchanged(recent, length)
+        return None if recent.days == 1 else _unchanged(recent, length)
     tail = ""
     if len(stated) > CHANGES_SHOWN:
         tail = f" (the last {CHANGES_SHOWN} of {len(stated)} changes seen {_window_phrase(recent, length)})"
@@ -396,7 +411,7 @@ def _changes_sentence(found: Sequence[Change], recent: Window, length: int) -> s
 
 def _one_day(window: Window) -> str:
     """A window of one day of records, said as that day: "on the one day of records before today (5 November 2026)"."""
-    return f"on the one day of records before today ({_day(window.since)})"
+    return f"on {_count(window)}"
 
 
 def _over(window: Window, length: int) -> str:
@@ -418,12 +433,13 @@ def _lows(gap: Gap, deal: Decimal) -> str:
     hold the same days, and on how many of the 90's days with records the item was listed at or below the deal, both
     as shown (P6's "of the N days with records": "of them", "of those 45", or "of the 90 days with records" for a full
     window); one day of records is said as that day's price, never "0 of the 1 day", and above, at or below the deal,
-    the true one of the three on the figures shown (deploy prep)."""
+    the true one of the three on the figures shown (deploy prep), "at" as "the same as the deal price" (q31)."""
     long = gap.window90
     if long.days == 1:                                  # the 30's one day too: a gap needs a day of records in the 30
         listed = _shown(gap.low90)
         where = "above" if listed > deal else "at" if listed == deal else "below"
-        return f"The listed price {_one_day(long)} was ₪{listed}, {where} ₪{deal}."
+        against = "the same as the deal price" if where == "at" else f"{where} ₪{deal}"     # q31: names the deal
+        return f"The listed price {_one_day(long)} was ₪{listed}, {against}."
     at_or_below = sum(1 for listed in long.listed if _shown(listed) <= deal)
     if gap.window30.days == long.days:                  # the same days: every one of the 90's is in the 30
         return (f"The lowest listed price {_over(long, READ_DAYS)} was ₪{money(gap.low90)}; listed at ₪{deal} or "
@@ -433,17 +449,19 @@ def _lows(gap: Gap, deal: Decimal) -> str:
             f"₪{money(gap.low90)} {_over(long, READ_DAYS)}; listed at ₪{deal} or less on {at_or_below} {of}.")
 
 
-def gap_sentences(gap: Gap) -> tuple[str, str, str]:
-    """P7's three sentences for a deal's gap (`shopper.measures.gap`; the module's docstring)."""
+def gap_sentences(gap: Gap) -> tuple[str, ...]:
+    """P7's three sentences for a deal's gap (`shopper.measures.gap`; the module's docstring), or its first two when the
+    30 days hold one day of records and no change (q31)."""
     deal = to_agora(gap.deal)
-    first = f"Deal price ₪{deal}: {_against_median(gap)} (of {_count(gap.window30)})."
-    return first, _lows(gap, deal), _changes_sentence(gap.changes, gap.window30, RECENT_DAYS)
+    said = (f"Deal price ₪{deal}: {_against_median(gap)} (of {_count(gap.window30, inside=True)}).", _lows(gap, deal))
+    changed = _changes_sentence(gap.changes, gap.window30, RECENT_DAYS)
+    return said if changed is None else (*said, changed)
 
 
 def price_history(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: date) -> str | None:
     """The product page's listed-price history as text: P7's change sentence over the 90-day window (every change of
     the window, `shopper.measures.changes`), or that there was none on its days; None with no day of records in the
-    90."""
+    90, or one, which has nothing to compare (q31)."""
     long = window(pair, column_days, day, READ_DAYS)
     if not long.days:
         return None
@@ -472,7 +490,14 @@ def history_sentences(pair: Pair, column_days: Mapping[tuple[str, date], ColumnD
     on, read = promotion_days_of(points)
     unread = records.days - read
     found = runs_of(points)
-    if found or unread:
+    if records.days == 1:                   # q31: one day of records said as that day, never "1 of the one day"
+        if unread:
+            count = f"Promotions could not be read on {_count(records)}."
+        elif on:
+            count = f"On {across} on {_count(records)}, {MORNING}."
+        else:
+            count = f"No promotion listed across {name} on {_count(records)}."
+    elif found or unread:
         note = f" (promotions could not be read on {unread})" if unread else ""
         count = f"On {across} on {on} of {_count(records)}{note}, {MORNING}."
     else:

@@ -305,8 +305,8 @@ def test_p7_and_p8_with_a_short_window():
         "Run seen before today: 18 to 19 November 2026.",
         "The last run ended on 19 November 2026, 1 day ago.")
     one = gap_sentences(_gap("7.90", {back(1): "10.00"}))
-    assert one[0].endswith("(of the one day of records since 19 November 2026 before today).")
-    assert one[2] == "The listed price did not change on the one day of records since 19 November 2026 before today."
+    assert one[0].endswith("(of the one day of records before today, 19 November 2026).")       # q31
+    assert len(one) == 2                                  # q31: one day of records has nothing to compare
     # 25 of 30 days with records is no short 30-day window, but every day of the 30 is not known
     holed = gap_sentences(_gap("7.90", listed_from(1, 30, "10.00"), holes=[back(n) for n in range(1, 6)]))
     assert holed[0].endswith("(of the 25 days with records before today).")
@@ -331,12 +331,13 @@ def test_the_lows_say_the_days_of_records_each_is_over():
     # (deploy prep: both figures are shown, so "at or below" claimed less than they show)
     assert gap_sentences(_gap("7.90", {back(1): "10.00"}))[1] == (
         "The listed price on the one day of records before today (19 November 2026) was ₪10.00, above ₪7.90.")
-    assert gap_sentences(_gap("7.90", {back(1): "7.90"}))[1] == (
-        "The listed price on the one day of records before today (19 November 2026) was ₪7.90, at ₪7.90.")
+    assert gap_sentences(_gap("7.90", {back(1): "7.90"}))[1] == (                            # q31: names the deal
+        "The listed price on the one day of records before today (19 November 2026) was ₪7.90, the same as the deal "
+        "price.")
     assert gap_sentences(_gap("7.90", {back(1): "7.50"}))[1] == (
         "The listed price on the one day of records before today (19 November 2026) was ₪7.50, below ₪7.90.")
     # a listed ₪7.895 is shown ₪7.90: at the deal as shown, though below it exactly
-    assert gap_sentences(_gap("7.90", {back(1): "7.895"}))[1].endswith("was ₪7.90, at ₪7.90.")
+    assert gap_sentences(_gap("7.90", {back(1): "7.895"}))[1].endswith("was ₪7.90, the same as the deal price.")
     # a deal of 3 for ₪10 (₪3.333…) is shown ₪3.33: a listed ₪3.335, shown ₪3.34, is above it as shown
     assert gap_sentences(_gap(Fraction(10, 3), {back(1): "3.335"}))[1].endswith("was ₪3.34, above ₪3.33.")
     assert gap_sentences(_gap("7.90", {back(2): "10.00"}))[1] == (
@@ -371,14 +372,67 @@ def test_one_day_of_records_in_the_30_beside_more_in_the_90():
     found = gap_sentences(_gap("7.90", listed))
     # P7's first sentence spells the one day the same way (deploy prep); the change from 20 October lies inside the 30
     assert found[0] == ("Deal price ₪7.90: ₪2.10, 21%, below the 30-day median listed price of ₪10.00 (of the one day "
-                        "of records since 19 November 2026 before today).")
+                        "of records before today, 19 November 2026).")                        # q31
     assert found[2] == "The listed price rose from ₪9.00 (20 October 2026) to ₪10.00 (19 November 2026)."
-    # and P8's count over a 90-day window of one day
+    # and P8's count over a 90-day window of one day (q31: said as that day, never "1 of the one day")
     assert _history({back(1): "10.00"}, promoted=[back(1)], today=False)[0] == (
-        f"On {ACROSS} on 1 of the one day of records since 19 November 2026 before today, {MORNING}.")
+        f"On {ACROSS} on the one day of records before today (19 November 2026), {MORNING}.")
     assert found[1] == ("The lowest listed price was ₪10.00 on the one day of records before today (19 November 2026) "
                         "and ₪9.00 over the 41 days of records before today (the first on 11 September 2026); listed at "
                         "₪7.90 or less on 0 of those 41.")
+
+
+def test_one_day_of_records_is_said_as_that_day():
+    """q31 (the owner, 2026-11-10): a window of one day of records is said as that day, its date in brackets after
+    "before today", never "since 19 November 2026 … before today" nor "1 of the one day"; inside P7's first sentence's
+    own brackets the date follows a comma, so no brackets nest. The lows' "at" form names the deal. With one day of
+    records there is nothing to compare, so no sentence says the listed price did not change on it, in P7 or in the
+    history over the 90; a change from a record before the 30 is still said (the test above). Two days keep their
+    words."""
+    one = {back(1): "10.00"}
+    # P8: on promotion, not on promotion, and its promotions not read, on the one day
+    assert _history(one, promoted=[back(1)], today=False)[0] == (
+        f"On {ACROSS} on the one day of records before today (19 November 2026), {MORNING}.")
+    assert _history(one, today=False) == (
+        "No promotion listed across Shufersal Deal on the one day of records before today (19 November 2026).",)
+    assert _history(one, unread=[back(1)], today=False) == (
+        "Promotions could not be read on the one day of records before today (19 November 2026).",)
+    assert _history(one, today=True) == (
+        f"On {ACROSS} today, {MORNING}.",
+        "No promotion listed across Shufersal Deal on the one day of records before today (19 November 2026).")
+    # P7: the median's one day inside its brackets, the lows, and no change sentence
+    assert gap_sentences(_gap("7.90", one)) == (
+        "Deal price ₪7.90: ₪2.10, 21%, below the 30-day median listed price of ₪10.00 (of the one day of records "
+        "before today, 19 November 2026).",
+        "The listed price on the one day of records before today (19 November 2026) was ₪10.00, above ₪7.90.")
+    assert gap_sentences(_gap("10.00", one))[1] == (
+        "The listed price on the one day of records before today (19 November 2026) was ₪10.00, the same as the deal "
+        "price.")
+    # the 30's one day beside more in the 90 at the same price: no change, and nothing said of it
+    older = gap_sentences(_gap("7.90", {**one, **listed_from(31, 70, "10.00")}))
+    assert len(older) == 2 and older[0].endswith("(of the one day of records before today, 19 November 2026).")
+    # the history over a 90-day window of one day says nothing: there is nothing to compare
+    assert _price_history(one) is None
+    said = [*gap_sentences(_gap("7.90", one)), *older, *_history(one, promoted=[back(1)], today=False),
+            *_history(one, today=False), *_history(one, unread=[back(1)], today=False)]
+    assert not [line for line in said if "since" in line or " of the one day" in line or "did not change" in line]
+    # two days of records keep their words
+    two = {back(2): "10.00", back(1): "10.00"}
+    assert gap_sentences(_gap("7.90", two)) == (
+        "Deal price ₪7.90: ₪2.10, 21%, below the 30-day median listed price of ₪10.00 (of the 2 days of records since "
+        "18 November 2026 before today).",
+        "The lowest listed price over the 2 days of records before today (the first on 18 November 2026) was ₪10.00; "
+        "listed at ₪7.90 or less on 0 of them.",
+        "The listed price did not change on the 2 days of records since 18 November 2026 before today.")
+    assert _price_history(two) == (
+        "The listed price did not change on the 2 days of records since 18 November 2026 before today.")
+    assert _history(two, promoted=[back(1)], today=False)[0] == (
+        f"On {ACROSS} on 1 of the 2 days of records since 18 November 2026 before today, {MORNING}.")
+    assert _history(two, today=False) == (
+        "No promotion listed across Shufersal Deal in the 2 days of records since 18 November 2026 before today.",)
+    assert _history(two, unread=[back(1)], today=False) == (
+        f"On {ACROSS} on 0 of the 2 days of records since 18 November 2026 before today (promotions could not be read "
+        f"on 1), {MORNING}.",)
 
 
 def test_p7_changes_in_order_and_across_a_hole():

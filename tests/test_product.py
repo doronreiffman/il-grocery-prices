@@ -480,6 +480,22 @@ def test_p7_for_each_valid_wide_deal():
     assert "Deal price ₪6.00:" not in body
 
 
+def test_one_day_of_records_shows_no_change_sentence():
+    """q31: with one day of records in the 30 and no change, each deal shows its two sentences and no change paragraph
+    follows, and the history shows no listed-price text: one day has nothing to compare (`gap_sentences`,
+    `price_history`)."""
+    deals = [_struct("7.90"), _struct("8.50", promotion_id="2")]
+    pair = _pair(DEAL, {back(1): "10.00", DAY: "10.00"}, promotions=deals)
+    body = _sections(_render(_covered({DEAL: "שם"}), {DEAL: pair}))[DEAL]
+    p7 = body[body.index(GAP_HEADING):body.index(HISTORY_HEADING)]
+    said = [gap_sentences(gap(Fraction(price), pair, _days(), DAY)) for price in ("7.90", "8.50")]
+    assert [len(each) for each in said] == [2, 2]
+    assert re.findall(r"<p>(.*?)</p>", p7) == [" ".join(said[0]), " ".join(said[1])]
+    assert price_history(pair, _days(), DAY) is None
+    assert "did not change" not in body and "<p></p>" not in body
+    assert "on the one day of records before today (19 November 2026)" in body[body.index(HISTORY_HEADING):]
+
+
 def test_a_promotion_listed_to_start_soon_says_so():
     """F2, Call 22: an item with a wide promotion listed to start within 14 days (the items row's `next_start`)."""
     start = DAY + timedelta(days=9)

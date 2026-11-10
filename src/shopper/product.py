@@ -33,8 +33,8 @@ its column and its chain (`data-column`, `data-chain`), headed with the column's
 - `starts_on` when the items row lists a wide promotion starting in the next 14 days (F2, Call 22); none on a hole
   morning, whose few files cannot tell whether a promotion is listed across the column (deploy prep).
 - "The deal against its listed prices": P7's first two sentences for each valid deal of a wide promotion today, then
-  its third, the pair's changes in the past 30 days, once, since it is the same for every deal (Task 16, round 2); none
-  on a hole morning.
+  its third, the pair's changes in the past 30 days, once, since it is the same for every deal (Task 16, round 2), when
+  there is one (none for one day of records and no change, q31); none on a hole morning.
 - "How often it goes on promotion": P8's sentences, F10's sentence naming the column (the gate is closed in step one:
   an open gate stops the page, since step one has no odds line), the listed-price history as text
   (`price_history`, the changes of the 90-day window, the newest five with the count of the rest) and a chart of it.
@@ -247,7 +247,7 @@ def _section(key: str, covered: Covered, pair: Pair | None, column_days: Mapping
                 measured.append(gap_sentences(found))
     if measured:      # each deal's first two sentences, then the pair's changes once: the same for every deal
         parts += [f"<h3>{text(GAP_HEADING)}</h3>", *(f"<p>{text(' '.join(said[:2]))}</p>" for said in measured),
-                  f"<p>{text(measured[0][2])}</p>"]
+                  *(f"<p>{text(change)}</p>" for change in measured[0][2:])]     # none on one day of records (q31)
     parts.append(f"<h3>{text(HISTORY_HEADING)}</h3>")
     history = () if pair is None else history_sentences(pair, column_days, day)
     if history:
