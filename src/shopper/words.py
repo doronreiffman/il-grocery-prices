@@ -40,11 +40,14 @@ P7, three sentences, no verdict word. The deal against the 30-day median: "Deal 
 30-day median listed price of ₪11.90 (of the 30 days with records before today).", the amount and the whole percent
 (half up) worked from the median and the deal as shown ("under 1%" for a gap above ₪0 that rounds to 0%: deploy prep),
 or "not below" when the shown deal is not under the shown median. The lows, each over the days of records its window
-holds, in the change sentence's window words (P6, deploy prep), said once when both windows hold the same days, and the
+holds, by the change sentence's window kinds (P6, deploy prep), said once when both windows hold the same days, and the
 days at or below the deal, counted on the shown figures: "The lowest listed price was ₪11.90 in the 30 days before today
 and ₪10.90 in the 90 days before today; listed at ₪7.90 or less on 0 of the 90 days with records.", or at launch "The
-lowest listed price was ₪10.00 on the 15 days of records since 1 November 2026 before today; listed at ₪7.90 or less
-on 0 of the 15 days of records." The
+lowest listed price over the 15 days of records before today (the first on 1 November 2026) was ₪10.00; listed at
+₪7.90 or less on 0 of them.", or with a short 90-day window beside a full 30-day one "… in the 30 days before today and
+₪9.00 over the 39 days of records before today (the first on 12 October 2026); listed at ₪7.90 or less on 0 of those
+39."; one day of records: "The listed price on the one day of records before today (5 November 2026) was ₪10.00, above
+₪7.90." The
 changes: a change is one in the shown figures (a median of ₪1.445 moving to ₪1.45 is none: both show ₪1.45); "The listed
 price rose from ₪10.90 to ₪11.90 on 28 October 2026." between two consecutive days with records; across a gap in the
 records the change lies somewhere between the two days, so both are given ("rose from ₪10.90 (15 November 2026) to
@@ -384,18 +387,41 @@ def _changes_sentence(found: Sequence[Change], recent: Window, length: int) -> s
     return f"The listed price {', then '.join(_change(change) for change in stated[-CHANGES_SHOWN:])}{tail}."
 
 
+def _over(window: Window, length: int) -> str:
+    """The days a low is over (P7's second sentence), by the window kinds of the change sentence (P6): all of them when
+    each has a record; else "over" its days with records, never "on", which could read as the price on every one of
+    them, and a short window's first day after its count (the owner, 2026-11-10)."""
+    if window.days == length:
+        return _window_phrase(window, length)                       # "in the 30 days before today"
+    if window.short:
+        return f"over the {window.days} days of records before today (the first on {_day(window.since)})"
+    return f"over the {window.days} days with records of the {length} before today"
+
+
+def _lows(gap: Gap, deal: Decimal) -> str:
+    """P7's second sentence: the lowest listed price over each window's days of records, said once when both windows
+    hold the same days, and on how many of the 90's days with records the item was listed at or below the deal, both
+    as shown (P6's "of the N days with records": "of them", "of those 45", or "of the 90 days with records" for a full
+    window); one day of records is said as that day's price, never "0 of the 1 day"."""
+    long = gap.window90
+    at_or_below = sum(1 for listed in long.listed if _shown(listed) <= deal)
+    if long.days == 1:                                  # the 30's one day too: a gap needs a day of records in the 30
+        where = "at or below" if at_or_below else "above"
+        return (f"The listed price on the one day of records before today ({_day(long.since)}) was "
+                f"₪{money(gap.low90)}, {where} ₪{deal}.")
+    if gap.window30.days == long.days:                  # the same days: every one of the 90's is in the 30
+        return (f"The lowest listed price {_over(long, READ_DAYS)} was ₪{money(gap.low90)}; listed at ₪{deal} or "
+                f"less on {at_or_below} of them.")
+    of = f"of the {READ_DAYS} days with records" if long.days == READ_DAYS else f"of those {long.days}"
+    return (f"The lowest listed price was ₪{money(gap.low30)} {_over(gap.window30, RECENT_DAYS)} and "
+            f"₪{money(gap.low90)} {_over(long, READ_DAYS)}; listed at ₪{deal} or less on {at_or_below} {of}.")
+
+
 def gap_sentences(gap: Gap) -> tuple[str, str, str]:
     """P7's three sentences for a deal's gap (`shopper.measures.gap`; the module's docstring)."""
     deal = to_agora(gap.deal)
     first = f"Deal price ₪{deal}: {_against_median(gap)} (of {_count(gap.window30)})."
-    at_or_below = sum(1 for listed in gap.window90.listed if _shown(listed) <= deal)
-    lows = f"₪{money(gap.low90)} {_window_phrase(gap.window90, READ_DAYS)}"
-    if gap.window30.days != gap.window90.days:          # else the same days: every one of the 90's is in the 30
-        lows = f"₪{money(gap.low30)} {_window_phrase(gap.window30, RECENT_DAYS)} and {lows}"
-    count = gap.window90.days                          # P6's "of the N days with records", or "of records" if short
-    days = f"{count} {_plural(count, 'day', 'days')} {'of' if gap.window90.short else 'with'} records"
-    second = f"The lowest listed price was {lows}; listed at ₪{deal} or less on {at_or_below} of the {days}."
-    return first, second, _changes_sentence(gap.changes, gap.window30, RECENT_DAYS)
+    return first, _lows(gap, deal), _changes_sentence(gap.changes, gap.window30, RECENT_DAYS)
 
 
 def price_history(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: date) -> str | None:
