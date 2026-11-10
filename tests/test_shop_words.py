@@ -213,8 +213,10 @@ def test_column_words():
         as_listed([])
     assert across("shufersal-deal") == "listed across Shufersal Deal"   # the design's "listed chain-wide", by column
     assert across("ramilevy") == "listed across Rami Levy"
-    assert last_across("carrefour-city", date(2026, 11, 3)) == "last listed across Carrefour City on 3 November 2026"
-    assert last_across("yochananof", date(2027, 1, 1)) == "last listed across Yochananof on 1 January 2027"
+    # deploy prep: "seen", since the registry knows record days only, and a hole day after it could have been across
+    assert last_across("carrefour-city", date(2026, 11, 3)) == (
+        "last seen listed across Carrefour City on 3 November 2026")
+    assert last_across("yochananof", date(2027, 1, 1)) == "last seen listed across Yochananof on 1 January 2027"
 
 
 def test_the_short_sentences():

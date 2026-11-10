@@ -226,8 +226,9 @@ def across(column: str) -> str:
 
 
 def last_across(column: str, day: date) -> str:
-    """When a product was last listed across a column (Call 10)."""
-    return f"last listed across {BY_KEY[column].name} on {_day(day)}"
+    """When a product was last seen listed across a column (Call 10): "seen", since the registry keeps the last such
+    day with a record, and a hole day after it could have been one (deploy prep)."""
+    return f"last seen listed across {BY_KEY[column].name} on {_day(day)}"
 
 
 def count_line(promotions: int, products: int, below: int) -> str:

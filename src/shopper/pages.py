@@ -350,7 +350,7 @@ RULES = (
      "A barcode that passes the GS1 check digit, leading zeros stripped; a chain's internal codes (weighed produce, "
      "its own codes) are not products here. The site covers a product once, on some day with records, at least half of "
      "a column's stores with a price file list it; from then on it keeps its page, rebuilt every morning, which says "
-     "when it was last listed across each column."),
+     "when it was last seen listed across each column."),
     ("P2 Listed price.",
      "A column's listed price for a product on a day is the median of the product's price across the column's included "
      "stores whose latest full price file that day lists it (with an even count, the mean of the two middle prices), "

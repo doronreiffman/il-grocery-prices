@@ -289,7 +289,7 @@ def test_a_product_beyond_the_read_says_when_last_listed_across_each_column():
     assert list(sections) == [RAMI, DEAL, SHELI]                   # name order
     assert last_across(DEAL, date(2026, 6, 1)) in sections[DEAL]
     assert last_across(SHELI, date(2026, 7, 15)) in sections[SHELI]
-    assert "last listed across" not in sections[RAMI]              # never wide there: no such day to give
+    assert "last seen listed across" not in sections[RAMI]         # never wide there: no such day to give
     for column, body in sections.items():
         assert NOT_LISTED in body and no_odds_yet(column) in body
         assert "<svg" not in body and "The listed price" not in body
@@ -302,7 +302,7 @@ def test_a_column_not_wide_today_says_when_last_listed_across():
                       first_covered=covered.first_covered, last_wide={DEAL: DAY, RAMI: back(4)})
     sections = _sections(_render(covered, narrow))
     assert last_across(RAMI, back(4)) in sections[RAMI]
-    assert "last listed across" not in sections[DEAL]
+    assert "last seen listed across" not in sections[DEAL]
 
 
 def test_the_largest_page_is_under_60_kb():
@@ -379,7 +379,7 @@ def test_a_hole_day_says_no_last_listed_across():
                                             RAMI: Pair(column=RAMI, code=CODE, points=gone)}, column_days=holed))
     for column in (DEAL, RAMI):
         assert too_few(5, STORES) in sections[column]
-        assert "last listed across" not in sections[column], column
+        assert "last seen listed across" not in sections[column], column
     assert "stores ₪11.90 to ₪12.90, 5 of 5 list it" in sections[DEAL]
     # on a day with records it is said as before
     assert last_across(RAMI, back(1)) in _sections(_render(registry, {DEAL: pairs[DEAL], RAMI: Pair(

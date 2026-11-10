@@ -350,6 +350,7 @@ def test_the_method_page_states_the_rules_with_the_codes_constants():
                    "at least 90 scored days", "at most 0.03", "more than 4 holes", "d + 1 to d + 14"):
         assert figure in rules, figure
     assert unreadable("carrefour") in rules and no_odds_yet(DEAL).split(".")[0] in rules
+    assert "rebuilt every morning, which says when it was last seen listed across each column" in rules   # deploy prep
     assert "0123456789ab" in page and 'href="site-days/2026-11-02.json"' in page
     reproduce = re.search(r'<section id="reproduce">(.*?)</section>', page, re.DOTALL).group(1)
     assert "the same numbers on every page, the record's intervals to rounding (F8)." in reproduce    # review, 4
