@@ -159,11 +159,12 @@ def test_the_front_rule_and_count_line_name_the_store_format():
                                   "over the past 90 days with records")
     assert f'"{FRONT_RULE}"' in PLAN
     # the count line, as the design now quotes it (the final review's finding 4: "across a store format"; deploy prep:
-    # the front test's own days, so K is every product the line describes)
+    # the front test's own days, so K is every product the line describes, and the owner's "with records", the rule
+    # line's own words, since the low is over the days with records alone)
     assert count_line(1840, 6210, 410) == _found(r'a count line \("([^"]+)"') + "."
     assert count_line(1840, 6210, 410).endswith(
-        "410 of them are below every listed price of the past 90 days in their store format, on items with at least 20 "
-        "days of records there in the past 30.")
+        "410 of them are below every listed price of the past 90 days with records in their store format, on items "
+        "with at least 20 days of records there in the past 30.")
 
 
 def test_the_count_line_says_its_promotions_are_listed_across_a_store_format():
@@ -179,13 +180,14 @@ def test_the_count_line_says_its_promotions_are_listed_across_a_store_format():
 def test_count_line_with_thousands_separators():
     assert count_line(1_234_567, 21_973, 1_000) == (
         "Today the five chains list 1,234,567 promotions across a store format on 21,973 products; 1,000 of them are "
-        "below every listed price of the past 90 days in their store format, on items with at least 20 days of "
-        "records there in the past 30.")
+        "below every listed price of the past 90 days with records in their store format, on items with at least 20 "
+        "days of records there in the past 30.")
     assert count_line(1, 1, 1) == ("Today the five chains list 1 promotion across a store format on 1 product; 1 of "
-                                   "them is below every listed price of the past 90 days in their store format, on an "
-                                   "item with at least 20 days of records there in the past 30.")
-    assert count_line(2, 2, 0).endswith(" 0 of them are below every listed price of the past 90 days in their store "
-                                        "format, on items with at least 20 days of records there in the past 30.")
+                                   "them is below every listed price of the past 90 days with records in their store "
+                                   "format, on an item with at least 20 days of records there in the past 30.")
+    assert count_line(2, 2, 0).endswith(" 0 of them are below every listed price of the past 90 days with records in "
+                                        "their store format, on items with at least 20 days of records there in the "
+                                        "past 30.")
     assert count_line(0, 0, 0).startswith(
         "Today the five chains list 0 promotions across a store format on 0 products; 0 of them are ")
 

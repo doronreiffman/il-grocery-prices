@@ -239,12 +239,13 @@ def count_line(promotions: int, products: int, below: int) -> str:
     """The front page's count line (question A: the products and those below are barcodes; question O's ending). Its
     promotions are those listed across a column today (`shopper.build`), so it says "across a store format" (the final
     review's finding 4); those below are the products with a front row, so it names the front test's days of records
-    (deploy prep), and a product below every listed price with fewer is not one it counts."""
+    (deploy prep), and a product below every listed price with fewer is not one it counts; "with records", the rule
+    line's words, since the low is over the days with records alone (the owner, 2026-11-10)."""
     return (f"Today the five chains list {promotions:,} {_plural(promotions, 'promotion', 'promotions')} across a "
             f"store format on {products:,} {_plural(products, 'product', 'products')}; {below:,} of them "
-            f"{_plural(below, 'is', 'are')} below every listed price of the past {READ_DAYS} days in their store "
-            f"format, on {_plural(below, 'an item', 'items')} with at least {MIN_FRONT_DAYS} days of records there in "
-            f"the past {RECENT_DAYS}.")
+            f"{_plural(below, 'is', 'are')} below every listed price of the past {READ_DAYS} days with records in "
+            f"their store format, on {_plural(below, 'an item', 'items')} with at least {MIN_FRONT_DAYS} days of "
+            f"records there in the past {RECENT_DAYS}.")
 
 
 def club_label(marking_none: Sequence[str]) -> str:
