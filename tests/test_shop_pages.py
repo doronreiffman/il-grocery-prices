@@ -192,20 +192,18 @@ def test_every_page_header_names_the_site_the_chains_and_the_day():
 
 
 def test_the_lead_line_under_the_title():
-    """The owner's plain words (2026-11-10): the title, then one lead line, the headline area's only sentence: the
-    site-day file's numbers, or why there is no row: none can be listed yet, or none is below today. The rule's
-    detail is the fold-out's."""
+    """The owner's plain words (2026-11-10): the title, then one lead line, the headline area's only sentence: how
+    many products made the list (the site-day file's `below`), or why none did: none can appear yet, or none made it
+    today. The rule's detail, and the count of products on promotion, are the fold-out's."""
     lead = f'<h1 id="deals">{FRONT_TITLE}</h1>\n<p class="lede">{{}}</p>\n<section class="search">'
-    assert lead.format("410 of the 6,210 products on promotion today are below every price of the past 90 days.") in (
-        _front())
-    assert lead.format("1 of the 1 product on promotion today is below every price of the past 90 days.") in _front(
-        counts=Counts(1, 1, 1))
+    assert lead.format("410 products made the list today.") in _front()
+    assert lead.format("1 product made the list today.") in _front(counts=Counts(1, 1, 1))
     empty = Counts(11_255, 14_060, 0)
-    assert lead.format("None today: none of the 14,060 products on promotion today is below every price of the past 90 "
-                       "days.") in _front(rows=[], counts=empty)
-    assert lead.format("None yet: a product needs 20 days of price history before it can be listed here.") in _front(
+    assert lead.format("None made the list today.") in _front(rows=[], counts=empty)
+    assert lead.format("None yet: a product needs 20 days of price history before it can appear here.") in _front(
         rows=[], counts=empty, ready=False)
-    assert lead.format(lead_line(6210, 410, True)) in _front(ready=False)       # a row: its column is ready
+    assert lead.format(lead_line(410, True)) in _front(ready=False)             # a row: its column is ready
+    assert "6,210" not in re.search(r'<p class="lede">.*?</p>', _front()).group(0)
 
 
 def test_the_front_is_ready_once_a_column_has_20_days_of_records_in_the_30():
@@ -235,7 +233,8 @@ def test_the_note_under_the_table_carries_the_always_phrases():
     """The owner's plain words (2026-11-10): plain headers ("Store" names the row's store format; "Typical price" is the
     30-day median), and directly under the table one note holding the four ALWAYS phrases, with or without a row."""
     assert TABLE_NOTE == ("Typical price: the 30-day median listed price before promotions, as listed in the chain's "
-                          "price files. Deals as listed in the morning's files.")
+                          "price files. Below by: how far the deal is under the typical price. Deals as listed in the "
+                          "morning's files.")
     assert all(phrase in TABLE_NOTE for phrase in ALWAYS)
     heads = "".join(f'<th scope="col">{head}</th>'
                     for head in ("Product", "Store", "Deal", "Typical price", "Below by", "Conditions"))
@@ -248,7 +247,9 @@ def test_the_fold_out_holds_every_condition_of_the_rule():
     """The owner's plain words (2026-11-10): under the note, a fold-out, closed (no `open`, no script), holding every
     condition `shopper.measures.on_front` applies, in the store format's words (question O: a deal is tested at its own
     format); what the filters read, from the chains' fields (question K), with the chains whose files mark none;
-    today's counts; and the method page."""
+    today's counts; and the method page. The review round (2026-11-10): the five rules are required, not enough on
+    their own (the shown figures' rounding, one row per format's lowest deal), so "only when"; and both windows count
+    only a format's days with records (`shopper.history.counted`, which `window` and `front_ready` read)."""
     assert FRONT_RULES == (
         "Its deal price is below every listed price the product had at that store format in the 90 days before today.",
         "At least half of the format's stores that sent price files today carry the promotion.",
@@ -261,16 +262,17 @@ def test_the_fold_out_holds_every_condition_of_the_rule():
     rules = "".join(f"<li>{rule}</li>" for rule in FRONT_RULES)
     assert fold == (
         "<summary>How a deal gets on this list</summary>"
-        "<p>A deal is on this list when all of these hold at the store format its row names:</p>"
+        "<p>A deal is on this list only when all of these are true at the store format in its row:</p>"
         f"<ul>{rules}</ul>"
+        "<p>The 90 days and the 30 days count only days when at least half of the format's stores sent price files.</p>"
         "<p>\"Hide club-only deals\" hides the deals the chains' fields mark for club members, the chain's card holders "
-        "or some customers only. Today Shufersal's and Osher Ad's files mark none.</p>"
+        "or some customers only. Today Shufersal's and Osher Ad's files mark no deal this way.</p>"
         "<p>\"Hide deals with a minimum spend\" hides the deals whose fields give a minimum spend.</p>"
         "<p>Today the five chains list 11,255 promotions carried by at least half of a store format's stores, on 14,060 "
         "products.</p>"
         '<p><a href="method.html">All the rules: How this is made</a></p>')
     # every chain marking a restricted promotion today: no sentence naming none
-    assert "<p>\"Hide club-only deals\" hides" in _front(marking=()) and "mark none" not in _front(marking=())
+    assert "<p>\"Hide club-only deals\" hides" in _front(marking=()) and "mark no deal" not in _front(marking=())
 
 
 def test_a_front_row_shows_its_deal_median_depth_and_conditions():

@@ -161,24 +161,20 @@ def test_credit_date_line_and_f10_are_the_designs():
 
 
 def test_the_front_title_and_lead_line_are_the_owners_plain_words():
-    """The owner's plain words (2026-11-10): the title says what a visitor gets, and one lead line under it gives the
-    site-day file's numbers, `below` of `products`, in one of three forms; the full rule is the fold-out's
-    (`shopper.pages`). The design quotes each form."""
+    """The owner's plain words (2026-11-10) and the review round after them: the title says what a visitor gets, and
+    one lead line under it says how many products made the list (the site-day file's `below`: those passing every
+    front condition), in one of three forms, with no total beside it, since the products on promotion the build counts
+    are only those carried by at least half of a format's stores (the fold-out's count says so). "Appear here", not
+    "listed here": "listed" is the site's word for shelf prices. The design quotes each form."""
     assert FRONT_TITLE == "Deals below every price of the past 90 days"
-    assert lead_line(14_060, 37, True) == _found(r'one lead line under it: "([^"]+)"') == (
-        "37 of the 14,060 products on promotion today are below every price of the past 90 days.")
-    assert lead_line(1, 1, True) == "1 of the 1 product on promotion today is below every price of the past 90 days."
-    assert lead_line(1_234_567, 1_000, True) == ("1,000 of the 1,234,567 products on promotion today are below every "
-                                                 "price of the past 90 days.")
-    # no deal: before some store format has 20 days of records in the 30, none can be listed yet
-    assert lead_line(14_060, 0, False) == ("None yet: a product needs 20 days of price history before it can be listed "
-                                           "here.")
-    assert lead_line(14_060, 0, True) == ("None today: none of the 14,060 products on promotion today is below every "
-                                          "price of the past 90 days.")
-    assert lead_line(1, 0, True) == ("None today: none of the 1 product on promotion today is below every price of the "
-                                     "past 90 days.")
-    assert lead_line(14_060, 37, False) == lead_line(14_060, 37, True)    # a row says enough: its column is ready
-    for form in (lead_line(14_060, 0, False), lead_line(14_060, 0, True)):
+    assert lead_line(37, True) == _found(r'one lead line under it: "([^"]+)"') == "37 products made the list today."
+    assert lead_line(1, True) == "1 product made the list today."
+    assert lead_line(1_000, True) == "1,000 products made the list today."
+    # no deal: before some store format has 20 days of records in the 30, none can appear yet
+    assert lead_line(0, False) == "None yet: a product needs 20 days of price history before it can appear here."
+    assert lead_line(0, True) == "None made the list today."
+    assert lead_line(37, False) == lead_line(37, True)                   # a row says enough: its column is ready
+    for form in (lead_line(0, False), lead_line(0, True)):
         assert f'"{form}"' in DESIGN
 
 
@@ -199,10 +195,11 @@ def test_marked_none_names_the_chains_marking_none():
     """Question K's label, now a sentence of the fold-out: the chains whose files mark no restricted promotion today,
     in slug order; nothing when every chain marks one."""
     assert marked_none([]) == ""
-    assert marked_none(["shufersal"]) == "Today Shufersal's files mark none."
-    assert marked_none(["yochananof", "shufersal"]) == "Today Shufersal's and Yochananof's files mark none."
+    assert marked_none(["shufersal"]) == "Today Shufersal's files mark no deal this way."
+    assert marked_none(["yochananof", "shufersal"]) == ("Today Shufersal's and Yochananof's files mark no deal this "
+                                                       "way.")
     assert marked_none(["osherad", "ramilevy", "carrefour"]) == ("Today Rami Levy's, Osher Ad's and Carrefour's files "
-                                                                 "mark none.")
+                                                                 "mark no deal this way.")
 
 
 def test_targets_join_every_code_present():
@@ -775,8 +772,8 @@ def _every_sentence() -> list[str]:
     return [SITE_NAME, CHAINS_LINE, FRONT_TITLE, GAP_HEADING, HISTORY_HEADING, METHOD_TITLE, RECORD_TITLE,
             ALWAYS_SENTENCE, FROM_FIELDS, FROM_TEXT, FINE_PRINT, PRICE_NOT_READ, AT_SOME_STORES,
             *TARGET_PHRASES.values(), *(name for name, _ in HIRING), formats_note(), columns_tested(9),
-            columns_tested(1), credit(FRIDAY, "12:03"), date_line(FRIDAY), lead_line(6210, 410, True),
-            lead_line(1, 1, True), lead_line(6210, 0, False), lead_line(6210, 0, True), promotions_line(1840, 6210),
+            columns_tested(1), credit(FRIDAY, "12:03"), date_line(FRIDAY), lead_line(410, True), lead_line(1, True),
+            lead_line(0, False), lead_line(0, True), promotions_line(1840, 6210),
             promotions_line(1, 1), marked_none(slugs), marked_none(["shufersal"]),
             targets(list(TARGET_PHRASES)), targets(["club", "other"]), starts_on(FRIDAY),
             window_note(Window(23, FRIDAY, (), True)),

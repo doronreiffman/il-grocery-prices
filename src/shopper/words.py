@@ -19,12 +19,12 @@ Names. A column is named by `shopper.columns` ("Shufersal Deal"; a whole chain b
 The site's name is "Deal or No Deal" (question J, as the owner changed it on 2026-11-10), one constant, so a rename is
 one line; every page's header names the five chains under it (`CHAINS_LINE`) and then the day (`date_line`).
 
-The front page in plain words (the owner, 2026-11-10). The title says what a visitor gets; one lead line under it
-(`lead_line`) gives the site-day file's numbers, the products with a front row of the products on promotion today, or
-why there is no row; the rule in full is the fold-out's (`shopper.pages`), in the store format's words, since a deal is
-tested against its own column's listed prices and another format of the same chain may list the item lower (question
-O). The fold-out's count of promotions (`promotions_line`) says they are carried by at least half of a store format's
-stores, as the build counts them (the final review's finding 4).
+The front page in plain words (the owner, 2026-11-10, and the review round after them). The title says what a visitor
+gets; one lead line under it (`lead_line`) says how many products made the list, the site-day file's `below`, or why
+none did, with no total beside it: the products on promotion the build counts are only those carried by at least half
+of a format's stores, which the fold-out's count says (`promotions_line`, the final review's finding 4). The rule in
+full is the fold-out's (`shopper.pages`), in the store format's words, since a deal is tested against its own column's
+listed prices and another format of the same chain may list the item lower (question O).
 
 Counts over days (P6). Every count over a window's days is out of its days with records: "of the N days with records
 before today", N the days of the window (which ends the day before the page's day) on which the column has a record and
@@ -110,8 +110,8 @@ listed across Shufersal Deal".
 Conditions (P5, question K and S3). A promotion's restrictions read from `ClubID` are K's phrase for each code present,
 joined in the order club, card, other ("club members only, and some customers only"); the programmes' names go beside
 them, as published, in the chain's own span (the product page's). The front page's fold-out names the chains whose
-files mark no restricted promotion that day ("Today Shufersal's files mark none.", `marked_none`), after what the
-club-only filter hides.
+files mark no restricted promotion that day ("Today Shufersal's files mark no deal this way.", `marked_none`), after
+what the club-only filter hides.
 """
 from collections.abc import Mapping, Sequence
 from datetime import date, timedelta
@@ -253,18 +253,17 @@ def last_across(column: str, day: date) -> str:
     return f"last seen listed across {BY_KEY[column].name} on {_day(day)}"
 
 
-def lead_line(products: int, below: int, ready: bool) -> str:
-    """The front page's lead line (the owner's plain words, 2026-11-10; question A: the products and those below are
-    barcodes): `below` of `products`, the products with a front row of those on a promotion listed across a column
-    today (`shopper.build`). With no row: "None yet" while no column can have a product with MIN_FRONT_DAYS days of
-    records in the RECENT_DAYS (`ready` false: `shopper.pages.front_ready`), else "None today"."""
+def lead_line(below: int, ready: bool) -> str:
+    """The front page's lead line (the owner's plain words, 2026-11-10, and the owner's call after the review round;
+    question A: the products are barcodes): `below` products made the list, the barcodes with a front row, each passing
+    every front condition. With none: "None yet" while no column can have a product with MIN_FRONT_DAYS days of
+    records in the RECENT_DAYS (`ready` false: `shopper.pages.front_ready`), else none made it today. "Appear here",
+    never "listed here": "listed" is the site's word for shelf prices."""
     if below:
-        return (f"{below:,} of the {products:,} {_plural(products, 'product', 'products')} on promotion today "
-                f"{_plural(below, 'is', 'are')} below every price of the past {READ_DAYS} days.")
+        return f"{below:,} {_plural(below, 'product', 'products')} made the list today."
     if not ready:
-        return f"None yet: a product needs {MIN_FRONT_DAYS} days of price history before it can be listed here."
-    return (f"None today: none of the {products:,} {_plural(products, 'product', 'products')} on promotion today is "
-            f"below every price of the past {READ_DAYS} days.")
+        return f"None yet: a product needs {MIN_FRONT_DAYS} days of price history before it can appear here."
+    return "None made the list today."
 
 
 def promotions_line(promotions: int, products: int) -> str:
@@ -279,7 +278,7 @@ def marked_none(marking_none: Sequence[str]) -> str:
     """The fold-out's sentence after what the club-only filter hides (question K): the chains (slugs) whose files mark
     no restricted promotion today, in slug order; "" when every chain's files mark one."""
     named = [f"{CHAIN_NAMES[slug]}'s" for slug in SLUGS if slug in set(marking_none)]
-    return f"Today {joined(named)} files mark none." if named else ""
+    return f"Today {joined(named)} files mark no deal this way." if named else ""
 
 
 def targets(restrictions: Sequence[str]) -> str:

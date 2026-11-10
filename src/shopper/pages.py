@@ -27,11 +27,12 @@ over the rows' `data-column`, `data-club` and `data-spend`; the table, a row eac
 column (its "Store"), the deal price per unit or kilogram with "buy N", the column's 30-day median listed price (its
 "Typical price"), the depth as a whole percent worked from the figures shown (`shopper.words.shown_below`, as P7's
 first sentence works it; "under 1%" for a gap that rounds to 0%), and the conditions with their source and the fine
-print label; directly under the table, one note carrying the four ALWAYS phrases, so the page carries them on a
-morning with no row too; a fold-out, `<details>`, closed, needing no script: every condition
-`shopper.measures.on_front` applies, in the store format's words (question O), what the two filters hide and the
-chains whose files mark no restricted promotion today (`shopper.words.marked_none`), the day's promotions and products
-(`shopper.words.promotions_line`), and the method page; the top row's P7 sentences as one deal's story; the hiring line
+print label; directly under the table, one note saying what "Typical price" and "Below by" are and carrying the four
+ALWAYS phrases, so the page carries them on a morning with no row too; a fold-out, `<details>`, closed, needing no
+script: every condition `shopper.measures.on_front` applies, in the store format's words (question O), as required,
+not as enough on their own (the review round, 2026-11-10), and that both windows count only days with records; what the
+two filters hide and the chains whose files mark no restricted promotion today (`shopper.words.marked_none`), the day's
+promotions and products (`shopper.words.promotions_line`), and the method page; the top row's P7 sentences as one deal's story; the hiring line
 (question M (f)).
 
 The method page: what a column is and the nine, with how each one's stores are chosen and how many the day's store list
@@ -106,9 +107,12 @@ SPEND_FILTER = "Hide deals with a minimum spend"
 NO_DEALS = "No deals to show."                 # the lead line above says why
 FRONT_HEADS = ("Product", "Store", "Deal", "Typical price", "Below by", "Conditions")
 TABLE_NOTE = (f"Typical price: the {RECENT_DAYS}-day median listed price before promotions, as listed in the chain's "
-              f"price files. Deals {MORNING}.")                # the four ALWAYS phrases, under the table
+              "price files. Below by: how far the deal is under the typical price. "
+              f"Deals {MORNING}.")                             # the four ALWAYS phrases, under the table
 RULES_TITLE = "How a deal gets on this list"
-RULES_INTRO = "A deal is on this list when all of these hold at the store format its row names:"
+# required, not enough on their own (the review round, 2026-11-10): the shown figures' rounding, a deal price above
+# ₪0.01 (P4), one row per format's lowest deal
+RULES_INTRO = "A deal is on this list only when all of these are true at the store format in its row:"
 # every condition `shopper.measures.on_front` applies: the deal as shown below every listed price of the 90 as shown;
 # the promotion wide; the column's day no hole; the deal price read; the 30-day window's days
 FRONT_RULES = (
@@ -118,6 +122,10 @@ FRONT_RULES = (
     "At least half of the format's stores sent price files today.",
     "Its deal price could be read.",
     f"The product had a listed price there on at least {MIN_FRONT_DAYS} of the {RECENT_DAYS} days before today.")
+# both windows count only the column's days with a record (`shopper.history.counted`, read by `window` and so by
+# `on_front`; `front_ready` too): the owner's "with records" of the old rule line, in plain words
+WINDOWS_NOTE = (f"The {READ_DAYS} days and the {RECENT_DAYS} days count only days when at least half of the format's "
+                "stores sent price files.")
 CLUB_NOTE = (f'"{CLUB_FILTER}" hides the deals the chains\' fields mark for club members, the chain\'s card holders or '
              "some customers only.")                         # question K: every restricted promotion, `data-club`
 SPEND_NOTE = f'"{SPEND_FILTER}" hides the deals whose fields give a minimum spend.'    # `min_spend`, the fields' alone
@@ -313,7 +321,7 @@ def _rules(counts: Counts, marking_none: Sequence[str]) -> str:
     rules = "".join(f"<li>{text(rule)}</li>" for rule in FRONT_RULES)
     club = " ".join(part for part in (CLUB_NOTE, marked_none(marking_none)) if part)
     return (f"<details><summary>{text(RULES_TITLE)}</summary><p>{text(RULES_INTRO)}</p><ul>{rules}</ul>"
-            f"<p>{text(club)}</p><p>{text(SPEND_NOTE)}</p>"
+            f"<p>{text(WINDOWS_NOTE)}</p><p>{text(club)}</p><p>{text(SPEND_NOTE)}</p>"
             f"<p>{text(promotions_line(counts.promotions, counts.products))}</p>"
             f'<p><a href="method.html">{text(RULES_LINK)}</a></p></details>')
 
@@ -345,7 +353,7 @@ def render_front(rows: Iterable[FrontRow], counts: Counts, day: date, collected_
     product could pass the front test's days (`front_ready`)."""
     shown = ordered(rows)
     parts = [f'<h1 id="deals">{text(FRONT_TITLE)}</h1>',
-             f'<p class="lede">{text(lead_line(counts.products, counts.below, ready))}</p>',
+             f'<p class="lede">{text(lead_line(counts.below, ready))}</p>',
              _search(browse), _deals(shown, counts, club_marking_none)]
     if shown:
         parts.append(_story(shown[0]))
