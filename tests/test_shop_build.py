@@ -215,7 +215,7 @@ def test_the_front_page_has_the_days_row_and_count_line(tmp_path):
     data, site = tree(tmp_path), tmp_path / "site"
     _build(data, site)
     front = _text(site / "index.html")
-    assert "1 passed today." in front
+    assert "1 product passed today." in front
     assert ("Today the five chains list 1 promotion carried by at least half of a store format's stores, on 1 "
             "product.") in front
     found = _site_day(site)

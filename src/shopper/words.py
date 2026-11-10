@@ -263,7 +263,7 @@ def lead_line(below: int, ready: bool) -> str:
     column can have a product with MIN_FRONT_DAYS days of records in the RECENT_DAYS (`ready` false:
     `shopper.pages.front_ready`), else none passed today. Never "listed": the site's word for shelf prices."""
     if below:
-        return f"{below:,} passed today."
+        return f"{below:,} {_plural(below, 'product', 'products')} passed today."
     if not ready:
         return f"None yet: a product needs {MIN_FRONT_DAYS} days of price history first."
     return "None passed today."

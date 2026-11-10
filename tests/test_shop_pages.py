@@ -193,14 +193,14 @@ def test_every_page_header_names_the_site_the_chains_and_the_day():
 
 def test_the_lead_line_under_the_title():
     """The owner's plain words (2026-11-10): the title, then one lead line, the headline area's only sentence: how
-    many products made the list (the site-day file's `below`), or why none did: none can appear yet, or none made it
+    many products passed (the site-day file's `below`), or why none did: none can pass yet, or none passed
     today. The rule's detail, and the count of products on promotion, are the fold-out's."""
     # the owner's final framing (2026-11-10, 22:30): the question, what it is checked against, then how many passed
     lead = ('<h1 id="deals">Is it actually a deal?</h1>\n'
             '<p class="sub">Promotions checked against up to 3 months of shelf prices.</p>\n'
             '<p class="lede">{}</p>\n<section class="search">')
-    assert lead.format("410 passed today.") in _front()
-    assert lead.format("1 passed today.") in _front(counts=Counts(1, 1, 1))
+    assert lead.format("410 products passed today.") in _front()
+    assert lead.format("1 product passed today.") in _front(counts=Counts(1, 1, 1))
     empty = Counts(11_255, 14_060, 0)
     assert lead.format("None passed today.") in _front(rows=[], counts=empty)
     assert lead.format("None yet: a product needs 20 days of price history first.") in _front(

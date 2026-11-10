@@ -170,9 +170,9 @@ def test_the_front_title_and_lead_line_are_the_owners_plain_words():
     assert FRONT_TITLE == _quoted(_line(DESIGN, "The public names (Q4)"))[0] == "Is it actually a deal?"
     assert FRONT_SUBTITLE == "Promotions checked against up to 3 months of shelf prices."
     assert f'"{FRONT_SUBTITLE}"' in DESIGN
-    assert lead_line(37, True) == _found(r'one lead line under it: "([^"]+)"') == "37 passed today."
-    assert lead_line(1, True) == "1 passed today."
-    assert lead_line(1_000, True) == "1,000 passed today."
+    assert lead_line(37, True) == _found(r'one lead line under it: "([^"]+)"') == "37 products passed today."
+    assert lead_line(1, True) == "1 product passed today."
+    assert lead_line(1_000, True) == "1,000 products passed today."
     # no deal: before some store format has 20 days of records in the 30, none can pass yet
     assert lead_line(0, False) == "None yet: a product needs 20 days of price history first."
     assert lead_line(0, True) == "None passed today."
