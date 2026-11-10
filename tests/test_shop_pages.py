@@ -24,9 +24,9 @@ from basket.words import ALWAYS as BASKET_ALWAYS, CHAIN_NAMES, METHOD_INTRO, TIT
 from shopper.columns import BY_KEY, COLUMNS, FLOOR
 from shopper.history import ColumnDay
 from shopper.measures import depth, gap
-from shopper.pages import (BASKET_PAGE, BASKET_SECTION, CONDITIONS, NO_DEALS, SCORED_SO_FAR, ColumnsToday, Counts,
-                           FrontRow, front_rows_of, ordered, render_basket, render_front, render_method, render_record,
-                           scorecard_section)
+from shopper.pages import (BASKET_PAGE, BASKET_SECTION, CONDITIONS, FRONT_NOTE, NO_DEALS, RULE_LINE, SCORED_SO_FAR,
+                           ColumnsToday, Counts, FrontRow, front_rows_of, ordered, render_basket, render_front,
+                           render_method, render_record, scorecard_section)
 from shopper.product import CHAIN_SPAN, page_path
 from shopper.items import HORIZON
 from shopper.record import scorecard
@@ -178,8 +178,10 @@ def test_the_front_page_has_the_always_phrases_and_one_script():
         _no_never_phrase_and_no_pronoun(page)
     assert NO_DEALS in _front(rows=[]) and NO_DEALS not in _front()
     # deploy prep: the empty table says that no promotion passes the rule, never that no deal is listed, under a count
-    # line of thousands of promotions
-    assert f'<td colspan="6">No promotion passes the rule today.</td>' in _front(rows=[])
+    # line of thousands of promotions; the owner's words (2026-11-10) name the rule line and the row note above it
+    assert f'<td colspan="6">No promotion meets the rule and the conditions above today.</td>' in _front(rows=[])
+    empty = _front(rows=[])
+    assert empty.index(RULE_LINE) < empty.index(FRONT_NOTE) < empty.index(NO_DEALS)
 
 
 def test_the_front_page_says_the_rule_in_the_formats_words():
