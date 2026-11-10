@@ -44,10 +44,10 @@ gap in the line, never filled; the window's lowest and highest shown prices at t
 listed across the column marked beneath (P8's days: `shopper.measures.promotion_points`); and a key of the two marks.
 
 P9's row: "Today at each column, in name order", a cell for each of the nine columns, listing the product or not: its
-listed price today or "not listed today" (on a hole, the price under `too_few`, or `too_few` alone), and the deal price
-of each wide promotion today, none on a hole ("price not read" when not valid) with its conditions in the section's
-words, each with its source (the programmes' names left to the section), and "fine print not read". Sorted by name,
-never by price; no ranking word.
+listed price today or "not listed today" (on a hole, the price under `too_few`, or `too_few` alone), and, on a day with
+records, the deal price of each wide promotion today ("price not read" when not valid) with its conditions in the
+section's words, each with its source (the programmes' names left to the section), and "fine print not read". Sorted
+by name, never by price; no ranking word.
 
 No script. The page is a pure function of its inputs: the same bytes whatever order the mappings come in.
 """
