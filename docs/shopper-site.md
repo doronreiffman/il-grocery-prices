@@ -131,7 +131,7 @@ The reader's cost per morning is the reader design's to estimate; the site's bui
 
 ## Words
 
-Always: "listed price", "as listed in the chain's price files", "before promotions" (beside every listed price), "listed in the morning's files" (beside every promotion), the date line in every header, the credit line in every footer, the source of every condition ("from the chain's fields", "read from the fine print", "fine print not read"), "this site's forecast" beside every odds figure, "of the N days with records" beside every count over days.
+Always: "listed price", "as listed in the chain's price files", "before promotions" (beside every listed price), "listed in the morning's files" (beside every promotion), the date line in every header, the credit line in every footer, the source of every condition ("from the chain's fields", "read from the fine print", "fine print not read"), "this site's forecast" beside every odds figure, every count over a window's days out of its days with records ("of the 85 days with records", "of those 85").
 
 Never: the basket's list ("cheapest chain", "cheaper than", "you'll pay", "saves you", "at the till", "real prices", "the chain charges"), and now "fake", "fake discount", "fake sale", "real deal", "scam", "rip-off", "trick", "inflated", "misleading", "deceptive", "pretends", "true price", "you save", "best deal", "guaranteed", "will be on sale", "will go on sale", "expected to", "likely to", any sentence that gives a chain a motive, and any odds word in a chain's sections while its gate is closed, beyond F10's sentence. The page tests pin both lists; the upload check refuses any NEVER phrase anywhere but the method page's list.
 
