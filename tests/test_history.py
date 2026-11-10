@@ -17,8 +17,8 @@ import pytest
 from basket.extract import copy_sql, write_csv
 from basket.rules import MissingTable
 from shopper.columns import columns_of
-from shopper.history import (BATCH, READ_DAYS, ColumnDay, Covered, History, Pair, Point, Window, covered, covered_path,
-                             load, window)
+from shopper.history import (BATCH, READ_DAYS, ColumnDay, Covered, History, Pair, Point, Window, counted, covered,
+                             covered_path, load, window)
 from shopper.items import COLUMNS as ITEM_COLUMNS, NULLABLE, ColumnReport, ItemsReport, items_path
 import shopper_random
 
@@ -427,3 +427,27 @@ def test_the_pairs_stream_as_before(tmp_path):
     assert [(pair.column, pair.code) for pair in found] == [(pair.column, pair.code) for pair in before]
     differ = [f"{new.column} {new.code}" for new, old in zip(found, before) if repr(new) != repr(old)]
     assert not differ, f"{len(differ)} pairs differ, the first {differ[:3]}"
+
+
+def _counted_before(pair, column_days, day, length):
+    """`counted` as it stood before Task 25a's window walk: each day of the window made anew."""
+    points = []
+    for back in range(length, 0, -1):
+        seen = day - timedelta(days=back)
+        found, point = column_days.get((pair.column, seen)), pair.points.get(seen)
+        if found is not None and found.record and point is not None and point.listed is not None:
+            points.append(point)
+    return points
+
+
+def test_a_windows_points_as_before():
+    """Task 25a: `counted` takes the window's days from a cache of each day and length; the points are the same as
+    before over random pairs (holes of every kind, days with no column-day, days not listed or with no listed price),
+    for windows of 1, 30 and 90 days ending on several days."""
+    rng = random.Random(6)
+    for n in range(200):
+        column_days = shopper_random.column_days(rng, DEAL, SHUF, back(READ_DAYS + 5), DAY)
+        pair = shopper_random.pair(rng, DEAL, shopper_random.code(n), back(READ_DAYS + 5), DAY)
+        for day in (DAY, back(1), back(3) + timedelta(days=n % 7)):
+            for length in (1, 30, READ_DAYS):
+                assert counted(pair, column_days, day, length) == _counted_before(pair, column_days, day, length)

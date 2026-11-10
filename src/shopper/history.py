@@ -53,6 +53,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
+from functools import lru_cache
 from pathlib import Path
 
 import duckdb
@@ -358,14 +359,20 @@ def covered(history: History, previous: Path | None, out: Path) -> dict[str, Cov
     return found
 
 
+@lru_cache(maxsize=64)
+def _days_before(day: date, length: int) -> tuple[date, ...]:
+    """The `length` days ending the day before `day`, earliest first: made once a day and length, since a build walks
+    the same window for every pair, ten times a product page (the plan's Task 25a)."""
+    return tuple(day - timedelta(days=back) for back in range(length, 0, -1))
+
+
 def counted(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: date, length: int) -> list[Point]:
     """The points P6's window of `length` days (30 or 90) counts, ending the day before `day`, in day order: the days on
     which the pair's column has a record and the pair a listed price. The one place that rule lives: `window` and
     `shopper.measures` read it."""
-    points = []
-    for back in range(length, 0, -1):
-        seen = day - timedelta(days=back)
-        found, point = column_days.get((pair.column, seen)), pair.points.get(seen)
+    column, held, points = pair.column, pair.points, []
+    for seen in _days_before(day, length):
+        found, point = column_days.get((column, seen)), held.get(seen)
         if found is not None and found.record and point is not None and point.listed is not None:
             points.append(point)
     return points
