@@ -10,8 +10,8 @@ product pages read them, `shopper.product.running_today`) that pass the front pa
 listed across the column, the price read, a record at the column today, at least 20 days of records in the 30 before
 today, the deal as shown below every listed price of the 90 as shown). So a product can show four
 Shufersal rows, each against its own column's median; a column with no record today (a hole, S1) has none. `ordered`
-sorts the rows by depth, deepest first (`shopper.measures.depth`, exact), then by column in name order, then by barcode
-as a number. A row keeps the promotion's restrictions, programmes and minimum spend for its conditions and the filters.
+sorts the rows by the depth they show, a whole percent ("under 1%" as 0), deepest first, a row with no shown gap last,
+then by the exact depth (`shopper.measures.depth`), then by column in name order, then by barcode as a number. A row keeps the promotion's restrictions, programmes and minimum spend for its conditions and the filters.
 `Counts` holds the count line's three numbers (the site-day file's; the build counts them): the wide promotions listed
 today, distinct by chain and id, their barcodes, and the barcodes with a front row.
 
@@ -230,9 +230,17 @@ def front_rows_of(code: str, title: str, pairs: Mapping[str, Pair], column_days:
     return rows
 
 
+def _by_shown(row: FrontRow) -> tuple[bool, int]:
+    """A row's place by the depth it shows: its whole percent (`shown_below`; "under 1%" is 0), deepest first, and a
+    row with no shown gap last."""
+    shown = shown_below(row.gap)
+    return (shown is None, 0 if shown is None else -shown[1])
+
+
 def ordered(rows: Iterable[FrontRow]) -> list[FrontRow]:
-    """By depth, deepest first, then by column in name order, then by barcode as a number."""
-    return sorted(rows, key=lambda row: (-depth(row.gap), _ORDER[row.column], by_number(row.code)))
+    """By the depth shown, deepest first (`_by_shown`), then by the exact depth, then by column in name order, then by
+    barcode as a number: the table's order is its figures' order (deploy prep)."""
+    return sorted(rows, key=lambda row: (*_by_shown(row), -depth(row.gap), _ORDER[row.column], by_number(row.code)))
 
 
 def _search(browse: str | None) -> str:
@@ -395,8 +403,8 @@ RULES = (
      f"it, else given with both days. Depth is ({RECENT_DAYS}-day median − deal price) ÷ that median. The front page "
      "lists a deal when it is listed across its column, its price is read (P4), the column has a record today, and the "
      f"item has at least {MIN_FRONT_DAYS} days of records in the past {RECENT_DAYS}, with the deal price as shown "
-     f"below every listed price of the past {READ_DAYS} days as shown. Its rows are sorted by depth, deepest first; a "
-     "product listed across several columns can have a row at each."),
+     f"below every listed price of the past {READ_DAYS} days as shown. Its rows are sorted by the depth they show, "
+     "deepest first, then by the exact depth; a product listed across several columns can have a row at each."),
     ("P8 Promotion history.",
      f"Over the {READ_DAYS} days before today, at the column: the days on a promotion listed across it, of the days "
      "with records; each run of consecutive days on promotion (a day the files say nothing of, a hole, a day the "

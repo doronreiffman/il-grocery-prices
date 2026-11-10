@@ -2101,7 +2101,11 @@ MUTATIONS = {
     "the changes' window length ignored (q22 P7)": (SHOP_MEASURES, '    first = day - timedelta(days=length)\n', '    first = day - timedelta(days=RECENT_DAYS)\n'),
     "the gap's changes over the 90 days (q22 P7)": (SHOP_MEASURES, 'changes=changes(pair, column_days, day, RECENT_DAYS))', 'changes=changes(pair, column_days, day, READ_DAYS))'),
     # shopper: the front, method, record and basket pages, and the basket's frame, parts and build (q22 pages)
-    'front rows by price (q22 pages)': (SHOP_PAGES, 'key=lambda row: (-depth(row.gap), _ORDER[row.column], by_number(row.code))', 'key=lambda row: (row.deal.price, _ORDER[row.column], by_number(row.code))'),
+    'front rows by price (q22 pages)': (SHOP_PAGES, 'key=lambda row: (*_by_shown(row), -depth(row.gap), _ORDER[row.column], by_number(row.code))', 'key=lambda row: (row.deal.price, _ORDER[row.column], by_number(row.code))'),
+    'front rows by the exact depth alone (q22 pages)': (SHOP_PAGES, 'key=lambda row: (*_by_shown(row), -depth(row.gap),', 'key=lambda row: (-depth(row.gap),'),
+    'front rows of one shown percent not by the exact depth (q22 pages)': (SHOP_PAGES, '(*_by_shown(row), -depth(row.gap), _ORDER', '(*_by_shown(row), _ORDER'),
+    'a front row with no shown gap ranked as 0% (q22 pages)': (SHOP_PAGES, '    return (shown is None, 0 if shown is None else -shown[1])', '    return (False, 0 if shown is None else -shown[1])'),
+    'front rows by the shown percent, shallowest first (q22 pages)': (SHOP_PAGES, '0 if shown is None else -shown[1])', '0 if shown is None else shown[1])'),
     'two rows for one column and product (q22 pages)': (SHOP_PAGES, '                best = deal, struct\n', '                best = deal, struct\n                rows.append(FrontRow(column.key, code, title, deal, gap(deal.price, pair, column_days, day), (), None))\n'),
     "one row for a product's two columns (q22 pages)": (SHOP_PAGES, '                                 programmes=tuple(struct["programmes"])))\n    return rows\n', '                                 programmes=tuple(struct["programmes"])))\n    return rows[:1]\n'),
     'a row not passing the front test (q22 pages)': (SHOP_PAGES, 'if on_front(deal, struct["wide"], pair, column_days, day) and (', 'if deal.valid and deal.price is not None and ('),

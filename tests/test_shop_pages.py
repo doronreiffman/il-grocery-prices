@@ -23,6 +23,7 @@ from basket.stores import Store
 from basket.words import ALWAYS as BASKET_ALWAYS, CHAIN_NAMES, METHOD_INTRO, TITLE as BASKET_TITLE
 from shopper.columns import BY_KEY, COLUMNS, FLOOR
 from shopper.history import ColumnDay
+from shopper.measures import depth, gap
 from shopper.pages import (BASKET_PAGE, BASKET_SECTION, CONDITIONS, NO_DEALS, SCORED_SO_FAR, ColumnsToday, Counts,
                            FrontRow, front_rows_of, ordered, render_basket, render_front, render_method, render_record,
                            scorecard_section)
@@ -122,6 +123,26 @@ def test_a_front_row_keeps_the_promotions_conditions():
     row = front_rows_of(CODE, "T", {DEAL: _pair(DEAL, _listed("11.90"), promotions=[struct])}, _days(), DAY)[0]
     assert (row.restrictions, row.programmes, row.min_spend) == (("club", "other"), ("מועדון", "אפליקציה"),
                                                                  Decimal("150"))
+
+
+def test_ordered_by_the_shown_percent_then_the_exact_depth():
+    """Deploy prep (the owner, 2026-11-10): the table's order is its figures' order: by the whole percent it shows
+    (`shown_below`; "under 1%" is 0), deepest first, a row with no shown gap last; then by the exact depth. ₪0.145 a
+    unit against ₪0.20 shows ₪0.05, 25%, though its exact depth is 27.5%, so ₪7.40 against ₪10.00 (26%) comes first;
+    ₪7.48 against ₪10.00 shows 25% too, with an exact depth of 25.2%, so it follows the first 25%."""
+    def row(column, listed, price):
+        found, = front_rows_of(CODE, "T", {column: _pair(column, _listed(listed), promotions=[_struct(price)])}, _days(),
+                               DAY)
+        return found
+    x, z, y, u = row(DEAL, "0.20", "0.145"), row(SHELI, "10.00", "7.40"), row(CITY, "10.00", "7.48"), row(
+        MARKET, "100.00", "99.99")
+    assert [shown_below(found.gap)[1] for found in (x, z, y, u)] == [25, 26, 25, 0]
+    # a gap the shown figures do not show (₪7.8951 shown ₪7.90, against ₪7.90), though its exact depth is above u's
+    pair = _pair(EXPRESS, _listed("7.90"))
+    n = replace(u, column=EXPRESS, gap=gap(Fraction("7.8951"), pair, _days(), DAY))
+    assert shown_below(n.gap) is None and depth(n.gap) > depth(u.gap) > 0
+    assert [found.column for found in ordered([n, u, y, x, z])] == [SHELI, DEAL, CITY, MARKET, EXPRESS]
+    assert "<td>under 1%</td>" in _front(rows=[u]) and "<td></td>" in _front(rows=[n])
 
 
 def test_ordered_by_depth_then_column_then_code():
@@ -368,6 +389,7 @@ def test_the_method_page_states_the_rules_with_the_codes_constants():
     assert 'as money and a whole percent ("under 1%" when a gap above ₪0 rounds to 0%);' in rules      # deploy prep
     assert ('no listed price is claimed, every promotion that day is shown "at some stores", without P7\'s facts, and '
             "the day counts in no window") in rules                                                     # deploy prep
+    assert "Its rows are sorted by the depth they show, deepest first, then by the exact depth;" in rules
     assert "{" not in rules and "}" not in rules                    # every constant written in, none left as a name
     # P7's front test as built (deploy prep): 20 days of records in the past 30, the low over the past 90
     assert ("the item has at least 20 days of records in the past 30, with the deal price as shown below every listed "
