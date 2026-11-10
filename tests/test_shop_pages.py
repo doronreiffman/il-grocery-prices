@@ -395,6 +395,10 @@ def test_the_method_page_states_the_rules_with_the_codes_constants():
     assert ('no listed price is claimed, every promotion that day is shown "at some stores", without P7\'s facts, no '
             "promotion is said to be listed to start, and the day counts in no window") in rules        # deploy prep
     assert "Its rows are sorted by the depth they show, deepest first, then by the exact depth;" in rules
+    # P6 true of every count form P7 and P8 print ("of the 87 days with records", "of them", "of those 85"), deploy prep
+    assert ('days of records since 1 November 2026"), and every count over a window\'s days is out of its days with '
+            "records.") in rules
+    assert "of the N days" not in rules
     assert "{" not in rules and "}" not in rules                    # every constant written in, none left as a name
     # P7's front test as built (deploy prep): 20 days of records in the past 30, the low over the past 90
     assert ("the item has at least 20 days of records in the past 30, with the deal price as shown below every listed "

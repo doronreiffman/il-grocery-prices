@@ -398,7 +398,8 @@ RULES = (
      f"The past {RECENT_DAYS} and {READ_DAYS} days are the calendar days before the page's day, counting only the days "
      "on which the column has a record and the product a listed price; holes are skipped, never filled. A window with "
      f"fewer than {ENOUGH[RECENT_DAYS]} of {RECENT_DAYS} or {ENOUGH[READ_DAYS]} of {READ_DAYS} such days says so (\"23 "
-     "days of records since 1 November 2026\"), and every count over days says \"of the N days with records\"."),
+     "days of records since 1 November 2026\"), and every count over a window's days is out of its days with "
+     "records."),
     ("P7 The gap.",
      f"Three measured facts about a deal listed across its column: its price against the {RECENT_DAYS}-day median "
      "listed price, as money and a whole percent (\"under 1%\" when a gap above ₪0 rounds to 0%); the lowest listed "

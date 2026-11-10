@@ -21,9 +21,10 @@ tested against its own column's listed prices and another format of the same cha
 O). The site's name, "Five chains, listed prices" (question J), stays true of nine columns: they are the formats of five
 chains.
 
-Counts over days (P6). Every count over days says "of the N days with records before today", N the days of the window
-(which ends the day before the page's day) on which the column has a record and the product a listed price; a short
-window (fewer than 20 of 30, or 60 of 90) says instead "of the 23 days of records since 1 November 2026 before today".
+Counts over days (P6). Every count over a window's days is out of its days with records: "of the N days with records
+before today", N the days of the window (which ends the day before the page's day) on which the column has a record and
+the product a listed price; a short window (fewer than 20 of 30, or 60 of 90) says instead "of the 23 days of records
+since 1 November 2026 before today"; P7's lows say "of them", "of those 85" or "of the 90 days with records".
 P7 and P8 count the 90-day window's days the same way, so a section never shows two numbers for its days with records:
 the days whose promotions could not be read are said beside the count, never taken out of it (Task 9's review,
 ruling 1).
