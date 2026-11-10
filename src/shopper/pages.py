@@ -97,8 +97,8 @@ FRONT_NOTE = (f"Each deal is a promotion carried by at least half of its store f
 SEARCH_LABEL = "Find a product by name or barcode"
 ALL_COLUMNS = "All columns"
 CLUB_FILTER = "Hide club-only and other restricted deals"
-SPEND_FILTER = "Hide deals with a minimum spend"
-NO_DEALS = "No deal is listed today."
+SPEND_FILTER = "Hide deals with a minimum spend (from the chains' fields)"   # it reads `min_spend`, the fields' alone
+NO_DEALS = "No promotion passes the rule today."
 FRONT_HEADS = (("Product", ""), ("Column", ""), ("Promotion", MORNING),
                (f"{RECENT_DAYS}-day median listed price", "before promotions, as listed in the chain's price files"),
                (f"Below the {RECENT_DAYS}-day median", ""), ("Conditions", ""))

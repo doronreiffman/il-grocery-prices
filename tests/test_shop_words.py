@@ -145,9 +145,12 @@ def test_credit_date_line_and_f10_are_the_designs():
 
 def test_the_front_rule_and_count_line_name_the_store_format():
     """Question O: a deal is tested against its own column's listed prices, so the words say "in the same store
-    format" and "in their store format"; another format of the same chain may list the item lower."""
+    format" and "in their store format"; another format of the same chain may list the item lower. Deploy prep: "every
+    listed price", the site's term for a column's median, since the test compares the deal with the daily medians, never
+    a single store's price (`shopper.measures.on_front`)."""
     rule = _found(r'with the rule under it \("([^"]+)"')
-    assert FRONT_RULE == rule.replace(" for the item over ", " for the item in the same store format over ")
+    assert FRONT_RULE == rule == ("promotion prices lower than every listed price of the item in the same store format "
+                                  "over the past 90 days with records")
     assert f'"{FRONT_RULE}"' in PLAN
     line = _found(r'a count line \("([^"]+)"')
     across = line.replace(" promotions on ", " promotions across a store format on ")     # the final review's finding 4

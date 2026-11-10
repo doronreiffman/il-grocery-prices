@@ -110,8 +110,9 @@ from shopper.promotions import RESTRICTIONS
 SITE_NAME = "Five chains, listed prices"                                  # question J
 FRONT_TITLE = "Deals below their recent listed prices"                    # Q4
 # P7, Q3; "in the same store format": question O
-FRONT_RULE = ("promotion prices lower than every price the chain listed for the item in the same store format over the "
-              "past 90 days with records")
+# "every listed price", the site's term for a column's median: the test compares the daily medians (deploy prep)
+FRONT_RULE = ("promotion prices lower than every listed price of the item in the same store format over the past 90 "
+              "days with records")
 GAP_HEADING = "The deal against its listed prices"                        # Q4
 HISTORY_HEADING = "How often it goes on promotion"                        # Q4
 RECORD_TITLE = "Track record"

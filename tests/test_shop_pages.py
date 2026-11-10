@@ -156,6 +156,9 @@ def test_the_front_page_has_the_always_phrases_and_one_script():
         assert flatten(date_line(DAY)) in text and flatten(CREDIT_START) in text and "not shopping advice." in text
         _no_never_phrase_and_no_pronoun(page)
     assert NO_DEALS in _front(rows=[]) and NO_DEALS not in _front()
+    # deploy prep: the empty table says that no promotion passes the rule, never that no deal is listed, under a count
+    # line of thousands of promotions
+    assert f'<td colspan="6">No promotion passes the rule today.</td>' in _front(rows=[])
 
 
 def test_the_front_page_says_the_rule_in_the_formats_words():
@@ -201,7 +204,8 @@ def test_the_filters_need_no_script():
                 "{ display: none; }") in page
     assert re.search(r'<input type="checkbox" id="f-club"><label for="f-club">[^<]+</label> <small>\('
                      + re.escape(club_label(("shufersal", "osherad"))) + r"\)</small>", page)
-    assert '<input type="checkbox" id="f-spend"><label for="f-spend">' in page
+    assert ('<input type="checkbox" id="f-spend"><label for="f-spend">Hide deals with a minimum spend (from the '
+            "chains' fields)</label>") in page           # deploy prep: it reads the fields alone, as the club one
     assert "#f-club:checked ~ .table tbody tr[data-club] { display: none; }" in page
     assert "#f-spend:checked ~ .table tbody tr[data-spend] { display: none; }" in page
     assert re.search(r'<tr data-column="shufersal-deal" data-club="">', page)
