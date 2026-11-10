@@ -480,10 +480,11 @@ def test_the_record_page_from_the_scorecard():
     assert "No forecast has been scored yet." in page
     assert columns_tested(9) in page
     # deploy prep: the lede says when freezing starts, as the code has it (a column's 30th day of records, with a
-    # closed day to learn from: shopper.forecast), and as F2 says
-    assert ("From a column's 30th day of records, once it has a closed day to learn from (F2), this site freezes that "
-            "column's forecasts every day before their outcomes are known and scores them 14 days later against two "
-            "rules of thumb (F5).") in page
+    # closed day to learn from: shopper.forecast), and as F2 says; and that a column's forecasts are frozen on the days
+    # F2 gives it forecasts, not every day: a hole for the column, or a day its promotions were not read, gives none
+    assert ("From a column's 30th day of records, once it has a closed day to learn from, this site freezes that "
+            "column's forecasts on each day the rules allow (F2), before their outcomes are known, and scores them 14 "
+            "days later against two rules of thumb (F5).") in page
     for column in COLUMNS:
         section = re.search(rf'<section data-column="{column.key}">(.*?)</section>', page, re.DOTALL).group(1)
         assert "Gate: closed." in section

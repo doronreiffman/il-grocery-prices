@@ -810,9 +810,11 @@ def render_record(scorecard: dict, ledger_days: Mapping[date, datetime], files: 
                   column_days: Mapping[tuple[str, date], ColumnDay], day: date, collected_by: str) -> str:
     """`record.html` (the module's docstring): `ledger_days` each day the ledger names with its file's S3 time,
     `files` the site's paths of the ledger and every forecasts and scores file, `column_days` the days read."""
-    lede = (f"From a column's {FIRST_RECORD_DAY}th day of records, once it has a closed day to learn from (F2), this "
-            f"site freezes that column's forecasts every day before their outcomes are known and scores them {HORIZON} "
-            "days later against two rules of thumb (F5). No product page shows odds: each column's gate (F9) is "
+    # "on each day the rules allow": F2 gives a column no forecast on a hole for it or a day its promotions were not
+    # read (deploy prep)
+    lede = (f"From a column's {FIRST_RECORD_DAY}th day of records, once it has a closed day to learn from, this site "
+            "freezes that column's forecasts on each day the rules allow (F2), before their outcomes are known, and "
+            f"scores them {HORIZON} days later against two rules of thumb (F5). No product page shows odds: each column's gate (F9) is "
             "closed, and below are its conditions and which of them hold.")
     parts = [f"<h1>{text(RECORD_TITLE)}</h1>", f'<p class="lede">{text(lede)}</p>', scorecard_section(scorecard),
              f"<p>{text(FINE_PRINT_UNREAD)}</p>",
