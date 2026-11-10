@@ -3028,6 +3028,7 @@ MUTATIONS = {
     'the lead line\'s "None yet" never said (front words)': (SHOP_WORDS, '    if not ready:\n        return f"None yet:', '    if False:\n        return f"None yet:'),
     'the lead line\'s "None yet" said beside a row (front words)': (SHOP_WORDS, '    if below:\n        return f"{below:,} {_plural', '    if below and ready:\n        return f"{below:,} {_plural'),
     "the lead line's rows said as none (front words)": (SHOP_WORDS, '    if below:\n        return f"{below:,} {_plural', '    if False:\n        return f"{below:,} {_plural'),
+    'the title\'s 90 days said as other than 3 months (front words)': (SHOP_WORDS, 'in {READ_DAYS // 30} months"', 'in {READ_DAYS // 31} months"'),
     'the lead line without thousands separators (front words)': (SHOP_WORDS, 'return f"{below:,} {_plural', 'return f"{below} {_plural'),
     'the lead line\'s "None yet" days not the front test\'s (front words)': (SHOP_WORDS, 'a product needs {MIN_FRONT_DAYS} days', 'a product needs {RECENT_DAYS} days'),
     'the promotions line said to be every promotion (front words)': (SHOP_WORDS, '{_plural(promotions, \'promotion\', \'promotions\')} carried by at "\n            f"least half of a store format\'s stores, on {products:,}', '{_plural(promotions, \'promotion\', \'promotions\')} on "\n            f"{products:,}'),

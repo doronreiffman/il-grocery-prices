@@ -166,7 +166,7 @@ def test_the_front_title_and_lead_line_are_the_owners_plain_words():
     front condition), in one of three forms, with no total beside it, since the products on promotion the build counts
     are only those carried by at least half of a format's stores (the fold-out's count says so). "Appear here", not
     "listed here": "listed" is the site's word for shelf prices. The design quotes each form."""
-    assert FRONT_TITLE == "Deals below every price of the past 90 days"
+    assert FRONT_TITLE == "Lowest shelf price in 3 months"   # the owner, 2026-11-10: READ_DAYS, 90 days, as 3 months
     assert lead_line(37, True) == _found(r'one lead line under it: "([^"]+)"') == "37 products made the list today."
     assert lead_line(1, True) == "1 product made the list today."
     assert lead_line(1_000, True) == "1,000 products made the list today."

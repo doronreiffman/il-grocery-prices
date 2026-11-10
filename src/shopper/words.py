@@ -132,7 +132,7 @@ from shopper.promotions import RESTRICTIONS
 
 SITE_NAME = "Deal or No Deal"                       # question J, as the owner changed it on 2026-11-10
 CHAINS_LINE = " · ".join(CHAIN_NAMES[slug] for slug in SLUGS)              # every page's header, under the name
-FRONT_TITLE = f"Deals below every price of the past {READ_DAYS} days"      # Q4, as the owner changed it on 2026-11-10
+FRONT_TITLE = f"Lowest shelf price in {READ_DAYS // 30} months"   # Q4, the owner's words of 2026-11-10: READ_DAYS (90) as 3 months
 GAP_HEADING = "The deal against its listed prices"                        # Q4
 HISTORY_HEADING = "How often it goes on promotion"                        # Q4
 RECORD_TITLE = "Track record"
