@@ -423,6 +423,11 @@ def test_the_record_page_from_the_scorecard():
     text = _visible(page)
     assert "No forecast has been scored yet." in page
     assert columns_tested(9) in page
+    # deploy prep: the lede says when freezing starts, as the code has it (a column's 30th day of records, with a
+    # closed day to learn from: shopper.forecast), and as F2 says
+    assert ("From a column's 30th day of records, once it has a closed day to learn from (F2), this site freezes that "
+            "column's forecasts every day before their outcomes are known and scores them 14 days later against two "
+            "rules of thumb (F5).") in page
     for column in COLUMNS:
         section = re.search(rf'<section data-column="{column.key}">(.*?)</section>', page, re.DOTALL).group(1)
         assert "Gate: closed." in section
@@ -579,6 +584,9 @@ def test_the_record_page_says_the_days_read_and_the_column_days_short_of_files()
     page = _record(column_days=days)
     section = re.search(r'<section id="days">(.*?)</section>', page, re.DOTALL).group(1)
     assert "The site's build reads the 91 days from 2 October 2026 to 31 December 2026." in section
+    # deploy prep: such a day is in P8's count of days with records and named beside it, so it is not left out of it
+    assert ("a day whose promotions were short of files or not read is counted as neither on nor off promotion (P8);"
+            in section)
     assert "This page reads" not in section                                                    # the review, finding 5
     deal = re.search(r"<tr><th scope=\"row\">Shufersal Deal</th>(.*?)</tr>", section).group(1)
     assert re.findall(r"<td>([^<]*)</td>", deal) == ["56", "3 to 5 December 2026; 9 December 2026", "none",

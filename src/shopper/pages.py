@@ -781,8 +781,8 @@ def _days_read(column_days: Mapping[tuple[str, date], ColumnDay]) -> str:
     said = "No day is read."
     if days:
         said = (f"The site's build reads the {len(days)} days from {_day(days[0])} to {_day(days[-1])}. A day short "
-                "of price files is a hole (P2); a day whose promotions were short of files or not read counts in no "
-                "promotion history (P8); a day with no table is one its chain's extraction did not write.")
+                "of price files is a hole (P2); a day whose promotions were short of files or not read is counted as "
+                "neither on nor off promotion (P8); a day with no table is one its chain's extraction did not write.")
     table = f'<table class="days"><thead><tr>{head}</tr></thead><tbody>{"".join(rows)}</tbody></table>'
     return f"<p>{text(said)}</p>{_scroller('The days read', table)}"
 
@@ -791,9 +791,10 @@ def render_record(scorecard: dict, ledger_days: Mapping[date, datetime], files: 
                   column_days: Mapping[tuple[str, date], ColumnDay], day: date, collected_by: str) -> str:
     """`record.html` (the module's docstring): `ledger_days` each day the ledger names with its file's S3 time,
     `files` the site's paths of the ledger and every forecasts and scores file, `column_days` the days read."""
-    lede = (f"Every day this site freezes its forecasts before their outcomes are known and scores them {HORIZON} days "
-            "later against two rules of thumb (F5). No product page shows odds: each column's gate (F9) is closed, "
-            "and below are its conditions and which of them hold.")
+    lede = (f"From a column's {FIRST_RECORD_DAY}th day of records, once it has a closed day to learn from (F2), this "
+            f"site freezes that column's forecasts every day before their outcomes are known and scores them {HORIZON} "
+            "days later against two rules of thumb (F5). No product page shows odds: each column's gate (F9) is "
+            "closed, and below are its conditions and which of them hold.")
     parts = [f"<h1>{text(RECORD_TITLE)}</h1>", f'<p class="lede">{text(lede)}</p>', scorecard_section(scorecard),
              f"<p>{text(FINE_PRINT_UNREAD)}</p>",
              _section("frozen", "The days frozen", _frozen(ledger_days, day)),

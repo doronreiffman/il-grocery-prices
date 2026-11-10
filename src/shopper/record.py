@@ -350,7 +350,7 @@ def gate(summaries: Sequence[DaySummary], column: str) -> Gate:
                        f"(model {MODEL_VERSION}, target {TARGET_VERSION}) frozen on time; {GATE_DAYS} needed")
     conditions = {"days": enough, "brier": _beats(days, reasons), "calibration": _calibrated(bins, reasons)}
     if all(conditions.values()):
-        reasons.append("every condition holds; the gate opens only on the owner's go, in step three")
+        reasons.append("every condition holds; the gate opens only on the owner's go, in a later version of this site")
     return Gate(column=column, conditions=conditions, reasons=reasons, open=False)
 
 

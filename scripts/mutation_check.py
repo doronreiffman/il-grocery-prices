@@ -2133,6 +2133,7 @@ MUTATIONS = {
     "the record's intervals left off (q22 pages)": (SHOP_PAGES, 'f"<td>{_figure(model - a)}{_interval(spans, \'model_minus_a\')}</td>",', 'f"<td>{_figure(model - a)}</td>",'),
     'a bin under 1% given a sentence (q22 pages)': (SHOP_PAGES, '            if holds_share(row["count"], scored):\n', '            if True:\n'),
     "a bin's share of 1% read as any share on the record page (q22 pages)": (RECORD_FOR_SHOP_PAGES, 'return count >= Fraction(BIN_SHARE) * rows', 'return count > 0'),
+    "the record's lede freezing from a column's first day (q22 pages)": (SHOP_PAGES, 'f"From a column\'s {FIRST_RECORD_DAY}th day of records,', 'f"From a column\'s first day of records,'),
     'the record page without the fine print sentence (q22 pages)': (SHOP_PAGES, '             f"<p>{text(FINE_PRINT_UNREAD)}</p>",\n', '             "",\n'),
     'late days counted as on time on the record page (q22 pages)': (SHOP_PAGES, '    timely = [seen for seen in frozen if on_time(seen, ledger_days[seen])]\n', '    timely = frozen\n'),
     "the ledger's late day read as on time on the record page (q22 pages)": (FREEZE_FOR_SHOP_PAGES, '    return at < cutoff(day)\n', '    return True\n'),

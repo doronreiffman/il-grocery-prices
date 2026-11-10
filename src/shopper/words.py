@@ -288,10 +288,11 @@ def formats_note() -> str:
 
 
 def columns_tested(count: int) -> str:
-    """The record page's sentence on how many columns are tested at once (the amendment's "Words", F9)."""
+    """The record page's sentence on how many columns are tested at once (the amendment's "Words", F9); no closing
+    rule, which no step has built (deploy prep)."""
     number = NUMBER_WORDS[count] if count < len(NUMBER_WORDS) else f"{count:,}"
     return (f"{number} {_plural(count, 'column is', 'columns are')} tested at once: the more are tested, the likelier "
-            "one passes the gate by luck, which is why it closes again on a losing run (F9).")
+            "one passes the gate by luck.")
 
 
 def date_range(start: date, end: date) -> str:

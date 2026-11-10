@@ -226,8 +226,9 @@ def test_the_short_sentences():
     assert starts_on(date(2026, 11, 9)) == "Listed to start on 9 November 2026."
     assert formats_note() == ("The product pages show Shufersal's and Carrefour's store formats apart; the basket "
                               "takes each chain's median over all its included stores.")
+    # deploy prep: no closing rule is built (F9 states none), so the sentence names none
     assert columns_tested(9) == ("Nine columns are tested at once: the more are tested, the likelier one passes the "
-                                 "gate by luck, which is why it closes again on a losing run (F9).")
+                                 "gate by luck.")
     assert columns_tested(2).startswith("Two columns are tested at once: ")
     assert columns_tested(1).startswith("One column is tested at once: ")
     assert columns_tested(13).startswith("13 columns are tested at once: ")

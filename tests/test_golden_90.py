@@ -454,7 +454,8 @@ def test_the_gates_conditions_each_fail_alone(golden):
     assert len(base) == 91
     found = gate(base, key)
     assert found.conditions == {"days": True, "brier": True, "calibration": True} and found.open is False
-    assert found.reasons == ["every condition holds; the gate opens only on the owner's go, in step three"]
+    assert found.reasons == ["every condition holds; the gate opens only on the owner's go, in a later version of this "
+                             "site"]
     # each condition failing alone
     alone = {
         "days": base[:89],

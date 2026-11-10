@@ -330,7 +330,9 @@ def test_the_gate_stays_closed_in_step_one():
     found = gate(_good_days(90), DEAL)
     assert found.conditions == ALL_HOLD
     assert found.open is False
-    assert found.reasons == ["every condition holds; the gate opens only on the owner's go, in step three"]
+    # deploy prep: a reader cannot follow "step three"
+    assert found.reasons == ["every condition holds; the gate opens only on the owner's go, in a later version of this "
+                             "site"]
 
 
 def test_a_column_with_no_day_is_closed_on_every_condition():
