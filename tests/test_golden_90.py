@@ -113,8 +113,8 @@ def _summaries(golden) -> list:
 
 G3_STORY = ("Deal price ₪7.90: ₪3.50, 31%, below the 30-day median listed price of ₪11.40 (of the 30 days with records "
             "before today).",
-            "The lowest listed price was ₪10.90 over the 30 days before today and ₪10.90 over the 90; listed at ₪7.90 or "
-            "less on 0 of the 74 days with records before today.",
+            "The lowest listed price was ₪10.90 in the 30 days before today and ₪10.90 on the 74 days with records of "
+            "the 90 before today; listed at ₪7.90 or less on 0 of the 74.",
             "The listed price rose from ₪10.90 to ₪11.90 on 1 March 2026.")
 RUNS = ("from 30 January 2026 or earlier to 1 February 2026; 16 to 22 February 2026; 9 to 15 March 2026; 30 March to "
         "5 April 2026; 20 to 26 April 2026.")
@@ -156,8 +156,8 @@ def test_the_golden_pages_windows_and_gaps(golden):
     assert "Deal price ₪50.00 per kilogram, buy 1.5" in rami and "₪69.90" in rami and "28%" in rami
     section = _text(_section(golden.page(85, f"p/{G4}.html"), "ramilevy"))
     assert ("Deal price ₪50.00: ₪19.90, 28%, below the 30-day median listed price of ₪69.90 (of the 30 days with "
-            "records before today). The lowest listed price was ₪69.90 over the 30 days before today and ₪69.90 over "
-            "the 90; listed at ₪50.00 or less on 0 of the 82 days with records before today.") in section
+            "records before today). The lowest listed price was ₪69.90 in the 30 days before today and ₪69.90 on the 82 "
+            "days with records of the 90 before today; listed at ₪50.00 or less on 0 of the 82.") in section
     section = _text(_section(golden.page(DAYS, f"p/{G4}.html"), "ramilevy"))
     assert ("On a promotion listed across Rami Levy on 14 of the 88 days with records before today, as listed in the "
             "morning's files. Run seen before today: 26 March to 8 April 2026. The last run ended on 8 April 2026, 22 "
@@ -168,8 +168,8 @@ def test_the_golden_pages_windows_and_gaps(golden):
     deal, sheli = _text(_section(page, "shufersal-deal")), _text(_section(page, "shufersal-sheli"))
     assert "Deal price ₪4.50 per unit" in deal and "at some stores" not in deal
     assert ("Deal price ₪4.50: ₪1.50, 25%, below the 30-day median listed price of ₪6.00 (of the 30 days with records "
-            "before today). The lowest listed price was ₪6.00 over the 30 days before today and ₪4.50 over the 90; "
-            "listed at ₪4.50 or less on 15 of the 88 days with records before today.") in deal
+            "before today). The lowest listed price was ₪6.00 in the 30 days before today and ₪4.50 on the 88 days with "
+            "records of the 90 before today; listed at ₪4.50 or less on 15 of the 88.") in deal
     assert "Deal price" not in sheli and "No promotion listed across Shufersal Sheli" in sheli
     assert [column for column, _ in _front_rows(golden.page(99, "index.html"))] == ["shufersal-sheli"]   # G3's alone
     # Deal's holes of 19 and 20 February (days 50 and 51): Deal's files missing, Sheli's and Yesh Chesed's there. On 19

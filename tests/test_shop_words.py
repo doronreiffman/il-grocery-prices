@@ -245,20 +245,20 @@ def test_p7_sentences_for_the_designs_example():
     assert gap_sentences(_gap("7.90", _example())) == (
         "Deal price ₪7.90: ₪4.00, 34%, below the 30-day median listed price of ₪11.90 (of the 30 days with records "
         "before today).",
-        "The lowest listed price was ₪10.90 over the 30 days before today and ₪10.90 over the 90; listed at ₪7.90 or "
-        "less on 0 of the 90 days with records before today.",
+        "The lowest listed price was ₪10.90 in the 30 days before today and ₪10.90 in the 90 days before today; "
+        "listed at ₪7.90 or less on 0 of the 90.",
         "The listed price rose from ₪10.90 to ₪11.90 on 28 October 2026.")
     # a deal not below the median, or equal to it
     above = gap_sentences(_gap("12.50", _example()))
     assert above[0] == ("Deal price ₪12.50: not below the 30-day median listed price of ₪11.90 (of the 30 days with "
                         "records before today).")
-    assert above[1].endswith("listed at ₪12.50 or less on 90 of the 90 days with records before today.")
+    assert above[1].endswith("listed at ₪12.50 or less on 90 of the 90.")
     assert gap_sentences(_gap("11.90", _example()))[0].startswith("Deal price ₪11.90: not below the 30-day median ")
     # the lows of each window, and a median of three places written to the agora, half up (₪1.445 is ₪1.45)
     raised = {**listed_from(61, 90, "7.00"), **listed_from(1, 60, "11.90")}
     assert gap_sentences(_gap("7.90", raised))[1] == (
-        "The lowest listed price was ₪11.90 over the 30 days before today and ₪7.00 over the 90; listed at ₪7.90 or "
-        "less on 30 of the 90 days with records before today.")
+        "The lowest listed price was ₪11.90 in the 30 days before today and ₪7.00 in the 90 days before today; "
+        "listed at ₪7.90 or less on 30 of the 90.")
     assert gap_sentences(_gap("1.00", {back(2): "1.44", back(1): "1.45"}))[0].startswith(
         "Deal price ₪1.00: ₪0.45, 31%, below the 30-day median listed price of ₪1.45 ")
 
@@ -269,8 +269,8 @@ def test_p7_and_p8_with_a_short_window():
     assert gap_sentences(_gap("7.90", listed)) == (
         "Deal price ₪7.90: ₪2.10, 21%, below the 30-day median listed price of ₪10.00 (of the 5 days of records since "
         "15 November 2026 before today).",
-        "The lowest listed price was ₪10.00 over the 30 days before today and ₪10.00 over the 90; listed at ₪7.90 or "
-        "less on 0 of the 5 days of records since 15 November 2026 before today.",
+        "The lowest listed price was ₪10.00 on the 5 days of records since 15 November 2026 before today; listed at "
+        "₪7.90 or less on 0 of the 5.",
         "The listed price did not change on the 5 days of records since 15 November 2026 before today.")
     assert _history(listed, promoted=[back(2), back(1)], today=False) == (
         f"On {ACROSS} on 2 of the 5 days of records since 15 November 2026 before today, {MORNING}.",
@@ -284,6 +284,34 @@ def test_p7_and_p8_with_a_short_window():
     assert holed[2] == "The listed price did not change on the 25 days with records of the 30 before today."
     full = gap_sentences(_gap("7.90", listed_from(1, 30, "10.00")))
     assert full[2] == "The listed price did not change in the 30 days before today."
+
+
+def test_the_lows_say_the_days_of_records_each_is_over():
+    """Deploy prep (the owner, 2026-11-10): each low is said over the days of records its window holds (P6), in the
+    change sentence's own window words, so the sentence stays true with 15 days of records at launch; one phrase when
+    both windows hold the same days, and the days at or below counted of the 90's."""
+    launch = gap_sentences(_gap("7.90", listed_from(1, 15, "10.00")))       # 5 to 19 November: 15 days of records
+    assert launch[1] == ("The lowest listed price was ₪10.00 on the 15 days of records since 5 November 2026 before "
+                         "today; listed at ₪7.90 or less on 0 of the 15.")
+    one = gap_sentences(_gap("7.90", {back(1): "10.00"}))
+    assert one[1] == ("The lowest listed price was ₪10.00 on the 1 day of records since 19 November 2026 before today; "
+                      "listed at ₪7.90 or less on 0 of the 1.")
+    # gaps in both windows: 25 of the 30 days and 85 of the 90 hold records
+    gapped = {**listed_from(31, 90, "7.50"), **listed_from(1, 30, "10.00")}
+    holes = [back(n) for n in range(1, 6)]
+    assert gap_sentences(_gap("7.90", gapped, holes=holes))[1] == (
+        "The lowest listed price was ₪10.00 on the 25 days with records of the 30 before today and ₪7.50 on the 85 "
+        "days with records of the 90 before today; listed at ₪7.90 or less on 60 of the 85.")
+    # a full 30-day window and a short 90-day one, 45 days of records since 6 October
+    short = {**listed_from(31, 45, "9.00"), **listed_from(1, 30, "10.00")}
+    assert gap_sentences(_gap("7.90", short))[1] == (
+        "The lowest listed price was ₪10.00 in the 30 days before today and ₪9.00 on the 45 days of records since 6 "
+        "October 2026 before today; listed at ₪7.90 or less on 0 of the 45.")
+    # a short 30-day window beside older records: 10 of the 30, 70 of the 90
+    older = {**listed_from(31, 90, "9.50"), **listed_from(1, 10, "10.00")}
+    assert gap_sentences(_gap("7.90", older))[1] == (
+        "The lowest listed price was ₪10.00 on the 10 days of records since 10 November 2026 before today and ₪9.50 "
+        "on the 70 days with records of the 90 before today; listed at ₪7.90 or less on 0 of the 70.")
 
 
 def test_p7_changes_in_order_and_across_a_hole():
@@ -318,8 +346,8 @@ def test_p7_figures_are_the_shown_figures():
     # 3 for ₪10.01 is 3.3366... a unit, shown ₪3.34; a median of ₪3.335 is shown ₪3.34 too
     probe = gap_sentences(_gap(Fraction("10.01") / 3, listed_from(1, 30, "3.335")))
     assert probe[0].startswith("Deal price ₪3.34: not below the 30-day median listed price of ₪3.34 ")
-    assert probe[1] == ("The lowest listed price was ₪3.34 over the 30 days before today and ₪3.34 over the 90; listed "
-                        "at ₪3.34 or less on 30 of the 30 days of records since 21 October 2026 before today.")
+    assert probe[1] == ("The lowest listed price was ₪3.34 on the 30 days of records since 21 October 2026 before "
+                        "today; listed at ₪3.34 or less on 30 of the 30.")
     # a deal of ₪1.445, shown ₪1.45, against ₪1.50: ₪0.05 and 3%, not the exact gap's ₪0.06 and 4%
     assert gap_sentences(_gap("1.445", listed_from(1, 30, "1.50")))[0] == (
         "Deal price ₪1.45: ₪0.05, 3%, below the 30-day median listed price of ₪1.50 (of the 30 days with records "
@@ -327,12 +355,11 @@ def test_p7_figures_are_the_shown_figures():
     # 3 for ₪4.34 (1.4466...) against a listed ₪1.45: equal as shown, so not below it, and listed at it on every day
     up = gap_sentences(_gap(Fraction("4.34") / 3, listed_from(1, 30, "1.45")))
     assert up[0].startswith("Deal price ₪1.45: not below the 30-day median listed price of ₪1.45 ")
-    assert up[1].endswith("listed at ₪1.45 or less on 30 of the 30 days of records since 21 October 2026 before today.")
+    assert up[1].endswith("listed at ₪1.45 or less on 30 of the 30.")
     # 3 for ₪10 (3.3333...), shown ₪3.33, against a median of ₪3.335 shown ₪3.34: ₪0.01 below, and no day at or below
     down = gap_sentences(_gap(Fraction(10, 3), listed_from(1, 30, "3.335")))
     assert down[0].startswith("Deal price ₪3.33: ₪0.01, 0%, below the 30-day median listed price of ₪3.34 ")
-    assert down[1].endswith(
-        "listed at ₪3.33 or less on 0 of the 30 days of records since 21 October 2026 before today.")
+    assert down[1].endswith("listed at ₪3.33 or less on 0 of the 30.")
 
 
 
