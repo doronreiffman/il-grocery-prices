@@ -12,20 +12,21 @@ The invalidation covers every path (`/*`), as publish.sh's does. Its CallerRefer
 run's id): CloudFront answers a second request with the same reference and the same paths with the first one's
 invalidation, and creates no new one.
 
-`upload` is the site run's upload (the shopper plan's Task 23, Call 9): the data files it is given, always (the ones
-the build lists new: the day's forecasts file, the ledger, each scored day's scores file, the site-day and day files
-when not unchanged); then, only when `with_pages` (the day is the site's latest, so a run for an earlier day leaves
-every page as the later day's), every file under the page folders `p/`, `browse/` and `search/` (`PAGE_FOLDERS`), and
-the fixed pages, `FIXED_PAGES`: `index.html`, `method.html`, `record.html`, `basket.html` and `search.js`, rebuilt every
-morning from the code (the shopper plan's question H). Every file is checked first, before any put. The record files
-(`is_record`: each day's forecasts file and scores file, never the ledger) go up in a `put_files` call of their own,
-ended before anything else is put; a record put that fails stops the upload there (RecordsNotUploaded), so the ledger,
-the site-day and day files and the pages, which name the records, never name a file the site lacks (the task review's
-finding 1: a rerun lists the day's forecasts file only when the ledger gains its line). Then the rest in a second
-call, started in the order above, the data files before the pages; the pool ends them in no fixed order, so the pages
-are started after the data files, not held until those are up (the Task 23 review's point 4). Each file takes its
-content type by its last suffix: `search.js` goes up as JavaScript, never as HTML (the second pre-flight's B3).
-Anything else in the folder (the marker, the published copies the build compared with) stays local.
+`upload` is the site run's upload (the shopper plan's Task 23, Call 9): the data files it is given, always (the ones the
+build lists new: the day's forecasts file, the ledger, each scored day's scores file, the site-day and day files when
+not unchanged); then, only when `with_pages` (the day is the site's latest, so a run for an earlier day leaves every
+page as the later day's), every file under the page folders `p/`, `browse/`, `search/` and `store/` (the store types'
+front pages, store first) (`PAGE_FOLDERS`), and the fixed pages, `FIXED_PAGES`: `index.html`, `method.html`,
+`record.html`, `basket.html` and `search.js`, rebuilt every morning from the code (the shopper plan's question H). Every
+file is checked first, before any put. The record files (`is_record`: each day's forecasts file and scores file, never
+the ledger) go up in a `put_files` call of their own, ended before anything else is put; a record put that fails stops
+the upload there (RecordsNotUploaded), so the ledger, the site-day and day files and the pages, which name the records,
+never name a file the site lacks (the task review's finding 1: a rerun lists the day's forecasts file only when the
+ledger gains its line). Then the rest in a second call, started in the order above, the data files before the pages; the
+pool ends them in no fixed order, so the pages are started after the data files, not held until those are up (the Task
+23 review's point 4). Each file takes its content type by its last suffix: `search.js` goes up as JavaScript, never as
+HTML (the second pre-flight's B3). Anything else in the folder (the marker, the published copies the build compared
+with) stays local.
 
 `put_files` puts the shopper site's files, any number of them, each once (a key given twice goes up once): it checks
 first that every file is in the site folder and has a content type above, and refuses (FileNotFoundError, ValueError)
@@ -52,7 +53,7 @@ from botocore.exceptions import ClientError
 from collector.store import MISSING, error_code
 
 FIXED_PAGES = ("index.html", "method.html", "record.html", "basket.html", "search.js")   # the pre-flight's S14
-PAGE_FOLDERS = ("p", "browse", "search")   # the product pages, the browse pages and the search pieces
+PAGE_FOLDERS = ("p", "browse", "search", "store")   # the product, browse and store pages, the search pieces
 RECORD_FOLDERS = ("forecasts/", "scores/")   # the record files: each day's forecasts and scores files, as .csv.gz
 UPLOAD_WORKERS = 16
 HTML = "text/html; charset=utf-8"

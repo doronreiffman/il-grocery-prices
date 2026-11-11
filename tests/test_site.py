@@ -223,6 +223,20 @@ def test_upload_puts_the_data_files_then_every_page_with_its_content_type(site, 
     assert held(site) == {key: (key.encode(), TYPES[Path(key).suffix], CACHE_CONTROL) for key in keys}
 
 
+def test_store_pages_go_up_with_the_pages(site, tmp_path):
+    """Store first (q33): each store type's front page, `store/<key>.html`, rebuilt every morning, goes up with the
+    pages under the other page folders, after them and before the fixed pages, as HTML."""
+    folder = built(tmp_path)
+    stores = ["store/carrefour-market.html", "store/osherad.html"]
+    for key in stores:
+        (folder / key).parent.mkdir(parents=True, exist_ok=True)
+        (folder / key).write_bytes(key.encode())
+    keys = site.upload(folder, DATA, with_pages=True)
+    assert keys == [*RECORDS, *NAMING, *FOLDER_PAGES, *stores, *FIXED]
+    assert {key: held(site)[key] for key in stores} == {key: (key.encode(), TYPES[".html"], CACHE_CONTROL)
+                                                        for key in stores}
+
+
 def test_upload_puts_the_fixed_pages(site, tmp_path):
     """The shopper plan's question H (and the second pre-flight's S15): the five fixed pages, rebuilt every morning
     from the code, go up with the day's pages, whatever the build lists."""

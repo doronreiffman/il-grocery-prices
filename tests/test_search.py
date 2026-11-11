@@ -208,7 +208,7 @@ def test_a_browse_page_has_the_frame_the_other_pages_have():
         assert flatten(CREDIT_START) in flatten(body)
         assert "collected by 11:48 Israel time" in body
         assert "Not shopping advice." in body
-        assert "<script" not in body
+        assert body.count("<script") == 1 and '<script src="../search.js" defer></script>' in body   # the one script
         assert body.startswith("<!doctype html>")
         text = flatten(strip_tags(body))
         assert not PRONOUNS.search(text)

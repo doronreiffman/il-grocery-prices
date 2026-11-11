@@ -36,7 +36,7 @@ from shopper.freeze import (ArchiveFreezer, Frozen, ReadOnlyFreezer, archive_key
 from shopper.columns import COLUMNS
 from shopper.history import History, covered, covered_path, load
 from shopper.items import items_path
-from shopper.pages import Counts
+from shopper.pages import Counts, store_path
 from shopper.product import page_path
 from shopper.score import DaySummary, read_summary, summary_json, summary_path
 from shopper.search import SCRIPT
@@ -188,23 +188,48 @@ def test_the_build_writes_every_covered_products_page_and_the_marker(tmp_path):
     assert "<h1>" in (site / page_path(A)).read_text(encoding="utf-8")
 
 
+def test_the_build_writes_the_root_and_nine_store_pages(tmp_path):
+    """Store first (q33): `index.html` is the picker, and each of the nine store types has its front page,
+    `store/<key>.html`, among the pages written, each holding its own column's rows alone (milk's at Osher Ad) and each
+    with its own "None yet" or not (`shopper.pages.column_ready`: Osher Ad's 40 days of records, the other columns'
+    day alone)."""
+    data, site = tree(tmp_path), tmp_path / "site"
+    outcome = _build(data, site)
+    keys = [column.key for column in COLUMNS]
+    assert sorted(path.relative_to(site).as_posix() for path in (site / "store").glob("*.html")) == sorted(
+        store_path(key) for key in keys)
+    assert set(outcome.pages) >= {"index.html", *(store_path(key) for key in keys)}
+    root = (site / "index.html").read_text(encoding="utf-8")
+    assert '<section id="pick" data-page="root">' in root and "<table" not in root
+    assert re.findall(r'<li><a href="(store/[^"]+)">', root) == [store_path(key) for key in (
+        "shufersal-deal", "shufersal-express", "shufersal-sheli", "shufersal-universe", "carrefour-city",
+        "carrefour-market", "ramilevy", "osherad", "yochananof")]
+    for key in keys:
+        page = (site / store_path(key)).read_text(encoding="utf-8")
+        assert f'<main data-store="{key}">' in page
+        assert re.findall(r'<tr data-column="([^"]+)"', page) == ([OSHER] if key == OSHER else []), key
+        lead = "1 product passed today." if key == OSHER else "None yet: a product needs 20 days of price history first."
+        assert f'<p class="lede">{lead}</p>' in page, key
+
+
 def test_every_product_link_resolves_to_a_page_the_build_wrote(tmp_path):
-    """Every product the front page, the basket page and the browse pages link, and every barcode the search pieces
+    """Every product the store pages, the basket page and the browse pages link, and every barcode the search pieces
     send to `p/<barcode>.html`, is a page the build wrote (Task 18's carry: the codes in the page paths' form)."""
     data, site = tree(tmp_path), tmp_path / "site"
     _build(data, site)
     linked = set()
     for name in ("index.html", "basket.html", "record.html", "method.html"):
         linked |= set(re.findall(r'href="(p/[^"]+)"', (site / name).read_text(encoding="utf-8")))
-    for page in (site / "browse").glob("*.html"):
+    for page in [*(site / "browse").glob("*.html"), *(site / "store").glob("*.html")]:
         linked |= {path.removeprefix("../") for path in re.findall(r'href="(\.\./p/[^"]+)"', page.read_text())}
     for piece in (site / "search").glob("*.json"):
         if piece.name != "pieces.json":
             linked |= {page_path(entry[0]) for entry in json.loads(piece.read_text(encoding="utf-8"))}
     assert page_path(MILK) in linked and page_path(A) in linked                    # the front row's and the browse's
-    browse = re.findall(r'href="(browse/[^"]+)"', (site / "index.html").read_text(encoding="utf-8"))
+    store = (site / store_path(OSHER)).read_text(encoding="utf-8")
+    browse = re.findall(r'href="\.\./(browse/[^"]+)"', store)
     assert browse and all((site / path).is_file() for path in browse)            # the path to every product
-    assert re.search(rf'href="{page_path(MILK)}"', (site / "index.html").read_text(encoding="utf-8"))
+    assert re.search(rf'href="\.\./{page_path(MILK)}"', store)
     assert re.search(rf'href="{page_path(MILK)}"', (site / "basket.html").read_text(encoding="utf-8"))
     assert not [path for path in linked if not (site / path).is_file()]
 
@@ -215,7 +240,7 @@ def test_the_front_page_has_the_days_row_and_count_line(tmp_path):
     fold-out's (the owner's plain words, 2026-11-10)."""
     data, site = tree(tmp_path), tmp_path / "site"
     _build(data, site)
-    front = _text(site / "index.html")
+    front = _text(site / store_path(OSHER))
     assert "1 product passed today." in front
     assert ("Today the five chains list 1 promotion carried by at least half of a store format's stores, on 1 "
             "product.") in front
@@ -231,7 +256,7 @@ def test_the_lead_line_says_none_yet_before_a_column_has_20_days_of_records(tmp_
     says so (`shopper.pages.front_ready`, from the history's column-days), never that none is below."""
     data, site = tree(tmp_path, history=False), tmp_path / "site"
     _build(data, site)
-    front = _text(site / "index.html")
+    front = _text(site / store_path(OSHER))
     assert "None yet: a product needs 20 days of price history first." in front
     assert "None passed today." not in front
 
@@ -246,7 +271,7 @@ def test_the_lead_line_says_none_today_once_a_column_has_20_days_of_records(tmp_
                                               _row(OSHER, B, "9.90", wide=False), _row(OSHER, C, "2.50", wide=False)])
     _build(data, site)
     assert _site_day(site)["counts"] == {"promotions": 1, "products": 1, "below": 0}
-    front = _text(site / "index.html")
+    front = _text(site / store_path(OSHER))
     assert "None passed today." in front and "None yet" not in front
 
 
@@ -543,8 +568,8 @@ def test_the_pages_show_the_day_as_published(tmp_path, monkeypatch):
     assert again.unchanged and _site_day(site)["collected_by"] == "11:48"
     method = (site / "method.html").read_text(encoding="utf-8")
     assert first in method and "0123456789ab" not in method
-    for path in (site / "index.html", site / "record.html", site / page_path(MILK), site / page_path(A),
-                 next((site / "browse").glob("*.html"))):
+    for path in (site / "index.html", site / store_path(OSHER), site / "record.html", site / page_path(MILK),
+                 site / page_path(A), next((site / "browse").glob("*.html"))):
         page = _text(path)
         assert "collected by 11:48 Israel time" in page and "15:00" not in page
 

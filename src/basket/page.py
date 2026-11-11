@@ -41,9 +41,11 @@ The shopper site's frame (`Frame`; the shopper plan's Task 18, its question M (c
 S6). The shopper site shows the same index page as `basket.html` in its own frame: with a frame, the header band is
 the frame's (the shopper site's name over its date line) and the basket's title opens the main part; the credit line is
 the frame's, its link the frame's method link; a basket item whose product page the build has links to it
-(`item_link`, None for no page); and the frame's note goes under the item table. Without a frame the page is the
-basket's own, byte for byte as before. The method page's body is `method_parts`, the parts after its heading, so the
-shopper site's method page carries the basket's method in a section of its own, the same parts in the same order.
+(`item_link`, None for no page); the frame's note goes under the item table; and the frame's script, its tag as HTML
+(the shopper site's one script, store first), goes in the head after the style. Without a frame the page is the
+basket's own, byte for byte as before, with no script. The method page's body is `method_parts`, the parts after its
+heading, so the shopper site's method page carries the basket's method in a section of its own, the same parts in the
+same order.
 
 Revisions. A revised day's public dict has `revised` ({"on": YYYY-MM-DD, "reason": text}) and `revisions`,
 the earlier runs oldest first, each with `totals` by slug (None for a chain without one) and its own
@@ -237,12 +239,14 @@ STYLE = ("\n" + _TOP + _TILES_AND_BARS + _TABLES + _BASKET_TABLES + _FOOTER + _B
 class Frame:
     """The shopper site's frame for the index page (the module's docstring): `band` the header band as HTML, `credit`
     the credit line's text, `item_link` a basket item's page by barcode (None for no page), `method_href` where the
-    method link goes, `note` a sentence under the item table ("" for none)."""
+    method link goes, `note` a sentence under the item table ("" for none), `script` a script tag for the head ("" for
+    none)."""
     band: str
     credit: str
     item_link: Callable[[str], str | None]
     method_href: str
     note: str = ""
+    script: str = ""
 
 
 def render_index(public: dict, basket: Basket, exclusions: Mapping[str, Sequence[Store]],
@@ -263,7 +267,7 @@ def render_index(public: dict, basket: Basket, exclusions: Mapping[str, Sequence
     if frame is None:
         return _page(_band(f"<h1>{_text(words.TITLE)}</h1>", public), words.TITLE, parts, _credit(public))
     credit = f'<p>{_prose(frame.credit)} <a href="{_escape(frame.method_href)}">{_text(words.METHOD_LINK)}</a></p>'
-    return _page(frame.band, words.TITLE, [f"<h1>{_text(words.TITLE)}</h1>", *parts], credit)
+    return _page(frame.band, words.TITLE, [f"<h1>{_text(words.TITLE)}</h1>", *parts], credit, frame.script)
 
 
 def index_headline(public: dict, basket: Basket) -> tuple[str, str]:
@@ -331,8 +335,9 @@ def write_day_file(public: dict, site_dir: Path) -> None:
     (site_dir / "days" / f"{public['day']}.json").write_text(render_day(public), encoding="utf-8")
 
 
-def _page(band: str, title: str, parts: Sequence[str], footer: str) -> str:
+def _page(band: str, title: str, parts: Sequence[str], footer: str, script: str = "") -> str:
     body = "\n".join(parts)
+    head = f"{script}\n" if script else ""        # the frame's script; none on the basket's own pages
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -342,7 +347,7 @@ def _page(band: str, title: str, parts: Sequence[str], footer: str) -> str:
 <meta name="color-scheme" content="light dark">
 <title>{_text(title)}</title>
 <style>{STYLE}</style>
-</head>
+{head}</head>
 <body>
 {band}
 <main>

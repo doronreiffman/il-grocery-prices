@@ -819,7 +819,7 @@ def test_site_check_failure_uploads_nothing(morning, tmp_root, monkeypatch):
         run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
     assert str(raised.value) == "the site check failed:\nindex.html: x"
     assert checked == [[".shopper-site", "basket.html", "browse", "days", "index.html", "method.html", "p",
-                        "record.html", "search", "search.js", "site-days"]]  # the built site
+                        "record.html", "search", "search.js", "site-days", "store"]]  # the built site
     assert deps.site.objects == {} and deps.site.invalidations == []
     assert len(records_of(morning)) == 1  # the record went up all the same
     assert pinged(deps) == [f"{URL}/start", f"{URL}/fail"]

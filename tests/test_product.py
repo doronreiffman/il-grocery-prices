@@ -793,6 +793,7 @@ def test_the_shell_band_and_footer():
     page = _render(covered, pairs)
     assert page.startswith("<!doctype html>") and '<meta name="robots" content="noindex">' in page
     assert (f'<header class="band"><div class="wrap"><a href="../index.html">{SITE_NAME}</a>'
+            '<p class="store"><a id="pick-link" href="../index.html#pick">Pick your store</a></p>'
             f'<p class="dateline">{CHAINS_LINE}</p><p class="dateline">{date_line(DAY)}</p></div></header>') in page
     footer = re.search(r"<footer>(.*?)</footer>", page, re.DOTALL).group(1)
     assert credit(DAY, "12:03") in footer
@@ -801,12 +802,17 @@ def test_the_shell_band_and_footer():
                      ("../method.html", "How this is made")]
 
 
-def test_no_script_on_a_product_page():
-    """S12 (b), Q2: `search.js` is the site's one script, and product pages carry none yet."""
+def test_a_product_page_carries_the_one_script_and_the_pick_link():
+    """S12 (b), Q2 as store-first.md changes it: `search.js`, the site's one script, in the head from the site's root
+    (`../`), and nothing else loaded; the header's pick link up to the picker (`#pick`), which search.js reads the
+    site's root from."""
     for page in (_render(*_typical()), _render(*_largest())):
-        assert "<script" not in page.lower() and "javascript:" not in page.lower()
+        assert page.count("<script") == 1 and "javascript:" not in page.lower()
+        assert '</style>\n<script src="../search.js" defer></script>\n</head>' in page
+        assert '<a id="pick-link" href="../index.html#pick">Pick your store</a>' in page
         assert not re.search(r"\son\w+=", page)                                  # no inline handler either
-        assert not re.search(r"https?:|//|@import|url\(|<link|<img|<iframe|src=", page.lower())
+        rest = page.replace('<script src="../search.js" defer></script>', "")
+        assert not re.search(r"https?:|//|@import|url\(|<link|<img|<iframe|src=", rest.lower())
 
 
 def test_the_product_page_and_the_browse_pages_share_one_shell():

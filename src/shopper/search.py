@@ -27,7 +27,8 @@ with a Hebrew letter: a Latin name, a digit, a sign. A page lists its products i
 `../p/<barcode>.html` with the name as published, escaped, in a span of its own (`CHAIN_SPAN`), and the barcode; a row of
 links to every browse page sits above the list. The pages need no script: they are the path to every product. They are
 built on the site's shared shell (`shopper.shell`: the band, the date line, the credit line, `noindex`, the base style
-and no script), with their own few rules after the base. A letter nobody starts a name with has no page.
+and the site's one script, which they do not need), with their own few rules after the base. A letter nobody starts
+a name with has no page.
 """
 import json
 from collections import defaultdict

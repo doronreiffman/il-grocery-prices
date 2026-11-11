@@ -1,4 +1,5 @@
 """The words and the pages: the headline, the credit line, the index and method pages, the day's JSON."""
+import hashlib
 import json
 import re
 from datetime import date, datetime, timezone
@@ -12,7 +13,7 @@ from basket.barcode import normalize
 from basket.basket_file import Basket, load_basket
 from basket.chains import SLUGS
 from basket.extract import ExtractReport
-from basket.page import STYLE, build_site, render_day, render_index, render_method
+from basket.page import STYLE, Frame, build_site, render_day, render_index, render_method
 from basket.record import build_record, public_day
 from basket.rules import ChainPrice, Headline, LeftOut, chain_day, price_basket
 from basket.stores import Store
@@ -237,6 +238,24 @@ def test_every_page_has_noindex_credit_one_style_and_no_script():
         assert footer and the_credit in footer.group(1)
         assert '<a href="method.html">' in footer.group(1)
     assert '<a href="index.html">' in method()
+
+
+def test_a_frame_with_a_script_writes_it_and_the_baskets_own_pages_keep_their_bytes():
+    """The shopper site's frame (store first, q33): a frame's script, given as its tag, goes in the head after the
+    style, once; a frame without one, and the basket's own pages, carry none, byte for byte as before (their SHA-256
+    at Task 16's commit)."""
+    tag = '<script src="search.js" defer></script>'
+    frame = Frame(band="<header>BAND</header>", credit="CREDIT", item_link=lambda code: None, method_href="M.html",
+                  script=tag)
+    page = render_index(a_public(), BASKET, EXCLUSIONS, frame)
+    assert page.count("<script") == 1 and f"<style>{STYLE}</style>\n{tag}\n</head>" in page
+    plain = render_index(a_public(), BASKET, EXCLUSIONS, Frame(band="<header>BAND</header>", credit="CREDIT",
+                                                               item_link=lambda code: None, method_href="M.html"))
+    assert "<script" not in plain and f"<style>{STYLE}</style>\n</head>" in plain
+    assert hashlib.sha256(index().encode()).hexdigest() == (
+        "1700a3aa625e52bc4a1cf1e77991bc34c83eb8c174eabceccb4d58f2c757eaf1")
+    assert hashlib.sha256(method().encode()).hexdigest() == (
+        "6c873ce3a1bb6100a5cbd51e4399e23a70f0027b9d609cd266e3c681b0e391c3")
 
 
 def test_lowest_marked_per_row():

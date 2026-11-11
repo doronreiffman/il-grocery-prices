@@ -20,18 +20,20 @@ from pathlib import Path
 import pytest
 
 from basket.chains import SLUGS
-from basket.check import NOT_ADVICE, NoPages
+from basket.check import NOT_ADVICE, NoPages, flatten, strip_tags
 from basket.page import HE_SPAN
 from basket.words import REVISED
 from shopper.build import LEDGER, MARKER, build_site
-from shopper.check import SEARCH_SCRIPT, check_site, main
+from shopper.check import check_site, main
 from shopper.extract import extract_chain_day
 from shopper.freeze import Frozen, ReadOnlyFreezer, scores_site_key, site_key
+from shopper.pages import store_path
 from shopper.product import page_path
 from shopper.score import DaySummary, summary_json, summary_path
 from shopper.search import CHAIN_SPAN
+from shopper.shell import SCRIPT_TAG
 from shopper.siteday import site_day_path
-from shopper.words import CREDIT_START, NEVER, ODDS_WORDS, date_line, no_odds_yet, unreadable
+from shopper.words import ALWAYS, CREDIT_START, NEVER, ODDS_WORDS, date_line, no_odds_yet, unreadable
 from test_build import BASKET, DAY, EGGS, MILK, golden_tree
 from test_history import _row, _table
 from test_shop_build import NOW, OSHER, STAMP, _frozen_file, _history, _published_ledger, _sha, _synced
@@ -40,6 +42,8 @@ ERROR = "carrefour: PromoFull7290055700007-001-002-20260101-0800.gz: RewardType 
 EARLIER = DAY - timedelta(days=20)                    # a day frozen before, its file up since that day
 T = DAY - timedelta(days=14)                          # the day scored on DAY, its scores file up since DAY
 MILK_PAGE = page_path(MILK)
+STORE = store_path(OSHER)                             # Osher Ad's front page, milk's row on it
+SEARCH_SCRIPT = SCRIPT_TAG.format(up="")              # the one script at the root's depth
 CITY, MARKET = "carrefour-city", "carrefour-market"
 BODY = _frozen_file(((OSHER, EGGS),))
 FROZEN = [Frozen(day=day, body=BODY, sha256=_sha(BODY), frozen_at=at, on_time=True, status="same")   # as published
@@ -91,8 +95,12 @@ def replace(site: Path, name: str, old: str, new: str, count: int = 1) -> None:
 
 
 def add(site: Path, name: str, markup: str) -> None:
-    """`markup` put at the top of the page's <main>."""
-    replace(site, name, "<main>\n", f"<main>\n{markup}\n")
+    """`markup` put at the top of the page's <main> (a store page's carries its `data-store`)."""
+    path = site / name
+    text = path.read_text(encoding="utf-8")
+    opening = re.search(r"<main\b[^>]*>\n", text)
+    assert opening, name
+    path.write_text(text[:opening.end()] + markup + "\n" + text[opening.end():], encoding="utf-8")
 
 
 def in_section(site: Path, name: str, column: str, old: str, new: str) -> None:
@@ -141,7 +149,8 @@ def test_a_never_word_inside_a_chains_name_passes(site, words):
 
 
 @pytest.mark.parametrize("inside, more", [("<b>Milk</b>", []), ("Milk > water", []), ("Milk<", []),
-                                          ("Milk<script>x</script>", [f"a script other than {SEARCH_SCRIPT}"])])
+                                          ("Milk<script>x</script>",
+                                           [f"a script other than {SCRIPT_TAG.format(up='../')}"])])
 def test_markup_inside_a_chains_span_fails(site, inside, more):
     add(site, MILK_PAGE, CHAIN_SPAN.format(inside))
     assert check_site(site) == [f"{MILK_PAGE}: {problem}" for problem in ["markup inside a chain's span", *more]]
@@ -175,9 +184,9 @@ def test_a_span_with_markup_is_still_read(site):
 
 
 def test_no_phrase_a_page_must_carry_comes_from_a_chains_span(site):
-    replace(site, "index.html", "listed in the morning's files", "listed today", count=0)
-    add(site, "index.html", CHAIN_SPAN.format("as listed in the morning's files"))
-    assert check_site(site) == ["index.html: missing an always phrase: \"listed in the morning's files\""]
+    replace(site, STORE, "listed in the morning's files", "listed today", count=0)
+    add(site, STORE, CHAIN_SPAN.format("as listed in the morning's files"))
+    assert check_site(site) == [f"{STORE}: missing an always phrase: \"listed in the morning's files\""]
 
 
 # ---- the NEVER list ----
@@ -273,7 +282,7 @@ def test_a_folder_without_a_site_day_file_fails(site):
 
 # ---- ALWAYS ----
 
-@pytest.mark.parametrize("name, phrase", [("index.html", "listed in the morning's files"),
+@pytest.mark.parametrize("name, phrase", [(STORE, "listed in the morning's files"),
                                           (MILK_PAGE, "before promotions"),
                                           (page_path(EGGS), "as listed in the chain's price files")])
 def test_a_page_without_an_always_phrase_fails(site, name, phrase):
@@ -282,9 +291,27 @@ def test_a_page_without_an_always_phrase_fails(site, name, phrase):
 
 
 def test_an_always_phrase_in_an_attribute_does_not_count(site):
-    replace(site, "index.html", "listed in the morning's files", "listed today", count=0)
-    add(site, "index.html", '<p title="listed in the morning\'s files">x</p>')
-    assert check_site(site) == ["index.html: missing an always phrase: \"listed in the morning's files\""]
+    replace(site, STORE, "listed in the morning's files", "listed today", count=0)
+    add(site, STORE, '<p title="listed in the morning\'s files">x</p>')
+    assert check_site(site) == [f"{STORE}: missing an always phrase: \"listed in the morning's files\""]
+
+
+@pytest.mark.parametrize("key", ["shufersal-deal", "carrefour-market", "yochananof"])
+def test_a_store_page_without_an_always_phrase_fails(site, key):
+    """Store first (q33): every store type's front page lists deals, so it is held to the four ALWAYS phrases, as the
+    product pages are, whether or not it has a row."""
+    name = store_path(key)
+    replace(site, name, "before promotions", "x", count=0)
+    assert check_site(site) == [f"{name}: missing an always phrase: 'before promotions'"]
+
+
+def test_index_html_needs_no_always_phrase(site):
+    """Store first (q33): the root is the picker and shows no price, so it is not held to the ALWAYS phrases (it
+    carries "listed price" in the credit line alone)."""
+    index = flatten(strip_tags((site / "index.html").read_text(encoding="utf-8")))
+    assert [phrase for phrase in ALWAYS if flatten(phrase) not in index] == [
+        "as listed in the chain's price files", "before promotions", "listed in the morning's files"]
+    assert check_site(site) == []
 
 
 # ---- basket.html under the basket's index rules ----
@@ -308,6 +335,33 @@ def test_basket_html_saying_revised_on_an_unrevised_day_fails(site):
 def test_a_second_script_fails(site, markup):
     add(site, "index.html", markup)
     assert check_site(site) == [f"index.html: a script other than {SEARCH_SCRIPT}"]
+
+
+def test_a_script_at_the_wrong_depth_fails(site):
+    """Store first (q33): the one script is allowed at the page's own depth only, `../search.js` from a folder."""
+    replace(site, "index.html", SEARCH_SCRIPT, SCRIPT_TAG.format(up="../"))
+    replace(site, MILK_PAGE, SCRIPT_TAG.format(up="../"), SEARCH_SCRIPT)
+    replace(site, STORE, SCRIPT_TAG.format(up="../"), SCRIPT_TAG.format(up="../../"))
+    assert check_site(site) == [
+        f"index.html: a script other than {SEARCH_SCRIPT}",
+        f"{MILK_PAGE}: a script other than {SCRIPT_TAG.format(up='../')}",
+        f"{STORE}: a script other than {SCRIPT_TAG.format(up='../')}",
+        "index.html: a link to '../search.js' leaves the build",
+        f"{MILK_PAGE}: a link to 'search.js' reaches no file in the build",
+        f"{STORE}: a link to '../../search.js' leaves the build"]
+
+
+def test_the_one_script_passes_on_every_page(site):
+    """Store first (q33): the site's one script on every page the build writes, at the page's own depth, and the
+    site passes."""
+    pages = sorted(site.rglob("*.html"))
+    assert {path.relative_to(site).parts[0] for path in pages if len(path.relative_to(site).parts) > 1} == {
+        "p", "browse", "store"}
+    for path in pages:
+        name = path.relative_to(site).as_posix()
+        text = path.read_text(encoding="utf-8")
+        assert text.count("<script") == 1 and SCRIPT_TAG.format(up="../" * name.count("/")) in text, name
+    assert check_site(site) == []
 
 
 @pytest.mark.parametrize("markup, url", [
@@ -523,8 +577,17 @@ def test_a_folder_without_the_index_fails(site):
     (site / "index.html").unlink()
     problems = check_site(site)
     assert problems[-1] == "index.html: missing"
-    assert all(re.search(r"a link to '(\.\./)?index\.html' reaches no file in the build$", line)
+    assert all(re.search(r"a link to '(\.\./)?index\.html(#pick)?' reaches no file in the build$", line)
                for line in problems[:-1])
+
+
+def test_a_missing_store_page_fails(site):
+    """Store first (q33): each store type's front page must be in the build, whatever links to it."""
+    (site / store_path("ramilevy")).unlink()
+    assert check_site(site) == ["index.html: a link to 'store/ramilevy.html' reaches no file in the build",
+                                "store/ramilevy.html: missing"]
+    replace(site, "index.html", '<li><a href="store/ramilevy.html">Rami Levy</a></li>', "")
+    assert check_site(site) == ["store/ramilevy.html: missing"]
 
 
 def test_no_pages_exit_2(site, tmp_path, capsys):

@@ -1,40 +1,53 @@
-"""The front, method, record and basket pages (docs/shopper-site.md, "What a visitor sees" 1, 4, 5 and 6, P1 to P10, F1
-to F11, "Words" and Q1 to Q4, with "Changed after the survey", S1 and "The column"; the plan's Task 18, its questions A,
-K, M (c), (d) and (f) and O, and the second pre-flight's S1, S6 and S13). Every page is on the site's shared shell
-(`shopper.shell`: the band with the site's name and the date line, `noindex`, the base style, the credit line), at the
-site's root; every chain-supplied text (a product's name, a programme's, a store's) is escaped inside `CHAIN_SPAN`.
+"""The root, the store types' front pages, and the method, record and basket pages (docs/shopper-site.md, "What a
+visitor sees" 1, 4, 5 and 6, P1 to P10, F1 to F11, "Words" and Q1 to Q4, with "Changed after the survey", S1 and "The
+column"; the plan's Task 18, its questions A, K, M (c), (d) and (f) and O, and the second pre-flight's S1, S6 and S13;
+docs/store-first.md, "What a visitor sees" 1, 3 and 4, and the store-first plan's Task 5). Every page is on the
+site's shared shell (`shopper.shell`: the band with the site's name, the pick link and the date line, `noindex`, the
+base style, the one script, the credit line); every chain-supplied text (a product's name, a programme's, a store's) is
+escaped inside `CHAIN_SPAN`.
 
-The front page's rows (question A under S1). A row is a (column, product): `front_rows_of` gives at most one per column,
-in name order, the product's lowest deal there, compared exactly, among its promotions running today (P3, read as the
-product pages read them, `shopper.product.running_today`) that pass the front page's test (`shopper.measures.on_front`:
-listed across the column, the price read, a record at the column today, at least 20 days of records in the 30 before
-today, the deal as shown below every listed price of the 90 as shown). So a product can show four Shufersal rows, each
-against its own column's median; a column with no record today (a hole, S1) has none. `ordered` sorts the rows by the
-depth they show, a whole percent ("under 1%" as 0), deepest first, a row with no shown gap last, then by the exact depth
-(`shopper.measures.depth`), then by column in name order, then by barcode as a number. A row keeps the promotion's
-restrictions, programmes and minimum spend for its conditions and the filters. `Counts` holds the front page's three
-numbers (the site-day file's; the build counts them): the wide promotions listed today, distinct by chain and id, their
+The root page, `index.html`, also the portfolio's landing page: the title question (`shopper.words.FRONT_TITLE`), one
+line on what the site does (ROOT_LINE), the picker, then the hiring line (question M (f)). The picker is
+`<section id="pick" data-page="root">`, the pick link's target and search.js's mark for the root (it sends a remembered
+pick on to its store type's front page unless the hash is #pick, which is how the header's "change" reaches the picker
+instead): "Which store are you in?" (PICK_TITLE), then each chain's name over a link to each of its store types' front
+pages (`store_path`), in the design's order by chain (PICK_GROUPS), never COLUMNS' order by name. The root shows no
+price, so it carries no ALWAYS phrase, and `shopper.check` holds it to none.
+
+A store type's front page, `store/<key>.html` (`store_path`), one folder down (UP), with its main part marked
+`data-store` (`shopper.shell.page`), from which search.js sets the pick. Until the store-first plan's Task 6
+replaces it, its content is the old front page's for its column alone, under the old rule. Top to bottom, in the
+owner's plain words (2026-11-10): the store type's name over the title, the owner's question; the line under it
+(`shopper.words.FRONT_SUBTITLE`), what each promotion is checked against; the search box, `<input id="q">`, and a link
+to the browse pages, which need no script; the lead line (`shopper.words.lead_line`), how many of the column's products
+passed, its "None yet" form while the column has no record on MIN_FRONT_DAYS of the RECENT_DAYS before the day
+(`column_ready`: a product's days of records at a column are days the column has one, so none can pass the front
+test's days before then); the filters, CSS only: two checkboxes, the club-only one (hiding every restricted promotion,
+question K) and the minimum-spend one, each ruled by a `:checked` sibling selector over the rows' `data-club` and
+`data-spend`, and no store radio, since the page is one store type's; the table, the column's rows, each: the
+product's link with its name, the column (its "Store"), the deal price per unit or kilogram with "buy N", the column's
+30-day median listed price (its "Typical price"), the depth as a whole percent worked from the figures shown
+(`shopper.words.shown_below`, as P7's first sentence works it; "under 1%" for a gap that rounds to 0%), and the
+conditions with their source and the fine print label; directly under the table, one note saying what "Typical price"
+and "Below by" are and carrying the four ALWAYS phrases, so the page carries them on a morning with no row too; a
+fold-out, `<details>`, closed, needing no script: every condition `shopper.measures.on_front` applies, in the store
+format's words (question O), as required, not as enough on their own (the review round, 2026-11-10), and that both
+windows count only days with records; what the two filters hide and the chains whose files mark no restricted promotion
+today (`shopper.words.marked_none`), the day's promotions and products, the site's whole until Task 6
+(`shopper.words.promotions_line`), and the method page; the top row's P7 sentences as one deal's story. Every link
+leads up to the site's root.
+
+The rows (question A under S1). A row is a (column, product): `front_rows_of` gives at most one per column, in name
+order, the product's lowest deal there, compared exactly, among its promotions running today (P3, read as the product
+pages read them, `shopper.product.running_today`) that pass the front page's test (`shopper.measures.on_front`: listed
+across the column, the price read, a record at the column today, at least 20 days of records in the 30 before today,
+the deal as shown below every listed price of the 90 as shown). So a product can have a row on each of four Shufersal
+store pages, each against its own column's median; a column with no record today (a hole, S1) has none. `ordered` sorts
+the rows by the depth they show, a whole percent ("under 1%" as 0), deepest first, a row with no shown gap last, then
+by the exact depth (`shopper.measures.depth`), then by column in name order, then by barcode as a number. A row keeps
+the promotion's restrictions, programmes and minimum spend for its conditions and the filters. `Counts` holds the
+site-day file's three numbers (the build counts them): the wide promotions listed today, distinct by chain and id, their
 barcodes, and the barcodes with a front row.
-
-The front page, top to bottom, in the owner's plain words (2026-11-10): the title, the owner's question; the line under
-it (`shopper.words.FRONT_SUBTITLE`), what each promotion is checked against; the lead line
-(`shopper.words.lead_line`), how many passed, its "None yet" form while no column has a record on
-MIN_FRONT_DAYS of the RECENT_DAYS before the day (`front_ready`: a product's days of records at a column are days the
-column has one, so none can pass the front test's days before then); the search box, `<input id="q">` with exactly
-`<script src="search.js" defer></script>`, the one script, and a link to the browse pages, which need none; the
-filters, CSS only: a radio for all the stores (the columns) and one per column, and two checkboxes, the club-only one
-(hiding every restricted promotion, question K) and the minimum-spend one, each ruled by a `:checked` sibling selector
-over the rows' `data-column`, `data-club` and `data-spend`; the table, a row each: the product's link with its name, the
-column (its "Store"), the deal price per unit or kilogram with "buy N", the column's 30-day median listed price (its
-"Typical price"), the depth as a whole percent worked from the figures shown (`shopper.words.shown_below`, as P7's
-first sentence works it; "under 1%" for a gap that rounds to 0%), and the conditions with their source and the fine
-print label; directly under the table, one note saying what "Typical price" and "Below by" are and carrying the four
-ALWAYS phrases, so the page carries them on a morning with no row too; a fold-out, `<details>`, closed, needing no
-script: every condition `shopper.measures.on_front` applies, in the store format's words (question O), as required,
-not as enough on their own (the review round, 2026-11-10), and that both windows count only days with records; what the
-two filters hide and the chains whose files mark no restricted promotion today (`shopper.words.marked_none`), the day's
-promotions and products (`shopper.words.promotions_line`), and the method page; the top row's P7 sentences as one deal's story; the hiring line
-(question M (f)).
 
 The method page: what a column is and the nine, with how each one's stores are chosen and how many the day's store list
 includes; the stores left out by rule, which of them sit in a column's part of the store list, and store 779 (Task 15's
@@ -91,7 +104,7 @@ from shopper.items import HORIZON, by_number
 from shopper.measures import MIN_FRONT_DAYS, RECENT_DAYS, Gap, depth, gap, on_front, whole
 from shopper.product import CHAIN_SPAN, field_conditions, page_path, running_today
 from shopper.record import BIN_OFF, BIN_SHARE, BLOCK, CAL_MAX, DRAWS, GATE_DAYS, LEVEL, MIN_DAYS, SEED, holds_share
-from shopper.shell import band, page, text
+from shopper.shell import SCRIPT_TAG, band, page, text
 from shopper.words import (BROWSE_LINK, FINE_PRINT, FRONT_SUBTITLE, FRONT_TITLE, GAP_HEADING, HIRING, METHOD_TITLE,
                            MORNING, NEVER, NUMBER_WORDS, RECORD_TITLE, SITE_NAME, buy, columns_tested, credit,
                            date_range, deal_price, formats_note, gap_sentences, lead_line, marked_none, no_odds_yet,
@@ -100,9 +113,17 @@ from shopper.words import (BROWSE_LINK, FINE_PRINT, FRONT_SUBTITLE, FRONT_TITLE,
 BASKET_SECTION = "headline-basket"     # the basket's method on the method page: not its inner heading's id, "basket"
 BASKET_PAGE = "the basket page"        # what the basket's method section speaks of on the method page
 GITHUB = HIRING[-1][1]
-# The front page's own words (the owner's plain words, 2026-11-10): plain labels; the rule in full in the fold-out
+# The root's own words (store first, q33; provisional until the owner's read): the picker's title is the design's
+PICK_TITLE = "Which store are you in?"
+ROOT_LINE = ("Pick the store you're in, then look up a product: each sale is checked against what it usually costs "
+             "there.")
+# The picker's store types by chain, in the design's order ("What a visitor sees" 1), never COLUMNS' (by name)
+PICK_GROUPS = (("shufersal", ("shufersal-deal", "shufersal-express", "shufersal-sheli", "shufersal-universe")),
+               ("carrefour", ("carrefour-city", "carrefour-market")), ("ramilevy", ("ramilevy",)),
+               ("osherad", ("osherad",)), ("yochananof", ("yochananof",)))
+UP = "../"                  # a store type's front page, store/<key>.html, to the site's root
+# The store pages' own words (the owner's plain words, 2026-11-10): plain labels; the rule in full in the fold-out
 SEARCH_LABEL = "Find a product: name or barcode"
-ALL_STORES = "All stores"
 CLUB_FILTER = "Hide club-only deals"
 SPEND_FILTER = "Hide deals with a minimum spend"
 NO_DEALS = "No deals to show."                 # the lead line above says why
@@ -156,7 +177,15 @@ section h3 { font-size: 1rem; margin: var(--s4) 0 var(--s2); }
 section small { display: block; color: var(--text-3); font-size: .8125rem; }
 .lede { font-size: 1.0625rem; color: var(--text-2); }
 """
-FRONT_STYLE = PAGE_STYLE + """
+ROOT_STYLE = PAGE_STYLE + """
+#pick h3 { color: var(--text-2); }
+#pick ul { list-style: none; padding: 0; margin: 0 0 var(--s3); display: flex; flex-wrap: wrap; gap: var(--s2); }
+#pick li a { display: inline-block; padding: var(--s2) var(--s3); border: 1px solid var(--border-strong);
+             border-radius: var(--radius); background: var(--surface); font-weight: 600; text-decoration: none; }
+.hiring { margin-top: var(--s5); }
+"""
+STORE_STYLE = PAGE_STYLE + """
+.at { margin: 0; color: var(--accent); font-weight: 600; }
 .sub { color: var(--text-3); }
 .search label { display: block; font-weight: 600; margin-bottom: var(--s2); }
 .search input { width: 100%; max-width: 32rem; font: inherit; padding: var(--s2) var(--s3); border-radius: 6px;
@@ -170,9 +199,6 @@ FRONT_STYLE = PAGE_STYLE + """
 .deals details li { margin: 0 0 var(--s2); }
 table.front { min-width: 52rem; }
 .story-head { font-weight: 600; }
-.hiring { margin-top: var(--s5); }
-""" + "".join(f'#f-{column.key}:checked ~ .table tbody tr[data-column]:not([data-column="{column.key}"]) '
-              "{ display: none; }\n" for column in COLUMNS) + """\
 #f-club:checked ~ .table tbody tr[data-club] { display: none; }
 #f-spend:checked ~ .table tbody tr[data-spend] { display: none; }
 """
@@ -264,16 +290,19 @@ def front_rows_of(code: str, title: str, pairs: Mapping[str, Pair], column_days:
     return rows
 
 
-def front_ready(column_days: Mapping[tuple[str, date], ColumnDay], day: date) -> bool:
-    """Whether some column has a record on at least MIN_FRONT_DAYS of the RECENT_DAYS days before `day`: a product's
-    days of records at a column are days the column has a record (P6), so before then no product can pass the front
-    test's days (`shopper.measures.on_front`), and the lead line says none can be listed yet."""
+def store_path(column: str) -> str:
+    """A store type's front page in the site: store/<column key>.html (search.js's own path for it)."""
+    return f"store/{column}.html"
+
+
+def column_ready(column_days: Mapping[tuple[str, date], ColumnDay], column: str, day: date) -> bool:
+    """Whether `column` has a record on at least MIN_FRONT_DAYS of the RECENT_DAYS days before `day`: a product's days
+    of records at a column are days the column has a record (P6), so before then none of its products can pass the
+    front test's days (`shopper.measures.on_front`), and its lead line says none can be listed yet."""
     first = day - timedelta(days=RECENT_DAYS)
-    held: dict[str, int] = {}
-    for (column, seen), found in column_days.items():
-        if first <= seen < day and found.record:
-            held[column] = held.get(column, 0) + 1
-    return any(count >= MIN_FRONT_DAYS for count in held.values())
+    held = sum(1 for (key, seen), found in column_days.items()
+               if key == column and first <= seen < day and found.record)
+    return held >= MIN_FRONT_DAYS
 
 
 def _by_shown(row: FrontRow) -> tuple[bool, int]:
@@ -290,19 +319,16 @@ def ordered(rows: Iterable[FrontRow]) -> list[FrontRow]:
 
 
 def _search(browse: str | None) -> str:
-    link = f'<p><a href="{escape(browse)}">{text(BROWSE_LINK)}</a></p>' if browse else ""
+    """The search box (search.js, the shell's one script, finds it) and the browse link, from the site's root."""
+    link = f'<p><a href="{UP}{escape(browse)}">{text(BROWSE_LINK)}</a></p>' if browse else ""
     return (f'<section class="search"><label for="q">{text(SEARCH_LABEL)}</label>'
-            f'<input id="q" type="search" autocomplete="off"><script src="search.js" defer></script>{link}</section>')
+            f'<input id="q" type="search" autocomplete="off">{link}</section>')
 
 
 def _filters() -> str:
-    """The radios and checkboxes, siblings of the table, so CSS alone filters its rows (the module's docstring)."""
-    radios = [f'<input type="radio" name="column" id="f-all" checked><label for="f-all">{text(ALL_STORES)}</label>']
-    radios += [f'<input type="radio" name="column" id="f-{column.key}"><label for="f-{column.key}">{text(column.name)}'
-               "</label>" for column in COLUMNS]
-    checks = [f'<input type="checkbox" id="f-club"><label for="f-club">{text(CLUB_FILTER)}</label>',
-              f'<input type="checkbox" id="f-spend"><label for="f-spend">{text(SPEND_FILTER)}</label>']
-    return "".join(radios) + "<br>" + "".join(checks)
+    """The two checkboxes, siblings of the table, so CSS alone filters its rows (the module's docstring)."""
+    return (f'<input type="checkbox" id="f-club"><label for="f-club">{text(CLUB_FILTER)}</label>'
+            f'<input type="checkbox" id="f-spend"><label for="f-spend">{text(SPEND_FILTER)}</label>')
 
 
 def _row(row: FrontRow) -> str:
@@ -313,8 +339,9 @@ def _row(row: FrontRow) -> str:
     conditions = "; ".join([*field_conditions({"restrictions": row.restrictions, "programmes": row.programmes,
                                                "min_spend": row.min_spend}), text(FINE_PRINT)])
     marks = (' data-club=""' if row.restrictions else "") + (' data-spend=""' if row.min_spend is not None else "")
-    return (f'<tr data-column="{row.column}"{marks}><th scope="row"><a href="{page_path(row.code)}">{_span(row.title)}'
-            f"</a><small>{text(row.code)}</small></th><td>{text(BY_KEY[row.column].name)}</td><td>{said}</td>"
+    return (f'<tr data-column="{row.column}"{marks}><th scope="row"><a href="{UP}{page_path(row.code)}">'
+            f"{_span(row.title)}</a><small>{text(row.code)}</small></th><td>{text(BY_KEY[row.column].name)}</td>"
+            f"<td>{said}</td>"
             f"<td>₪{money(row.gap.median30)}</td><td>{percent}</td><td>{conditions}</td></tr>")
 
 
@@ -325,7 +352,7 @@ def _rules(counts: Counts, marking_none: Sequence[str]) -> str:
     return (f"<details><summary>{text(RULES_TITLE)}</summary><p>{text(RULES_INTRO)}</p><ul>{rules}</ul>"
             f"<p>{text(WINDOWS_NOTE)}</p><p>{text(club)}</p><p>{text(SPEND_NOTE)}</p>"
             f"<p>{text(promotions_line(counts.promotions, counts.products))}</p>"
-            f'<p><a href="method.html">{text(RULES_LINK)}</a></p></details>')
+            f'<p><a href="{UP}method.html">{text(RULES_LINK)}</a></p></details>')
 
 
 def _deals(rows: Sequence[FrontRow], counts: Counts, marking_none: Sequence[str]) -> str:
@@ -338,8 +365,8 @@ def _deals(rows: Sequence[FrontRow], counts: Counts, marking_none: Sequence[str]
 
 def _story(row: FrontRow) -> str:
     """One deal's story: the top row's P7 sentences, in the product page's words."""
-    return (f'<section class="story"><h2>{text(GAP_HEADING)}</h2><p class="story-head"><a href="{page_path(row.code)}">'
-            f"{_span(row.title)}</a> · {text(BY_KEY[row.column].name)}</p>"
+    return (f'<section class="story"><h2>{text(GAP_HEADING)}</h2><p class="story-head">'
+            f'<a href="{UP}{page_path(row.code)}">{_span(row.title)}</a> · {text(BY_KEY[row.column].name)}</p>'
             f"<p>{text(' '.join(gap_sentences(row.gap)))}</p></section>")
 
 
@@ -348,21 +375,40 @@ def _hiring() -> str:
     return f'<p class="hiring">{links}</p>'
 
 
-def render_front(rows: Iterable[FrontRow], counts: Counts, day: date, collected_by: str,
-                 club_marking_none: Sequence[str], browse: str | None = None, *, ready: bool) -> str:
-    """`index.html` (the module's docstring); `club_marking_none` the chains (slugs) whose files mark no restricted
-    promotion today, `browse` a browse page's path for the link to them, None when there is none, `ready` whether a
-    product could pass the front test's days (`front_ready`)."""
-    shown = ordered(rows)
-    parts = [f'<h1 id="deals">{text(FRONT_TITLE)}</h1>', f'<p class="sub">{text(FRONT_SUBTITLE)}</p>',
-             f'<p class="lede">{text(lead_line(counts.below, ready))}</p>',
-             _search(browse), _deals(shown, counts, club_marking_none)]
+def _picker() -> str:
+    """The picker (the module's docstring): each chain's name over its store types' links, in PICK_GROUPS' order."""
+    groups = "".join(f"<h3>{text(CHAIN_NAMES[slug])}</h3><ul>"
+                     + "".join(f'<li><a href="{store_path(key)}">{text(BY_KEY[key].name)}</a></li>' for key in keys)
+                     + "</ul>" for slug, keys in PICK_GROUPS)
+    return f'<section id="pick" data-page="root"><h2>{text(PICK_TITLE)}</h2>{groups}</section>'
+
+
+def render_root(day: date, collected_by: str) -> str:
+    """`index.html`, the picker (the module's docstring)."""
+    parts = [f"<h1>{text(FRONT_TITLE)}</h1>", f'<p class="lede">{text(ROOT_LINE)}</p>', _picker()]
+    parts.append(_hiring())
+    links = [(BASKET_TITLE, "basket.html"), (RECORD_TITLE, "record.html"), (METHOD_TITLE, "method.html")]
+    return page(f"{FRONT_TITLE} - {SITE_NAME}", "\n".join(parts), day, collected_by, links, ROOT_STYLE, up="")
+
+
+def render_store(column: str, rows: Iterable[FrontRow], counts: Counts, day: date, collected_by: str,
+                 marking_none: Sequence[str], browse: str | None = None, *, ready: bool) -> str:
+    """`store/<column>.html` (the module's docstring): `rows` every column's front rows, of which the page shows
+    `column`'s; `counts` the site's (its fold-out's count line, until the store-first plan's Task 6); `marking_none` the
+    chains (slugs) whose files mark no restricted promotion today, `browse` a browse page's path from the root for the
+    link to them, None when there is none, `ready` whether a product of the column could pass the front test's days
+    (`column_ready`)."""
+    name = BY_KEY[column].name
+    shown = ordered(row for row in rows if row.column == column)
+    parts = [f'<p class="at">{text(name)}</p>', f'<h1 id="deals">{text(FRONT_TITLE)}</h1>',
+             f'<p class="sub">{text(FRONT_SUBTITLE)}</p>', _search(browse),
+             f'<p class="lede">{text(lead_line(len(shown), ready))}</p>',
+             _deals(shown, counts, marking_none)]
     if shown:
         parts.append(_story(shown[0]))
-    parts.append(_hiring())
     links = [(BROWSE_LINK, browse)] if browse else []
     links += [(BASKET_TITLE, "basket.html"), (RECORD_TITLE, "record.html"), (METHOD_TITLE, "method.html")]
-    return page(f"{FRONT_TITLE} - {SITE_NAME}", "\n".join(parts), day, collected_by, links, FRONT_STYLE, up="")
+    return page(f"{name} - {SITE_NAME}", "\n".join(parts), day, collected_by, links, STORE_STYLE, up=UP, store=column)
 
 
 # The method page
@@ -888,5 +934,6 @@ def render_basket(public: dict, basket: Basket, exclusions: Mapping[str, Sequenc
     review's finding 12)."""
     frame = Frame(band=band(day, ""), credit=credit(day, collected_by),
                   item_link=lambda code: page_path(normalize(code)) if normalize(code) in product_pages else None,
-                  method_href=f"method.html#{BASKET_SECTION}", note=formats_note())
+                  method_href=f"method.html#{BASKET_SECTION}", note=formats_note(),
+                  script=SCRIPT_TAG.format(up=""))
     return render_index(public, basket, exclusions, frame)

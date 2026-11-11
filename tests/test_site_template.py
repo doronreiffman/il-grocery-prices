@@ -14,6 +14,7 @@ from cfnlint.decode import decode
 from basket.site import FIXED_PAGES, day_key
 from shopper.build import LEDGER
 from shopper.freeze import scores_site_key, site_key
+from shopper.pages import store_path
 from shopper.product import page_path
 from shopper.search import browse_path, pieces
 from shopper.siteday import site_day_path
@@ -70,9 +71,10 @@ def test_the_bucket_keeps_every_version_of_a_published_file(resources):
 
 
 def _rebuilt_prefixes() -> list[str]:
-    """What a morning's build writes again under the same key: the product, browse and search folders, and the fixed
-    pages, each named from the code's own keys."""
-    folders = {key.split("/", 1)[0] + "/" for key in (page_path("2000000000046"), browse_path("\u05d0"), *pieces({}))}
+    """What a morning's build writes again under the same key: the product, browse, search and store folders, and the
+    fixed pages, each named from the code's own keys."""
+    folders = {key.split("/", 1)[0] + "/" for key in (page_path("2000000000046"), browse_path("\u05d0"), *pieces({}),
+                                                       store_path("osherad"))}
     return sorted(folders | set(FIXED_PAGES))
 
 
@@ -83,15 +85,16 @@ def _record_keys() -> list[str]:
 
 
 def test_old_versions_of_rebuilt_pages_expire_after_30_days(resources):
-    # The bucket keeps every version (B12's second guard), and a morning rebuilds every product, browse and search
-    # file and the fixed pages: their older versions would pile up. Only a noncurrent version expires; the current
-    # file never does, and nothing moves to another storage class.
+    # The bucket keeps every version (B12's second guard), and a morning rebuilds every product, browse, search and
+    # store file (store first, q33) and the fixed pages: their older versions would pile up. Only a noncurrent version
+    # expires; the current file never does, and nothing moves to another storage class.
     config = resources["SiteBucket"]["Properties"]["LifecycleConfiguration"]
     assert set(config) == {"Rules"}
     rules = config["Rules"]
-    assert len(rules) == 8
+    assert len(rules) == 9
     assert sorted(rule["Prefix"] for rule in rules) == _rebuilt_prefixes()
-    assert len({rule["Id"] for rule in rules}) == 8
+    assert "store/" in _rebuilt_prefixes()
+    assert len({rule["Id"] for rule in rules}) == 9
     for rule in rules:
         assert set(rule) == {"Id", "Status", "Prefix", "NoncurrentVersionExpiration"}, rule  # no ExpirationInDays, no transition
         assert rule["Status"] == "Enabled", rule

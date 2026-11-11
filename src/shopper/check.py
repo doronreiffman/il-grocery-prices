@@ -1,6 +1,7 @@
 """Check a built shopper site before any upload (docs/shopper-site.md, "Checks before upload", Call 11 and the anti-goal
 "a page that looks current but is not", with "Changed after the survey", "Where the key lives"; the plan's Task 20 and
-its pre-flights' B5, B2, N3, N4, N7, N8, N9 and N13).
+its pre-flights' B5, B2, N3, N4, N7, N8, N9 and N13; docs/store-first.md, "Q2's one script", and the store-first plan's
+Task 5).
 
     PYTHONPATH=src .venv/bin/python -m shopper.check site
 
@@ -22,8 +23,10 @@ each chain's promotions error and every day scored to date. Every `.html` under 
 - The credit line's fixed start (`shopper.words.CREDIT_START`) and "Not shopping advice." in the text read; `noindex`
   as written; and in the page's header the date line of the newest site-day file's day (`date_line`), whatever the rest
   of the page says.
-- `<script` only as `<script src="search.js" defer></script>`; no `src` and no `<link>` to another origin (a URL with a
-  scheme, "https:" or "data:", or a host, "//").
+- `<script` only as the site's one script at the page's own depth, `<script src="<up>search.js" defer></script>` with
+  `up` "../" for each folder the page is in (`shopper.shell.SCRIPT_TAG`): "search.js" at the root, "../search.js" in
+  `p/`, `browse/` and `store/`; any other form, depth or script is refused. No `src` and no `<link>` to another origin
+  (a URL with a scheme, "https:" or "data:", or a host, "//").
 - Every relative `href` and `src` resolves to a file in the build, and one with a fragment to a page that holds that id
   (`method.html#headline-basket`). The exceptions are the record's files, which went up on their own day and are never
   deleted (B5): a link to `forecasts/<d>.csv.gz` resolves when the build's `forecasts/ledger.csv` names day d, and one
@@ -31,7 +34,8 @@ each chain's promotions error and every day scored to date. Every `.html` under 
   Lambda's build folder holds only the run day's site-day file). A link from the root ("/...") or out of the folder
   ("../" past it) resolves to nothing the check can see.
 
-Then by page. `index.html` and every `p/*.html` carry every ALWAYS phrase in the text read. A product page holds at most
+Then by page. Every store type's front page, `store/*.html`, and every `p/*.html` carry every ALWAYS phrase in the
+text read; `index.html`, the picker, shows no price and is held to the rest alone. A product page holds at most
 60,000 bytes (`MAX_PAGE`), and in each of its sections of a column (`data-column`): when the column's own gate is closed
 in the newest site-day file, F10's sentence naming the column (`no_odds_yet`), and once that is cut out, no odds word
 (`ODDS_WORDS`) in the text read, a word from its start, so with its other forms ("forecasts", "chances", "forecasting"),
@@ -42,8 +46,8 @@ is refused. A probability on a closed column's page is caught by the product pag
 `test_each_column_section_carries_f10_naming_the_column_and_no_probability`, the plan's Task 16), not here: no figure
 pattern tells it from P7's "34%" (N9). `basket.html` is held to the basket's index rules (`basket.check.index_problems`,
 naming basket.html: N3): the basket's ALWAYS phrases, and "Revised on" exactly when the newest `days/` file is revised.
-Each search piece, `search/*.json`, holds at most 150,000 bytes (`PIECE_MAX`). And `index.html` and the marker
-`.shopper-site` are there.
+Each search piece, `search/*.json`, holds at most 150,000 bytes (`PIECE_MAX`). And `index.html`, each store type's
+front page (`shopper.pages.store_path`, one for each of the nine columns) and the marker `.shopper-site` are there.
 
 A malformed page is a problem line too, never a crash: a page that is not UTF-8, or a link `urlsplit` refuses (a host in
 brackets that is no IPv6 address). Exit 0 clean; 1 with problems, one a line on stderr naming the file and the rule; 2
@@ -64,19 +68,21 @@ from basket.check import INDEX, NOINDEX, NOT_ADVICE, PRONOUNS, NoPages, flatten,
 from basket.check import main as check_main
 from basket.page import HE_SPAN
 from shopper.build import LEDGER, MARKER, read_ledger
-from shopper.columns import BY_KEY
+from shopper.columns import BY_KEY, COLUMNS
 from shopper.freeze import scores_site_key, site_key
+from shopper.pages import store_path
 from shopper.product import CHAIN_SPAN, MAX_PAGE
 from shopper.search import PIECE_MAX
+from shopper.shell import SCRIPT_TAG
 from shopper.words import ALWAYS, CREDIT_START, NEVER, ODDS_WORDS, date_line, no_odds_yet, unreadable
 
-__all__ = ["SEARCH_SCRIPT", "NoPages", "check_site", "main"]
+__all__ = ["NoPages", "check_site", "main"]
 
 METHOD, BASKET = "method.html", "basket.html"
 PRODUCT = re.compile(r"p/[^/]+\.html")                        # a product page, p/<barcode>.html
+STORE = re.compile(r"store/[^/]+\.html")                      # a store type's front page, store/<key>.html
 PIECES = "search/*.json"
 SITE_DAYS = "site-days/????-??-??.json"
-SEARCH_SCRIPT = '<script src="search.js" defer></script>'      # the front page's one script (shopper.pages)
 SCRIPT = "<script"
 NOTICES = {"the credit line": CREDIT_START, f'"{NOT_ADVICE}"': NOT_ADVICE}   # every page, in the text read
 SPANS = tuple(re.compile("(.*?)".join(map(re.escape, span.split("{}"))), re.S) for span in (CHAIN_SPAN, HE_SPAN))
@@ -199,15 +205,16 @@ def _page(site_dir: Path, name: str, path: Path, day: date | None, shown: Mappin
         problems.append(f"{name}: no date line of {day.isoformat()} in its header")
     words = sorted({found.group(0).lower() for found in PRONOUNS.finditer(read)})
     problems += [f"{name}: the word {word!r}" for word in words]
-    if SCRIPT in written.replace(flatten(SEARCH_SCRIPT), " "):
-        problems.append(f"{name}: a script other than {SEARCH_SCRIPT}")
+    script = SCRIPT_TAG.format(up="../" * name.count("/"))      # the one script, at the page's own depth
+    if SCRIPT in written.replace(flatten(script), " "):
+        problems.append(f"{name}: a script other than {script}")
     tags = _tags(raw)
     loaded = [found["src"] for _, found in tags if "src" in found]
     loaded += [found["href"] for tag, found in tags if tag == "link" and "href" in found]
     problems += [f"{name}: loads from another origin: {url!r}" for url in loaded
                  if (parts := _split(url)) is not None and _elsewhere(parts)]      # one not a URL: the link rule's
     product = PRODUCT.fullmatch(name) is not None
-    if name == INDEX or product:
+    if STORE.fullmatch(name) or product:
         problems += [f"{name}: missing an always phrase: {phrase!r}" for phrase in ALWAYS if not says(phrase, read)]
     if product:
         size = path.stat().st_size
@@ -293,6 +300,9 @@ def check_site(site_dir: Path) -> list[str]:
         problems.append("site-days/: no site-day file, so no day to read the pages by")
     if not (site_dir / INDEX).is_file():
         problems.append(f"{INDEX}: missing")
+    for column in COLUMNS:
+        if not (site_dir / store_path(column.key)).is_file():
+            problems.append(f"{store_path(column.key)}: missing")
     if not (site_dir / MARKER).is_file():
         problems.append(f"{MARKER}: missing; not a shopper site")
     return problems

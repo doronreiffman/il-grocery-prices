@@ -46,8 +46,8 @@ from shopper.freeze import cutoff
 from shopper.history import load
 from shopper.record import gate
 from shopper.score import read_summary
-from shopper_golden import (DAYS, F3_DAY, FINGERPRINT, G1, G2, G3, G4, G5, G6, U1, U2, U3, U4, U5, U6, U7, U8, U9, U10,
-                            UNIVERSE_CODES, build_day, day_of, exact_digests, fixed_provenance, manifest, run)
+from shopper_golden import (DAYS, F3_DAY, FINGERPRINT, G1, G2, G3, G4, G5, G6, KEEP, U1, U2, U3, U4, U5, U6, U7, U8, U9,
+                            U10, UNIVERSE_CODES, build_day, day_of, exact_digests, fixed_provenance, manifest, run)
 
 TESTS = Path(__file__).parent
 ROOT = TESTS.parent
@@ -95,6 +95,14 @@ def _front_rows(page: str) -> list[tuple[str, str]]:
     return [(column, _text(cells)) for column, cells in re.findall(r'<tr data-column="([^"]+)"[^>]*>(.*?)</tr>', page)]
 
 
+def _fronts(golden, n: int) -> dict[str, list[str]]:
+    """Day n's front rows by store type, each store page's own (the old rule's until the plan's Task 6), the store
+    types with none left out."""
+    found = {column.key: [key for key, _ in _front_rows(golden.page(n, f"store/{column.key}.html"))]
+             for column in COLUMNS}
+    return {key: rows for key, rows in found.items() if rows}
+
+
 def _csv(body: bytes) -> list[dict]:
     return list(csv.DictReader(io.StringIO(gzip.decompress(body).decode())))
 
@@ -110,7 +118,8 @@ def _summaries(golden) -> list:
             for path in sorted((golden.data / "tables" / "scored").glob("date=*/summary.json"))]
 
 
-# ---- the pages: the front page (the old rule's until the plan's Task 6), the product pages' verdicts, the holes ----
+# ---- the pages: the store types' front pages (the old rule's until the plan's Task 6), the product pages' verdicts,
+# the holes ----
 
 G3_STORY = ("Deal price ₪7.90: ₪3.50, 31%, below the 30-day median listed price of ₪11.40 (of the 30 days with records "
             "before today).",
@@ -120,11 +129,11 @@ G3_STORY = ("Deal price ₪7.90: ₪3.50, 31%, below the 30-day median listed pr
 
 
 def test_the_golden_pages_windows_and_gaps(golden):
-    # G3 on 16 March (day 75), its 7.90 promotion's first day: the front page's one row, Sheli's, with P7 against
-    # Sheli's own 30-day median; on G3's page Sheli's verdict against its own usual price, sales included, over its 74
-    # days tracked; Deal lists G3 at 9.90 with no promotion and has no row
-    index = golden.page(75, "index.html")
-    assert [column for column, _ in _front_rows(index)] == ["shufersal-sheli"]
+    # G3 on 16 March (day 75), its 7.90 promotion's first day: the one front row, on Sheli's front page, with P7
+    # against Sheli's own 30-day median; on G3's page Sheli's verdict against its own usual price, sales included, over
+    # its 74 days tracked; Deal lists G3 at 9.90 with no promotion and has no row
+    assert _fronts(golden, 75) == {"shufersal-sheli": ["shufersal-sheli"]}
+    index = golden.page(75, "store/shufersal-sheli.html")
     (_, row), = _front_rows(index)
     assert "Deal price ₪7.90 per unit" in row and "₪11.40" in row and "31%" in row
     assert " ".join(G3_STORY) in _text(index)
@@ -145,9 +154,8 @@ def test_the_golden_pages_windows_and_gaps(golden):
         assert said in osher, said
     # G4 at Rami Levy alone, weighed: "2 for ₪100" stored as 1.5 for ₪75.00, ₪50.00 a kilogram; its chain's holes of 9
     # and 10 February skipped in every window
-    index = golden.page(85, "index.html")
-    assert [column for column, _ in _front_rows(index)] == ["shufersal-sheli", "ramilevy"]   # by depth: 34%, then 28%
-    rami = dict(_front_rows(index))["ramilevy"]
+    assert _fronts(golden, 85) == {"ramilevy": ["ramilevy"], "shufersal-sheli": ["shufersal-sheli"]}
+    rami = dict(_front_rows(golden.page(85, "store/ramilevy.html")))["ramilevy"]
     assert "Deal price ₪50.00 per kilogram, buy 1.5" in rami and "₪69.90" in rami and "28%" in rami
     section = _text(_section(golden.page(85, f"p/{G4}.html"), "ramilevy"))
     assert "At Rami Levy: DEAL · ₪19.90 off a kilogram" in section
@@ -159,12 +167,11 @@ def test_the_golden_pages_windows_and_gaps(golden):
     assert "Deal price ₪4.50 per unit" in deal and "at some stores" not in deal
     assert "At Shufersal Deal: DEAL · ₪1.50 off" in deal and "Last this low: 13 February, at ₪4.50." in deal
     assert "Deal price" not in sheli and "No sale today" in sheli
-    assert [column for column, _ in _front_rows(golden.page(99, "index.html"))] == ["shufersal-sheli"]   # G3's alone
+    assert _fronts(golden, 99) == {"shufersal-sheli": ["shufersal-sheli"]}   # G3's alone
     # Deal's holes of 19 and 20 February (days 50 and 51): Deal's files missing, Sheli's and Yesh Chesed's there. On 19
     # February every column with a record has its G1 row, Deal none; G1's Deal section has too few files and no price
-    index = golden.page(50, "index.html")
-    assert [column for column, _ in _front_rows(index)] == [
-        "carrefour-city", "carrefour-market", "osherad", "ramilevy", "shufersal-sheli", "yochananof"]
+    assert _fronts(golden, 50) == {key: [key] for key in (
+        "carrefour-city", "carrefour-market", "osherad", "ramilevy", "shufersal-sheli", "yochananof")}
     page = golden.page(50, f"p/{G1}.html")
     assert "too few files today: 0 of 2 stores" in _text(_section(page, "shufersal-deal"))
     assert "Listed price" not in _text(_section(page, "shufersal-deal"))
@@ -190,6 +197,20 @@ def test_the_golden_pages_windows_and_gaps(golden):
                 U10: "On sale, but the sale price could not be read"}
     for code, said in universe.items():
         assert said in _text(_section(golden.page(DAYS, f"p/{code}.html"), "shufersal-universe")), (code, said)
+
+
+def test_the_golden_root_is_the_picker(golden):
+    """Store first (q33): on every day kept and on the last, `index.html` is the picker, its nine links each to a store
+    type's front page the day's build wrote, and lists no deal; every page carries the one script."""
+    for n in (*KEEP, DAYS):
+        root = golden.page(n, "index.html")
+        assert '<section id="pick" data-page="root">' in root and "<tr" not in root and "<table" not in root
+        links = re.findall(r'<li><a href="(store/[^"]+)">', root)
+        assert sorted(links) == sorted(f"store/{column.key}.html" for column in COLUMNS)
+        for link in links:
+            page = golden.page(n, link)
+            assert page.count("<script") == 1 and '<script src="../search.js" defer></script>' in page
+        assert root.count("<script") == 1 and '<script src="search.js" defer></script>' in root
 
 
 # ---- the verdicts (S0 to S8) and the front list, by hand ----

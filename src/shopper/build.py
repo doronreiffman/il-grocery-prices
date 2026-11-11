@@ -67,19 +67,21 @@ In order:
    numbers and no one-line reason is given (`revise`, the basket's too).
 10. The files: the day's forecasts file on the site when the ledger gains its line in this run (`forecasts/<d>.csv.gz`,
     the archive's bytes), the ledger when it changed, each scored day's scores file, the site-day file when it is not
-    unchanged; then every page: each product's, `index.html`, `method.html`, `record.html` (the day frozen and in the
-    ledger before it is drawn, so it never lists its own day as one with no file), `basket.html` (an item linked when
-    its page is built), the browse pages, the search pieces, `search.js` and the marker `.shopper-site`. The pages show
+    unchanged; then every page: each product's, `index.html` (the picker), each store type's front page
+    (`store/<key>.html`, store first), `method.html`, `record.html` (the day frozen and in the ledger before it is
+    drawn, so it never lists its own day as one with no file), `basket.html` (an item linked when its page is built),
+    the browse pages, the search pieces, `search.js` and the marker `.shopper-site`. The pages show
     the day as published: its "collected by" time and code fingerprint are the published site-day file's, the product
     pages drawn again when the time differs from this run's.
 
 The count line (question A, S1): the promotions listed across a column today, distinct by chain and promotion id, are
 those of the items table's structs that run today (P3), are listed across the column and have a kind, at a column
 with a record today and its promotions read; the products are their barcodes; the products below are the barcodes with
-a front page row (the front page says them in its lead line and its fold-out). The fold-out names the chains whose
-files mark no restricted promotion today: chains with promotions read at some column today and no struct marking a
-restriction there (a chain whose promotions were not read is never said to mark none). Whether a product could pass the
-front test's days at all, the lead line's "None yet", is read from the column-days (`shopper.pages.front_ready`).
+a front page row (each store page's lead line counts its own column's rows; its fold-out says the site's whole). The
+fold-out names the chains whose files mark no restricted promotion today: chains with promotions read at some column
+today and no struct marking a restriction there (a chain whose promotions were not read is never said to mark none).
+Whether a product of a column could pass the front test's days at all, its store page's "None yet", is read from the
+column-days (`shopper.pages.column_ready`).
 
 The outcome lists the pages written and, apart, the data files new to the site (Call 9: they always go up): the
 site-day and basket day files when not unchanged, the ledger and the day's forecasts file when the ledger gained its
@@ -120,8 +122,8 @@ from shopper.freeze import (ForecastsDiffer, Frozen, ReadOnlyFreezer, ScoresDiff
                             scores_site_key, site_key)
 from shopper.history import Covered, History, Pair, covered, covered_path, load
 from shopper.items import HORIZON, items_path
-from shopper.pages import (ColumnsToday, Counts, FrontRow, front_ready, front_rows_of, render_basket, render_front,
-                           render_method, render_record)
+from shopper.pages import (ColumnsToday, Counts, FrontRow, column_ready, front_rows_of, render_basket, render_method,
+                           render_record, render_root, render_store, store_path)
 from shopper.product import page_path, render_product, running_today, section_keys
 from shopper.record import Gate, scorecard
 from shopper.score import (DaySummary, due, out_of_reach, read_summary, scores_csv, summarize, summary_json,
@@ -514,8 +516,11 @@ def build_site(day: date, data_dir: Path, site_dir: Path, now: datetime, collect
     files += [scores_site_key(summary.day) for summary in known]
     browse = browse_pages(covered_now, day, shown_by)
     fixed = {
-        "index.html": render_front(pages.rows, counts, day, shown_by, pages.marking_none(), next(iter(browse), None),
-                                   ready=front_ready(history.column_days, day)),
+        "index.html": render_root(day, shown_by),
+        **{store_path(column.key): render_store(column.key, pages.rows, counts, day, shown_by, pages.marking_none(),
+                                                next(iter(browse), None),
+                                                ready=column_ready(history.column_days, column.key, day))
+           for column in COLUMNS},
         "method.html": render_method(basket, basket_outcome.exclusions, _columns_today(raw_dir, day), day, shown_by,
                                      shown["code_sha"], basket_outcome.public),
         "record.html": render_record(shown["scorecard"], ledger_days, files, history.column_days, day, shown_by),

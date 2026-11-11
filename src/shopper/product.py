@@ -60,8 +60,8 @@ the heading, and so cannot show a part the script hid. `search.js` reads this ma
 fact stays in the HTML with the script blocked. BADGE_STYLE holds the shades, light and dark, for the product and the
 store pages; PRODUCT_STYLE is it and the product page's own rules, the chart's strokes among them (its SVG draws none).
 
-No script on the page yet. The page is a pure function of its inputs: the same bytes whatever order the mappings
-come in.
+The shell (`shopper.shell`) loads the site's one script, `search.js`, as on every page; no fact needs it. The page is
+a pure function of its inputs: the same bytes whatever order the mappings come in.
 """
 from collections.abc import Mapping
 from datetime import date
