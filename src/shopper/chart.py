@@ -21,8 +21,8 @@ The drawing rules:
   runs of consecutive such days. A day not on sale has none.
 - `<path class="unread">`: a mark at FOOT, below every price, under each sale day of unknown price (S1), consecutive
   ones as one mark: on sale, no price drawn.
-- With today's price known (S6's today; unknown on too_few, not_sold and unread_today, which get no today mark):
-  `<line class="today">` at its height from x 0 to the plot's right edge, the end of today's day, and
+- With today's price known (S6's today; unknown on too_few, not_sold, unread_today and price_unread, which get no
+  today mark): `<line class="today">` at its height from x 0 to the plot's right edge, the end of today's day, and
   `<circle class="today">` at today's x.
 - `<text>` labels, right of the plot, in `shopper.words.chart_label`'s words: the usual price (S2: a verdict of deal
   or no deal), the lowest and the highest day prices of the tracked days (day prices, never the listed prices drawn,

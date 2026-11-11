@@ -269,13 +269,28 @@ def test_a_point_today_without_a_listed_price_is_not_sold():
     assert _judge([*_history(), point]).call == "not_sold"
 
 
-def test_the_calls_without_a_counting_promotion_take_the_listed_price():
-    for case in ("no_sale", "some_stores", "price_unread"):
+def test_no_sale_and_some_stores_take_the_listed_price():
+    """S6's today with no promotion counting and none listed across the column running: the listed price."""
+    for case in ("no_sale", "some_stores"):
         points, days = _cases()[case]
         found = _judge(points, **days)
         assert (found.today_price, found.struct, found.counting) == (D("5.00"), None, False), case
-    assert _judge(*_cases()["price_unread"][:1]).on_sale_today is True
+        assert found.last_low.day == back(1), case
     assert _judge(*_cases()["some_stores"][:1]).on_sale_today is False
+
+
+def test_an_unread_sale_price_gives_no_price_today():
+    """price_unread (the owner, 2026-11-11): a sale listed across the column runs today with its price not read, so
+    there is no today's price, never the listed price, and no last this low; today is on sale all the same, so S7
+    counts it, and a run reaching yesterday is this sale, the last sale the one before it."""
+    found = _judge(*_cases()["price_unread"][:1])
+    assert (found.call, found.today_price, found.struct, found.counting, found.last_low, found.on_sale_today) == (
+        "price_unread", None, None, False, None, True)
+    points = [*_history(), *(_sale(n, "4.00") for n in (10, 9, 8)), *(_sale(n, "3.50") for n in (2, 1)),
+              _today("5.00", _struct("13", valid=False))]
+    running = _judge(points)
+    assert (running.call, running.today_price, running.last_low) == ("price_unread", None, None)
+    assert (running.on_sale_today, running.last_sale.day, running.last_sale.price) == (True, back(8), D("4.00"))
 
 
 def test_a_wide_promotion_of_unknown_price_comes_before_one_at_some_stores():

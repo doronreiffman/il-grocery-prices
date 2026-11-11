@@ -128,10 +128,13 @@ def test_credit_date_line_and_f10_are_the_designs():
 def test_the_front_title_and_subtitle_are_the_owners_plain_words():
     """The owner's final framing (2026-11-10, 22:30): the site asks whether a promotion is actually a deal. The title
     is that question; a line under it says what each promotion is checked against, "up to" 3 months (READ_DAYS, 90
-    days), since the records start on 1 November 2026 and the 90-day window holds fewer days until late January."""
+    days), since the records start on 1 November 2026 and the 90-day window holds fewer days until late January. On
+    every store page that line is the fold-out's first line, the design's (the owner, 2026-11-11), since "3 months of
+    shelf prices" described the old rule: the usual price includes sales."""
     assert FRONT_TITLE == _quoted(_line(DESIGN, "The public names (Q4)"))[0] == "Is it actually a deal?"
-    assert FRONT_SUBTITLE == "Promotions checked against up to 3 months of shelf prices."
-    assert f'"{FRONT_SUBTITLE}"' in DESIGN
+    assert FRONT_SUBTITLE == FOLD_INTRO == (
+        "Promotions checked against what the product usually costs, sales included, over up to 3 months.")
+    assert f'"{FRONT_SUBTITLE}"' in STORE_FIRST and "shelf prices" not in FRONT_SUBTITLE
 
 
 def test_marked_none_names_the_chains_marking_none():
@@ -390,6 +393,18 @@ def test_last_this_low_needs_todays_price_and_a_day_price():
     assert words.last_low(_verdict(days=(), today="9.90")) is None                        # nothing before today
     assert words.last_low(_verdict(days=_days_of(None, None), today="9.90")) is None      # no day price
     assert words.last_low(_verdict(days=_days_of(None, "12.00"), today="9.90")) == "Lowest in the 1 day tracked."
+
+
+def test_an_unread_sale_price_says_no_last_this_low():
+    """price_unread, worked by `shopper.verdict` (the owner, 2026-11-11): a sale runs today whose price could not be
+    read, so there is no today's price and no "Last this low", though every day tracked before today is at or below
+    the listed price; "How often on sale" counts today as on sale, so a past sale is the last one before this one."""
+    from test_verdict import _cases, _history, _judge, _sale, _struct, _today
+    found = _judge(*_cases()["price_unread"][:1])
+    assert (found.call, found.today_price, words.last_low(found)) == ("price_unread", None, None)
+    past = _judge([*_history(), _sale(5, "4.00"), _today("5.00", _struct("13", valid=False))])
+    assert words.how_often(past) == (
+        "On sale on 1 of the 30 days tracked. The last sale before this one ended 15 November, at ₪4.00.")
 
 
 def test_the_badge_rows_words():

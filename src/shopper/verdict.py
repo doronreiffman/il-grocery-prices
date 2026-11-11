@@ -29,7 +29,8 @@ of unknown price has no day price, so it never pushes the usual price up.
 
 S3 Today's price. The lowest exact price among today's promotions that count; that promotion is the verdict's `struct`
 (a tie to the first, in the items table's order), and its price as shown is today's price. With no promotion counting
-today, today's price is the listed price (S6's today).
+today, today's price is the listed price (S6's today), except on price_unread: a promotion listed across the column
+runs with its price not read, so there is no price today (the owner, 2026-11-11).
 
 S4 The call, the first that applies (the plan's order):
   1. too_few: today the column is a hole (prices from too few files);
@@ -59,7 +60,9 @@ S8 Days tracked. Every verdict carries its tracked days (`days`) and those with 
 can name the number of days it rests on.
 
 The calls before today's promotions (too_few, not_sold, unread_today) know no price today: no struct, no today's price,
-no last this low, no last sale, and not on sale today. Their tracked days are given all the same.
+no last this low, no last sale, and not on sale today. Their tracked days are given all the same. price_unread knows
+no price today either (S3), so it has no last this low; but today is on sale, so S7 reads its last sale as the one
+before this sale.
 
 The front list (per store type). A product is listed (`on_list`) when its call is deal and it passes the bar
 (`passes_bar`: at least MIN_FRONT_DAYS, 20, days with records in the RECENT_DAYS, 30, before the day, P6's window, a
@@ -104,7 +107,7 @@ class Verdict:
     column: str
     call: str                    # one of CALLS
     days: tuple[Day, ...]        # the tracked days of the READ_DAYS before the day, in day order
-    today_price: Decimal | None  # S6's today: S3's price when a promotion counts, else the listed price; None when unknown
+    today_price: Decimal | None  # S6's today: S3's price when one counts, else the listed price; None when unknown (S3)
     struct: Mapping | None       # S3: the counting promotion with the lowest exact price; a tie to the first
     usual: Decimal | None        # S2, with call deal or no_deal
     saving: Decimal | None       # usual - today_price, with call deal or no_deal
@@ -186,10 +189,12 @@ def _unknown_today(call: str, column: str, days: tuple[Day, ...]) -> Verdict:
                    last_low=None, last_sale=None, on_sale_today=False)
 
 
-def _judged(call: str, column: str, days: tuple[Day, ...], today_price: Decimal, struct: Mapping | None,
+def _judged(call: str, column: str, days: tuple[Day, ...], today_price: Decimal | None, struct: Mapping | None,
             on_sale_today: bool, usual: Decimal | None = None, saving: Decimal | None = None) -> Verdict:
-    """A call with today's price known: S6 and S7 read against it."""
-    low = [found for found in days if found.price is not None and found.price <= today_price]
+    """A call after today's promotions are read: S6 against today's price, none when it is unknown (price_unread), and
+    S7 against today's sale."""
+    low = ([] if today_price is None
+           else [found for found in days if found.price is not None and found.price <= today_price])
     return Verdict(column=column, call=call, days=days, today_price=today_price, struct=struct, usual=usual,
                    saving=saving, last_low=low[-1] if low else None, last_sale=_last_sale(days, on_sale_today),
                    on_sale_today=on_sale_today)
@@ -213,7 +218,8 @@ def verdict(pair: Pair | None, column: str, column_days: Mapping[tuple[str, date
         running = [struct for struct in point.promotions if _running(struct, day)]
         call = ("price_unread" if any(struct["wide"] for struct in running)
                 else "some_stores" if running else "no_sale")
-        return _judged(call, column, days, Decimal(money(point.listed)), None, on_sale_today)
+        listed = None if call == "price_unread" else Decimal(money(point.listed))   # a sale price unread: no price today
+        return _judged(call, column, days, listed, None, on_sale_today)
     best = min(counting, key=lambda struct: deal_from_row(struct).price)     # the lowest exact price, a tie to the first
     price = deal_from_row(best).price
     today_price = to_agora(price)

@@ -1,21 +1,21 @@
-"""The measured facts that outlived P7 and P8 (store first, q33): the runs on promotion over P6's 90-day window, which
-the forecast reads (`runs`, `days_since`), the days the verdict reads (`promotion_points`), a share as a whole number
-half up (`whole`), and the front list's bar (docs/shopper-site.md P6 and P8; the plan's Task 9, the second
-pre-flight's S1 and N2; docs/store-first.md, "The front page's list"). Every fact is about one pair, a product at one
-column, and reads that column's own days. P7's gap, its lows and changes, the old front page's test and P8's counts
-and gaps went with their page parts (the store-first plan's Task 6).
+"""The measured facts the verdict and the forecast read (store first, q33): the days tracked (S0, `promotion_points`),
+the runs on promotion over them, which the forecast reads (`runs`, `days_since`), a share as a whole number half up
+(`whole`), and the front list's bar (docs/shopper-site.md P6; the plan's Task 9, the second pre-flight's S1 and N2;
+docs/store-first.md, S0, S7 and "The front page's list"). Every fact is about one pair, a product at one column, and
+reads that column's own days. The older page parts' measures, the gap, its lows and changes, the old front page's test
+and the promotion history's counts and gaps, went with those parts (the store-first plan's Task 6).
 
 The days. P6's windows (`shopper.history.window`, `counted`): the calendar days ending the day before the page's day,
 counting only the days on which the column has a record and the product a listed price. A day that is no record (a
 hole, or a table never extracted) is skipped, never filled.
 
-The runs (P8's, read by the forecast), over the 90-day window. A run is a maximal sequence of consecutive counted days
-on promotion (`Point.on_promotion`: a promotion carried by at least half the column's counted stores, with a kind,
-running that day). A day skipped neither extends nor breaks a run: a hole, a day on which the product is not listed,
-and a day whose promotions were not read (`ColumnDay.promo_hole`: the chain's promotions failed or fewer than half the
-counted stores had a promotion file) say nothing about promotions, which is not the same as none. A day on record,
-listed and off promotion breaks the run. `promotion_points` gives the days the runs read, and the verdict's tracked
-days (`shopper.verdict.tracked`); `days_since` the days from the last run's end to the page's day.
+The runs (the runs S7 makes, read by the forecast, F4 and F5), over the 90-day window. A run is a maximal sequence of
+consecutive counted days on promotion (`Point.on_promotion`: a promotion carried by at least half the column's counted
+stores, with a kind, running that day). A day skipped neither extends nor breaks a run: a hole, a day on which the
+product is not listed, and a day whose promotions were not read (`ColumnDay.promo_hole`: the chain's promotions failed
+or fewer than half the counted stores had a promotion file) say nothing about promotions, which is not the same as none.
+A day on record, listed and off promotion breaks the run. `promotion_points` gives the days the runs read, and the
+verdict's tracked days (`shopper.verdict.tracked`); `days_since` the days from the last run's end to the page's day.
 
 The front list's bar (`shopper.verdict.passes_bar`): at least MIN_FRONT_DAYS (20) days of records in the RECENT_DAYS
 (30) before the day, P6's line for a 30-day window that is not short.

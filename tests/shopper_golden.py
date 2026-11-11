@@ -185,8 +185,9 @@ prices (S2), and the figures are as shown, to the agora.
   - U8: 27 days at 6.00, today 9.00 / 2 = 4.50, buy 2: 1.50 off, deal-1.
   - U9: its promotion is carried by store 81 alone, 1 of 3 counted stores (1 x 2 < 3): not wide, on sale at some
     stores only, no verdict; today's price the listed 7.00, last this low day 119.
-  - U10: 6.50 is not below twice 3.00 (6.00): not valid, on sale with its price unread, no verdict; today's price the
-    listed 3.00, last this low day 119.
+  - U10: 6.50 is not below twice 3.00 (6.00): not valid, on sale with its price unread, no verdict; no price today
+    (the owner, 2026-11-11: an unread sale price is no price, never the listed 3.00), so no last this low and no
+    today mark on its chart; on sale on 0 of 27 (its sale starts today), no last sale.
   The front list: the deals with 20 days with records in the 30 before (days 90 to 119: Universe's 92 to 119, 28, its
   promotion hole a record; U3 27): U2 (2.00), U3 (2.00, after U2 by barcode), U8 (1.50) and U7 (1.00); N = 4. Checked
   (a promotion counting today, the bar passed): U1, U2, U3, U6, U7 and U8; M = 6 (U4 and U5 under the bar).

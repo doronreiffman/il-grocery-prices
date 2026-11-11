@@ -309,14 +309,16 @@ def _layout(open_=None, not_sold=None, elsewhere=(), heading=False):
 @pytest.mark.parametrize("pick, parts, badges, layout", [
     # a pick among the parts: its part open, the other badges under Elsewhere today
     ("osherad", PARTS, BADGES, _layout("osherad", elsewhere=["ramilevy", "yochananof"], heading=True)),
-    ("osherad", ["osherad"], [], _layout("osherad", heading=True)),
+    # no other badge (the pick's own alone, or none): no heading over an empty row (the whole-branch review)
+    ("osherad", PARTS, ["osherad"], _layout("osherad")),
+    ("osherad", ["osherad"], [], _layout("osherad")),
     # sold there before, not today: its part (with its last-seen line) open, every badge under Elsewhere
     ("carrefour-city", PARTS, BADGES, _layout("carrefour-city", elsewhere=BADGES, heading=True)),
     # a pick the page has no part for: the not-sold line, then every badge
     ("shufersal-deal", PARTS, BADGES, _layout(not_sold="shufersal-deal", elsewhere=BADGES, heading=True)),
-    # sold nowhere today: the line and an empty row
-    ("shufersal-deal", ["carrefour-city"], [], _layout(not_sold="shufersal-deal", heading=True)),
-    ("shufersal-deal", [], [], _layout(not_sold="shufersal-deal", heading=True)),
+    # sold nowhere today: the line and an empty row, with no heading over it
+    ("shufersal-deal", ["carrefour-city"], [], _layout(not_sold="shufersal-deal")),
+    ("shufersal-deal", [], [], _layout(not_sold="shufersal-deal")),
     # no pick: the row first, as the picker, the first badge open, no heading
     (None, PARTS, BADGES, _layout("ramilevy", elsewhere=BADGES)),
     (None, PARTS, [], _layout("carrefour-city")),     # no badges: the first part
@@ -437,13 +439,22 @@ def test_a_product_page_opens_the_picks_part_and_lists_the_rest_elsewhere():
     assert found["stored"] == {"store": "osherad"}             # opening a product page never changes the pick
 
 
+def test_elsewhere_today_never_heads_an_empty_row():
+    # The pick's own badge is the row's only one, as on every page of a product one store type sells: its part open,
+    # no badge shown, and "Elsewhere today" left hidden over the empty row (the whole-branch review).
+    page = _site(_product_page(PARTS, ["osherad"]), {"store": "osherad"})["page"]
+    assert _open(page) == ["osherad"] and _listed(page) == []
+    assert f'<h2 class="elsewhere" hidden>{ELSEWHERE}</h2>' in page and "Not sold at" not in page
+
+
 @pytest.mark.parametrize("parts, badges", [(PARTS, BADGES), (["carrefour-city"], [])])
 def test_a_product_page_without_the_picks_part_says_not_sold(parts, badges):
     page = _site(_product_page(parts, badges), {"store": "shufersal-deal"})["page"]
     assert _open(page) == []
     assert _listed(page) == badges                             # every badge, or an empty row
+    hidden = "" if badges else " hidden"                       # no heading over an empty row
     assert ('</h1><p class="not-sold">Not sold at Shufersal Deal today</p>'
-            f'<h2 class="elsewhere">{ELSEWHERE}</h2><nav class="badges">') in page
+            f'<h2 class="elsewhere"{hidden}>{ELSEWHERE}</h2><nav class="badges">') in page
 
 
 @pytest.mark.parametrize("storage", [{}, {"store": "garbage"}])

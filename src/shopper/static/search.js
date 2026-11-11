@@ -16,9 +16,10 @@
    on to its store type's front page with location.replace, unless its hash is #pick, which is how "change" reaches the
    picker. A product page (nav.badges: a badge per store type selling it today, each linking to that store type's part,
    section[data-column] with id c-<key>; the row's heading h2.elsewhere, "Elsewhere today", hidden in the HTML):
-   - with a pick it has a part for: that part shown and the others hidden, the row moved after it under its heading,
-     without the pick's own badge;
+   - with a pick it has a part for: that part shown and the others hidden, the row without the pick's own badge and,
+     when another badge is left in it, moved after the part under its heading;
    - with a pick it has no part for: every part hidden, "Not sold at <store type> today" before the heading and the row;
+   - with a pick, the heading is shown only over a row with a badge left in it, never over an empty one;
    - with no pick: the row stays first, as the picker, its heading hidden, the first badge's part shown (else the first
      part's).
    Tapping a badge shows its part, and the badge's link then scrolls to it; with no pick yet, the tap also sets the pick
@@ -173,10 +174,10 @@ function arrange(pick, parts, badges) {
   if (pick === null) {
     return { open: badges[0] ?? parts[0] ?? null, notSold: null, elsewhere: badges.slice(), heading: false };
   }
-  if (parts.includes(pick)) {
-    return { open: pick, notSold: null, elsewhere: badges.filter((key) => key !== pick), heading: true };
-  }
-  return { open: null, notSold: pick, elsewhere: badges.slice(), heading: true };
+  const layout = parts.includes(pick)
+    ? { open: pick, notSold: null, elsewhere: badges.filter((key) => key !== pick) }
+    : { open: null, notSold: pick, elsewhere: badges.slice() };
+  return { ...layout, heading: layout.elsewhere.length > 0 };   // never a heading over an empty row
 }
 
 function notSoldLine(key) {

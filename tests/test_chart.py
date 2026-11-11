@@ -250,13 +250,16 @@ def test_todays_price_is_a_dot_with_a_dashed_line_across():
 
 
 def test_no_today_mark_without_todays_price():
-    """too_few, not_sold and unread_today know no price today: no dot, no line and no today label, though the
-    tracked days are drawn and labelled."""
+    """too_few, not_sold and unread_today know no price today, nor does price_unread, a sale whose price could not be
+    read (the owner, 2026-11-11): no dot, no line and no today label, though the tracked days are drawn and
+    labelled."""
     history = [_point(back(n), "5.00") for n in range(5, 0, -1)]
     today = _point(DAY, "5.00", _struct("4.00"))
+    unread = _point(DAY, "5.00", {**_struct("13.00"), "valid": False})       # listed across the column, price not read
     cases = {"too_few": _judged([*history, today], holes={DAY}),
              "not_sold": _judged(history),
-             "unread_today": _judged([*history, today], promo_holes={DAY})}
+             "unread_today": _judged([*history, today], promo_holes={DAY}),
+             "price_unread": _judged([*history, unread])}
     for call, found in cases.items():
         assert found.call == call and found.today_price is None
         svg, _ = _read(render_chart(found, DAY))

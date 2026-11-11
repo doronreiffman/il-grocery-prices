@@ -30,8 +30,10 @@ from shopper.promotions import _reward_type
 from shopper.record import scorecard
 from shopper.siteday import (NOT_COMPARED, Inputs, public_error, publish_site_day, site_day, site_day_path,
                              write_site_day)
+from shopper.verdict import DealRow, verdict
+from shopper.words import reason
 from test_freeze import forecasts_of, sha
-from test_product import DAY, _days
+from test_product import DAY, _days, _listed, _pair, _struct, back
 from test_record_numbers import _good_days
 from test_shop_pages import _deal_row, _front
 
@@ -224,9 +226,10 @@ def _row_cells(page: str, code: str) -> str:
 
 
 def test_every_number_on_each_store_page_is_in_the_site_day_file():
-    """The design's "Data files": each store type's front block holds every number its page shows, the headline's N
-    (its deals, all of them) and M (its checked), whether it is ready, the promotions line's two, and each row the page
-    shows (the first 100, none on a hole or a promotion hole: `shopper.pages.shown_rows`) with today's price, the usual
+    """The design's "Data files": each store type's front block holds the numbers its page shows, the story's last
+    this low and how often aside: the headline's N (its deals, all of them) and M (its checked), whether it is ready,
+    the promotions line's two (null on a day not read, when the page has no such line), and each row the page shows
+    (the first 100, none on a hole or a promotion hole: `shopper.pages.shown_rows`) with today's price, the usual
     price, the saving, the days its reason rests on, per unit or kilogram, buy N and its conditions from the fields. No
     product name or promotion text: the numbers, which the pages show beside the chains' own words."""
     fronts, days = _fronts(), _days(holes={(EXPRESS, DAY)})
@@ -242,7 +245,10 @@ def test_every_number_on_each_store_page_is_in_the_site_day_file():
     for column in COLUMNS:
         block, page = found["columns"][column.key]["front"], render_store(fronts[column.key], days, DAY, "11:48", (), None)
         assert len(re.findall(r"<tr data-column=", page)) == len(block["rows"])
-        assert f"lists {block['promotions']:,} promotions carried by at least half its stores, on {block['products']:,} " in page
+        if block["promotions"] is None:                      # Express, a hole: no promotions line on its page
+            assert column.key == EXPRESS and "carried by at least half its stores" not in page
+        else:
+            assert f"lists {block['promotions']:,} promotions carried by at least half its stores, on {block['products']:,} " in page
         if block["ready"] and column.key != EXPRESS:
             said = (f"today: {block['deals']:,} of {block['checked']:,} promotions" if block["checked"]
                     else "today: no promotions to check")
@@ -255,6 +261,32 @@ def test_every_number_on_each_store_page_is_in_the_site_day_file():
     held = _site_day(fronts=many)["columns"]
     assert (held[SHELI]["front"]["deals"], len(held[SHELI]["front"]["rows"])) == (101, 100)
     assert (held[EXPRESS]["front"]["deals"], held[EXPRESS]["front"]["rows"]) == (1, [])
+
+
+@pytest.mark.parametrize("kind", ["hole", "promo_hole"])
+def test_a_store_type_not_read_today_has_no_promotions_count(kind):
+    """A hole (prices from too few files) or a promotion hole is a day whose promotions the build never counts
+    (`shopper.build`), so the front block writes its promotions and products as null beside its hole flags, never as
+    0, as its page leaves the promotions line out (the whole-branch review); a day read has its two counts."""
+    holes = {(SHELI, DAY)} if kind == "hole" else set()
+    promo_holes = {(SHELI, DAY)} if kind == "promo_hole" else set()
+    found = _site_day(column_days=_days(holes=holes, promo_holes=promo_holes))["columns"]
+    assert found[SHELI][kind] is True
+    assert (found[SHELI]["front"]["promotions"], found[SHELI]["front"]["products"]) == (None, None)
+    assert (found[DEAL]["front"]["promotions"], found[DEAL]["front"]["products"]) == (104, 204)    # a day read
+    normal = _site_day(column_days=_days())["columns"]
+    assert (normal[SHELI]["front"]["promotions"], normal[SHELI]["front"]["products"]) == (106, 206)
+
+
+def test_a_rows_days_are_the_days_its_reason_rests_on():
+    """A row's `days` is the number its reason names (S8): the days tracked with a day price, never every day tracked.
+    Two sale days of unknown price (S1) among the 90 leave 88."""
+    pair = replace(_pair(SHELI, _listed("10.00"), on=[back(1), back(2)], promotions=[_struct("7.00")]), code="5")
+    row = DealRow(column=SHELI, code="5", title="שם", verdict=verdict(pair, SHELI, _days(), DAY))
+    assert (row.verdict.call, len(row.verdict.days), len(row.verdict.priced)) == ("deal", 90, 88)
+    fronts = _fronts() | {SHELI: _front(SHELI, rows=[row])}
+    shown, = _site_day(fronts=fronts, column_days=_days())["columns"][SHELI]["front"]["rows"]
+    assert shown["days"] == 88 and "(88 days tracked)" in reason(row.verdict)
 
 
 def test_the_forecasts_block_names_the_frozen_file():

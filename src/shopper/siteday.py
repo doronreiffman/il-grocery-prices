@@ -11,9 +11,11 @@ covered registry it carried forward (None for none); then:
   hole, a promotion hole, its included stores, those with a price file, those counted, those with a promotion file,
   under the floor); its gate, its own, never its chain's (closed in step one: its conditions and which hold, from the
   scorecard); its counts (the items table's items, those listed across it, those on a promotion listed across it, the
-  valid deals running today); and `front`, every number its store type's front page shows (store first, q33): whether
-  a product could pass the bar yet (`ready`), the headline's N (`deals`, every deal of the front, never only those
-  shown) and M (`checked`), the promotions line's `promotions` and `products`, and the rows the page shows
+  valid deals running today); and `front`, which with the column's day holds the numbers its store type's front page
+  shows (store first, q33), apart from its story's "Last this low" and "How often on sale": whether a product could
+  pass the bar yet (`ready`), the headline's N (`deals`, every deal of the front, never only those shown) and M
+  (`checked`), the promotions line's `promotions` and `products` (null on a hole or a promotion hole, a day whose
+  promotions the build does not count and whose page has no promotions line), and the rows the page shows
   (`shopper.pages.shown_rows`: the first 100, none on a hole or a promotion hole), each with its barcode, today's
   price, the usual price and the saving as shown, the days its reason rests on (those with a day price), per unit or
   kilogram, "buy N", and its conditions from the fields (restrictions, programmes' names, minimum spend). No product
@@ -96,6 +98,7 @@ class Inputs:
 def _column(key: str, today: ColumnDay, report: Mapping, front: StoreFront, scorecard: Mapping) -> dict:
     """A column's block (the module's docstring)."""
     found = report["columns"][key]
+    read = today.record and not today.promo_hole      # a day not read: the build counts none of its promotions (null)
     return {"chain": today.slug, "name": BY_KEY[key].name, "record": today.record, "hole": today.hole,
             "promo_hole": today.promo_hole, "included": today.included, "with_file": today.with_file,
             "counted": today.counted, "promo_files": today.promo_files, "under_floor": found["under_floor"],
@@ -103,7 +106,8 @@ def _column(key: str, today: ColumnDay, report: Mapping, front: StoreFront, scor
             "counts": {"items": found["items"], "wide": found["wide"], "on_promotion": found["on_promotion"],
                        "valid_deals": found["valid_deals"]},
             "front": {"ready": front.ready, "deals": len(front.rows), "checked": front.checked,
-                      "promotions": front.promotions, "products": front.products,
+                      "promotions": front.promotions if read else None,
+                      "products": front.products if read else None,
                       "rows": [_row(row) for row in shown_rows(front, today)]}}
 
 

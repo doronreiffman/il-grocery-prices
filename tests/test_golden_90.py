@@ -277,12 +277,12 @@ def test_the_golden_verdicts(golden):
         U7: ("deal", D("5.00"), D("1.00"), "deal-1", 27, 27, None, 0, None),
         U8: ("deal", D("6.00"), D("1.50"), "deal-1", 27, 27, None, 0, None),
         U9: ("some_stores", None, None, None, 27, 27, (n(119), D("7.00")), 0, None),
-        U10: ("price_unread", None, None, None, 27, 27, (n(119), D("3.00")), 0, None),
+        U10: ("price_unread", None, None, None, 27, 27, None, 0, None),          # no price today: no last this low
     }
     expected |= {(DAYS, "shufersal-universe", code): figures for code, figures in universe.items()}
     found = {key: judged(*key)[0] for key in expected}
     assert {key: _found(verdict_) for key, verdict_ in found.items()} == expected
-    # today's prices, as shown: S3's when a promotion counts, else the listed price; none on a hole
+    # today's prices, as shown: S3's when a promotion counts, else the listed price; none on a hole or a sale unread
     assert {key: str(found[key].today_price) for key in [(120, "osherad", G1), (99, "shufersal-sheli", G5),
                                                          (85, "ramilevy", G4)]} == {
         (120, "osherad", G1): "5.00", (99, "shufersal-sheli", G5): "6.50", (85, "ramilevy", G4): "50.00"}
@@ -291,6 +291,7 @@ def test_the_golden_verdicts(golden):
     assert found[(DAYS, "shufersal-universe", U8)].struct["buy"] == Decimal("2")
     assert found[(DAYS, "shufersal-universe", U5)].today_price == Decimal("5.00")
     assert found[(DAYS, "shufersal-universe", U10)].on_sale_today is True       # on sale, its price unread
+    assert found[(DAYS, "shufersal-universe", U10)].today_price is None         # and so no price today
     assert found[(DAYS, "shufersal-universe", U9)].on_sale_today is False       # at some stores only
     # the front list at Universe on day 120: the deals passing the bar, by saving, then barcode; U4 fails the bar
     rows, held = [], []

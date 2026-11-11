@@ -39,14 +39,14 @@ t + 1 to t + 14 and no more. A test builds the same answers with and without poi
 
 The model, version 1 (F4, question F). Everything is learnt per column (S1: the design's "for each chain" and "the
 chain's share" are the column's), from the closed days of every pair at the column. A column's share is the share of
-outcome 1 over all its closed days. A pair's feature on a day is the days since its last run on promotion ended: P8's
-runs and days since (`shopper.measures.runs` and `days_since`: calendar days from the last run's end), within the 90
-days read and before the day; above DAYS_SINCE_CAP (60) it counts as 60 ("60 or more"), and with no run seen it is
-none. The hazard of a bucket (0 to 60, or none) is the column's share over its closed days in that bucket; a bucket
-with no closed day takes the column's share. Baseline A (F5) is the pair's share over its n closed days, or the
-column's share when n is under A_MIN_DAYS (20) (`a_from` says which). The model's probability is
-p = w × A + (1 − w) × the hazard of the pair's bucket on day d, with w = n ÷ (n + N0) and N0 = 30, fixed before version
-1's first frozen day.
+outcome 1 over all its closed days. A pair's feature on a day is the days since its last run on promotion ended: the
+runs over its days tracked (S0), as S7 makes them, and the days since (`shopper.measures.runs` and `days_since`:
+calendar days from the last run's end), within the 90 days read and before the day; above DAYS_SINCE_CAP (60) it counts
+as 60 ("60 or more"), and with no run seen it is none. The hazard of a bucket (0 to 60, or none) is the column's share
+over its closed days in that bucket; a bucket with no closed day takes the column's share. Baseline A (F5) is the pair's
+share over its n closed days, or the column's share when n is under A_MIN_DAYS (20) (`a_from` says which). The model's
+probability is p = w × A + (1 − w) × the hazard of the pair's bucket on day d, with w = n ÷ (n + N0) and N0 = 30, fixed
+before version 1's first frozen day.
 
 Baseline B, "the last gap repeats" (F5, question F (e)). With two or more runs before the day, the next run is taken to
 start at the last run's end plus the days from the end of the run before it to the start of the last run; B says yes

@@ -34,20 +34,21 @@ each chain's promotions error and every day scored to date. Every `.html` under 
   Lambda's build folder holds only the run day's site-day file). A link from the root ("/...") or out of the folder
   ("../" past it) resolves to nothing the check can see.
 
-Then by page. Every store type's front page, `store/*.html`, and every `p/*.html` carry every ALWAYS phrase in the
-text read; `index.html`, the picker, shows no price and is held to the rest alone. A product page holds at most
-60,000 bytes (`MAX_PAGE`), and in each of its sections of a column (`data-column`): when the column's own gate is closed
-in the newest site-day file, F10's sentence naming the column (`no_odds_yet`), and once that is cut out, no odds word
+Then by page. Every store type's front page, `store/*.html`, and every `p/*.html` carry every ALWAYS phrase in the text
+read; `index.html`, the picker, shows no price and is held to the rest alone. A product page holds at most 60,000 bytes
+(`MAX_PAGE`), and in each of its sections of a column (`data-column`): when the column's own gate is closed in the
+newest site-day file, F10's sentence naming the column (`no_odds_yet`), and once that is cut out, no odds word
 (`ODDS_WORDS`) in the text read, a word from its start, so with its other forms ("forecasts", "chances", "forecasting"),
-and the phrase "1 in" whole (N4: "21 in" and "1 inch" hold none); when the column's chain (read from the column, not
-the section's `data-chain`) had its promotions unread that day, P10's sentence naming the chain (`unreadable`), on
-each of the chain's columns (question M (g): both Carrefour's). A section of a column the site-day file does not name
-is refused. A probability on a closed column's page is caught by the product page's tests (`tests/test_product.py`'s
+and the phrase "1 in" whole (N4: "21 in" and "1 inch" hold none); when the column's chain (read from the column, not the
+section's `data-chain`) had its promotions unread that day, P10's sentence naming the chain (`unreadable`), on each of
+the chain's columns (question M (g): both Carrefour's). A section of a column the site-day file does not name is
+refused. A probability on a closed column's page is caught by the product page's tests (`tests/test_product.py`'s
 `test_each_column_section_carries_f10_naming_the_column_and_no_probability`, the plan's Task 16), not here: no figure
-pattern tells it from P7's "34%" (N9). `basket.html` is held to the basket's index rules (`basket.check.index_problems`,
-naming basket.html: N3): the basket's ALWAYS phrases, and "Revised on" exactly when the newest `days/` file is revised.
-Each search piece, `search/*.json`, holds at most 150,000 bytes (`PIECE_MAX`). And `index.html`, each store type's
-front page (`shopper.pages.store_path`, one for each of the nine columns) and the marker `.shopper-site` are there.
+pattern tells a probability from another percent a page could show (N9). `basket.html` is held to the basket's index
+rules (`basket.check.index_problems`, naming basket.html: N3): the basket's ALWAYS phrases, and "Revised on" exactly
+when the newest `days/` file is revised. Each search piece, `search/*.json`, holds at most 150,000 bytes (`PIECE_MAX`).
+And `index.html`, each store type's front page (`shopper.pages.store_path`, one for each of the nine columns) and the
+marker `.shopper-site` are there.
 
 A malformed page is a problem line too, never a crash: a page that is not UTF-8, or a link `urlsplit` refuses (a host in
 brackets that is no IPv6 address). Exit 0 clean; 1 with problems, one a line on stderr naming the file and the rule; 2

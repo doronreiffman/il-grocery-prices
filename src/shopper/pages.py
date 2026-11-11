@@ -38,10 +38,10 @@ words (`shopper.words.STORE_RULES`), what the two filters hide, with the store's
 restricted promotion today (`shopper.words.marked_none`), where the rows' conditions come from and that the fine print
 was not read (CONDITIONS_NOTE: the design's Always, the source of every condition), the top row's story under "One
 of today's deals" (its badge, reason, last this low and how often, the product page's words), the store type's
-promotions line (`shopper.words.store_promotions_line`), one note carrying the four ALWAYS phrases
-(`shopper.words.ALWAYS_SENTENCE`), so the page carries them on any morning, and the method page. Every link leads up to
-the site's root. The badges' shades are `shopper.product.BADGE_STYLE`, the product pages' own, whose `[hidden]` rule
-hides only what the script hid.
+promotions line (`shopper.words.store_promotions_line`), left out on a hole or a promotion hole, whose promotions the
+build does not count, one note carrying the four ALWAYS phrases (`shopper.words.ALWAYS_SENTENCE`), so the page
+carries them on any morning, and the method page. Every link leads up to the site's root. The badges' shades are
+`shopper.product.BADGE_STYLE`, the product pages' own, whose `[hidden]` rule hides only what the script hid.
 
 The method page: what a column is and the nine, with how each one's stores are chosen and how many the day's store list
 includes; the stores left out by rule, which of them sit in a column's part of the store list, and store 779 (Task 15's
@@ -301,16 +301,18 @@ def _story(row: DealRow) -> str:
             f'{_span(row.title)}</a></p><p class="badge {badge_class(found)}">{text(badge(found))}</p>{lines}')
 
 
-def _rules(front: StoreFront, shown: Sequence[DealRow], marking_none: Sequence[str]) -> str:
+def _rules(front: StoreFront, today: ColumnDay, shown: Sequence[DealRow], marking_none: Sequence[str]) -> str:
     """The fold-out "How a deal passes" (the module's docstring): closed until opened, with no script."""
     slug = BY_KEY[front.column].slug
     rules = "".join(f"<li>{text(rule)}</li>" for rule in STORE_RULES)
     club = " ".join(part for part in (CLUB_NOTE, marked_none([found for found in marking_none if found == slug]))
                     if part)
     story = _story(shown[0]) if shown else ""
+    # the promotions line only on a day read: on a hole or a promotion hole the build counts none (`shopper.build`)
+    read = today.record and not today.promo_hole
+    counts = f"<p>{text(store_promotions_line(front.column, front.promotions, front.products))}</p>" if read else ""
     return (f'<details><summary>{text(RULES_TITLE)}</summary><p>{text(FOLD_INTRO)}</p><ul>{rules}</ul>'
-            f"<p>{text(club)}</p><p>{text(SPEND_NOTE)}</p><p>{text(CONDITIONS_NOTE)}</p>{story}"
-            f"<p>{text(store_promotions_line(front.column, front.promotions, front.products))}</p>"
+            f"<p>{text(club)}</p><p>{text(SPEND_NOTE)}</p><p>{text(CONDITIONS_NOTE)}</p>{story}{counts}"
             f'<p class="note">{text(ALWAYS_SENTENCE)}</p>'
             f'<p><a href="{UP}method.html">{text(RULES_LINK)}</a></p></details>')
 
@@ -348,7 +350,7 @@ def render_store(front: StoreFront, column_days: Mapping[tuple[str, date], Colum
     parts = [f'<p class="at">{text(name)}</p>', f'<h1 id="deals">{text(FRONT_TITLE)}</h1>',
              f'<p class="sub">{text(FRONT_SUBTITLE)}</p>', _search(browse),
              f'<p class="lede">{text(store_lead(front, today))}</p>', _deals(shown),
-             _rules(front, shown, marking_none)]
+             _rules(front, today, shown, marking_none)]
     links = [(BROWSE_LINK, browse)] if browse else []
     links += [(BASKET_TITLE, "basket.html"), (RECORD_TITLE, "record.html"), (METHOD_TITLE, "method.html")]
     return page(f"{name} - {SITE_NAME}", "\n".join(parts), day, collected_by, links, STORE_STYLE, up=UP, store=column)
@@ -554,15 +556,17 @@ def store_rules() -> tuple[tuple[str, str], ...]:
          "count: listed across the column (P3), their price read (P4), with a price effect (RewardType 1, 2, 3 or 10, "
          "as in F1) and running today. Today's price is that promotion's price as shown, to the agora. Club-only and "
          "buy-N promotions count, their conditions from the chain's fields (P5) named beside the verdict (\"Club "
-         "members only\", \"When you buy 2\"). With none counting, today's price is the listed price (S6)."),
+         "members only\", \"When you buy 2\"). With none counting, today's price is the listed price (S6), unless one "
+         "listed across the column runs with its price not read: then there is no price today."),
         ("S4 Verdict.",
          "Deal when the saving, the usual price less today's price, "
          f"is ₪{DEAL_MIN} or more, worked on the figures as shown (\"3 for ₪10.00\" is ₪3.33 a unit, P4); No deal "
          "otherwise. The badge names the store type (\"At Carrefour Market: DEAL · ₪1.90 off\"). A No deal's reason "
          "says on how many days it was at today's price or less when that is at or above the usual price (\"It's been "
          "₪10.90 or less on 9 of the 9 days tracked.\"), else how little it is below it (\"Only ₪0.40 below its "
-         "usual ₪3.20 (12 days tracked).\"). There is no verdict, only a plain line, when one of these applies, the "
-         "first that applies: too few files today (P2); not sold there today, with the last day it "
+         "usual ₪3.20 (12 days tracked).\"). There is no verdict, only a plain line, when one of these applies "
+         "(they come before Deal and No deal), the first that applies: too few files today (P2); not sold there "
+         "today, with the last day it "
          f"was listed across the column; \"{NO_VERDICT['unread_today']}\" (P10, or promotion files from fewer than "
          "half its counted stores); with no promotion counting today, "
          f"\"{NO_VERDICT['price_unread']}\" when one listed across the column runs with its price not read, "
@@ -572,12 +576,13 @@ def store_rules() -> tuple[tuple[str, str], ...]:
          f"half the days tracked; \"{NO_VERDICT['no_history']}\" when no day tracked has a day price."),
         ("S5 Shade.",
          f"A Deal's badge is a shade of green by its saving, one for each band: {_bands()}; a No deal's badge is a "
-         "neutral grey. Every badge writes its verdict in words, a Deal's with the shekels off (\"NO DEAL\" has "
-         "none), so colour is never the only signal, and each badge's text contrasts at least 4.5:1 with its "
-         "background, in the light and the dark theme."),
+         "neutral grey. Every Deal and No deal badge writes its verdict in words, a Deal's with the shekels off "
+         "(\"NO DEAL\" has none), so colour is never the only signal, and each badge's text contrasts at least 4.5:1 "
+         "with its background, in the light and the dark theme."),
         ("S6 Last this low.",
-         "Today's price here is S3's when a promotion counts, else the listed price. The latest day tracked whose day "
-         "price is at or below it, with that price (\"Last this low: 12 October, at ₪9.90.\"), or, when none is, "
+         "Today's price here is S3's when a promotion counts, else the listed price, and none when one listed across "
+         "the column runs with its price not read (S3). The latest day tracked whose day price is at or below it, "
+         "with that price (\"Last this low: 12 October, at ₪9.90.\"), or, when none is, "
          "\"Lowest in the 10 days tracked.\", counting the days tracked with a day price. Said only when today's price "
          "is known and some day tracked has a day price."),
         ("S7 How often on sale.",

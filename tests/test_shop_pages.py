@@ -154,14 +154,17 @@ def _table_rows(page: str) -> list[str]:
 def test_each_store_page_names_its_store_and_puts_search_first():
     """Each of the nine: `<main data-store="<key>">` (search.js sets the pick from it), the store's name in the tab's
     title and over the page's title, then the subtitle, the search box, the headline, the deals and the fold-out, in
-    the design's order ("What a visitor sees" 4); no store radios (the page is one store type's)."""
+    the design's order ("What a visitor sees" 4); no store radios (the page is one store type's). The subtitle is the
+    fold-out's first line (the owner, 2026-11-11)."""
+    subtitle = "Promotions checked against what the product usually costs, sales included, over up to 3 months."
+    assert FRONT_SUBTITLE == subtitle == FOLD_INTRO
     for column in COLUMNS:
         page = _storepage(_front(column.key, rows=[]))
         assert f'<main data-store="{column.key}">' in page and page.count("data-store") == 1
         assert f"<title>{column.name} - {SITE_NAME}</title>" in page
         main = page[page.index("<main"):]
         assert main.startswith(f'<main data-store="{column.key}">\n<p class="at">{column.name}</p>\n'
-                               f'<h1 id="deals">{FRONT_TITLE}</h1>\n<p class="sub">{FRONT_SUBTITLE}</p>\n'
+                               f'<h1 id="deals">{FRONT_TITLE}</h1>\n<p class="sub">{subtitle}</p>\n'
                                '<section class="search">')
         assert main.index('<section class="search">') < main.index('<p class="lede">') < main.index(
             '<section class="deals">') < main.index("<details>")
@@ -287,11 +290,14 @@ def test_a_store_type_is_ready_once_it_has_20_days_of_records_in_the_30():
 def test_a_store_type_not_read_today_says_so_and_lists_none():
     """Review Focus 2: on a promotion hole (Shufersal Deal on 2026-11-08) the page says "Sale prices could not be read
     today." and lists no deal; on a hole (prices from too few files) it says the too-few line and lists none; a hole
-    first, then the promotion hole, then "None yet". Another store type's hole lists this one's deals as ever."""
+    first, then the promotion hole, then "None yet". Another store type's hole lists this one's deals as ever. A day not
+    read counts no promotion (the build never counts them on such a day), so its fold-out has no promotions line,
+    never one of 0 (the whole-branch review)."""
     promo_hole = _storepage(days=_days(promo_holes={(SHELI, DAY)}))
     hole = _storepage(days=_days(holes={(SHELI, DAY)}))
     for page in (promo_hole, hole):
         assert _table_rows(page) == [] and "No deals to show." in page and "One of today's deals" not in page
+        assert "carried by at least half its stores" not in page and "Today Shufersal Sheli lists" not in page
     assert _lede(promo_hole) == "Sale prices could not be read today."
     assert _lede(hole) == "too few files today: 5 of 20 stores"
     both = _days(holes={(SHELI, DAY)}, promo_holes={(SHELI, DAY)})
@@ -299,6 +305,8 @@ def test_a_store_type_not_read_today_says_so_and_lists_none():
     assert _lede(_storepage(_front(ready=False), days=_days(promo_holes={(SHELI, DAY)}))) == _lede(promo_hole)
     other = _storepage(days=_days(holes={(DEAL, DAY)}, promo_holes={(DEAL, DAY)}))
     assert _table_rows(other) == [CODE] and _lede(other).startswith("At Shufersal Sheli today: 1 of 3 ")
+    assert ("<p>Today Shufersal Sheli lists 1,840 promotions carried by at least half its stores, on 6,210 "
+            "products.</p>") in other
 
 
 def test_a_row_shows_the_badge_its_condition_todays_price_and_the_usual_price():
@@ -586,10 +594,19 @@ def test_the_method_page_states_the_rules_with_the_codes_constants(monkeypatch):
     assert "the lower of the two middle values" not in rules
     assert f"is ₪{DEAL_MIN} or more, worked on the figures as shown" in s4
     assert all(NO_VERDICT[call] in s4 for call in NO_VERDICT)
-    # the review's findings 5 and 1: the no-verdict lines their own case; a No deal badge shows no shekels
-    assert "There is no verdict, only a plain line, when one of these applies, the first that applies:" in s4
-    assert 'Every badge writes its verdict in words, a Deal\'s with the shekels off ("NO DEAL" has none),' in s5
-    assert "its verdict and the shekels" not in s5
+    # the review's findings 5 and 1: the no-verdict lines their own case, before Deal and No deal (the whole-branch
+    # review: their lead restored); a No deal badge shows no shekels; the no-verdict badges write a line, no verdict
+    assert ("There is no verdict, only a plain line, when one of these applies (they come before Deal and No deal), "
+            "the first that applies:") in s4
+    assert ('Every Deal and No deal badge writes its verdict in words, a Deal\'s with the shekels off ("NO DEAL" has '
+            "none),") in s5
+    assert "its verdict and the shekels" not in s5 and "Every badge" not in s5
+    # an unread sale price has no price today (the owner, 2026-11-11): S3 and S6 say so
+    s3, s6 = (_rule(rules, f"S{n} ") for n in (3, 6))
+    assert ("With none counting, today's price is the listed price (S6), unless one listed across the column runs "
+            "with its price not read: then there is no price today.") in s3
+    assert s6.startswith("Today's price here is S3's when a promotion counts, else the listed price, and none when "
+                         "one listed across the column runs with its price not read (S3). ")
     # the review's finding 3: P5 true of the product and the store pages (Task 6's fix: CONDITIONS_NOTE)
     p5 = _rule(rules, "P5 ")
     assert ("On a product page, the fold-out lists every promotion running today with each of these conditions and "

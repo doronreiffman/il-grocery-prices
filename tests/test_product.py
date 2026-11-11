@@ -396,6 +396,24 @@ def test_each_no_verdict_line(call):
     assert f"<p>{words.NO_VERDICT[call]}</p>" in body
     assert 'class="badge' not in body and "DEAL ·" not in body and "NO DEAL" not in body
     assert "Usually ₪" not in body and "It's been" not in body and "Only ₪" not in body
+    # a sale whose price could not be read has no price today (the owner, 2026-11-11): no today mark or label on the
+    # chart and no "Last this low"; no sale and a sale at some stores take the listed price as today's
+    if call in ("unread_today", "price_unread", "no_sale", "some_stores"):
+        known = call in ("no_sale", "some_stores")
+        assert ('<circle class="today"' in body, "today ₪" in body, "Last this low" in body) == (known,) * 3, call
+
+
+def test_an_unread_sale_price_counts_today_as_on_sale():
+    """price_unread: on sale today, its price not read, so "How often on sale" counts today's sale as this one and
+    names the last sale before it, with no price today beside it."""
+    sales = {back(n): (_sale("7.90", back(n)),) for n in (12, 11, 10)}
+    unread = _struct(None, valid=False, why="no price in the fields")
+    page = _render(_covered({DEAL: "שם"}), {DEAL: _pair(DEAL, _listed("10.00"), on=[*sales, back(2), back(1), DAY],
+                                                        promotions=[unread], sales=sales)})
+    body = _sections(page)[DEAL]
+    assert f"<p>{words.NO_VERDICT['price_unread']}</p>" in body
+    assert "The last sale before this one ended 10 November, at ₪7.90." in body
+    assert '<circle class="today"' not in body and "Last this low" not in body and "Lowest in the" not in body
 
 
 def test_a_hole_day_shows_too_few_files_and_no_listed_price_claim():
@@ -625,6 +643,19 @@ def test_elsewhere_today_has_a_badge_per_store_type_selling_it_by_saving():
     assert all(key == target and f"c-{target}" in ids for key, target, _, _ in badges)
     assert len(badges) == row.count("<a ")
     assert CITY in _sections(page) and f'data-column="{CITY}" href' not in row
+
+
+def test_the_badges_without_a_verdict_follow_in_columns_order():
+    """The row's tail: after the deals and no deals, every badge with no verdict, in COLUMNS order whatever its call
+    (here a sale at some stores at Carrefour City, an unread sale price at Osher Ad, no sale at Yochananof)."""
+    unread = _struct(None, valid=False, why="no price in the fields")
+    pairs = {YOCHANANOF: _pair(YOCHANANOF, _listed("9.00")),
+             OSHER: _pair(OSHER, _listed("9.00"), on=[DAY], promotions=[unread]),
+             CITY: _pair(CITY, _listed("9.00"), promotions=[_struct("7.00", wide=False)]),
+             RAMI: _pair(RAMI, _listed("10.00"), promotions=[_struct("7.00")])}
+    (row,) = NAV.findall(_render(_covered({column: "שם" for column in pairs}), pairs))
+    assert [(key, shade) for key, _, shade, _ in BADGE.findall(row)] == [
+        (RAMI, "deal-2"), (CITY, "none"), (OSHER, "none"), (YOCHANANOF, "none")]
 
 
 def test_the_markup_search_js_reads():

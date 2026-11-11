@@ -2,8 +2,8 @@
 and P10, by column, the verdict's and the store pages' (docs/shopper-site.md, "Words", "What a visitor sees", P5, P6,
 P10, F10, and "Changed after the survey", its "Words"; docs/store-first.md, "Words" and "What a visitor sees" 4; the
 plan's Task 15, questions J, K, M (f) and O; the first pre-flight's S10, the second's S7, N4, N7 and N23; the
-store-first plan's Tasks 3 and 6 and its "Words this plan adds"). P7's sentences and P8's went with their page parts
-(store first, q33).
+store-first plan's Tasks 3 and 6 and its "Words this plan adds"). The older sentences on the gap to the median and on
+the promotion history went with their page parts (store first, q33).
 
 The lists. ALWAYS holds the four phrases the design puts beside every listed price and every promotion, and
 ALWAYS_SENTENCE holds all four in one fixed sentence, so a product page carries them even for a product listed nowhere
@@ -71,9 +71,10 @@ nothing with no tracked day. A coming sale (F2, `coming_sale`): "A sale starts o
 
 A store type's front page (store first, q33: docs/store-first.md, "What a visitor sees" 4 and "Words", verbatim where
 the design gives them; the plan's "Words this plan adds", provisional until the owner's read). The title asks the
-owner's question (FRONT_TITLE, the owner's final framing of 2026-11-10); a line under it (FRONT_SUBTITLE) says what
-each promotion is checked against, "up to" 3 months of shelf prices, since the records start on 1 November 2026 and
-the 90-day window holds fewer days until late January; the search box's label is the design's (SEARCH_LABEL). Then
+owner's question (FRONT_TITLE, the owner's final framing of 2026-11-10); a line under it (FRONT_SUBTITLE), the
+fold-out's first line (the owner, 2026-11-11), says what each promotion is checked against: what the product usually
+costs, sales included, over "up to" 3 months, since the records start on 1 November 2026 and the 90-day window holds
+fewer days until late January; the search box's label is the design's (SEARCH_LABEL). Then
 the lead line (`store_lead`), the first that applies: `basket.words.too_few` on a hole, NOT_READ_TODAY on a promotion
 hole, NONE_YET while the store type has no record on MIN_FRONT_DAYS of the RECENT_DAYS before today (the design's
 "existing lead line"), else the headline (`headline`): "At Carrefour Market today: 1,130 of 4,210 promotions are
@@ -102,8 +103,10 @@ from shopper.verdict import DEAL_MIN, FRONT_LIMIT, Verdict
 SITE_NAME = "Deal or No Deal"                       # question J, as the owner changed it on 2026-11-10
 CHAINS_LINE = " · ".join(CHAIN_NAMES[slug] for slug in SLUGS)              # every page's header, under the name
 FRONT_TITLE = "Is it actually a deal?"           # Q4, the owner's final framing of 2026-11-10
-# under the title: READ_DAYS (90) as 3 months, "up to" while the records hold fewer (they start on 1 November 2026)
-FRONT_SUBTITLE = f"Promotions checked against up to {READ_DAYS // 30} months of shelf prices."
+# under the title on every store page, the fold-out's first line (FOLD_INTRO; the owner, 2026-11-11): READ_DAYS (90)
+# as 3 months, "up to" while the records hold fewer (they start on 1 November 2026)
+FRONT_SUBTITLE = ("Promotions checked against what the product usually costs, sales included, over up to "
+                  f"{READ_DAYS // 30} months.")
 RECORD_TITLE = "Track record"
 ALWAYS = ("listed price", "as listed in the chain's price files", "before promotions", "listed in the morning's files")
 ALWAYS_SENTENCE = ("Every listed price here is as listed in the chain's price files, before promotions: the median "
