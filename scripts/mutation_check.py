@@ -22,8 +22,8 @@ break the tests noticed) only when the same tests, run once unmutated (once for 
 tests), pass within CLEAN_LIMIT: printed "CAUGHT <name> (timed out after N s; its tests pass
 unmutated)" and named in the closing line. Otherwise the time-out proves nothing and is an ERROR.
 
-Copied from flights-archive's harness, with two changes: only exit 1 counts as caught (above), and
-the test runs write no bytecode. Python trusts a cached .pyc whose source has the same size and the
+Copied from flights-archive's harness, with three changes: only exit 1 counts as caught (above), each
+run has a time limit and a session of its own (above), and the test runs write no bytecode. Python trusts a cached .pyc whose source has the same size and the
 same whole-second mtime, so a same-length mutation written and restored within one second could
 otherwise leave the broken code cached for the next run.
 """
@@ -40,8 +40,9 @@ ROOT = Path(__file__).resolve().parent.parent
 # Seconds a mutation's pytest run may take (q25), and the same tests' run unmutated after a time-out. The slowest target
 # tests are tests/test_golden_90.py: 417 to 552 s run alone on the Mac (docs/shopper-site-plan.md, Task 25 and its
 # speed-ups; 448 s on 2026-11-11) and about 689 s for its two big tests inside a full run beside another copy's (the
-# same doc). The other 84 target sets took at most 57 s each unmutated (tests/test_basket_handler.py, 2026-11-11). CI's
-# runner is about as fast: the whole suite in 914 s (CI run 42925889780's pytest step) against 750 to 933 s on the Mac.
+# same doc). The other 85 target sets took at most 57 s each unmutated (tests/test_basket_handler.py, 2026-11-11). CI's
+# runner is about as fast: the whole suite in 914 s (CI run 42925889780's pytest step) against 750 to 933 s on the Mac
+# (749.7 s in this change's own full run on 2026-11-11; 933 s in the same doc, at Task 25).
 # 1,400 s is twice the loaded run; the clean run has the same limit, so a clean golden run under load reads as passing.
 # A run that hangs costs the check this long, and its tests' clean run after it.
 TIME_LIMIT = 1400
@@ -3031,6 +3032,8 @@ MUTATIONS = {
     "mutation check leaves the run going on an interrupt": (MUTATION_CHECK, '        except BaseException:\n', '        except Exception:\n'),
     "mutation check counts a run that ended in time but left a child as a time-out": (MUTATION_CHECK, '            code = process.poll()\n', '            code = None\n'),
     "mutation check crashes on a group with nothing left to kill": (MUTATION_CHECK, '    except (ProcessLookupError, PermissionError):\n', '    except ChildProcessError:\n'),
+    "mutation check reads a run's last output with no limit": (MUTATION_CHECK, '                stdout, stderr = process.communicate(timeout=drain)  # the rest of its output, its group killed\n', '                stdout, stderr = process.communicate()\n'),
+    "mutation check crashes when a process that left the session holds the pipes": (MUTATION_CHECK, '            except subprocess.TimeoutExpired as late:  # a process that left the session holds the pipes: stop reading\n', '            except ZeroDivisionError as late:\n'),
     "mutation check reads the pipes only after the run ends": (MUTATION_CHECK, '            stdout, stderr = process.communicate(timeout=limit)\n', '            process.wait(timeout=limit)\n            stdout, stderr = process.stdout.read(), process.stderr.read()\n'),
     "mutation check counts a time-out as caught without the clean run": (MUTATION_CHECK, '                doubt = _doubt(clean_runs[key], clean_limit)\n', '                doubt = None\n'),
     "mutation check takes a clean run past its limit as passing": (MUTATION_CHECK, '        return f"its tests ran past {clean_limit:g} s unmutated too, so the time-out proves nothing"\n', '        return None\n'),
@@ -3144,6 +3147,11 @@ def _telling_line(run: subprocess.CompletedProcess) -> str:
     return (exception or error or lines or ["(no output)"])[-1]
 
 
+# Seconds to read the rest of a run's output when it ended in time but its pipes stayed open past the limit: its group
+# is killed by then, so what is left is already in the pipes, unless a process that left the session still holds them.
+DRAIN_SECONDS = 5
+
+
 def _kill_group(pid: int) -> None:
     """Kill every process in the session run_limited started for `pid`. A group with nothing left to kill is no
     error: only its exited, unreaped first process (macOS answers PermissionError), or nothing at all."""
@@ -3153,7 +3161,8 @@ def _kill_group(pid: int) -> None:
         pass
 
 
-def run_limited(args: list[str], limit: float | None, **popen) -> subprocess.CompletedProcess | None:
+def run_limited(args: list[str], limit: float | None, drain: float = DRAIN_SECONDS,
+                **popen) -> subprocess.CompletedProcess | None:
     """Run `args` to its end and return its exit code and output; None when it runs past `limit` seconds. It runs in a
     session of its own, so that past the limit, or on a Ctrl-C (which a session of its own does not get from the
     terminal), everything it started (a test's own process) is killed with it."""
@@ -3169,8 +3178,11 @@ def run_limited(args: list[str], limit: float | None, **popen) -> subprocess.Com
             if code is None:
                 process.wait()  # not communicate(): a process that escaped the kill could hold the pipes open
                 return None
-            stdout, stderr = process.communicate()  # the rest of its output, the group that held the pipes killed
-            return subprocess.CompletedProcess(args, code, stdout, stderr)
+            try:
+                stdout, stderr = process.communicate(timeout=drain)  # the rest of its output, its group killed
+            except subprocess.TimeoutExpired as late:  # a process that left the session holds the pipes: stop reading
+                stdout, stderr = ((part or b"").decode(errors="replace") for part in (late.stdout, late.stderr))
+            return subprocess.CompletedProcess(args, code, stdout, stderr)  # the pipes close as the `with` ends
         except BaseException:
             _kill_group(process.pid)
             process.wait()

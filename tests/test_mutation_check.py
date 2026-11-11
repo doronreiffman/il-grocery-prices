@@ -234,17 +234,20 @@ def test_a_run_that_fills_both_pipes_does_not_stall(check):
     assert (run.returncode, len(run.stdout), len(run.stderr)) == (0, 1_000_000, 1_000_000)
 
 
-def started_with_a_child(ending: str) -> str:
-    """A process that starts one of its own (as tests/test_golden_90.py starts its second run), writes both pids,
-    then `ending`."""
+def started_with_a_child(ending: str, own_session: bool = False) -> str:
+    """A process that starts one of its own (as tests/test_golden_90.py starts its second run), in its session or in
+    one of the child's own, writes both pids, then `ending`."""
     return ("import os, subprocess, sys, time\n"
-            "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(20)'])\n"
+            "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(20)'], "
+            f"start_new_session={own_session})\n"
             "open(sys.argv[1], 'w').write(f'{os.getpid()} {child.pid}')\n" + ending)
 
 
 HANGS_WITH_A_CHILD = started_with_a_child("time.sleep(20)\n")
 # Ends at once with exit 3, its child left holding the pipes.
 ENDS_LEAVING_A_CHILD = started_with_a_child("print('done')\nsys.exit(3)\n")
+# The same, its child gone to a session of its own, out of reach of the group kill.
+ENDS_LEAVING_AN_ESCAPED_CHILD = started_with_a_child("print('done')\nsys.exit(3)\n", own_session=True)
 
 
 def gone(pid: int, within: float = 5.0) -> bool:
@@ -288,6 +291,16 @@ def test_a_run_that_ended_in_time_keeps_its_exit_code_though_its_child_held_the_
     run = check.run_limited([sys.executable, "-c", ENDS_LEAVING_A_CHILD, str(pidfile)], 1.0)
     assert (run.returncode, run.stdout) == (3, "done\n")
     assert all_gone(pidfile)
+
+
+def test_a_process_that_left_the_session_holding_the_pipes_does_not_hold_up_the_run(check, pidfile):
+    """The run ended in time, but its child left for a session of its own with the pipes, where the group kill cannot
+    reach it: the rest of the output is read for a short while only, then the pipes are closed, and the run's exit code
+    stands. (The fixture kills the child.)"""
+    started = time.monotonic()
+    run = check.run_limited([sys.executable, "-c", ENDS_LEAVING_AN_ESCAPED_CHILD, str(pidfile)], 1.0, drain=0.5)
+    assert time.monotonic() - started < 10  # the limit and the short read, not the 20 s the child holds the pipes
+    assert (run.returncode, run.stdout) == (3, "done\n")
 
 
 def test_an_interrupt_kills_the_run_with_everything_it_started(check, pidfile):
