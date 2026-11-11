@@ -63,6 +63,12 @@ PROMO_REPLAY = ("src/collector/run.py", ["tests/test_replay.py::test_a_day_of_sh
 # out by itself.
 PROMO_REPUBLISHED = ("src/collector/sources/shufersal.py",
                      ["tests/test_replay.py::test_a_store_republished_at_the_resume_point_still_completes_the_pass"])
+# A q24 break that pauses before every try, the first too. The older tests in test_shufersal.py build their sources with
+# the default sleep, time.sleep, so under it they wait for real (10 s a page) before -x reaches the q24 tests near the end
+# of the file: run over the whole file, it was caught only by the time limit, after 1,400 s (2026-11-11). It names the
+# one test that must catch it by itself, in seconds.
+_S = "tests/test_shufersal.py::"
+PAUSE_ON_FIRST_TRY = ("src/collector/sources/shufersal.py", [_S + "test_a_page_read_on_its_first_try_records_one_try"])
 NAME_CHECK = ("src/collector/sources/__init__.py", ["tests/test_chains.py"])
 NCR = ("src/collector/sources/ncr.py", ["tests/test_ncr.py"])
 # The NCR directory read to its last answer before the first row (q26, ruling R40): the one test that takes a row from a
@@ -545,7 +551,7 @@ MUTATIONS = {
     "a timed-out page not asked again, the 2026-11-06 replay alone (q24 replay)": (NOV_6_REPLAY, "PAGE_TRIES = 3  #", "PAGE_TRIES = 1  #"),
     "a fourth try (q24 tries)": (SHUFERSAL, "PAGE_TRIES = 3  #", "PAGE_TRIES = 4  #"),
     "no pause (q24 tries)": (SHUFERSAL, "            sleep(RETRY_PAUSE)\n", "            pass\n"),
-    "a pause before the first try (q24 tries)": (SHUFERSAL, "        if attempt > 1:\n            sleep(RETRY_PAUSE)\n", "        sleep(RETRY_PAUSE)\n"),
+    "a pause before the first try (q24 tries)": (PAUSE_ON_FIRST_TRY, "        if attempt > 1:\n            sleep(RETRY_PAUSE)\n", "        sleep(RETRY_PAUSE)\n"),
     "a pause of another length (q24 tries)": (SHUFERSAL, "RETRY_PAUSE = 10.0", "RETRY_PAUSE = 1.0"),
     "no time check before the pause (q24 tries)": (SHUFERSAL, "            stopped = attempt < PAGE_TRIES and short_of_time()", "            stopped = False"),
     "a time check after the last try (q24 tries)": (SHUFERSAL, "stopped = attempt < PAGE_TRIES and short_of_time()", "stopped = short_of_time()"),
