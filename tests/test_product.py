@@ -25,8 +25,8 @@ from shopper.product import CHAIN_SPAN, MAX_PAGE, page_path, render_product
 from shopper.record import Gate
 from shopper.search import browse_pages, browse_path
 from shopper.verdict import verdict
-from shopper.words import (ALWAYS, ALWAYS_SENTENCE, AT_SOME_STORES, CHAINS_LINE, FINE_PRINT, FROM_FIELDS, GAP_HEADING,
-                           MORNING, NEVER, ODDS_WORDS, PRICE_NOT_READ, SITE_NAME, credit, date_line, last_across,
+from shopper.words import (ALWAYS, ALWAYS_SENTENCE, AT_SOME_STORES, CHAINS_LINE, FINE_PRINT, FROM_FIELDS, MORNING,
+                           NEVER, ODDS_WORDS, PRICE_NOT_READ, SITE_NAME, credit, date_line, last_across,
                            no_odds_yet, unreadable)
 
 DAY = date(2026, 11, 20)
@@ -706,7 +706,7 @@ def test_p7_p8_and_p9_are_gone():
     give way to the verdict, the chart, "Last this low", "How often on sale" and "Elsewhere today"."""
     for page in (_render(*_largest()), _render(*_typical())):
         text = _visible(page)
-        for gone in (GAP_HEADING, "How often it goes on promotion", "30-day median", "Today at each column",
+        for gone in ("The deal against its listed prices", "How often it goes on promotion", "30-day median", "Today at each column",
                      "Run before today", "Runs before today", "The listed price did not change", "rose from",
                      "On a promotion listed across", "<table", "Listed to start"):
             assert flatten(gone) not in text and gone not in page, gone

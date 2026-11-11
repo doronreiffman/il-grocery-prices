@@ -17,14 +17,14 @@ from pathlib import Path
 from basket.page import render_day
 from shopper.freeze import ArchiveFreezer, ledger, scores_site_key, site_key
 from shopper.guard import guard_site, main
-from shopper.pages import Counts, render_record
+from shopper.pages import render_record
 from shopper.record import scorecard
 from shopper.siteday import publish_site_day, write_site_day
 from test_freeze import forecasts_of
 from test_guard import NAME as BASKET_DAY, published_day, revision_of
 from test_product import DAY, _days
 from test_shop_build import _templates      # the build's tree is made once a module (autouse there, so here too)
-from test_siteday import DEAL, FROZEN_AT, LATER, _card, _frozen, _site_day
+from test_siteday import DEAL, FROZEN_AT, LATER, _card, _fronts, _frozen, _site_day
 import test_shop_build as built
 
 SITE_DAY = f"site-days/{DAY.isoformat()}.json"
@@ -83,7 +83,7 @@ def next_day_ledger(published: bytes) -> bytes:
 
 def revised_site_day(tmp_path: Path, first: dict) -> dict:
     """`first` revised as the build revises a published site-day file: other numbers and a reason."""
-    shown, _, revised = publish_site_day(_site_day(counts=Counts(4, 2, 1)), _published(tmp_path, first), LATER,
+    shown, _, revised = publish_site_day(_site_day(fronts=_fronts(checked=9)), _published(tmp_path, first), LATER,
                                          "a reader fix")
     assert revised
     return shown
@@ -139,14 +139,14 @@ def test_a_site_day_that_is_not_a_revision_is_refused(tmp_path):
     """The basket's rule over `site-days/`, a problem naming that folder: other numbers with no revision recorded, and
     a revision that does not add to the published file's, are both refused."""
     first = _site_day()
-    other = _site_day(counts=Counts(4, 2, 1))
+    other = _site_day(fronts=_fronts(checked=9))
     site, bucket = both(tmp_path / "other", shown=other)
     write_site_day(first, bucket)
     assert guard_site(site, bucket, PAGES) == [NOT_A_REVISION.format(SITE_DAY)]
     revised = revised_site_day(tmp_path / "stale", first)
     site, bucket = both(tmp_path / "stale", shown=revised)
     write_site_day(revised, bucket)          # the bucket already holds this revision: the build adds none to it
-    other_revision = revised | {"counts": {"promotions": 9, "products": 9, "below": 9}}
+    other_revision = revised | {"columns": _site_day(fronts=_fronts(checked=11))["columns"]}
     write_site_day(other_revision, site)
     assert guard_site(site, bucket, PAGES) == [NOT_A_REVISION.format(SITE_DAY)]
 
@@ -389,7 +389,7 @@ def test_a_rerun_of_the_latest_day_or_a_later_day_passes(tmp_path):
 def test_every_rule_is_checked_and_named_in_order(tmp_path):
     site, bucket = both(tmp_path)
     (site / "days" / BASKET_DAY).write_text(render_day(published_day() | {"collected_by": "10:45"}))
-    write_site_day(_site_day(counts=Counts(4, 2, 1)), site)
+    write_site_day(_site_day(fronts=_fronts(checked=9)), site)
     (site / site_key(DAY)).write_bytes(forecasts_of(Fraction(1, 3)))
     (site / scores_site_key(SCORED)).write_bytes(SCORES + b"\x00")
     (site / "forecasts/ledger.csv").unlink()

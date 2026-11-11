@@ -161,8 +161,8 @@ def _span(value: str) -> str:
 
 
 def running_today(point: Point | None, day: date) -> list[dict]:
-    """The point's promotions running on `day` (P3: started on or before it and ending on or after it); the front
-    page's rows read them so too."""
+    """The point's promotions running on `day` (P3: started on or before it and ending on or after it); the build's
+    promotions line reads them so too."""
     if point is None:
         return []
     return [struct for struct in point.promotions if struct["start"] <= day <= struct["end"]]
@@ -175,8 +175,8 @@ def _valid(struct: Mapping) -> Deal | None:
 
 
 def field_conditions(struct: Mapping) -> list[str]:
-    """A promotion's conditions from the fields, as HTML, each with its source (P5, S3), from a struct's (or a front
-    page row's) `restrictions`, `programmes` and `min_spend`; every programme's name in the chain's span."""
+    """A promotion's conditions from the fields, as HTML, each with its source (P5, S3), from a struct's
+    `restrictions`, `programmes` and `min_spend`; every programme's name in the chain's span."""
     found = []
     phrase = targets(struct["restrictions"])
     names = struct["programmes"]

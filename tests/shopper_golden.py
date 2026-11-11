@@ -113,22 +113,25 @@ G3's day 60 as a 1 too: 6/248, p = 0.007976.)
 A = 0, w = 74/104, p = (30/104)(1/75) = 1/260 = 0.003846. Outcome 1, its first day 99 (9 April), promotion 50; Sheli's
 G5 that day: 0.
 
-The pages.
-- 16 March (day 75), G3 at Sheli. The 30-day window (days 45 to 74) lists 10.90 on 45-59 and 11.90 on 60-74: of 30
-  prices the median is the mean of the 15th and 16th, (10.90 + 11.90)/2 = 11.40; 11.40 - 7.90 = 3.50, and 3.50/11.40 =
-  30.7%: 31%. The 90-day window (days -15 to 74) holds days 1 to 74, 74 days, its low 10.90, no day at or below 7.90.
-  One change in the 30 days: 10.90 to 11.90 on day 60, day 59 a day with records. Its front row: wide (2 of 2), valid
-  (7.90 between 0.01 and 23.80), today a record, 30 >= 20 days of records in the 30, 7.90 below the 90's 10.90. The
-  count line: one promotion (Shufersal's 30) on one product, one below. Deal's 9.90, with no promotion, has no row.
-- 26 March (day 85), G4 at Rami Levy: 75.00/1.5 = 50.00 a kilogram, "buy 1.5"; the 30-day window (days 55 to 84) lists
-  69.90 throughout: 19.90 below, 19.90/69.90 = 28.5%: 28%; the 90-day window, days 1 to 84 but 40 and 41: 82 days. The
-  front page: G3's row first (its median now 11.90, 25 of the 30 days at 11.90: 4.00/11.90 = 34%), then G4's.
+The pages. A store type's front page lists its deals passing the bar (20 days with records in the 30 before the day),
+by saving, under a headline counting them of the products checked (a promotion counting today, the bar passed); its
+verdicts are worked under "The verdicts" below.
+- 16 March (day 75), G3 at Sheli: ₪3.00 off its usual 10.90, the one deal on any store page, the bar passed (days 45
+  to 74, 30 days with records): "1 of 1 promotions is actually a deal.", its story its reason over 74 days, "Lowest in
+  the 74 days tracked." and "On sale on 0 of the 74 days tracked."; the promotions line: one promotion (Shufersal's 30)
+  on one product at Sheli. Deal's 9.90, with no promotion, has no row.
+- 26 March (day 85), G4 at Rami Levy: 75.00/1.5 = 50.00 a kilogram, "When you buy 1.5 kilograms", 19.90 off its usual
+  69.90, the bar passed (days 55 to 84, 30 days); G3 at Sheli again, its usual 10.90 over days 1 to 84 (59 at 10.90, 15
+  at 11.90, 10 on sale at 7.90: the 43rd of 84, index 42, is 10.90), 3.00 off.
 - 9 April (day 99), G5 at Deal: store 21's alone, 1 x 2 >= 2 counted stores: wide, so listed across Deal, not "at some
-  stores". The 30-day window (days 69 to 98) lists 6.00: 1.50 below, 25%. The 90-day window, days 9 to 98 but 50 and
-  51: 88 days, its low 4.50 (days 30 to 44: 15 days at or below the deal). The deal is not below every listed price of
-  the 90 days, so it has no front row: the front page holds G3's alone. Sheli's G5: no promotion in its 90 days.
-- 19 February (day 50): G1 on its run of days 47 to 53 at every column; Deal a hole, so the front rows are the six other
-  columns' G1 (each 1.10, 22%, below 5.00), in name order; G1's Deal section says "too few files today: 0 of 2 stores".
+  stores". At 4.50 it equals Deal's 90-day low, so the old rule (below every listed price of the 90 days) listed none;
+  its usual price is 6.00, so it is 1.50 off, a deal, and on Deal's store page (the bar: days 69 to 98, 30 days). G3
+  at Sheli is listed too (days 9 to 98: 51 at 10.90, 15 at 11.90, 24 at 7.90; the 46th of 90 is 10.90). Sheli's G5: no
+  promotion in its 90 days.
+- 19 February (day 50): G1 on its run of days 47 to 53 at every column; Deal a hole, so its store page says "too few
+  files today: 0 of 2 stores" and lists none, and each of the six other columns lists its G1, 1.10 off its usual 5.00
+  (the bar: days 20 to 49, Rami Levy's 28 with its holes of 9 and 10 February, the others' 30); G1's Deal section says
+  "too few files today: 0 of 2 stores".
 - 30 April (day 120), G1. The 90-day window is days 30 to 119. Osher Ad: 90 days with records; on promotion on 30-32
   (the run of 26 to 32, started before the window: "or earlier"), 47-53, 68-74, 89-95 and 110-116, 3 + 4 x 7 = 31 days;
   14 days between runs (46 - 32); the last run ended on day 116, 4 days ago. Deal: 88 days (not 50 and 51), on promotion

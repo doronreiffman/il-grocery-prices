@@ -47,8 +47,8 @@ In order:
 5. One pass over the pairs (`History.pairs`, the build's longest step) serves the forecasts (`shopper.forecast.forecasts`)
    and, beside them, every covered product's page (`render_product`) with a verdict (`shopper.verdict.verdict`) worked
    once for each column the page has a section for (`section_keys`; no pair, None, at a column the read holds none
-   of), the front page's rows (`front_rows_of`, the old rule's until the store-first plan's Task 6), the count line's
-   numbers and the chains whose files mark a restricted promotion. A covered product the read no longer holds gets its
+   of), each store type's front (`StoreFront`: the same verdicts' deals and checked, and the promotions line's
+   numbers) and the chains whose files mark a restricted promotion. A covered product the read no longer holds gets its
    page after the pass, with no pair (Call 10: once covered, always a page, rebuilt daily). The pages are
    drawn into a folder apart and move into the site folder only once the day is published (9), so a refused build
    leaves every page as it was. That folder, `shopper-pages-` and a random suffix, is made beside the site folder: in
@@ -74,14 +74,18 @@ In order:
     the day as published: its "collected by" time and code fingerprint are the published site-day file's, the product
     pages drawn again when the time differs from this run's.
 
-The count line (question A, S1): the promotions listed across a column today, distinct by chain and promotion id, are
-those of the items table's structs that run today (P3), are listed across the column and have a kind, at a column
-with a record today and its promotions read; the products are their barcodes; the products below are the barcodes with
-a front page row (each store page's lead line counts its own column's rows; its fold-out says the site's whole). The
-fold-out names the chains whose files mark no restricted promotion today: chains with promotions read at some column
-today and no struct marking a restriction there (a chain whose promotions were not read is never said to mark none).
-Whether a product of a column could pass the front test's days at all, its store page's "None yet", is read from the
-column-days (`shopper.pages.column_ready`).
+Each store type's front (store first, q33: docs/store-first.md, "The front page's list"). Of the covered products'
+verdicts at a column with its pair, a deal passing the 20-day bar is a row of that store type's list
+(`shopper.verdict.on_list`, a `DealRow`), and a promotion counting today with the bar passed is one it checked
+(`shopper.verdict.checked`, the headline's M): the same set, so the headline counts what the list shows. Each front
+holds its own column's rows alone, all of them, in `shopper.verdict.front_list`'s order; its page shows the first 100
+(`shopper.pages.shown_rows`). Its promotions line's numbers: the promotions listed across the column today, distinct by
+promotion id, are those of the items table's structs that run today (P3), are listed across the column and have a
+kind, at a column with a record today and its promotions read; the products are their barcodes. Whether a product of a
+column could pass the bar at all, its store page's "None yet", is read from the column-days
+(`shopper.pages.column_ready`). The fold-out names the store's chain when its files mark no restricted promotion today:
+chains with promotions read at some column today and no struct marking a restriction there (a chain whose promotions
+were not read is never said to mark none).
 
 The outcome lists the pages written and, apart, the data files new to the site (Call 9: they always go up): the
 site-day and basket day files when not unchanged, the ledger and the day's forecasts file when the ledger gained its
@@ -122,15 +126,15 @@ from shopper.freeze import (ForecastsDiffer, Frozen, ReadOnlyFreezer, ScoresDiff
                             scores_site_key, site_key)
 from shopper.history import Covered, History, Pair, covered, covered_path, load
 from shopper.items import HORIZON, items_path
-from shopper.pages import (ColumnsToday, Counts, FrontRow, column_ready, front_rows_of, render_basket, render_method,
-                           render_record, render_root, render_store, store_path)
+from shopper.pages import (ColumnsToday, StoreFront, column_ready, render_basket, render_method, render_record,
+                           render_root, render_store, store_path)
 from shopper.product import page_path, render_product, running_today, section_keys
 from shopper.record import Gate, scorecard
 from shopper.score import (DaySummary, due, out_of_reach, read_summary, scores_csv, summarize, summary_json,
                            summary_path, window_history)
 from shopper.search import SCRIPT, browse_pages, pieces
 from shopper.siteday import Inputs, publish_site_day, site_day, site_day_path, write_site_day
-from shopper.verdict import verdict
+from shopper.verdict import DealRow, Verdict, checked, front_list, on_list, verdict
 
 __all__ = ["LEDGER", "MARKER", "ForecastsDiffer", "NotFrozenYet", "NotSynced", "SiteOutcome", "build_site", "main",
            "read_ledger"]
@@ -192,8 +196,8 @@ class _Watched(History):
 
 class _Pages:
     """What the one pass gathers beside the forecasts, a product (its pairs, by code) at a time: each covered product's
-    page, drawn into `out` with its verdicts; the front page's rows; the count line's promotions and products; the
-    chains marking a restricted promotion today (the module's docstring)."""
+    page, drawn into `out` with its verdicts; each store type's deals and checked from the same verdicts, and its
+    promotions and products today; the chains marking a restricted promotion today (the module's docstring)."""
 
     def __init__(self, covered_now: Mapping[str, Covered], history: History, collected_by: str,
                  gates: Mapping[str, Gate], errors: Mapping[str, str], out: Path):
@@ -202,9 +206,10 @@ class _Pages:
         self.code: str | None = None
         self.pairs: dict[str, Pair] = {}
         self.seen: set[str] = set()
-        self.rows: list[FrontRow] = []
-        self.promotions: set[tuple[str, str]] = set()
-        self.products: set[str] = set()
+        self.rows: list[DealRow] = []
+        self.checked: dict[str, int] = dict.fromkeys((column.key for column in COLUMNS), 0)
+        self.promotions: dict[str, set[str]] = {column.key: set() for column in COLUMNS}
+        self.products: dict[str, set[str]] = {column.key: set() for column in COLUMNS}
         self.marking: set[str] = set()
         self.written: list[str] = []
         (out / "p").mkdir(parents=True, exist_ok=True)
@@ -217,7 +222,7 @@ class _Pages:
         self._today(pair)
 
     def _today(self, pair: Pair) -> None:
-        """The pair's promotions today, for the count line and the chains marking none."""
+        """The pair's promotions today, for its store type's promotions line and the chains marking none."""
         today = self.column_days[(pair.column, self.day)]
         point = pair.points.get(self.day)
         if point is None or today.promo_hole:      # nothing read, or from too few promotion files
@@ -227,28 +232,35 @@ class _Pages:
         if not today.record:                        # a hole makes no claim (S1)
             return
         listed = [struct for struct in running_today(point, self.day) if struct["wide"] and struct["kind"] is not None]
-        self.promotions |= {(today.slug, struct["promotion_id"]) for struct in listed}
+        self.promotions[pair.column] |= {struct["promotion_id"] for struct in listed}
         if listed:
-            self.products.add(pair.code)
+            self.products[pair.column].add(pair.code)
 
     def _product(self) -> None:
-        """The product whose pairs are gathered: its page and its front page rows."""
+        """The product whose pairs are gathered: its page, and its deals and checked at each column with its pair."""
         if self.code is None:
             return
         self.seen.add(self.code)
         found = self.covered.get(self.code)
         if found is None:
             return
-        self._page(found, self.pairs)
-        self.rows += front_rows_of(self.code, found.title, self.pairs, self.column_days, self.day)
+        verdicts = self._page(found, self.pairs)
+        for key, judged in verdicts.items():
+            pair = self.pairs.get(key)
+            if pair is None:
+                continue
+            self.checked[key] += checked(judged, pair, self.column_days, self.day)
+            if on_list(judged, pair, self.column_days, self.day):
+                self.rows.append(DealRow(column=key, code=self.code, title=found.title, verdict=judged))
 
-    def _page(self, found: Covered, pairs: Mapping[str, Pair]) -> None:
-        """The product's page, a verdict worked once for each of its sections' columns."""
+    def _page(self, found: Covered, pairs: Mapping[str, Pair]) -> dict[str, Verdict]:
+        """The product's page, a verdict worked once for each of its sections' columns; the verdicts."""
         path = page_path(found.code)
         verdicts = {key: verdict(pairs.get(key), key, self.column_days, self.day) for key in section_keys(found, pairs)}
         (self.out / path).write_text(render_product(found, pairs, verdicts, self.column_days, self.day,
                                                     self.collected_by, self.gates, self.errors), encoding="utf-8")
         self.written.append(path)
+        return verdicts
 
     def finish(self) -> None:
         """The last product, then every covered product the read no longer holds, with no pair."""
@@ -257,10 +269,14 @@ class _Pages:
         for code in sorted(set(self.covered) - self.seen):
             self._page(self.covered[code], {})
 
-    def counts(self) -> Counts:
-        """The count line's numbers (the module's docstring)."""
-        return Counts(promotions=len(self.promotions), products=len(self.products),
-                      below=len({row.code for row in self.rows}))
+    def fronts(self) -> dict[str, StoreFront]:
+        """Each store type's front, in COLUMNS order (the module's docstring): its own column's rows alone."""
+        return {column.key: StoreFront(
+                    column=column.key, ready=column_ready(self.column_days, column.key, self.day),
+                    rows=tuple(front_list(row for row in self.rows if row.column == column.key)),
+                    checked=self.checked[column.key], promotions=len(self.promotions[column.key]),
+                    products=len(self.products[column.key]))
+                for column in COLUMNS}
 
     def marking_none(self) -> list[str]:
         """The chains whose files mark no restricted promotion today: promotions read at some column of theirs today,
@@ -484,9 +500,9 @@ def build_site(day: date, data_dir: Path, site_dir: Path, now: datetime, collect
 
         basket_outcome = build_day(day, data_dir, site_dir, basket_path, now, revise, rebuild=False,
                                    min_items=min_items, collected_by=collected_by, write_pages=False)
-        counts = pages.counts()
+        fronts = pages.fronts()
         new = site_day(day, run_id, code_sha, now, collected_by, _inputs(history, registry), history.column_days,
-                       reports, counts, pages.rows, frozen, card, [summary.day for summary in known], far)
+                       reports, fronts, frozen, card, [summary.day for summary in known], far)
         shown, unchanged, revised = publish_site_day(new, site_dir, now, revise)
 
         data = []
@@ -517,10 +533,9 @@ def build_site(day: date, data_dir: Path, site_dir: Path, now: datetime, collect
     browse = browse_pages(covered_now, day, shown_by)
     fixed = {
         "index.html": render_root(day, shown_by),
-        **{store_path(column.key): render_store(column.key, pages.rows, counts, day, shown_by, pages.marking_none(),
-                                                next(iter(browse), None),
-                                                ready=column_ready(history.column_days, column.key, day))
-           for column in COLUMNS},
+        **{store_path(key): render_store(front, history.column_days, day, shown_by, pages.marking_none(),
+                                         next(iter(browse), None))
+           for key, front in fronts.items()},
         "method.html": render_method(basket, basket_outcome.exclusions, _columns_today(raw_dir, day), day, shown_by,
                                      shown["code_sha"], basket_outcome.public),
         "record.html": render_record(shown["scorecard"], ledger_days, files, history.column_days, day, shown_by),
@@ -579,9 +594,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"due, scored only by the site run in Lambda: {_days(outcome.due)}")
     if outcome.out_of_reach:
         print(f"out of reach, never scored: {_days(outcome.out_of_reach)}")
-    rows, counts = len(outcome.site_day["front_rows"]), outcome.site_day["counts"]
-    print(f"front page: {rows:,} {'row' if rows == 1 else 'rows'}; the count line: {counts['promotions']:,} "
-          f"promotions on {counts['products']:,} products, {counts['below']:,} below")
+    fronts = [block["front"] for block in outcome.site_day["columns"].values()]
+    deals, checked_ = sum(front["deals"] for front in fronts), sum(front["checked"] for front in fronts)
+    print(f"store pages: {deals:,} {'deal' if deals == 1 else 'deals'} of {checked_:,} checked")
     print(*outcome.basket.headline_lines, sep="\n")
     for what, path, state in (
             ("basket day", args.site / "days" / f"{args.day.isoformat()}.json", outcome.basket),

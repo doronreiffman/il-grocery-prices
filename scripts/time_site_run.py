@@ -17,7 +17,7 @@ promotion 7 days in 21; no column-day is a hole.
 Then the build's compute, step by step as `shopper.build.build_site` runs it and through its own functions: the
 history (`load`), the covered registry, the scoring of the one due day (`build._score`, through a freezer that holds
 the frozen file in memory), the scorecard over as many scored days as the days held give (copies of that day's
-summary), the one pass (the forecasts, every covered product's page and the front rows: `build._Pages` and
+summary), the one pass (the forecasts, every covered product's page and the store types' deals: `build._Pages` and
 `build._Watched`), the forecasts file, and the pages moved in with the front, browse and search pages. Each step
 prints its CPU seconds (`time.process_time`: every thread of the process, DuckDB's included) and its wall seconds;
 then the totals and the peak resident memory. Figures only.
@@ -62,7 +62,7 @@ from shopper.forecast import FIRST_RECORD_DAY, Forecast, forecasts, forecasts_cs
 from shopper.freeze import Frozen  # noqa: E402
 from shopper.history import History, covered, covered_path, load  # noqa: E402
 from shopper.items import COLUMNS as ITEM_COLUMNS, HORIZON, ColumnReport, ItemsReport, items_path  # noqa: E402
-from shopper.pages import column_ready, render_root, render_store, store_path  # noqa: E402
+from shopper.pages import render_root, render_store, store_path  # noqa: E402
 from shopper.record import Gate, scorecard  # noqa: E402
 from shopper.score import read_summary, summary_path  # noqa: E402
 from shopper.search import browse_pages, pieces  # noqa: E402
@@ -371,7 +371,7 @@ def main(argv: list[str] | None = None) -> int:
         rows = forecasts(build._Watched(history, pages), DAY)
         pages.finish()
         return (pages, rows), f"{len(rows):,} forecasts, {len(pages.written):,} product pages, {len(pages.rows):,} " \
-                             "front rows"
+                             "deals"
 
     pages, rows = steps.run("the one pass", one_pass)
     steps.run("the forecasts file", lambda: (made_csv := forecasts_csv(rows, CODE_SHA), f"{len(made_csv):,} B"))
@@ -383,10 +383,9 @@ def main(argv: list[str] | None = None) -> int:
             shutil.move(staging / path, target)
         browse = browse_pages(found, DAY, COLLECTED_BY)
         fixed = {"index.html": render_root(DAY, COLLECTED_BY),
-                 **{store_path(column.key): render_store(column.key, pages.rows, pages.counts(), DAY, COLLECTED_BY,
-                                                         pages.marking_none(), next(iter(browse), None),
-                                                         ready=column_ready(history.column_days, column.key, DAY))
-                    for column in COLUMNS},
+                 **{store_path(key): render_store(front, history.column_days, DAY, COLLECTED_BY, pages.marking_none(),
+                                                  next(iter(browse), None))
+                    for key, front in pages.fronts().items()},
                  **browse, **pieces(found)}
         for path, page in fixed.items():
             build._write(site, path, page)

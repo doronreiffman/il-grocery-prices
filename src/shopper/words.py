@@ -1,77 +1,29 @@
-"""The shopper site's words: the word lists, the credit and date lines, the names of the views, the sentences of P7,
-F10 and P10, by column, and the verdict's (docs/shopper-site.md, "Words", "What a visitor sees", P5 to P10, F10, and
-"Changed after the survey", its "Words"; docs/store-first.md, "Words"; the plan's Task 15, questions J, K, M (f) and O;
-the first pre-flight's S10, the second's S7, N4, N7 and N23; Task 9's review rulings on a change's dates; the
-store-first plan's Task 3 and its "Words this plan adds").
+"""The shopper site's words: the word lists, the credit and date lines, the names of the views, the sentences of F10
+and P10, by column, the verdict's and the store pages' (docs/shopper-site.md, "Words", "What a visitor sees", P5, P6,
+P10, F10, and "Changed after the survey", its "Words"; docs/store-first.md, "Words" and "What a visitor sees" 4; the
+plan's Task 15, questions J, K, M (f) and O; the first pre-flight's S10, the second's S7, N4, N7 and N23; the
+store-first plan's Tasks 3 and 6 and its "Words this plan adds"). P7's sentences and P8's went with their page parts
+(store first, q33).
 
 The lists. ALWAYS holds the four phrases the design puts beside every listed price and every promotion, and
 ALWAYS_SENTENCE holds all four in one fixed sentence, so a product page carries them even for a product listed nowhere
-today (S7). It is written for the product pages, whose listed prices are a store format's medians with the stores left
-out by rule (such as Shufersal Deal's online store) set aside, by the rules the method page gives (it names the stores
-the store list leaves out and store 779, not a later store left out by its files' names); never for basket.html,
-whose prices are each chain's median and which keeps the basket's own sentence. NEVER is the basket's list followed
-by the design's own, unchanged in step one: a bare "will" would trip the method page's plain sentences, and step three's
-odds line revisits F11's "will" and "likely" (N23). ODDS_WORDS are the words a closed column's section may hold only
-inside F10's sentence (`no_odds_yet`). Every sentence here is free of a NEVER phrase, of "we", "our" and "us", and,
-F10's sentence aside, of every odds word.
+today (S7), and a store page's fold-out on any day. It is written for the product and store pages, whose listed prices
+are a store format's medians with the stores left out by rule (such as Shufersal Deal's online store) set aside, by the
+rules the method page gives (it names the stores the store list leaves out and store 779, not a later store left out
+by its files' names); never for basket.html, whose prices are each chain's median and which keeps the basket's own
+sentence. NEVER is the basket's list followed by the design's own, unchanged in step one: a bare "will" would trip the
+method page's plain sentences, and step three's odds line revisits F11's "will" and "likely" (N23). ODDS_WORDS are the
+words a closed column's section may hold only inside F10's sentence (`no_odds_yet`). Every sentence here is free of a
+NEVER phrase, of "we", "our" and "us", and, F10's sentence aside, of every odds word.
 
 Names. A column is named by `shopper.columns` ("Shufersal Deal"; a whole chain by its own name); a chain by
 `basket.words.CHAIN_NAMES`. F10's sentence names the column, P10's the chain, on each of its columns (question M (g)).
 The site's name is "Deal or No Deal" (question J, as the owner changed it on 2026-11-10), one constant, so a rename is
 one line; every page's header names the five chains under it (`CHAINS_LINE`) and then the day (`date_line`).
 
-The front page in plain words (the owner, 2026-11-10, the review round after them, and the owner's final framing that
-evening: is the promotion a shopper sees actually a deal?). The title asks that question; a line under it
-(`FRONT_SUBTITLE`) says what each promotion is checked against, "up to" 3 months of shelf prices, since the records
-start on 1 November 2026 and the 90-day window holds fewer days until late January; one lead line (`lead_line`) says
-how many passed, the site-day file's `below`, or why none did, with no total beside it: the products on promotion the build counts are only those carried by at least half
-of a format's stores, which the fold-out's count says (`promotions_line`, the final review's finding 4). The rule in
-full is the fold-out's (`shopper.pages`), in the store format's words, since a deal is tested against its own column's
-listed prices and another format of the same chain may list the item lower (question O).
-
-Counts over days (P6). Every count over a window's days is out of its days with records: "of the N days with records
-before today", N the days of the window (which ends the day before the page's day) on which the column has a record and
-the product a listed price; a short window (fewer than 20 of 30, or 60 of 90) says instead "of the 23 days of records
-since 1 November 2026 before today", and one day of records says that day after "before today": "the one day of records
-before today (19 November 2026)", never "since" it (q31); P7's lows say "of them", "of those 85" or "of the 90 days with
-records".
-
 What the words state (Task 15's review, fix round 1): never more than the figures shown and the records support. Every
-comparison or change a sentence states is worked on the two-place figures it shows (half up: a listed price by
-`basket.record.money`, a deal price by `shopper.deals.to_agora`), so the page agrees with itself; the exact prices stay
-for ranking and depth (`shopper.measures`), which the words never state, and the front page's test compares the shown
-figures too (`shopper.measures.on_front`, fix round 2). And only consecutive days with records pin a date: an edge with
-a gap in the records beside it (a hole, a day the product is not listed, a day whose promotions were not read) is a
-bound, wherever it sits.
-
-P7, three sentences, no verdict word. The deal against the 30-day median: "Deal price ₪7.90: ₪4.00, 34%, below the
-30-day median listed price of ₪11.90 (of the 30 days with records before today).", with one day of records "(of the one
-day of records before today, 19 November 2026)", the date after a comma inside the brackets (q31), the amount and the
-whole percent (half up) worked from the median and the deal as shown ("under 1%" for a gap above ₪0 that rounds to 0%:
-deploy prep), or "not below" when the shown deal is not under the shown median. The lows, each over the days of records
-its window holds, by the change sentence's window kinds (P6, deploy prep), said once when both windows hold the same
-days, and the days at or below the deal, counted on the shown figures: "The lowest listed price was ₪11.90 in the 30
-days before today and ₪10.90 in the 90 days before today; listed at ₪7.90 or less on 0 of the 90 days with records.", or
-at launch "The lowest listed price over the 15 days of records before today (the first on 1 November 2026) was ₪10.00;
-listed at ₪7.90 or less on 0 of them.", or with a short 90-day window beside a full 30-day one "… in the 30 days before
-today and ₪9.00 over the 39 days of records before today (the first on 12 October 2026); listed at ₪7.90 or less on 0 of
-those 39."; one day of records: "The listed price on the one day of records before today (5 November 2026) was ₪10.00,
-above ₪7.90." ("below ₪7.90" when it was, as shown, and "the same as the deal price" at it: q31), a 30-day window of one
-day beside more in the 90 "on the one day of records before today (19 November 2026)"; a short window's note
-(`window_note`) spells one day "one day of records since 19 November 2026", never "1 day", though a count over one day
-says it as that day (q31). The changes: a change is one in the shown figures (a median of ₪1.445 moving to ₪1.45 is
-none: both show ₪1.45); "The listed price rose from ₪10.90 to ₪11.90 on 28 October 2026." between two consecutive days
-with records; across a gap in the records the change lies somewhere between the two days, so both are given ("rose from
-₪10.90 (15 November 2026) to ₪11.90 (17 November 2026)"), never one date the files cannot pin; several in day order,
-joined by "then". With none: "The listed price did not change in the 30 days before today." when each of the 30 has a
-record, else "did not change on the 25 days with records of the 30 before today" (or a short window's words), since the
-files say nothing of the other days; over one day of records nothing is said, since one day has nothing to compare
-(q31), though a change from a record before the 30 to its one day is.
-
-P7's change list shows at most CHANGES_SHOWN (5) changes, the newest, in day order (Task 16, round 2). When more were
-seen, a tail says how many, in the very phrase the sentence uses for its window when nothing changed: "…, then fell from
-₪11.90 to ₪10.90 on 19 November 2026 (the last 5 of 30 changes seen in the 30 days before today)." P7 is the front
-page's story now (`shopper.pages`); the product page's verdict, chart and fold-out replaced it there (store first, q33).
+comparison a sentence states is worked on the two-place figures it shows (half up: a listed price by
+`basket.record.money`, a deal price by `shopper.deals.to_agora`), so the page agrees with itself.
 
 The product page's fold-out labels (Task 16, kept by store first): the design's and the brief's phrases put together,
 never a claim of their own. Today's listed price carries "before promotions" and "as listed in the chain's price files"
@@ -81,8 +33,8 @@ stays true; "minimum spend ₪150.00".
 
 Conditions (P5, question K and S3). A promotion's restrictions read from `ClubID` are K's phrase for each code present,
 joined in the order club, card, other ("club members only, and some customers only"); the programmes' names go beside
-them, as published, in the chain's own span (the product page's). The front page's fold-out names the chains whose
-files mark no restricted promotion that day ("Today Shufersal's files mark no deal this way.", `marked_none`), after
+them, as published, in the chain's own span (the product page's). A store page's fold-out names the store's chain when
+its files mark no restricted promotion that day ("Today Shufersal's files mark no deal this way.", `marked_none`), after
 what the club-only filter hides.
 
 The price chart (store first, q33: docs/store-first.md, "The chart"; the plan's "Words this plan adds", provisional
@@ -104,47 +56,61 @@ S8) names the days it rests on, those with a day price: a deal "Usually ₪11.90
 deal with no saving or a negative one, the always-on form, "It's been ₪10.90 or less on 9 of the 9 days tracked."
 (today's price, and the days at or below it); a saving above ₪0.00 and below ₪1.00, the small form, "Only ₪0.40 below
 its usual ₪3.20 (12 days tracked)."; one day is "1 day". A weighed product's saving and usual price are a kilogram's
-("DEAL · ₪19.90 off a kilogram", "Usually ₪69.90 a kilogram, …"), as its deal price is (P4). The conditions of the
-promotion judged (`conditions`): question K's phrases with a capital letter, "Club members only", "The chain's card
-holders only", "Some customers only", then "When you buy 2" ("When you buy 1.5 kilograms"), then "Minimum spend
-₪150.00"; a programme's name is the fold-out's, in the chain's span. Without a verdict, NO_VERDICT's line by call (the
-design's six, and the plan's "No price history yet."), `basket.words.too_few` on a hole, or `not_sold`: "Not sold at
-Carrefour Market today, last seen 3 November" ("today" alone with no such day). Last this low (S6, `last_low`): "Last
-this low: 12 October, at ₪9.90." or "Lowest in the 10 days tracked.", only when today's price is known and a day before
-today has a day price. How often (S7, `how_often`), over every tracked day: "On sale on 12 of the 60 days tracked.",
-then "The last sale before this one ended 12 October, at ₪9.90." when today is on sale, "The last sale ended …" when it
-is not, the price left out when it was not read; nothing with no tracked day. A coming sale (F2, `coming_sale`): "A
-sale starts on 14 November". The fold-out's name: "How this is worked out" (WORKED_OUT).
+("DEAL · ₪19.90 off a kilogram", "Usually ₪69.90 a kilogram, …"), as its deal price is (P4); so are a store page's
+price cells (`price_text`: "₪50.00 a kilogram"). The conditions of the promotion judged (`conditions`): question K's
+phrases with a capital letter, "Club members only", "The chain's card holders only", "Some customers only", then "When
+you buy 2" ("When you buy 1.5 kilograms"), then "Minimum spend ₪150.00"; a programme's name is the fold-out's, in the
+chain's span. Without a verdict, NO_VERDICT's line by call (the design's six, and the plan's "No price history yet."),
+`basket.words.too_few` on a hole, or `not_sold`: "Not sold at Carrefour Market today, last seen 3 November" ("today"
+alone with no such day). Last this low (S6, `last_low`): "Last this low: 12 October, at ₪9.90." or "Lowest in the 10
+days tracked.", only when today's price is known and a day before today has a day price. How often (S7, `how_often`),
+over every tracked day: "On sale on 12 of the 60 days tracked.", then "The last sale before this one ended 12 October,
+at ₪9.90." when today is on sale, "The last sale ended …" when it is not, the price left out when it was not read;
+nothing with no tracked day. A coming sale (F2, `coming_sale`): "A sale starts on 14 November". The fold-out's name:
+"How this is worked out" (WORKED_OUT).
+
+A store type's front page (store first, q33: docs/store-first.md, "What a visitor sees" 4 and "Words", verbatim where
+the design gives them; the plan's "Words this plan adds", provisional until the owner's read). The title asks the
+owner's question (FRONT_TITLE, the owner's final framing of 2026-11-10); a line under it (FRONT_SUBTITLE) says what
+each promotion is checked against, "up to" 3 months of shelf prices, since the records start on 1 November 2026 and
+the 90-day window holds fewer days until late January; the search box's label is the design's (SEARCH_LABEL). Then
+the lead line (`store_lead`), the first that applies: `basket.words.too_few` on a hole, NOT_READ_TODAY on a promotion
+hole, NONE_YET while the store type has no record on MIN_FRONT_DAYS of the RECENT_DAYS before today (the design's
+"existing lead line"), else the headline (`headline`): "At Carrefour Market today: 1,130 of 4,210 promotions are
+actually deals.", the noun always plural, the verb by N ("1 of 3 promotions is actually a deal."), and "no promotions
+to check" when M is none. The fold-out, "How a deal passes", opens with FOLD_INTRO, the design's line, then the rules in
+shopper words (STORE_RULES, with the code's own constants), one deal's story under STORY_HEADING, and the store type's
+promotions line (`store_promotions_line`): the promotions listed across it today, carried by at least half its stores
+(the final review's finding 4), never every promotion in the chain's files.
 """
 from collections.abc import Mapping, Sequence
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 from fractions import Fraction
 
 from basket.chains import SLUGS
 from basket.record import money
 from basket.units import plain
-from basket.words import CHAIN_NAMES, METHOD_TITLE, NEVER as BASKET_NEVER, joined
+from basket.words import CHAIN_NAMES, METHOD_TITLE, NEVER as BASKET_NEVER, joined, too_few
 from shopper.columns import BY_KEY, COLUMNS, columns_of
 from shopper.deals import to_agora
 from shopper.forecast import FIRST_RECORD_DAY
-from shopper.history import READ_DAYS, Window
-from shopper.measures import MIN_FRONT_DAYS, RECENT_DAYS, Change, Gap, whole
-from shopper.promotions import RESTRICTIONS
-from shopper.verdict import Verdict
+from shopper.history import READ_DAYS, ColumnDay
+from shopper.measures import MIN_FRONT_DAYS, RECENT_DAYS
+from shopper.verdict import DEAL_MIN, FRONT_LIMIT, Verdict
 
 SITE_NAME = "Deal or No Deal"                       # question J, as the owner changed it on 2026-11-10
 CHAINS_LINE = " · ".join(CHAIN_NAMES[slug] for slug in SLUGS)              # every page's header, under the name
 FRONT_TITLE = "Is it actually a deal?"           # Q4, the owner's final framing of 2026-11-10
 # under the title: READ_DAYS (90) as 3 months, "up to" while the records hold fewer (they start on 1 November 2026)
 FRONT_SUBTITLE = f"Promotions checked against up to {READ_DAYS // 30} months of shelf prices."
-GAP_HEADING = "The deal against its listed prices"                        # Q4, the front page's story
 RECORD_TITLE = "Track record"
 ALWAYS = ("listed price", "as listed in the chain's price files", "before promotions", "listed in the morning's files")
 ALWAYS_SENTENCE = ("Every listed price here is as listed in the chain's price files, before promotions: the median "
                    "across the stores of its store format that list the item, apart from the stores left out by rule "
                    f"({METHOD_TITLE} gives the rules); every promotion is as listed in the morning's files.")
-# S7: the four ALWAYS phrases in one sentence, for every product page (never basket.html: the module's docstring)
+# S7: the four ALWAYS phrases in one sentence, for every product and store page (never basket.html: the module's
+# docstring)
 NEVER = BASKET_NEVER + ("fake", "fake discount", "fake sale", "real deal", "scam", "rip-off", "trick", "inflated",
                         "misleading", "deceptive", "pretends", "true price", "you save", "best deal", "guaranteed",
                         "will be on sale", "will go on sale", "expected to", "likely to")
@@ -161,7 +127,6 @@ CREDIT_START = (f"Prices and promotions from the price and promotion files {join
 HIRING = (("Built by Doron Reiffman", "https://www.linkedin.com/in/doronreiffman"), (METHOD_TITLE, "method.html"),
           (RECORD_TITLE, "record.html"), ("Code on GitHub", "https://github.com/doronreiffman/il-grocery-prices"))
 MORNING = "as listed in the morning's files"
-CHANGES_SHOWN = 5          # P7's change sentence lists the newest five
 NUMBER_WORDS = ("Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven",
                 "Twelve")
 # The product page's labels (the plan's Task 16, its controller's rulings): the design's and the brief's phrases put
@@ -185,6 +150,26 @@ NO_VERDICT = {                                   # the design's six lines by cal
     "no_history": "No price history yet.",
 }
 SHORT = {"too_few": "too few files today", "not_sold": "not sold today"}    # the badge row's, for the two other calls
+# A store type's front page (store first, q33; the module's docstring)
+SEARCH_LABEL = "Type a product name or the barcode"                         # the design's search box
+FOLD_INTRO = "Promotions checked against what the product usually costs, sales included, over up to 3 months."
+STORY_HEADING = "One of today's deals"
+NONE_YET = f"None yet: a product needs {MIN_FRONT_DAYS} days of price history first."
+NOT_READ_TODAY = f"{NO_VERDICT['unread_today']}."                           # a promotion hole, as its own sentence
+# the fold-out's rules (provisional): `shopper.verdict`'s S0 to S4 and the front list, in shopper words
+STORE_RULES = (
+    "A promotion is checked when at least half of the store type's stores that sent price files today carry it and "
+    "its sale price could be read.",
+    f"The product needs a listed price there on at least {MIN_FRONT_DAYS} of the {RECENT_DAYS} days before today.",
+    "What it usually costs is the middle of its day prices over the days tracked in the "
+    f"{READ_DAYS} days before today: each day, the lower of its listed price and its sale price that day, so sales "
+    "are included.",
+    f"It is a deal when today's price is at least ₪{DEAL_MIN} below what it usually costs; a promotion for club "
+    "members or for buying 2 counts too, its condition named beside it.",
+    "A day is tracked when the store type's prices and promotions were both read that day; a day not read is left "
+    "out, never filled in.",
+    f"Deals are listed by the shekels saved, biggest first; the top {FRONT_LIMIT} are shown, and every other product is "
+    "a search away.")
 
 
 def _day(day: date) -> str:
@@ -276,29 +261,9 @@ def last_across(column: str, day: date) -> str:
     return f"last seen listed across {BY_KEY[column].name} on {_day(day)}"
 
 
-def lead_line(below: int, ready: bool) -> str:
-    """The front page's lead line (the owner's final framing, 2026-11-10; question A: the products are barcodes):
-    `below` passed, the barcodes with a front row, each passing every front condition. With none: "None yet" while no
-    column can have a product with MIN_FRONT_DAYS days of records in the RECENT_DAYS (`ready` false:
-    `shopper.pages.front_ready`), else none passed today. Never "listed": the site's word for shelf prices."""
-    if below:
-        return f"{below:,} {_plural(below, 'product', 'products')} passed today."
-    if not ready:
-        return f"None yet: a product needs {MIN_FRONT_DAYS} days of price history first."
-    return "None passed today."
-
-
-def promotions_line(promotions: int, products: int) -> str:
-    """The front page's fold-out count: the promotions listed across a column today, distinct by chain and id, and
-    their products (`shopper.build`), said as what they are, carried by at least half of a format's stores (the final
-    review's finding 4), never every promotion in the chains' files."""
-    return (f"Today the five chains list {promotions:,} {_plural(promotions, 'promotion', 'promotions')} carried by at "
-            f"least half of a store format's stores, on {products:,} {_plural(products, 'product', 'products')}.")
-
-
 def marked_none(marking_none: Sequence[str]) -> str:
-    """The fold-out's sentence after what the club-only filter hides (question K): the chains (slugs) whose files mark
-    no restricted promotion today, in slug order; "" when every chain's files mark one."""
+    """A store page's fold-out sentence after what the club-only filter hides (question K): the chains (slugs) whose
+    files mark no restricted promotion today, in slug order; "" when every chain's files mark one."""
     named = [f"{CHAIN_NAMES[slug]}'s" for slug in SLUGS if slug in set(marking_none)]
     return f"Today {joined(named)} files mark no deal this way." if named else ""
 
@@ -310,34 +275,6 @@ def targets(restrictions: Sequence[str]) -> str:
     if len(phrases) < 2:
         return "".join(phrases)
     return f"{', '.join(phrases[:-1])}, and {phrases[-1]}"
-
-
-def window_note(window: Window) -> str:
-    """A short window's days (P6): "23 days of records since 1 November 2026"; one day spelled "one day of records
-    since 19 November 2026", never "1 day" (deploy prep), though a count over one day says it as that day (`_count`,
-    q31)."""
-    if window.since is None:
-        return "no days of records"
-    count = "one day" if window.days == 1 else f"{window.days} days"
-    return f"{count} of records since {_day(window.since)}"
-
-
-def _the_days(window: Window) -> str:
-    """The days a count over `window` is out of (P6): "the 90 days with records", or a short window's note."""
-    if window.short:
-        return f"the {window_note(window)}"
-    return f"the {window.days} {_plural(window.days, 'day', 'days')} with records"
-
-
-def _count(window: Window, inside: bool = False) -> str:
-    """`_the_days`, said to be before today: P6's window ends the day before the page's day. One day of records is said
-    as that day, its date after "before today" (q31): "the one day of records before today (19 November 2026)", or
-    "the one day of records before today, 19 November 2026" `inside` a sentence's own brackets, so none nest; never
-    "since 19 November 2026 before today"."""
-    if window.days == 1:                                            # q31: one date form for one day
-        when = f", {_day(window.since)}" if inside else f" ({_day(window.since)})"
-        return f"the one day of records before today{when}"
-    return f"{_the_days(window)} before today"
 
 
 def coming_sale(start: date) -> str:
@@ -370,126 +307,6 @@ def date_range(start: date, end: date) -> str:
     if start.year == end.year:
         return f"{start:%-d %B} to {_day(end)}"
     return f"{_day(start)} to {_day(end)}"
-
-
-# P7
-
-def _shown(amount: Decimal) -> Decimal:
-    """A listed price as the page shows it: to the agora, half up (`basket.record.money`)."""
-    return Decimal(money(amount))
-
-
-def shown_below(gap: Gap) -> tuple[Decimal, int] | None:
-    """The deal's gap below the 30-day median as the pages show it: the amount and the whole percent (half up), worked
-    from the median and the deal as shown (the module's docstring); None when the shown deal is not below the shown
-    median. P7's first sentence and the front page's depth column both read it."""
-    median, deal = _shown(gap.median30), to_agora(gap.deal)
-    amount = median - deal
-    if amount <= 0:
-        return None
-    return amount, whole(100 * Fraction(amount) / Fraction(median))
-
-
-def percent_text(percent: int) -> str:
-    """A shown gap's whole percent as the pages write it (`shown_below`'s, never None): "under 1%" when the gap is
-    above ₪0 but rounds to 0%, never "₪0.10, 0%, below" (deploy prep); P7's first sentence and the front page's depth
-    column both write it so."""
-    return "under 1%" if percent == 0 else f"{percent}%"
-
-
-def _against_median(gap: Gap) -> str:
-    """The deal against the 30-day median, worked from both as shown (`shown_below`)."""
-    said = f"the 30-day median listed price of ₪{_shown(gap.median30)}"
-    found = shown_below(gap)
-    if found is None:
-        return f"not below {said}"
-    amount, percent = found
-    return f"₪{amount}, {percent_text(percent)}, below {said}"
-
-
-def _change(change: Change) -> str:
-    before, after = _shown(change.before), _shown(change.after)
-    verb = "rose" if after > before else "fell"
-    if change.since + timedelta(days=1) == change.day:
-        return f"{verb} from ₪{before} to ₪{after} on {_day(change.day)}"
-    return f"{verb} from ₪{before} ({_day(change.since)}) to ₪{after} ({_day(change.day)})"
-
-
-def _window_phrase(recent: Window, length: int) -> str:
-    """The days a change sentence over `recent`, a window of `length` days, speaks of: all of them only when each has
-    a record."""
-    if recent.days == length:
-        return f"in the {length} days before today"
-    if recent.short:
-        return f"on {_count(recent)}"
-    return f"on {_the_days(recent)} of the {length} before today"
-
-
-def _unchanged(recent: Window, length: int) -> str:
-    return f"The listed price did not change {_window_phrase(recent, length)}."
-
-
-def _changes_sentence(found: Sequence[Change], recent: Window, length: int) -> str | None:
-    """The changes the shown figures show, the newest CHANGES_SHOWN in day order, joined by "then", with a tail when
-    more were seen; or that there was none over `recent`, a window of `length` days (P7's third sentence, and the
-    product page's history over the 90); None when there was none over one day of records, which has nothing to
-    compare (q31)."""
-    stated = [change for change in found if _shown(change.before) != _shown(change.after)]
-    if not stated:
-        return None if recent.days == 1 else _unchanged(recent, length)
-    tail = ""
-    if len(stated) > CHANGES_SHOWN:
-        tail = f" (the last {CHANGES_SHOWN} of {len(stated)} changes seen {_window_phrase(recent, length)})"
-    return f"The listed price {', then '.join(_change(change) for change in stated[-CHANGES_SHOWN:])}{tail}."
-
-
-def _one_day(window: Window) -> str:
-    """A window of one day of records, said as that day: "on the one day of records before today (5 November 2026)"."""
-    return f"on {_count(window)}"
-
-
-def _over(window: Window, length: int) -> str:
-    """The days a low is over (P7's second sentence), by the window kinds of the change sentence (P6): all of them when
-    each has a record; else "over" its days with records, never "on", which could read as the price on every one of
-    them, and a short window's first day after its count (the owner, 2026-11-10); one day of records as that day, as
-    the one-day form says it (deploy prep)."""
-    if window.days == length:
-        return _window_phrase(window, length)                       # "in the 30 days before today"
-    if window.days == 1:                                            # the 30's one day beside more in the 90
-        return _one_day(window)
-    if window.short:
-        return f"over the {window.days} days of records before today (the first on {_day(window.since)})"
-    return f"over the {window.days} days with records of the {length} before today"
-
-
-def _lows(gap: Gap, deal: Decimal) -> str:
-    """P7's second sentence: the lowest listed price over each window's days of records, said once when both windows
-    hold the same days, and on how many of the 90's days with records the item was listed at or below the deal, both
-    as shown (P6's "of the N days with records": "of them", "of those 45", or "of the 90 days with records" for a full
-    window); one day of records is said as that day's price, never "0 of the 1 day", and above, at or below the deal,
-    the true one of the three on the figures shown (deploy prep), "at" as "the same as the deal price" (q31)."""
-    long = gap.window90
-    if long.days == 1:                                  # the 30's one day too: a gap needs a day of records in the 30
-        listed = _shown(gap.low90)
-        where = "above" if listed > deal else "at" if listed == deal else "below"
-        against = "the same as the deal price" if where == "at" else f"{where} ₪{deal}"     # q31: names the deal
-        return f"The listed price {_one_day(long)} was ₪{listed}, {against}."
-    at_or_below = sum(1 for listed in long.listed if _shown(listed) <= deal)
-    if gap.window30.days == long.days:                  # the same days: every one of the 90's is in the 30
-        return (f"The lowest listed price {_over(long, READ_DAYS)} was ₪{money(gap.low90)}; listed at ₪{deal} or "
-                f"less on {at_or_below} of them.")
-    of = f"of the {READ_DAYS} days with records" if long.days == READ_DAYS else f"of those {long.days}"
-    return (f"The lowest listed price was ₪{money(gap.low30)} {_over(gap.window30, RECENT_DAYS)} and "
-            f"₪{money(gap.low90)} {_over(long, READ_DAYS)}; listed at ₪{deal} or less on {at_or_below} {of}.")
-
-
-def gap_sentences(gap: Gap) -> tuple[str, ...]:
-    """P7's three sentences for a deal's gap (`shopper.measures.gap`; the module's docstring), or its first two when the
-    30 days hold one day of records and no change (q31)."""
-    deal = to_agora(gap.deal)
-    said = (f"Deal price ₪{deal}: {_against_median(gap)} (of {_count(gap.window30, inside=True)}).", _lows(gap, deal))
-    changed = _changes_sentence(gap.changes, gap.window30, RECENT_DAYS)
-    return said if changed is None else (*said, changed)
 
 
 # The verdict (store first, q33)
@@ -587,3 +404,40 @@ def how_often(found: Verdict) -> str | None:
     before = " before this one" if found.on_sale_today else ""
     price = "" if sale.price is None else f", at ₪{sale.price}"
     return f"{said} The last sale{before} ended {on_day(sale.day)}{price}."
+
+
+def price_text(found: Verdict, price: Decimal) -> str:
+    """A price of the verdict's as a store page's cell shows it: "₪6.90", or a weighed product's "₪50.00 a kilogram"."""
+    return f"₪{price}{_per(found)}"
+
+
+# A store type's front page (store first, q33)
+
+def headline(column: str, deals: int, checked: int) -> str:
+    """The headline over a store type's list (the module's docstring): N, the deals listed, of M, the products checked
+    (`shopper.verdict.checked`)."""
+    name = BY_KEY[column].name
+    if not checked:
+        return f"At {name} today: no promotions to check."
+    verb = "is actually a deal" if deals == 1 else "are actually deals"
+    return f"At {name} today: {deals:,} of {checked:,} promotions {verb}."
+
+
+def store_lead(front: "StoreFront", today: ColumnDay) -> str:
+    """The lead line of a store type's front page (`shopper.pages.StoreFront`), the first that applies: a hole today,
+    a promotion hole, the store type not yet ready, else the headline over the front's rows, all of them."""
+    if not today.record:
+        return too_few(today.with_file, today.included)
+    if today.promo_hole:
+        return NOT_READ_TODAY
+    if not front.ready:
+        return NONE_YET
+    return headline(front.column, len(front.rows), front.checked)
+
+
+def store_promotions_line(column: str, promotions: int, products: int) -> str:
+    """A store page's fold-out count: the promotions listed across the store type today, distinct by id, and their
+    products (`shopper.build`), said as what they are, carried by at least half its stores (the final review's finding
+    4), never every promotion in the chain's files."""
+    return (f"Today {BY_KEY[column].name} lists {promotions:,} {_plural(promotions, 'promotion', 'promotions')} "
+            f"carried by at least half its stores, on {products:,} {_plural(products, 'product', 'products')}.")

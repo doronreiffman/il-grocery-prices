@@ -1,5 +1,6 @@
-"""The measured facts: the gap (P7), the promotion history (P8) and the front page's test (Q3 (b)), per column
-(`shopper.measures`; the plan's Task 9; the second pre-flight's S1, S11 and N2).
+"""The measured facts that outlived P7 and P8 (store first, q33): the runs on promotion over P6's 90-day window, which
+the forecast reads (`runs`, `days_since`), the days the verdict reads (`promotion_points`), whole numbers half up, and
+the front list's bar's constants (`shopper.measures`; the plan's Task 9; the second pre-flight's S1, S11 and N2).
 
 The pairs and column-days are built by hand, as `tests/test_history.py` builds them for the windows; the windows
 themselves are `shopper.history`'s and tested there."""
@@ -7,10 +8,8 @@ from datetime import date, timedelta
 from decimal import Decimal
 from fractions import Fraction
 
-from shopper.deals import Deal
-from shopper.history import ENOUGH, ColumnDay, Pair, Point, Window, window
-from shopper.measures import (MIN_FRONT_DAYS, RECENT_DAYS, Change, Gap, Run, changes, days_since, depth, gap, gaps,
-                              on_front, promoted_today, promotion_days, promotion_points, runs)
+from shopper.history import ENOUGH, ColumnDay, Pair, Point
+from shopper.measures import MIN_FRONT_DAYS, RECENT_DAYS, Run, days_since, promotion_points, runs, whole
 
 DAY = date(2026, 11, 20)
 DEAL, SHELI = "shufersal-deal", "shufersal-sheli"
@@ -45,256 +44,21 @@ def _days(column: str, days, holes=(), promo_holes=()) -> dict[tuple[str, date],
             for day in days}
 
 
-def _deal(price: str | Fraction, valid: bool = True) -> Deal:
-    return Deal(price=Fraction(price), per="unit", buy=Decimal(1), low=None, high=None, valid=valid,
-                why=None if valid else "the rate and the price disagree")
+def test_whole_is_half_up_and_a_tie_goes_away_from_zero():
+    """A share as a whole number (the record page's percents, the chart's heights): half up, a tie away from zero, as
+    `Decimal`'s ROUND_HALF_UP."""
+    assert [whole(Fraction(n, 8)) for n in (99, 100, 101)] == [12, 13, 13]          # 12.375, 12.5, 12.625
+    assert whole(Fraction(336, 10)) == 34 and whole(Fraction(4)) == 4 and whole(Fraction(0)) == 0
+    assert whole(Fraction(-100, 8)) == -13 and whole(Fraction(-99, 8)) == -12
 
 
-def _gap(deal: str, listed: dict[date, str], column: str = DEAL) -> Gap | None:
-    return gap(Fraction(deal), _pair(column, listed), _days(column, listed), DAY)
+def test_the_front_lists_bar_is_twenty_of_the_30_days():
+    """The front list's bar (`shopper.verdict.passes_bar`, docs/store-first.md): 20 days with records in the 30 before
+    today, P6's line for a 30-day window that is not short."""
+    assert (MIN_FRONT_DAYS, RECENT_DAYS) == (20, 30) and MIN_FRONT_DAYS == ENOUGH[RECENT_DAYS]
 
 
-def _on_front(deal: Deal, listed: dict[date, str], wide: bool = True, holes=(), today: bool = True) -> bool:
-    days = [*listed, *([DAY] if today else [])]
-    return on_front(deal, wide, _pair(DEAL, listed), _days(DEAL, days, holes=holes), DAY)
-
-
-# The gap (P7)
-
-def test_the_designs_example():
-    """Page day 20 November 2026; 10.90 from 22 August to 27 October, 11.90 from 28 October; a deal of 7.90."""
-    listed = {date(2026, 8, 22) + timedelta(days=n): "10.90" for n in range(67)}              # to 27 October
-    listed |= {date(2026, 10, 28) + timedelta(days=n): "11.90" for n in range(23)}            # to 19 November
-    pair, column_days = _pair(DEAL, listed), _days(DEAL, listed)
-    found = gap(Fraction("7.90"), pair, column_days, DAY)
-    assert found == Gap(
-        deal=Fraction(79, 10), median30=Decimal("11.90"), below=Fraction(4), percent=34, low30=Decimal("10.90"),
-        low90=Decimal("10.90"), at_or_below=0, window30=window(pair, column_days, DAY, 30),
-        window90=window(pair, column_days, DAY, 90),
-        changes=(Change(day=date(2026, 10, 28), since=date(2026, 10, 27), before=Decimal("10.90"),
-                        after=Decimal("11.90")),))
-    assert (found.window30.days, found.window30.since, found.window30.short) == (30, date(2026, 10, 21), False)
-    assert (found.window90.days, found.window90.since, found.window90.short) == (90, date(2026, 8, 22), False)
-
-
-def test_depth():
-    """N2: depth is the gap over the 30-day median, never over the deal."""
-    example = _gap("7.90", {**listed_from(24, 90, "10.90"), **listed_from(1, 23, "11.90")})
-    assert depth(example) == Fraction(40, 119)     # 4.00 / 11.90, not 4.00 / 7.90
-    eight = _gap("6.00", listed_from(1, 30, "8.00"))
-    assert depth(eight) == Fraction(1, 4)          # 2.00 / 8.00, not 2.00 / 6.00
-    dearer = _gap("10.00", listed_from(1, 30, "8.00"))
-    assert depth(dearer) == Fraction(-1, 4)        # a deal above the median is not below it
-
-
-def test_no_gap_without_a_day_of_records_in_30():
-    assert _gap("7.90", {}) is None
-    assert _gap("7.90", listed_from(31, 60, "10.00")) is None        # records, but none in the past 30 days
-    assert _gap("7.90", listed_from(1, 1, "10.00")) is not None
-    # another column's days are no records here
-    pair = _pair(DEAL, listed_from(1, 5, "10.00"))
-    assert gap(Fraction("7.90"), pair, _days(SHELI, pair.points), DAY) is None
-
-
-def test_the_median_is_the_30_day_windows_own_and_sorted():
-    # day order 5, 9, 7: the middle of the sorted prices is 7, the middle in day order is 9
-    odd = _gap("1.00", {back(3): "5.00", back(2): "9.00", back(1): "7.00"})
-    assert odd.median30 == Decimal("7.00")
-    # an even count is the mean of the two middle prices
-    even = _gap("1.00", {**listed_from(16, 30, "10.00"), **listed_from(1, 15, "11.00")})
-    assert even.median30 == Decimal("10.50")
-    # the 90-day median would be 10.00 here: the prices of the past 30 days alone are 20.00 and 30.00
-    older = _gap("1.00", {**listed_from(31, 90, "10.00"), **listed_from(1, 30, "20.00")})
-    assert older.median30 == Decimal("20.00")
-
-
-def test_the_percent_is_whole_and_half_up():
-    assert _gap("7.00", listed_from(1, 30, "8.00")).percent == 13       # 12.5
-    assert _gap("7.01", listed_from(1, 30, "8.00")).percent == 12       # 12.375
-    assert _gap("4.00", listed_from(1, 30, "8.00")).percent == 50
-    below = _gap("7.90", listed_from(1, 30, "11.90"))
-    assert (below.below, below.percent) == (Fraction(4), 34)            # 33.6, not 33
-    # a deal above the median: a negative figure, a tie away from zero as Decimal's ROUND_HALF_UP
-    above = _gap("9.00", listed_from(1, 30, "8.00"))
-    assert (above.below, above.percent) == (Fraction(-1), -13)          # -12.5
-    assert _gap("8.00", listed_from(1, 30, "8.00")).percent == 0
-
-
-def test_the_low_and_the_days_at_or_below_the_deal():
-    listed = {**listed_from(61, 90, "7.00"), **listed_from(31, 60, "7.90"), **listed_from(1, 30, "11.90")}
-    found = _gap("7.90", listed)
-    assert (found.low30, found.low90) == (Decimal("11.90"), Decimal("7.00"))
-    assert found.at_or_below == 60      # 30 days at 7.00 and 30 listed at exactly the deal price: at or below
-
-
-def test_the_days_at_or_below_read_the_exact_deal_price():
-    price = Fraction("4.34") / 3        # 1.4466...: its two places, 1.45, are what the shelf lists
-    listed = listed_from(1, 30, "1.45")
-    assert round(price, 2) == Fraction("1.45")
-    assert gap(price, _pair(DEAL, listed), _days(DEAL, listed), DAY).at_or_below == 0
-    assert gap(Fraction("1.45"), _pair(DEAL, listed), _days(DEAL, listed), DAY).at_or_below == 30
-
-
-def test_a_short_window_still_has_its_gap():
-    found = _gap("7.90", listed_from(1, 5, "10.00"))
-    assert (found.window30.days, found.window30.short, found.window90.short) == (5, True, True)
-    assert found.median30 == Decimal("10.00")
-
-
-def test_the_gap_reads_the_columns_own_days():
-    listed = listed_from(1, 30, "10.00")
-    pair = _pair(DEAL, listed)
-    column_days = {**_days(DEAL, listed, holes=[back(n) for n in range(1, 11)]), **_days(SHELI, listed)}
-    found = gap(Fraction("7.90"), pair, column_days, DAY)     # ten of Deal's days are holes, Sheli's records are not Deal's
-    assert (found.window30.days, found.window90.days) == (20, 20)
-
-
-def test_changes_are_the_30_day_windows_own():
-    listed = {**listed_from(46, 90, "10.00"), **listed_from(32, 45, "10.50"),    # a change on day 45: before the window
-              back(31): "11.00",                                                   # a change on day 31: the day before it
-              **listed_from(16, 30, "12.00"),                                      # a change on day 30: the window's first
-              **listed_from(1, 15, "9.50")}                                        # a change on day 15
-    found = _gap("7.90", listed)
-    assert found.changes == (Change(day=back(30), since=back(31), before=Decimal("11.00"), after=Decimal("12.00")),
-                             Change(day=back(15), since=back(16), before=Decimal("12.00"), after=Decimal("9.50")))
-    assert _gap("7.90", listed_from(1, 90, "10.00")).changes == ()
-
-
-def test_a_change_across_a_hole_is_dated_the_day_it_is_seen():
-    listed = {back(5): "10.90", back(4): "99.00", back(3): "11.90", back(2): "11.90"}
-    pair = _pair(DEAL, listed)
-    found = gap(Fraction("7.90"), pair, _days(DEAL, listed, holes=[back(4)]), DAY)
-    # the record day before it is kept too (Task 9's review): the new price is first seen on day 3, the old one last
-    # on day 5, so the change lies somewhere between, and the words never pin it to day 3 alone
-    assert found.changes == (Change(day=back(3), since=back(5), before=Decimal("10.90"), after=Decimal("11.90")),)
-    # a price spelled with another number of places is the same price
-    spelled = {back(2): "10.9", back(1): "10.90"}
-    assert gap(Fraction("7.90"), _pair(DEAL, spelled), _days(DEAL, spelled), DAY).changes == ()
-
-
-def test_changes_over_a_window_of_any_length():
-    """`changes` with the window's length: P7 reads the 30 days' (the gap's own), the product page's history the 90's;
-    each is a change between consecutive counted days of the 90-day window, the later day in the window."""
-    listed = {back(91): "8.00",                                                     # before the 90: never read
-              **listed_from(46, 90, "10.00"), **listed_from(32, 45, "10.50"), back(31): "11.00",
-              **listed_from(16, 30, "12.00"), **listed_from(1, 15, "9.50")}
-    pair, column_days = _pair(DEAL, listed), _days(DEAL, listed)
-    assert changes(pair, column_days, DAY, RECENT_DAYS) == _gap("7.90", listed).changes
-    assert changes(pair, column_days, DAY, 90) == (
-        Change(day=back(45), since=back(46), before=Decimal("10.00"), after=Decimal("10.50")),
-        Change(day=back(31), since=back(32), before=Decimal("10.50"), after=Decimal("11.00")),
-        Change(day=back(30), since=back(31), before=Decimal("11.00"), after=Decimal("12.00")),
-        Change(day=back(15), since=back(16), before=Decimal("12.00"), after=Decimal("9.50")))
-    # a change on the 90-day window's second day counts; the first has no counted day before it
-    edge = {**listed_from(90, 90, "10.00"), **listed_from(1, 89, "11.00")}
-    assert changes(_pair(DEAL, edge), _days(DEAL, edge), DAY, 90) == (
-        Change(day=back(89), since=back(90), before=Decimal("10.00"), after=Decimal("11.00")),)
-    assert changes(_pair(DEAL, edge), _days(DEAL, edge), DAY, RECENT_DAYS) == ()
-
-
-# The front page's test (Q3 (b))
-
-def test_the_front_page_needs_twenty_days_of_records_in_the_past_30():
-    """Deploy prep (the owner, 2026-11-10): a front row needs at least 20 days of records in the 30-day window, P6's
-    line for a 30-day window that is not short, so the 30-day median the row shows rests on 20 days or more (it once
-    needed 20 in the 90 and one in the 30, and could show one day's price). 20 of the 30 are 20 of the 90 too."""
-    assert MIN_FRONT_DAYS == 20 == ENOUGH[RECENT_DAYS]
-    assert not _on_front(_deal("7.90"), listed_from(1, 19, "10.00"))
-    assert _on_front(_deal("7.90"), listed_from(1, 20, "10.00"))
-    assert _on_front(_deal("7.90"), listed_from(1, 21, "10.00"))
-    # twenty of the 90, or more, with fewer than twenty in the 30, are not enough
-    assert not _on_front(_deal("7.90"), {**listed_from(1, 5, "10.00"), **listed_from(40, 54, "10.00")})
-    assert not _on_front(_deal("7.90"), {**listed_from(1, 19, "10.00"), **listed_from(31, 90, "10.00")})
-    assert not _on_front(_deal("7.90"), listed_from(40, 59, "10.00"))
-    assert not _on_front(_deal("7.90"), listed_from(91, 120, "10.00"))      # beyond the 90 days
-    # the window's first and last days count, the day before its first does not
-    assert _on_front(_deal("7.90"), listed_from(11, 30, "10.00"))
-    assert not _on_front(_deal("7.90"), listed_from(12, 31, "10.00"))
-    # the 90-day low still decides: 20 days of the 30 at 10.00, an older 7.50 in the 90
-    assert not _on_front(_deal("7.90"), {**listed_from(1, 20, "10.00"), **listed_from(60, 61, "7.50")})
-    assert _on_front(_deal("7.40"), {**listed_from(1, 20, "10.00"), **listed_from(60, 61, "7.50")})
-
-
-def test_every_front_row_has_a_gap_to_show():
-    """Task 18 orders the rows by `depth(gap)`: wherever `on_front` says yes, `gap` is a gap."""
-    deal = _deal("7.90")
-    for listed in (listed_from(1, 20, "10.00"), listed_from(1, 90, "10.00"), listed_from(40, 59, "10.00"),
-                   listed_from(11, 30, "10.00"), {back(31): "10.00", **listed_from(32, 51, "10.00")},
-                   listed_from(1, 19, "10.00")):
-        pair, column_days = _pair(DEAL, listed), _days(DEAL, [DAY, *listed])
-        if on_front(deal, True, pair, column_days, DAY):
-            assert depth(gap(deal.price, pair, column_days, DAY)) > 0
-
-
-def test_a_hole_is_no_day_of_records_for_the_front_page():
-    listed = listed_from(1, 20, "10.00")
-    assert _on_front(_deal("7.90"), listed)
-    assert not _on_front(_deal("7.90"), listed, holes=[back(7)])           # 19 days of records
-    assert _on_front(_deal("7.90"), {**listed, back(21): "10.00"}, holes=[back(7)])
-
-
-def test_a_deal_equal_to_the_90_day_low_is_not_on_the_front_page():
-    listed = {**listed_from(1, 40, "9.00"), **listed_from(41, 50, "7.90")}
-    assert not _on_front(_deal("7.90"), listed)
-    assert _on_front(_deal("7.89"), listed)
-
-
-def test_the_front_test_compares_the_shown_figures():
-    """Task 15's review, fix round 2: the front page states that its deals are below every listed price of the past 90
-    days, and the product page states the figures it shows, so the test compares the deal's price as shown (to the
-    agora, half up: `shopper.deals.to_agora`) with the 90-day low as shown. 3 for ₪4.34 is 1.4466... a unit and 3 for
-    ₪32.69 is 10.8966...: below a ₪1.45 or a ₪10.90 low exactly, equal to it as shown, so not on the front page; the
-    exact price still ranks the rows (`depth`)."""
-    price = Fraction("4.34") / 3
-    listed = {**listed_from(1, 25, "1.45"), **listed_from(26, 40, "1.60")}
-    assert not _on_front(_deal(price), listed)
-    assert not _on_front(_deal("1.45"), listed)
-    assert _on_front(_deal("1.44"), listed)
-    eleven = {**listed_from(1, 67, "10.90"), **listed_from(68, 90, "11.90")}
-    assert not _on_front(_deal(Fraction("32.69") / 3), eleven)
-    assert _on_front(_deal(Fraction("32.66") / 3), eleven)            # 10.8866..., shown ₪10.89
-    # the low as shown, too: ₪1.443 is shown ₪1.44, so a deal of ₪1.44 is not below it
-    assert not _on_front(_deal("1.44"), listed_from(1, 20, "1.443"))
-    assert _on_front(_deal("1.43"), listed_from(1, 20, "1.443"))
-
-
-def test_a_price_raised_before_the_promotion_does_not_lift_the_low():
-    """7.90 for 60 days, 11.90 for the last 14 (or the last 30): the 90-day low stays 7.90, so a deal of 7.90 is
-    no deal below it; the 30-day low, once the raise fills the window, would say it is."""
-    raised_14 = {**listed_from(15, 74, "7.90"), **listed_from(1, 14, "11.90")}
-    assert not _on_front(_deal("7.90"), raised_14)
-    raised_30 = {**listed_from(31, 90, "7.90"), **listed_from(1, 30, "11.90")}
-    assert _gap("7.90", raised_30).low30 == Decimal("11.90")
-    assert not _on_front(_deal("7.90"), raised_30)
-    assert _on_front(_deal("7.80"), raised_30)
-
-
-def test_an_invalid_or_some_stores_deal_is_not_on_the_front_page():
-    listed = listed_from(1, 30, "10.00")
-    assert _on_front(_deal("7.90"), listed)
-    assert not _on_front(_deal("7.90", valid=False), listed)                  # the deal does not validate (P4)
-    assert not _on_front(_deal("7.90"), listed, wide=False)                   # carried by some stores only (P3)
-    assert not _on_front(_deal("7.90", valid=False), listed, wide=False)
-    no_price = Deal(price=None, per="unit", buy=Decimal(1), low=None, high=None, valid=False, why="no price")
-    assert not _on_front(no_price, listed)
-
-
-def test_a_column_with_no_record_today_has_no_front_row():
-    """S1: on a column-day that is no record, the prices are from too few files: no front row."""
-    listed = listed_from(1, 30, "10.00")
-    assert _on_front(_deal("7.90"), listed)
-    assert not _on_front(_deal("7.90"), listed, holes=[DAY], today=True)
-    assert not _on_front(_deal("7.90"), listed, today=False)        # no column-day at all for the page's day
-
-
-def test_the_front_test_reads_the_columns_own_days():
-    listed = listed_from(1, 30, "10.00")
-    pair = _pair(DEAL, listed)
-    assert on_front(_deal("7.90"), True, pair, _days(DEAL, [*listed, DAY]), DAY)
-    assert not on_front(_deal("7.90"), True, pair, _days(SHELI, [*listed, DAY]), DAY)
-
-
-# The promotion history (P8)
+# The runs on promotion (P8's, which the forecast reads)
 
 def test_a_hole_inside_a_run_does_not_break_it():
     listed = listed_from(1, 12, "10.00")
@@ -322,8 +86,6 @@ def test_a_day_whose_promotions_were_not_read_neither_extends_nor_breaks_a_run()
     pair = _pair(DEAL, listed, promoted=promoted, unread=unread)
     column_days = _days(DEAL, listed, promo_holes=unread)
     assert runs(pair, column_days, DAY) == [Run(start=back(12), end=back(8))]
-    # nor is it a day with records for the count: 4 on promotion of the 10 days read
-    assert promotion_days(pair, column_days, DAY) == (4, 10)
 
 
 def test_runs_are_over_the_90_day_window_and_the_columns_own_records():
@@ -332,54 +94,23 @@ def test_runs_are_over_the_90_day_window_and_the_columns_own_records():
     pair = _pair(DEAL, listed, promoted=promoted)
     column_days = _days(DEAL, listed)
     assert runs(pair, column_days, DAY) == [Run(start=back(90), end=back(89)), Run(start=back(2), end=back(1))]
-    assert promotion_days(pair, column_days, DAY) == (4, 6)       # day 91 and 92 are beyond the 90 days
     assert runs(pair, _days(SHELI, listed), DAY) == []            # another column's records are no records
-    assert promotion_days(pair, _days(SHELI, listed), DAY) == (0, 0)
 
 
-def test_the_days_on_promotion_of_the_days_with_records():
-    listed = listed_from(1, 87, "10.00")
-    promoted = [back(n) for n in (*range(80, 87), *range(60, 65))]                  # 12 days on promotion
-    pair = _pair(DEAL, listed, promoted=promoted)
-    assert promotion_days(pair, _days(DEAL, listed), DAY) == (12, 87)
-    holes = [back(n) for n in (83, 62, 40)]                                         # two on promotion, one not
-    assert promotion_days(pair, _days(DEAL, listed, holes=holes), DAY) == (10, 84)
-
-
-def test_gaps_and_days_since():
+def test_days_since():
     found = [Run(date(2026, 11, 3), date(2026, 11, 9)), Run(date(2026, 11, 24), date(2026, 11, 30))]
-    assert gaps(found) == [14]                                    # 10 to 23 November: strictly between the runs
     assert days_since(found, date(2026, 12, 6)) == 6              # from the last run's end, 30 November
     assert days_since(found, date(2026, 12, 1)) == 1
     near = [Run(date(2026, 11, 1), date(2026, 11, 3)), Run(date(2026, 11, 5), date(2026, 11, 6)),
             Run(date(2026, 11, 20), date(2026, 11, 20))]
-    assert gaps(near) == [1, 13]
-    assert gaps([Run(date(2026, 11, 3), date(2026, 11, 9))]) == []
-    assert gaps([]) == []
     assert days_since([], date(2026, 12, 6)) is None
     assert days_since(near, date(2026, 11, 20)) == 0
 
 
 def test_the_days_whose_promotions_were_read():
-    """`promotion_points`: the 90-day window's counted days whose promotions were read, in day order, the one place
-    the words find a run's neighbours (Task 9's review, runs at the window's ends)."""
+    """`promotion_points`: the 90-day window's counted days whose promotions were read, in day order: the days the
+    runs and the verdict's tracked days are read from (Task 9's review, runs at the window's ends)."""
     listed = listed_from(1, 6, "10.00")
     pair = _pair(DEAL, listed, unread=[back(4)])
     column_days = _days(DEAL, listed, holes=[back(2)], promo_holes=[back(4)])
     assert [point.day for point in promotion_points(pair, column_days, DAY)] == [back(6), back(5), back(3), back(1)]
-
-
-def test_today_is_read_as_the_history_reads_a_day():
-    """`promoted_today`: on a wide promotion on the page's day itself (True or False), or None when the history would
-    not count the day (no record at the column, no listed price) or its promotions were not read."""
-    listed = {**listed_from(1, 5, "10.00"), DAY: "10.00"}
-    on = _pair(DEAL, listed, promoted=[DAY])
-    assert promoted_today(on, _days(DEAL, listed), DAY) is True
-    assert promoted_today(_pair(DEAL, listed), _days(DEAL, listed), DAY) is False
-    assert promoted_today(on, _days(DEAL, listed, holes=[DAY]), DAY) is None             # a hole today
-    assert promoted_today(on, _days(DEAL, listed, promo_holes=[DAY]), DAY) is None       # promotions not read today
-    assert promoted_today(on, _days(DEAL, listed_from(1, 5, "10.00")), DAY) is None      # no column-day today
-    # yesterday on promotion is no reading of today: not listed today, or another column's day
-    yesterday = _pair(DEAL, listed_from(1, 5, "10.00"), promoted=[back(1)])
-    assert promoted_today(yesterday, _days(DEAL, listed), DAY) is None
-    assert promoted_today(on, _days(SHELI, listed), DAY) is None

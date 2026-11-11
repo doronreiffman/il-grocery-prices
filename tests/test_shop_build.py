@@ -36,7 +36,7 @@ from shopper.freeze import (ArchiveFreezer, Frozen, ReadOnlyFreezer, archive_key
 from shopper.columns import COLUMNS
 from shopper.history import History, covered, covered_path, load
 from shopper.items import items_path
-from shopper.pages import Counts, store_path
+from shopper.pages import store_path
 from shopper.product import page_path
 from shopper.score import DaySummary, read_summary, summary_json, summary_path
 from shopper.search import SCRIPT
@@ -143,6 +143,12 @@ def _text(path: Path) -> str:
     return " ".join(unescape(path.read_text(encoding="utf-8")).split())
 
 
+def _other_numbers(published: dict) -> dict:
+    """The published site-day file with other numbers: Osher Ad's store page counting nine deals."""
+    osher = published["columns"][OSHER]
+    return published | {"columns": published["columns"] | {OSHER: osher | {"front": osher["front"] | {"deals": 9}}}}
+
+
 def _snapshot(*folders: Path) -> dict[str, tuple[bytes, int]]:
     return {str(path): (path.read_bytes(), path.stat().st_mtime_ns) for folder in folders
             for path in sorted(folder.rglob("*")) if path.is_file()}
@@ -191,8 +197,9 @@ def test_the_build_writes_every_covered_products_page_and_the_marker(tmp_path):
 def test_the_build_writes_the_root_and_nine_store_pages(tmp_path):
     """Store first (q33): `index.html` is the picker, and each of the nine store types has its front page,
     `store/<key>.html`, among the pages written, each holding its own column's rows alone (milk's at Osher Ad) and each
-    with its own "None yet" or not (`shopper.pages.column_ready`: Osher Ad's 40 days of records, the other columns'
-    day alone)."""
+    with its own lead line: Osher Ad's headline over its 40 days of records; the store types with no file today too
+    few files; those whose promotions were not read (the golden day has no promotion file) that sale prices could not
+    be read."""
     data, site = tree(tmp_path), tmp_path / "site"
     outcome = _build(data, site)
     keys = [column.key for column in COLUMNS]
@@ -204,12 +211,18 @@ def test_the_build_writes_the_root_and_nine_store_pages(tmp_path):
     assert re.findall(r'<li><a href="(store/[^"]+)">', root) == [store_path(key) for key in (
         "shufersal-deal", "shufersal-express", "shufersal-sheli", "shufersal-universe", "carrefour-city",
         "carrefour-market", "ramilevy", "osherad", "yochananof")]
+    columns = _site_day(site)["columns"]
+    leads = set()
     for key in keys:
         page = (site / store_path(key)).read_text(encoding="utf-8")
         assert f'<main data-store="{key}">' in page
         assert re.findall(r'<tr data-column="([^"]+)"', page) == ([OSHER] if key == OSHER else []), key
-        lead = "1 product passed today." if key == OSHER else "None yet: a product needs 20 days of price history first."
+        block = columns[key]
+        lead = ("At Osher Ad today: 1 of 1 promotions is actually a deal." if key == OSHER
+                else "too few files today: 0 of 0 stores" if not block["record"] else words.NOT_READ_TODAY)
         assert f'<p class="lede">{lead}</p>' in page, key
+        leads.add(lead)
+    assert len(leads) == 3
 
 
 def test_every_product_link_resolves_to_a_page_the_build_wrote(tmp_path):
@@ -234,45 +247,54 @@ def test_every_product_link_resolves_to_a_page_the_build_wrote(tmp_path):
     assert not [path for path in linked if not (site / path).is_file()]
 
 
-def test_the_front_page_has_the_days_row_and_count_line(tmp_path):
-    """Milk's ₪3.00 at Osher Ad, below every listed price of its 40 days of records: one row, and the counts (one
-    promotion listed across a column today, on one product, one of them on the front page): the lead line's and the
-    fold-out's (the owner's plain words, 2026-11-10)."""
+def test_the_store_page_has_the_days_deal_and_headline(tmp_path):
+    """Milk's ₪3.00 at Osher Ad against its usual ₪6.15 over its 40 days: a deal, the one row, under a headline counting
+    it of the one product checked; the fold-out's promotions line, Osher Ad's own (one promotion listed across it
+    today, on one product); and the site-day file's front block with the same numbers."""
     data, site = tree(tmp_path), tmp_path / "site"
     _build(data, site)
     front = _text(site / store_path(OSHER))
-    assert "1 product passed today." in front
-    assert ("Today the five chains list 1 promotion carried by at least half of a store format's stores, on 1 "
-            "product.") in front
+    assert "At Osher Ad today: 1 of 1 promotions is actually a deal." in front
+    assert "At Osher Ad: DEAL · ₪3.15 off" in front and "Club members only" in front
+    assert "Today Osher Ad lists 1 promotion carried by at least half its stores, on 1 product." in front
     found = _site_day(site)
-    assert found["counts"] == {"promotions": 1, "products": 1, "below": 1}
-    assert [(row["column"], row["barcode"], row["deal"]) for row in found["front_rows"]] == [(OSHER, MILK, "3.00")]
-    assert found["columns"][OSHER]["counts"]["front_rows"] == 1
+    block = found["columns"][OSHER]["front"]
+    assert (block["ready"], block["deals"], block["checked"], block["promotions"], block["products"]) == (
+        True, 1, 1, 1, 1)
+    assert [(row["barcode"], row["today"], row["usual"], row["saving"], row["days"]) for row in block["rows"]] == [
+        (MILK, "3.00", "6.15", "3.15", 40)]
+    assert "counts" not in found and "front_rows" not in found
     assert "Osher Ad's files mark no deal" not in front                 # its promotion is for club members
 
 
-def test_the_lead_line_says_none_yet_before_a_column_has_20_days_of_records(tmp_path):
-    """The golden day alone: no column has a record before today, so no product can be listed yet, and the lead line
-    says so (`shopper.pages.front_ready`, from the history's column-days), never that none is below."""
+def test_a_store_page_says_none_yet_before_its_store_type_has_20_days_of_records(tmp_path):
+    """Osher Ad with 19 days of records before today, its promotions read today: no product can be listed yet, and its
+    store page says so (`shopper.pages.column_ready`, from the history's column-days), never a headline of none; milk's
+    deal, under the bar, is neither listed nor checked, though its promotion is on the promotions line."""
     data, site = tree(tmp_path, history=False), tmp_path / "site"
+    _history(data, 19)
     _build(data, site)
+    block = _site_day(site)["columns"][OSHER]["front"]
+    assert (block["ready"], block["deals"], block["checked"], block["promotions"], block["products"]) == (
+        False, 0, 0, 1, 1)
     front = _text(site / store_path(OSHER))
     assert "None yet: a product needs 20 days of price history first." in front
-    assert "None passed today." not in front
+    assert "promotions are actually deals" not in front and "no promotions to check" not in front
 
 
-def test_the_lead_line_says_none_today_once_a_column_has_20_days_of_records(tmp_path):
-    """Osher Ad's 40 days of records, milk's deal at ₪7.00 above its listed ₪6.15: no row, and the lead line says none
-    passed today, not "None yet"."""
+def test_the_headline_says_none_of_the_promotions_once_a_store_type_has_20_days(tmp_path):
+    """Osher Ad's 40 days of records, milk's promotion at ₪7.00 above its usual ₪6.15: no deal, no row, and the
+    headline says none of the one promotion checked is a deal, not "None yet"."""
     data, site = tree(tmp_path), tmp_path / "site"
     above = {**DEAL, "price": "7.00", "price_exact": "7"}
     _table(data / "tables", OSHER, DAY, rows=[_row(OSHER, MILK, "6.15", on_promotion=True, promotions=[above]),
                                               _row(OSHER, PASTA, "4.90"), _row(OSHER, EGGS, "11.60"),
                                               _row(OSHER, B, "9.90", wide=False), _row(OSHER, C, "2.50", wide=False)])
     _build(data, site)
-    assert _site_day(site)["counts"] == {"promotions": 1, "products": 1, "below": 0}
+    block = _site_day(site)["columns"][OSHER]["front"]
+    assert (block["deals"], block["checked"], block["promotions"], block["products"], block["rows"]) == (0, 1, 1, 1, [])
     front = _text(site / store_path(OSHER))
-    assert "None passed today." in front and "None yet" not in front
+    assert "At Osher Ad today: 0 of 1 promotions are actually deals." in front and "None yet" not in front
 
 
 def test_the_record_page_counts_the_day_just_frozen(tmp_path):
@@ -544,12 +566,11 @@ def test_a_refused_build_writes_no_page(tmp_path):
     data, site = tree(tmp_path), tmp_path / "site"
     _build(data, site)
     published = json.loads(site_day_path(site, DAY).read_text(encoding="utf-8"))
-    site_day_path(site, DAY).write_text(json.dumps(published | {"counts": {"promotions": 9, "products": 9,
-                                                                           "below": 9}}), encoding="utf-8")
+    site_day_path(site, DAY).write_text(json.dumps(_other_numbers(published)), encoding="utf-8")
     for page in site.rglob("*.html"):
         page.write_text("OLD", encoding="utf-8")
     pages = _snapshot(site)
-    with pytest.raises(RevisionNeeded, match="counts differ"):
+    with pytest.raises(RevisionNeeded, match="columns differ"):
         _build(data, site, now=AFTER_LATER)
     assert _snapshot(site) == pages
     revised = _build(data, site, now=AFTER_LATER, revise="a counting fix")
@@ -586,7 +607,7 @@ def test_the_command_prints_what_it_did(tmp_path, capsys):
     assert "covered: 5 products" in out and "pages: 5 product pages" in out
     assert "forecasts: none frozen for 2026-01-01" in out
     assert f"published: {site_day_path(site, DAY)}" in out and f"published: {site / 'days' / '2026-01-01.json'}" in out
-    assert "front page: 1 row" in out
+    assert "store pages: 1 deal of 1 checked" in out
     assert _site_day(site)["collected_by"] == "11:48"
     assert main(args) == 0
     assert f"unchanged: {site_day_path(site, DAY)}" in capsys.readouterr().out
@@ -595,10 +616,9 @@ def test_the_command_prints_what_it_did(tmp_path, capsys):
     out = capsys.readouterr().out
     assert re.search(r"^ramilevy: extracted in \d+\.\d s$", out, re.MULTILINE)
     published = json.loads(site_day_path(site, DAY).read_text(encoding="utf-8"))
-    site_day_path(site, DAY).write_text(json.dumps(published | {"counts": {"promotions": 0, "products": 0,
-                                                                           "below": 0}}), encoding="utf-8")
+    site_day_path(site, DAY).write_text(json.dumps(_other_numbers(published)), encoding="utf-8")
     assert main(args) == 1
-    assert "counts differ" in capsys.readouterr().err
+    assert "columns differ" in capsys.readouterr().err
     assert main(args + ["--revise", "a counting fix"]) == 0
     assert f"revised: {site_day_path(site, DAY)}" in capsys.readouterr().out
     (data / archive_key(DAY)).parent.mkdir(parents=True)
@@ -607,12 +627,13 @@ def test_the_command_prints_what_it_did(tmp_path, capsys):
     assert "2026-01-01" in capsys.readouterr().err
 
 
-# ---- the one pass's counts ----
+# ---- the one pass's fronts ----
 
-def test_the_count_line_counts_promotions_listed_across_a_column_today(tmp_path):
-    """Question A under S1: a promotion listed across a column today counts once a chain and id (at Deal and Sheli,
-    one); a link with no kind, one at some stores, one not running today, one on a hole and one on a column whose
-    promotions were not read count nothing; the products are the barcodes those promotions are on."""
+def test_the_promotions_line_counts_each_store_types_promotions_today(tmp_path):
+    """Each store type's promotions line: the promotions listed across it today, once an id (at Deal, one on two
+    products), and the products they are on; a link with no kind, one at some stores, one not running today, one on a
+    hole and one at a store type whose promotions were not read count nothing. And the chains whose files mark a
+    restricted promotion today."""
     deal, sheli, express, universe = "shufersal-deal", "shufersal-sheli", "shufersal-express", "shufersal-universe"
     days = product._days(holes={(express, product.DAY)}, promo_holes={(universe, product.DAY)})
     pages = shop_build._Pages({}, History(product.DAY, days, {}), "12:03", {}, {}, tmp_path)
@@ -630,11 +651,15 @@ def test_the_count_line_counts_promotions_listed_across_a_column_today(tmp_path)
                  pair("4", universe, product._struct("7.90", promotion_id="6", restrictions=["club"])),
                  pair("5", deal, product._struct("8.00", wide=False, promotion_id="7")),
                  pair("6", "carrefour-city", product._struct("7.90", wide=False, start=tomorrow, promotion_id="8",
-                                                            restrictions=["club"]))):
+                                                            restrictions=["club"])),
+                 pair("7", deal, one)):
         pages(each)
     pages.finish()
-    assert pages.promotions == {("shufersal", "1"), ("ramilevy", "1")}
-    assert pages.counts() == Counts(promotions=2, products=2, below=0) and pages.products == {"1", "3"}
+    fronts = pages.fronts()
+    assert list(fronts) == [column.key for column in COLUMNS]
+    said = {key: (front.promotions, front.products) for key, front in fronts.items() if front.promotions}
+    assert said == {deal: (1, 2), sheli: (1, 1), "ramilevy": (1, 1)}
+    assert all((front.rows, front.checked) == ((), 0) for front in fronts.values())       # nothing covered
     # Carrefour's files mark a restricted promotion (not running, not across: still marked); Universe's restriction is
     # from too few promotion files and marks nothing; every chain's promotions are read at some column today
     assert pages.marking == {"carrefour"}
@@ -642,6 +667,35 @@ def test_the_count_line_counts_promotions_listed_across_a_column_today(tmp_path)
     unread = product._days(promo_holes={(column.key, product.DAY) for column in COLUMNS if column.slug == "osherad"})
     assert shop_build._Pages({}, History(product.DAY, unread, {}), "12:03", {}, {}, tmp_path / "x").marking_none() == [
         "shufersal", "ramilevy", "carrefour", "yochananof"]           # never said of a chain not read today
+
+
+def test_the_build_counts_each_store_types_deals_and_checked(tmp_path):
+    """The one pass hands each store type's front page its own deals, by saving (`front_list`), and its checked: a
+    covered product's deal passing the bar at Deal and at Sheli is a row on each, each its own store type's (Deal and
+    Sheli are one chain); a no deal is checked, never listed; a deal under the bar (19 days with records in the 30) is
+    neither; a product with no page (not covered) neither; and every store type is ready over 91 days of records."""
+    deal, sheli = "shufersal-deal", "shufersal-sheli"
+    codes = ("1", "2", "3", "4")
+    covered_now = {code: product._covered({deal: "שם", sheli: "שם"}, code=code) for code in codes}
+    pages = shop_build._Pages(covered_now, History(product.DAY, product._days(), {}), "12:03", {}, {}, tmp_path)
+
+    def pair(code, column, price, listed=None):
+        listed = product._listed("10.00") if listed is None else listed
+        return replace(product._pair(column, listed, promotions=[product._struct(price, promotion_id=code)]),
+                       code=code)
+
+    for each in (pair("1", deal, "7.00"), pair("1", sheli, "8.50"), pair("2", sheli, "9.50"),
+                 pair("3", sheli, "5.00", product._listed("10.00", 0, 19)), pair("4", sheli, "7.00"),
+                 pair("5", deal, "5.00")):
+        pages(each)
+    pages.finish()
+    fronts = pages.fronts()
+    assert [(row.column, row.code, str(row.verdict.saving)) for row in fronts[deal].rows] == [(deal, "1", "3.00")]
+    assert [(row.column, row.code, str(row.verdict.saving)) for row in fronts[sheli].rows] == [
+        (sheli, "4", "3.00"), (sheli, "1", "1.50")]
+    assert (fronts[deal].checked, fronts[sheli].checked) == (1, 3)                   # 1; and 1, 2 and 4
+    assert all(front.column == key and front.ready for key, front in fronts.items())
+    assert all(not front.rows and not front.checked for key, front in fronts.items() if key not in (deal, sheli))
 
 
 def test_the_one_pass_works_each_sections_verdict_once_and_the_page_says_it(tmp_path, monkeypatch):

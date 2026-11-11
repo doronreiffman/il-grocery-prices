@@ -91,16 +91,20 @@ def _section(page: str, column: str) -> str:
 
 
 def _front_rows(page: str) -> list[tuple[str, str]]:
-    """The front page's rows: each one's column and its cells' words."""
-    return [(column, _text(cells)) for column, cells in re.findall(r'<tr data-column="([^"]+)"[^>]*>(.*?)</tr>', page)]
+    """A store page's rows: each one's barcode and its cells' words."""
+    return [(code, _text(cells)) for code, cells in
+            re.findall(r'<tr data-column="[^"]+"[^>]*><th scope="row"><a href="\.\./p/([^"]+)\.html">(.*?)</tr>', page)]
 
 
 def _fronts(golden, n: int) -> dict[str, list[str]]:
-    """Day n's front rows by store type, each store page's own (the old rule's until the plan's Task 6), the store
-    types with none left out."""
-    found = {column.key: [key for key, _ in _front_rows(golden.page(n, f"store/{column.key}.html"))]
+    """Day n's store pages' rows by store type, each a barcode, the store types with none left out."""
+    found = {column.key: [code for code, _ in _front_rows(golden.page(n, f"store/{column.key}.html"))]
              for column in COLUMNS}
     return {key: rows for key, rows in found.items() if rows}
+
+
+def _lede(page: str) -> str:
+    return _text(re.search(r'<p class="lede">(.*?)</p>', page).group(1))
 
 
 def _csv(body: bytes) -> list[dict]:
@@ -118,28 +122,25 @@ def _summaries(golden) -> list:
             for path in sorted((golden.data / "tables" / "scored").glob("date=*/summary.json"))]
 
 
-# ---- the pages: the store types' front pages (the old rule's until the plan's Task 6), the product pages' verdicts,
-# the holes ----
+# ---- the pages: the store types' front pages, the product pages' verdicts, the holes ----
 
-G3_STORY = ("Deal price ₪7.90: ₪3.50, 31%, below the 30-day median listed price of ₪11.40 (of the 30 days with records "
-            "before today).",
-            "The lowest listed price was ₪10.90 in the 30 days before today and ₪10.90 over the 74 days with records "
-            "of the 90 before today; listed at ₪7.90 or less on 0 of those 74.",
-            "The listed price rose from ₪10.90 to ₪11.90 on 1 March 2026.")
+G3_STORY = ("At Shufersal Sheli: DEAL · ₪3.00 off", "Usually ₪10.90, sales included (74 days tracked).",
+            "Lowest in the 74 days tracked.", "On sale on 0 of the 74 days tracked.")      # under its name
 
 
 def test_the_golden_pages_windows_and_gaps(golden):
-    # G3 on 16 March (day 75), its 7.90 promotion's first day: the one front row, on Sheli's front page, with P7
-    # against Sheli's own 30-day median; on G3's page Sheli's verdict against its own usual price, sales included, over
-    # its 74 days tracked; Deal lists G3 at 9.90 with no promotion and has no row
-    assert _fronts(golden, 75) == {"shufersal-sheli": ["shufersal-sheli"]}
+    # G3 on 16 March (day 75), its 7.90 promotion's first day: the one deal on any store page, on Sheli's, ₪3.00 off
+    # its usual ₪10.90, sales included, over its 74 days tracked, and its story; Deal lists G3 at 9.90 with no
+    # promotion and has no row
+    assert _fronts(golden, 75) == {"shufersal-sheli": [G3]}
     index = golden.page(75, "store/shufersal-sheli.html")
     (_, row), = _front_rows(index)
-    assert "Deal price ₪7.90 per unit" in row and "₪11.40" in row and "31%" in row
-    assert " ".join(G3_STORY) in _text(index)
-    assert "1 product passed today." in _text(index)
-    assert ("Today the five chains list 1 promotion carried by at least half of a store format's stores, on 1 "
-            "product.") in _text(index)
+    assert "DEAL · ₪3.00 off" in row and "₪7.90" in row and "₪10.90" in row
+    assert _lede(index) == "At Shufersal Sheli today: 1 of 1 promotions is actually a deal."
+    story = re.search(r"<h3>One of today's deals</h3>(.*?)<p>Today ", index).group(1)
+    assert [_text(said) for said in re.findall(r"<p[^>]*>(.*?)</p>", story)][1:] == list(G3_STORY)
+    assert f'href="../p/{G3}.html"' in story
+    assert "Today Shufersal Sheli lists 1 promotion carried by at least half its stores, on 1 product." in _text(index)
     page = golden.page(75, f"p/{G3}.html")
     sheli, deal = _text(_section(page, "shufersal-sheli")), _text(_section(page, "shufersal-deal"))
     for said in ("At Shufersal Sheli: DEAL · ₪3.00 off", "Usually ₪10.90, sales included (74 days tracked).",
@@ -154,24 +155,34 @@ def test_the_golden_pages_windows_and_gaps(golden):
         assert said in osher, said
     # G4 at Rami Levy alone, weighed: "2 for ₪100" stored as 1.5 for ₪75.00, ₪50.00 a kilogram; its chain's holes of 9
     # and 10 February skipped in every window
-    assert _fronts(golden, 85) == {"ramilevy": ["ramilevy"], "shufersal-sheli": ["shufersal-sheli"]}
-    rami = dict(_front_rows(golden.page(85, "store/ramilevy.html")))["ramilevy"]
-    assert "Deal price ₪50.00 per kilogram, buy 1.5" in rami and "₪69.90" in rami and "28%" in rami
+    assert _fronts(golden, 85) == {"ramilevy": [G4], "shufersal-sheli": [G3]}
+    rami = dict(_front_rows(golden.page(85, "store/ramilevy.html")))[G4]
+    for said in ("DEAL · ₪19.90 off a kilogram", "When you buy 1.5 kilograms", "₪50.00 a kilogram", "₪69.90 a kilogram"):
+        assert said in rami, said
     section = _text(_section(golden.page(85, f"p/{G4}.html"), "ramilevy"))
     assert "At Rami Levy: DEAL · ₪19.90 off a kilogram" in section
     assert "Usually ₪69.90 a kilogram, sales included (82 days tracked)." in section
     # G5 on 9 April (day 99): on promotion at Deal alone, carried by store 21 alone that day, half Deal's two counted
-    # stores, so listed across Deal; at ₪4.50, Deal's 90-day low, it is not below every listed price and has no front row
+    # stores, so listed across Deal; at ₪4.50 it equals Deal's 90-day low, so the old rule listed none, but its usual
+    # price is ₪6.00, so it is a deal and on Deal's store page
     page = golden.page(99, f"p/{G5}.html")
     deal, sheli = _text(_section(page, "shufersal-deal")), _text(_section(page, "shufersal-sheli"))
     assert "Deal price ₪4.50 per unit" in deal and "at some stores" not in deal
     assert "At Shufersal Deal: DEAL · ₪1.50 off" in deal and "Last this low: 13 February, at ₪4.50." in deal
     assert "Deal price" not in sheli and "No sale today" in sheli
-    assert _fronts(golden, 99) == {"shufersal-sheli": ["shufersal-sheli"]}   # G3's alone
+    assert _fronts(golden, 99) == {"shufersal-deal": [G5], "shufersal-sheli": [G3]}
+    (_, row), = _front_rows(golden.page(99, "store/shufersal-deal.html"))
+    assert all(said in row for said in ("At Shufersal Deal: DEAL · ₪1.50 off", "₪4.50", "₪6.00")), row
     # Deal's holes of 19 and 20 February (days 50 and 51): Deal's files missing, Sheli's and Yesh Chesed's there. On 19
-    # February every column with a record has its G1 row, Deal none; G1's Deal section has too few files and no price
-    assert _fronts(golden, 50) == {key: [key] for key in (
-        "carrefour-city", "carrefour-market", "osherad", "ramilevy", "shufersal-sheli", "yochananof")}
+    # February every store type with a record lists its G1 deal, ₪1.10 off; Deal says it has too few files and lists
+    # none; G1's Deal section has too few files and no price
+    listing = ("carrefour-city", "carrefour-market", "osherad", "ramilevy", "shufersal-sheli", "yochananof")
+    assert _fronts(golden, 50) == {key: [G1] for key in listing}
+    for key in listing:
+        (_, row), = _front_rows(golden.page(50, f"store/{key}.html"))
+        assert "DEAL · ₪1.10 off" in row, key
+    deal_store = golden.page(50, "store/shufersal-deal.html")
+    assert _lede(deal_store) == "too few files today: 0 of 2 stores" and "No deals to show." in deal_store
     page = golden.page(50, f"p/{G1}.html")
     assert "too few files today: 0 of 2 stores" in _text(_section(page, "shufersal-deal"))
     assert "Listed price" not in _text(_section(page, "shufersal-deal"))
@@ -197,6 +208,11 @@ def test_the_golden_pages_windows_and_gaps(golden):
                 U10: "On sale, but the sale price could not be read"}
     for code, said in universe.items():
         assert said in _text(_section(golden.page(DAYS, f"p/{code}.html"), "shufersal-universe")), (code, said)
+    # Universe's store page on the last day: its deals passing the bar by saving, then barcode (U4 under the bar), and
+    # the headline counting the same set
+    store = golden.page(DAYS, "store/shufersal-universe.html")
+    assert [code for code, _ in _front_rows(store)] == [U2, U3, U8, U7]
+    assert _lede(store) == "At Shufersal Universe today: 4 of 6 promotions are actually deals."
 
 
 def test_the_golden_root_is_the_picker(golden):

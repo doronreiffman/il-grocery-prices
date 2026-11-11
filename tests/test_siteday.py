@@ -2,15 +2,16 @@
 chain (the design's Call 8 and "Where the key lives"), published under B12 by the basket's own rule
 (`basket.build.publish_day_file`, the second pre-flight's S5).
 
-Column-days, pairs and front rows are built by hand as tests/test_product.py and tests/test_shop_pages.py build them;
+Column-days, pairs and the store types' fronts are built by hand as tests/test_product.py and tests/test_shop_pages.py
+build them;
 the items reports as Task 6 writes them; the forecasts file is tests/test_freeze.py's; the scored days' summaries as
 tests/test_record_numbers.py builds them. Names and barcodes are synthetic."""
 import gzip
 import json
 import os
+import re
 from dataclasses import asdict, replace
 from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal
 
 import pytest
 
@@ -23,18 +24,16 @@ from basket.record import comparable
 from shopper.columns import COLUMNS, columns_of
 from shopper.freeze import Frozen
 from shopper.items import ColumnReport, ItemsReport
-from shopper.measures import depth
-from shopper.pages import Counts, ordered
+from shopper.pages import StoreFront, render_store
 from shopper.promofile import PromotionFormatChanged
 from shopper.promotions import _reward_type
 from shopper.record import scorecard
 from shopper.siteday import (NOT_COMPARED, Inputs, public_error, publish_site_day, site_day, site_day_path,
                              write_site_day)
-from shopper.words import shown_below
 from test_freeze import forecasts_of, sha
 from test_product import DAY, _days
 from test_record_numbers import _good_days
-from test_shop_pages import _rows
+from test_shop_pages import _deal_row, _front
 
 DEAL, SHELI, EXPRESS = "shufersal-deal", "shufersal-sheli", "shufersal-express"
 BUILT = datetime(2026, 11, 20, 10, 33, 5, 250000, tzinfo=timezone.utc)
@@ -77,10 +76,23 @@ def _frozen(on_time: bool = True, status: str = "frozen") -> Frozen:
     return Frozen(day=DAY, body=body, sha256=sha(body), frozen_at=FROZEN_AT, on_time=on_time, status=status)
 
 
+def _fronts(checked: int = 4, sheli: int = 2) -> dict[str, StoreFront]:
+    """Each store type's front: Sheli's deals (₪3.00 off, then ₪1.50, then more at ₪3.00 when `sheli` asks for more
+    than two) of `checked`; Deal's one, with its conditions; every other store type's none; each with its own counts,
+    Universe not ready."""
+    more = [_deal_row(SHELI, code=str(1000 + n)) for n in range(sheli - 2)]
+    rows = {SHELI: [_deal_row(SHELI, code="1"), _deal_row(SHELI, code="2", price="8.50"), *more],
+            DEAL: [_deal_row(DEAL, code="3", restrictions=["club"], programmes=["מועדון"], min_spend="150")]}
+    return {column.key: _front(column.key, rows=rows.get(column.key, []),
+                               checked=checked if column.key == SHELI else len(rows.get(column.key, [])),
+                               ready=column.key != "shufersal-universe", promotions=100 + n, products=200 + n)
+            for n, column in enumerate(COLUMNS)}
+
+
 def _site_day(**more) -> dict:
     given = dict(day=DAY, run_id="103305Z-site-abcd", code_sha="c0dec0dec0de", built_at=BUILT, collected_by="11:48",
                  inputs=INPUTS, column_days=_days(holes={(EXPRESS, DAY)}), chains=_reports(ERROR),
-                 counts=Counts(3, 2, 1), rows=_rows(), frozen=_frozen(), scorecard=_card(),
+                 fronts=_fronts(), frozen=_frozen(), scorecard=_card(),
                  scored_days=[date(2026, 11, 5), date(2026, 11, 6)], out_of_reach=[date(2026, 8, 1)])
     given.update(more)
     return site_day(**given)
@@ -89,8 +101,8 @@ def _site_day(**more) -> dict:
 # ---- what the file holds ----
 
 def test_the_site_day_file_has_a_block_per_column_and_per_chain():
-    """Call 8 and "Where the key lives": a block per column (its chain and name, its day's state and counts, its gate)
-    and a block per chain (P10's state: its promotions error, and its items table's key)."""
+    """Call 8 and "Where the key lives": a block per column (its chain and name, its day's state and counts, its gate,
+    its store page's front) and a block per chain (P10's state: its promotions error, and its items table's key)."""
     found, reports, card, days = _site_day(), _reports(ERROR), _card(), _days(holes={(EXPRESS, DAY)})
     assert list(found["columns"]) == [column.key for column in COLUMNS]
     assert list(found["chains"]) == list(SLUGS)
@@ -103,11 +115,12 @@ def test_the_site_day_file_has_a_block_per_column_and_per_chain():
             "counted": today.counted, "promo_files": today.promo_files, "under_floor": report["under_floor"],
             "gate": card["columns"][column.key]["gate"],
             "counts": {"items": report["items"], "wide": report["wide"], "on_promotion": report["on_promotion"],
-                       "valid_deals": report["valid_deals"],
-                       "front_rows": sum(row.column == column.key for row in _rows())}}
+                       "valid_deals": report["valid_deals"]},
+            "front": block["front"]}
     assert (found["columns"][EXPRESS]["record"], found["columns"][EXPRESS]["hole"]) == (False, True)
     assert found["columns"]["shufersal-universe"]["under_floor"] is True
-    assert [found["columns"][key]["counts"]["front_rows"] for key in (DEAL, SHELI, EXPRESS)] == [1, 1, 0]
+    assert [found["columns"][key]["front"]["deals"] for key in (DEAL, SHELI, EXPRESS)] == [1, 2, 0]
+    assert "counts" not in found and "front_rows" not in found
     assert found["chains"]["carrefour"] == {
         "promotions_error": PUBLIC_ERROR, "items_table": "tables/items/chain=carrefour/date=2026-11-20/items.parquet"}
     assert found["chains"]["osherad"]["promotions_error"] is None
@@ -206,22 +219,42 @@ def test_the_provenance_is_what_b12_leaves_out():
     assert comparable(other) == comparable(found) and other != found
 
 
-def test_the_count_line_and_the_front_pages_rows_are_its_numbers():
-    """Every number on the front page (the design's "Data files"): the count line's three, and each row in the
-    page's order, its deal as shown and exact, the 30-day median and the gap below it as shown, its conditions."""
-    found = _site_day()
-    assert found["counts"] == {"promotions": 3, "products": 2, "below": 1}
-    rows = ordered(_rows())
-    assert depth(rows[0].gap) > depth(rows[1].gap) and [row.column for row in rows] == [SHELI, DEAL]   # the premise
-    assert found["front_rows"] == [
-        {"column": SHELI, "barcode": rows[0].code, "deal": "10.00", "deal_exact": "10", "per": "unit", "buy": "1",
-         "median30": "20.00", "below": "10.00", "percent": 50, "restrictions": [], "programmes": [], "min_spend": None},
-        {"column": DEAL, "barcode": rows[1].code, "deal": "7.90", "deal_exact": "79/10", "per": "unit", "buy": "1",
-         "median30": "11.90", "below": "4.00", "percent": 34, "restrictions": [], "programmes": [], "min_spend": None}]
-    assert found["front_rows"][1]["below"] == str(shown_below(rows[1].gap)[0])
-    conditioned = replace(rows[1], restrictions=("club",), programmes=("מועדון",), min_spend=Decimal("150"))
-    held = _site_day(rows=[conditioned])["front_rows"][0]
-    assert (held["restrictions"], held["programmes"], held["min_spend"]) == (["club"], ["מועדון"], "150")
+def _row_cells(page: str, code: str) -> str:
+    return re.search(rf'<tr data-column="[^"]+"[^>]*><th scope="row"><a href="\.\./p/{code}\.html">.*?</tr>', page).group(0)
+
+
+def test_every_number_on_each_store_page_is_in_the_site_day_file():
+    """The design's "Data files": each store type's front block holds every number its page shows, the headline's N
+    (its deals, all of them) and M (its checked), whether it is ready, the promotions line's two, and each row the page
+    shows (the first 100, none on a hole or a promotion hole: `shopper.pages.shown_rows`) with today's price, the usual
+    price, the saving, the days its reason rests on, per unit or kilogram, buy N and its conditions from the fields. No
+    product name or promotion text: the numbers, which the pages show beside the chains' own words."""
+    fronts, days = _fronts(), _days(holes={(EXPRESS, DAY)})
+    found = _site_day(fronts=fronts)
+    plain = {"per": "unit", "buy": "1", "restrictions": [], "programmes": [], "min_spend": None}
+    assert found["columns"][SHELI]["front"] == {
+        "ready": True, "deals": 2, "checked": 4, "promotions": 106, "products": 206,
+        "rows": [{"barcode": "1", "today": "7.00", "usual": "10.00", "saving": "3.00", "days": 90, **plain},
+                 {"barcode": "2", "today": "8.50", "usual": "10.00", "saving": "1.50", "days": 90, **plain}]}
+    deal, = found["columns"][DEAL]["front"]["rows"]
+    assert (deal["restrictions"], deal["programmes"], deal["min_spend"]) == (["club"], ["מועדון"], "150")
+    assert found["columns"]["shufersal-universe"]["front"]["ready"] is False
+    for column in COLUMNS:
+        block, page = found["columns"][column.key]["front"], render_store(fronts[column.key], days, DAY, "11:48", (), None)
+        assert len(re.findall(r"<tr data-column=", page)) == len(block["rows"])
+        assert f"lists {block['promotions']:,} promotions carried by at least half its stores, on {block['products']:,} " in page
+        if block["ready"] and column.key != EXPRESS:
+            said = (f"today: {block['deals']:,} of {block['checked']:,} promotions" if block["checked"]
+                    else "today: no promotions to check")
+            assert said in page, column.key
+        for row in block["rows"]:
+            cells = _row_cells(page, row["barcode"])
+            assert all(f"₪{row[name]}" in cells for name in ("today", "usual", "saving")), cells
+    # the page's rows, never more: the first 100 of 101, and none on a hole, though the build hands the rows in
+    many = _fronts(checked=120, sheli=101) | {EXPRESS: _front(EXPRESS, rows=[_deal_row(EXPRESS)])}
+    held = _site_day(fronts=many)["columns"]
+    assert (held[SHELI]["front"]["deals"], len(held[SHELI]["front"]["rows"])) == (101, 100)
+    assert (held[EXPRESS]["front"]["deals"], held[EXPRESS]["front"]["rows"]) == (1, [])
 
 
 def test_the_forecasts_block_names_the_frozen_file():
@@ -278,13 +311,13 @@ def test_differing_numbers_need_a_reason(tmp_path):
     site = tmp_path / "site"
     write_site_day(_site_day(), site)
     published = site_day_path(site, DAY).read_bytes()
-    changed = _site_day(counts=Counts(4, 2, 1), chains=_reports(None))
+    changed = _site_day(fronts=_fronts(checked=9), chains=_reports(None))
     for reason in (None, "", "  \t ", "a fix\nand more"):
         with pytest.raises(RevisionNeeded) as raised:
             publish_site_day(changed, site, LATER, reason)
         message = str(raised.value)
         assert message.startswith(f"{site_day_path(site, DAY)} is published with other numbers: ")
-        assert "chains.carrefour.promotions_error, counts differ." in message and "--revise" in message
+        assert "chains.carrefour.promotions_error, columns differ." in message and "--revise" in message
     assert site_day_path(site, DAY).read_bytes() == published
     shown, unchanged, revised = publish_site_day(changed, site, LATER, " a reader fix ")
     assert (unchanged, revised) == (False, True)
@@ -292,19 +325,37 @@ def test_differing_numbers_need_a_reason(tmp_path):
     assert comparable(shown) == comparable(changed)
 
 
+def _numbers(shown: dict) -> dict:
+    """What a revision keeps of a run's figures: each column's deals and checked."""
+    return {key: {"deals": block["front"]["deals"], "checked": block["front"]["checked"]}
+            for key, block in shown["columns"].items()}
+
+
 def test_a_revision_keeps_the_earlier_run(tmp_path):
     site = tmp_path / "site"
     first = _site_day()
     write_site_day(first, site)
-    second = _site_day(counts=Counts(4, 2, 1), run_id="113000Z-site-0001", built_at=LATER)
+    second = _site_day(fronts=_fronts(checked=9), run_id="113000Z-site-0001", built_at=LATER)
     shown, _, _ = publish_site_day(second, site, LATER, "a reader fix")
     assert shown["revisions"] == [{"run_id": first["run_id"], "code_sha": first["code_sha"],
-                                   "built_at": first["built_at"], "revised": None, "counts": first["counts"]}]
+                                   "built_at": first["built_at"], "revised": None, "front": _numbers(first)}]
     write_site_day(shown, site)
-    third = _site_day(counts=Counts(5, 3, 1), run_id="120000Z-site-0002", built_at=LATER + timedelta(days=1))
+    third = _site_day(fronts=_fronts(checked=11), run_id="120000Z-site-0002", built_at=LATER + timedelta(days=1))
     shown, _, revised = publish_site_day(third, site, LATER + timedelta(days=1), "a second fix")
-    assert revised and [run["counts"] for run in shown["revisions"]] == [
-        first["counts"], {"promotions": 4, "products": 2, "below": 1}]       # the first publication stays first
+    assert revised and [run["front"] for run in shown["revisions"]] == [_numbers(first), _numbers(second)]
     assert [run["revised"] for run in shown["revisions"]] == [None, {"on": "2026-11-22", "reason": "a reader fix"}]
     assert shown["revised"] == {"on": "2026-11-23", "reason": "a second fix"}
     assert shown["revisions"][1]["run_id"] == "113000Z-site-0001"
+
+
+def test_a_revision_keeps_each_columns_deals_and_checked(tmp_path):
+    """B12's revision keeps the earlier run's headline numbers, each store type's deals (N) and checked (M), every one
+    of the nine, in place of the old front page's count."""
+    site = tmp_path / "site"
+    first = _site_day(fronts=_fronts(checked=7, sheli=3))
+    write_site_day(first, site)
+    shown, _, revised = publish_site_day(_site_day(), site, LATER, "a reader fix")
+    kept = shown["revisions"][0]["front"]
+    assert revised and list(kept) == [column.key for column in COLUMNS]
+    assert kept[SHELI] == {"deals": 3, "checked": 7} and kept[DEAL] == {"deals": 1, "checked": 1}
+    assert kept["ramilevy"] == {"deals": 0, "checked": 0}

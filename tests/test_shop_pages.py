@@ -13,6 +13,7 @@ from dataclasses import replace
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from fractions import Fraction
+from pathlib import Path
 
 import pytest
 
@@ -23,30 +24,30 @@ from basket.stores import Store
 from basket.words import ALWAYS as BASKET_ALWAYS, CHAIN_NAMES, METHOD_INTRO, TITLE as BASKET_TITLE
 from shopper.columns import BY_KEY, COLUMNS, FLOOR
 from shopper.history import ColumnDay
-from shopper.measures import depth, gap
-from shopper.pages import (BASKET_PAGE, BASKET_SECTION, CONDITIONS, FRONT_RULES, NO_DEALS, PICK_GROUPS, PICK_TITLE,
-                           ROOT_LINE, SCORED_SO_FAR, TABLE_NOTE, ColumnsToday, Counts, FrontRow, column_ready,
-                           front_rows_of, ordered, render_basket, render_method, render_record, render_root,
-                           render_store, scorecard_section, store_path)
-from shopper.product import CHAIN_SPAN, page_path
+from shopper.pages import (BASKET_PAGE, BASKET_SECTION, CONDITIONS, NO_DEALS, PICK_GROUPS, PICK_TITLE, ROOT_LINE,
+                           SCORED_SO_FAR, ColumnsToday, StoreFront, column_ready, render_basket, render_method,
+                           render_record, render_root, render_store, scorecard_section, shown_rows, store_path)
+from shopper.product import BADGE_STYLE, CHAIN_SPAN, page_path
 from shopper.search import browse_pages
 from shopper.shell import SCRIPT_TAG
 from shopper.items import HORIZON
 from shopper.record import scorecard
-from shopper.words import (ALWAYS, ALWAYS_SENTENCE, CHAINS_LINE, CREDIT_START, FINE_PRINT, FRONT_SUBTITLE, FRONT_TITLE,
-                           GAP_HEADING, HIRING, NEVER, SITE_NAME, columns_tested, date_line, formats_note,
-                           gap_sentences, lead_line, no_odds_yet, shown_below, unreadable)
+from shopper.verdict import FRONT_LIMIT, DealRow, checked, front_list, on_list, verdict
+from shopper.words import (ALWAYS, ALWAYS_SENTENCE, CHAINS_LINE, CREDIT_START, FOLD_INTRO, FRONT_SUBTITLE, FRONT_TITLE,
+                           HIRING, NEVER, NONE_YET, SEARCH_LABEL, SITE_NAME, STORE_RULES, columns_tested,
+                           date_line, formats_note, headline, how_often, last_low, no_odds_yet, reason, unreadable)
 from test_build import NOW, LATER, PAST, build_at, day_file, golden_tree
 from test_page import BASKET, EXCLUSIONS, a_public
 from test_product import CODE, DAY, SPAN, _days, _listed, _pair, _render, _struct, _typical, back
 from test_record_numbers import START, _bins, _day, _good, _part
 
 DEAL, SHELI, EXPRESS, UNIVERSE = "shufersal-deal", "shufersal-sheli", "shufersal-express", "shufersal-universe"
-CITY, MARKET, RAMI = "carrefour-city", "carrefour-market", "ramilevy"
+CITY, MARKET, RAMI, OSHER = "carrefour-city", "carrefour-market", "ramilevy", "osherad"
 MILK, PASTA, EGGS = (item.code for item in BASKET.items)
 BASKET_DAY = date(2026, 11, 2)
 SCRIPT = '<script src="search.js" defer></script>'
 NEVER_LIST = re.compile(r'<ul id="never-words">(.*?)</ul>', re.DOTALL)
+STORE_FIRST = (Path(__file__).parent.parent / "docs" / "store-first.md").read_text(encoding="utf-8")
 
 
 def _visible(page: str) -> str:
@@ -60,101 +61,6 @@ def _no_never_phrase_and_no_pronoun(page: str) -> None:
     for version in (flatten(strip_tags(cut)), flatten(cut)):
         assert not [phrase for phrase in NEVER if flatten(phrase) in version]
     assert not PRONOUNS.search(flatten(strip_tags(cut)))
-
-
-# ---- the front page's rows ----
-
-def _two_columns(**more) -> dict:
-    """Deal lists it at 11.90 with a deal at 7.90 (depth 4.00 / 11.90, 34%); Sheli at 20.00 with a deal at 10.00 (50%):
-    Sheli's is the deeper, though the dearer."""
-    return {DEAL: _pair(DEAL, _listed("11.90"), promotions=[_struct("7.90", promotion_id="1")]),
-            SHELI: _pair(SHELI, _listed("20.00"), promotions=[_struct("10.00", promotion_id="2")]), **more}
-
-
-def test_front_rows_one_per_column_and_product_by_depth():
-    """Question A under S1: a product with deals at Sheli and at Deal has a row at each, each against its own column's
-    30-day median; the rows are by depth, deepest first, whatever the price."""
-    rows = front_rows_of(CODE, "TITLE", _two_columns(), _days(), DAY)
-    assert [row.column for row in rows] == [DEAL, SHELI]                     # in name order, before `ordered`
-    assert {row.column: row.gap.median30 for row in rows} == {DEAL: Decimal("11.90"), SHELI: Decimal("20.00")}
-    assert {row.column: row.deal.price for row in rows} == {DEAL: Fraction("7.90"), SHELI: Fraction("10.00")}
-    assert [row.column for row in ordered(rows)] == [SHELI, DEAL]
-    assert all((row.code, row.title) == (CODE, "TITLE") for row in rows)
-
-
-def test_a_column_has_one_row_its_lowest_deal_passing_the_front_test():
-    """Two promotions at one column pass: one row, the lower deal price, compared exactly."""
-    deals = [_struct("8.50", promotion_id="1"), _struct(Fraction("23.69") / 3, kind="n_for_m", buy="3",
-                                                        promotion_id="2"), _struct("7.90", promotion_id="3")]
-    rows = front_rows_of(CODE, "T", {DEAL: _pair(DEAL, _listed("11.90"), promotions=deals)}, _days(), DAY)
-    assert len(rows) == 1
-    assert rows[0].deal.price == Fraction("23.69") / 3                    # 7.8966..., below 7.90 though shown 7.90
-
-
-def test_a_row_only_for_a_deal_passing_the_front_test_and_running_today():
-    """A promotion at some stores, one whose price was not read, one starting tomorrow and one ended yesterday give no
-    row; nor does a column with 19 days of records in the 30 (Task 9's test, read through the front page)."""
-    tomorrow, yesterday = DAY + timedelta(days=1), DAY - timedelta(days=1)
-    deals = [_struct("7.90", wide=False), _struct("7.90", valid=False, why="the rate and the price disagree"),
-             _struct("7.90", start=tomorrow), _struct("7.90", start=back(9), end=yesterday)]
-    pairs = {DEAL: _pair(DEAL, _listed("11.90"), promotions=deals),
-             SHELI: _pair(SHELI, _listed("11.90", 0, 19), promotions=[_struct("7.90")])}
-    assert front_rows_of(CODE, "T", pairs, _days(), DAY) == []
-    pairs[SHELI] = _pair(SHELI, _listed("11.90", 0, 20), promotions=[_struct("7.90")])
-    assert [row.column for row in front_rows_of(CODE, "T", pairs, _days(), DAY)] == [SHELI]
-
-
-def test_a_hole_column_day_has_no_front_row():
-    """The second pre-flight's S1: on a column-day with files from fewer than half its stores the prices are from too
-    few files, and the column has no front row; another column of the chain still has its own."""
-    rows = front_rows_of(CODE, "T", _two_columns(), _days(holes={(DEAL, DAY)}), DAY)
-    assert [row.column for row in rows] == [SHELI]
-
-
-def test_a_deal_whose_figure_equals_the_low_has_no_front_row():
-    """Task 15's carry: 3 for ₪4.34 is ₪1.4466... a unit, shown ₪1.45; beside a 90-day low of ₪1.45 it is below the
-    low exactly but not as shown, so no front row can show a deal next to an equal low (`on_front` compares the shown
-    figures, Task 15's fix round 2)."""
-    three = _struct(Fraction("4.34") / 3, kind="n_for_m", buy="3")
-    assert front_rows_of(CODE, "T", {DEAL: _pair(DEAL, _listed("1.45"), promotions=[three])}, _days(), DAY) == []
-    rows = front_rows_of(CODE, "T", {DEAL: _pair(DEAL, _listed("1.47"), promotions=[three])}, _days(), DAY)
-    assert rows[0].deal.price == Fraction(434, 300) and rows[0].deal.buy == 3
-
-
-def test_a_front_row_keeps_the_promotions_conditions():
-    struct = _struct("7.90", restrictions=["club", "other"], programmes=["מועדון", "אפליקציה"], min_spend="150")
-    row = front_rows_of(CODE, "T", {DEAL: _pair(DEAL, _listed("11.90"), promotions=[struct])}, _days(), DAY)[0]
-    assert (row.restrictions, row.programmes, row.min_spend) == (("club", "other"), ("מועדון", "אפליקציה"),
-                                                                 Decimal("150"))
-
-
-def test_ordered_by_the_shown_percent_then_the_exact_depth():
-    """Deploy prep (the owner, 2026-11-10): the table's order is its figures' order: by the whole percent it shows
-    (`shown_below`; "under 1%" is 0), deepest first, a row with no shown gap last; then by the exact depth. ₪0.145 a
-    unit against ₪0.20 shows ₪0.05, 25%, though its exact depth is 27.5%, so ₪7.40 against ₪10.00 (26%) comes first;
-    ₪7.48 against ₪10.00 shows 25% too, with an exact depth of 25.2%, so it follows the first 25%."""
-    def row(column, listed, price):
-        pairs = {column: _pair(column, _listed(listed), promotions=[_struct(price)])}
-        found, = front_rows_of(CODE, "T", pairs, _days(), DAY)
-        return found
-    x, z, y, u = row(DEAL, "0.20", "0.145"), row(SHELI, "10.00", "7.40"), row(CITY, "10.00", "7.48"), row(
-        MARKET, "100.00", "99.99")
-    assert [shown_below(found.gap)[1] for found in (x, z, y, u)] == [25, 26, 25, 0]
-    # a gap the shown figures do not show (₪7.8951 shown ₪7.90, against ₪7.90), though its exact depth is above u's
-    pair = _pair(EXPRESS, _listed("7.90"))
-    n = replace(u, column=EXPRESS, gap=gap(Fraction("7.8951"), pair, _days(), DAY))
-    assert shown_below(n.gap) is None and depth(n.gap) > depth(u.gap) > 0
-    assert [found.column for found in ordered([n, u, y, x, z])] == [SHELI, DEAL, CITY, MARKET, EXPRESS]
-    assert "<td>under 1%</td>" in _front(MARKET, rows=[u]) and "<td></td>" in _front(EXPRESS, rows=[n])
-
-
-def test_ordered_by_depth_then_column_then_code():
-    one, = front_rows_of("2000000000046", "T", {DEAL: _pair(DEAL, _listed("10.00"), promotions=[_struct("5.00")])},
-                         _days(), DAY)
-    same_depth = [replace(one, column=SHELI), replace(one, code="900"), replace(one, code="1000"), one,
-                  replace(one, column=CITY)]
-    assert [(row.column, row.code) for row in ordered(same_depth)] == [
-        (CITY, "2000000000046"), (DEAL, "900"), (DEAL, "1000"), (DEAL, "2000000000046"), (SHELI, "2000000000046")]
 
 
 # ---- the root page, the picker (store first, q33, the plan's Task 5) ----
@@ -205,23 +111,47 @@ def test_the_root_is_the_picker_grouped_by_chain():
     assert _root() == render_root(DAY, "12:03")
 
 
-# ---- a store type's front page (the old rule's content for its column alone until the plan's Task 6) ----
+# ---- a store type's front page: its deals by saving, the top 100, under a headline (store first, q33) ----
 
-def _rows() -> list[FrontRow]:
-    return front_rows_of(CODE, "גבינה צהובה 200 גרם", _two_columns(), _days(), DAY)
+TITLE = "גבינה צהובה 200 גרם"
 
 
-def _front(column=SHELI, rows=None, counts=Counts(1840, 6210, 410), marking=("shufersal",), browse="browse/05d2.html",
-           ready=True) -> str:
-    return render_store(column, _rows() if rows is None else rows, counts, DAY, "12:03", marking, browse, ready=ready)
+def _deal_row(column=SHELI, listed="10.00", price="7.00", code=CODE, title=TITLE, first=0, **struct) -> DealRow:
+    """A row of `column`'s front list as the build makes it: the product listed at `listed` from `first` days back to
+    90 (every day of the 91 by default), today's promotion at `price` a unit, its verdict worked by `shopper.verdict`
+    over every column's 91 days. 10.00 against 7.00 is ₪3.00 off, shade deal-2."""
+    pair = replace(_pair(column, _listed(listed, first), promotions=[_struct(price, **struct)]), code=code)
+    return DealRow(column=column, code=code, title=title, verdict=verdict(pair, column, _days(), DAY))
+
+
+def _front(column=SHELI, rows=None, checked=None, ready=True, promotions=1840, products=6210) -> StoreFront:
+    """A store type's front as the build hands it in: its deals in `front_list`'s order, all of them; `checked` two more
+    than the rows by default."""
+    rows = [_deal_row(column)] if rows is None else rows
+    return StoreFront(column=column, ready=ready, rows=tuple(front_list(rows)),
+                      checked=len(rows) + 2 if checked is None else checked, promotions=promotions, products=products)
+
+
+def _storepage(front=None, days=None, marking=("shufersal",), browse="browse/05d2.html") -> str:
+    return render_store(_front() if front is None else front, _days() if days is None else days, DAY, "12:03",
+                        marking, browse)
+
+
+def _lede(page: str) -> str:
+    return re.search(r'<p class="lede">(.*?)</p>', page).group(1)
+
+
+def _table_rows(page: str) -> list[str]:
+    """The table's rows: each one's barcode, from its product link."""
+    return re.findall(r'<tr data-column="[^"]+"[^>]*><th scope="row"><a href="\.\./p/([^"]+)\.html">', page)
 
 
 def test_each_store_page_names_its_store_and_puts_search_first():
     """Each of the nine: `<main data-store="<key>">` (search.js sets the pick from it), the store's name in the tab's
-    title and over the page's title, then the subtitle, then the search box before the lead line and the deals; no
-    store radios (the page is one store type's)."""
+    title and over the page's title, then the subtitle, the search box, the headline, the deals and the fold-out, in
+    the design's order ("What a visitor sees" 4); no store radios (the page is one store type's)."""
     for column in COLUMNS:
-        page = _front(column.key)
+        page = _storepage(_front(column.key, rows=[]))
         assert f'<main data-store="{column.key}">' in page and page.count("data-store") == 1
         assert f"<title>{column.name} - {SITE_NAME}</title>" in page
         main = page[page.index("<main"):]
@@ -229,78 +159,106 @@ def test_each_store_page_names_its_store_and_puts_search_first():
                                f'<h1 id="deals">{FRONT_TITLE}</h1>\n<p class="sub">{FRONT_SUBTITLE}</p>\n'
                                '<section class="search">')
         assert main.index('<section class="search">') < main.index('<p class="lede">') < main.index(
-            '<section class="deals">')
+            '<section class="deals">') < main.index("<details>")
         assert 'type="radio"' not in page and "f-all" not in page
     assert store_path(SHELI) == "store/shufersal-sheli.html"
 
 
-def test_a_store_page_lists_only_its_own_rows():
-    """The old rule's rows (question A under S1), each store page holding its own column's alone, and its lead line
-    counting them; a store type with none says none passed, and tells no story."""
-    rows = _rows()
-    assert sorted(row.column for row in rows) == [DEAL, SHELI]
-    for column in (DEAL, SHELI):
-        page = _front(column, rows)
-        assert re.findall(r'<tr data-column="([^"]+)"', page) == [column]
-        assert f'<p class="lede">{lead_line(1, True)}</p>' in page                  # its own rows, not the 410
-        assert '<section class="story">' in page
-    rami = _front(RAMI, rows)
-    assert re.findall(r'<tr data-column="([^"]+)"', rami) == []
-    assert NO_DEALS in rami and '<p class="lede">None passed today.</p>' in rami and '<section class="story">' not in rami
-
-
 def test_a_store_page_has_the_always_phrases_and_the_search_box():
-    """The design's "Words": the four ALWAYS phrases on a store page, with or without a row (the site check holds every
-    store page to them); the search box, `<input id="q">`, with its browse link from the site's root; `noindex`, the
-    date line and the credit line (the shared shell)."""
-    for page in (_front(), _front(rows=[]), _front(rows=[], counts=Counts(0, 0, 0), ready=False)):
+    """The design's "Words": the four ALWAYS phrases on a store page, with or without a row, on a hole or a promotion
+    hole too (the site check holds every store page to them), from the fold-out's note; the search box,
+    `<input id="q">`, labelled in the design's words, with its browse link from the site's root; `noindex`, the date
+    line and the credit line (the shared shell)."""
+    holes = (_days(holes={(SHELI, DAY)}), _days(promo_holes={(SHELI, DAY)}))
+    pages = [_storepage(), _storepage(_front(rows=[])), _storepage(_front(rows=[], checked=0, ready=False)),
+             *(_storepage(days=days) for days in holes)]
+    assert SEARCH_LABEL == "Type a product name or the barcode" and f'the search box ("{SEARCH_LABEL}")' in STORE_FIRST
+    for page in pages:
         text = _visible(page)
         for phrase in ALWAYS:
             assert flatten(phrase) in text, phrase
         assert page.count("<script") == 1 and page.count(SCRIPT_TAG.format(up="../")) == 1
-        assert ('<section class="search"><label for="q">Find a product: name or barcode</label>'
+        assert ('<section class="search"><label for="q">Type a product name or the barcode</label>'
                 '<input id="q" type="search" autocomplete="off"><p><a href="../browse/05d2.html">Browse by first letter'
                 '</a></p></section>') in page
         assert '<meta name="robots" content="noindex">' in page
         assert flatten(date_line(DAY)) in text and flatten(CREDIT_START) in text and "not shopping advice." in text
         _no_never_phrase_and_no_pronoun(page)
-    assert NO_DEALS in _front(rows=[]) and NO_DEALS not in _front()
     # the owner's plain words (2026-11-10): the empty table repeats nothing of the lead line above it
-    assert '<td colspan="6">No deals to show.</td>' in _front(rows=[])
-    assert '<input id="q" type="search" autocomplete="off"></section>' in _front(browse=None)
+    assert '<td colspan="4">No deals to show.</td>' in _storepage(_front(rows=[])) and NO_DEALS not in _storepage()
+    assert '<input id="q" type="search" autocomplete="off"></section>' in _storepage(browse=None)
 
 
 def test_every_page_header_names_the_site_the_chains_and_the_day():
     """The owner's plain words (2026-11-10): the site's name, the pick link (store first, q33), the five chains in slug
     order on one line, and the date line, "Prices of" the day."""
-    for page, up in ((_front(), "../"), (_root(), "")):
+    for page, up in ((_storepage(), "../"), (_root(), "")):
         assert (f'<header class="band"><div class="wrap"><a href="{up}index.html">Deal or No Deal</a>'
                 f'{PICK_LINK.format(up=up)}'
                 '<p class="dateline">Shufersal · Rami Levy · Osher Ad · Carrefour · Yochananof</p>'
                 '<p class="dateline">Prices of Friday 20 November 2026</p></div></header>') in page
 
 
-def test_the_lead_line_under_the_title():
-    """The owner's plain words (2026-11-10): the title, the subtitle, then (store first) the search box, then one lead
-    line, the headline area's only sentence: how many of the store type's products passed, or why none did: none can
-    pass yet, or none passed today. The rule's detail, and the count of products on promotion, are the fold-out's."""
-    lead = '</section>\n<p class="lede">{}</p>\n<section class="deals">'
-    assert lead.format("1 product passed today.") in _front()
-    second = front_rows_of("7290000000008", "T", {SHELI: _pair(SHELI, _listed("20.00"),
-                                                                 promotions=[_struct("15.00")])}, _days(), DAY)
-    assert lead.format("2 products passed today.") in _front(rows=_rows() + second)
-    empty = Counts(11_255, 14_060, 0)
-    assert lead.format("None passed today.") in _front(rows=[], counts=empty)
-    assert lead.format("None yet: a product needs 20 days of price history first.") in _front(
-        rows=[], counts=empty, ready=False)
-    assert lead.format(lead_line(1, True)) in _front(ready=False)               # a row: its column is ready
-    assert "6,210" not in re.search(r'<p class="lede">.*?</p>', _front()).group(0)
+def test_a_store_types_list_is_its_deals_passing_the_bar_by_saving():
+    """Goal 6 and "The front page's list": a product is listed when its verdict there is Deal and it has 20 days with
+    records in the 30 before today; by the saving, largest first, then by barcode as a number (200 before 1000); a no
+    deal and a deal under the bar are not listed, and the headline's M counts the no deal, not the one under the bar.
+    The rows are made as the build makes them (`on_list`, `checked`, `front_list`) and the page shows them as given."""
+    made = {"1000": (_listed(), "8.50"), "300": (_listed(), "7.00"), "400": (_listed(), "9.50"),
+            "500": (_listed("10.00", 0, 19), "5.00"), "200": (_listed(), "8.50")}
+    rows, checked_ = [], 0           # 1.50, 3.00, 0.50 (no deal), 5.00 over 19 days with records in the 30, 1.50
+    for code, (listed, price) in made.items():
+        pair = replace(_pair(SHELI, listed, promotions=[_struct(price)]), code=code)
+        found = verdict(pair, SHELI, _days(), DAY)
+        rows += [DealRow(SHELI, code, "T", found)] if on_list(found, pair, _days(), DAY) else []
+        checked_ += checked(found, pair, _days(), DAY)
+    assert {row.code: row.verdict.call for row in rows} == {"1000": "deal", "300": "deal", "200": "deal"}
+    page = _storepage(StoreFront(SHELI, True, tuple(front_list(rows)), checked_, 4, 5))
+    assert _table_rows(page) == ["300", "200", "1000"]
+    assert _lede(page) == "At Shufersal Sheli today: 3 of 4 promotions are actually deals."
+    badges = re.findall(r'<span class="badge ([^"]+)">([^<]+)</span>', page)
+    assert badges == [("deal-2", "At Shufersal Sheli: DEAL · ₪3.00 off"), ("deal-1", "At Shufersal Sheli: DEAL · ₪1.50 off"),
+                      ("deal-1", "At Shufersal Sheli: DEAL · ₪1.50 off")]
+
+
+def test_the_list_shows_the_top_100():
+    """The design's "top 100 shown, the rest reached through search and browse": 101 deals give 100 rows, the 101st
+    left out, and the headline counts all 101, the same set as the list (FRONT_LIMIT)."""
+    assert FRONT_LIMIT == 100
+    rows = [_deal_row(code=str(1000 + n)) for n in range(101)]
+    page = _storepage(_front(rows=rows, checked=120))
+    shown = _table_rows(page)
+    assert shown == [str(1000 + n) for n in range(100)] and "1100" not in shown
+    assert _lede(page) == "At Shufersal Sheli today: 101 of 120 promotions are actually deals."
+    assert shown_rows(_front(rows=rows), _days()[(SHELI, DAY)]) == _front(rows=rows).rows[:100]
+
+
+def test_the_headline_counts_the_same_set():
+    """The headline under the search box: N, the rows of the list, all of them, and M, the products with a promotion
+    that counts today passing the 20-day bar (`checked`), as the build hands them in; the design's example, a singular
+    verb for one deal, and "no promotions to check" with M of none."""
+    two = [_deal_row(code="1"), _deal_row(code="2", price="8.00")]
+    assert _lede(_storepage(_front(rows=two, checked=5))) == headline(SHELI, 2, 5) == (
+        "At Shufersal Sheli today: 2 of 5 promotions are actually deals.")
+    assert _lede(_storepage(_front(rows=two[:1], checked=3))) == "At Shufersal Sheli today: 1 of 3 promotions is actually a deal."
+    assert _lede(_storepage(_front(rows=[], checked=2))) == "At Shufersal Sheli today: 0 of 2 promotions are actually deals."
+    assert _lede(_storepage(_front(rows=[], checked=0))) == "At Shufersal Sheli today: no promotions to check."
+    assert _lede(_storepage(_front(MARKET, rows=[], checked=0))).startswith("At Carrefour Market today: ")
+
+
+def test_none_yet_until_the_store_type_has_20_days():
+    """"Until any product passes, the existing lead line stays": while the store type has no record on 20 of the 30
+    days before today (`column_ready`), no product can pass the bar, and the headline gives way to "None yet"."""
+    assert _lede(_storepage(_front(rows=[], checked=0, ready=False))) == (
+        "None yet: a product needs 20 days of price history first.")
+    assert _lede(_storepage(_front(rows=[], checked=3, ready=False))) == NONE_YET
+    assert _lede(_storepage(_front(rows=[], checked=0, ready=True))) != NONE_YET
 
 
 def test_a_store_type_is_ready_once_it_has_20_days_of_records_in_the_30():
-    """The lead line's "None yet" (the owner, 2026-11-10), for one store type: a product's days of records at a
+    """The store page's "None yet" (the owner, 2026-11-10), for one store type: a product's days of records at a
     column are days the column has one (P6), so until the column has a record on 20 of the 30 days before today none
-    of its products can pass the front test's days (`shopper.measures.on_front`). A hole, a day the chain's table is
+    of its products can pass the front list's bar (`shopper.verdict.passes_bar`). A hole, a day the chain's table is
     missing, a day 31 back, today and another column's days count nothing."""
     def of(column, backs, days=None):
         days = _days() if days is None else days
@@ -320,132 +278,122 @@ def test_a_store_type_is_ready_once_it_has_20_days_of_records_in_the_30():
     assert not column_ready(missing, DEAL, DAY)
 
 
-def test_the_note_under_the_table_carries_the_always_phrases():
-    """The owner's plain words (2026-11-10): plain headers ("Store" names the row's store format; "Typical price" is the
-    30-day median), and directly under the table one note holding the four ALWAYS phrases, with or without a row."""
-    assert TABLE_NOTE == ("Typical price: the 30-day median listed price before promotions, as listed in the chain's "
-                          "price files. Below by: how far the deal is under the typical price. Deals as listed in the "
-                          "morning's files.")
-    assert all(phrase in TABLE_NOTE for phrase in ALWAYS)
-    heads = "".join(f'<th scope="col">{head}</th>'
-                    for head in ("Product", "Store", "Deal", "Typical price", "Below by", "Conditions"))
-    for page in (_front(), _front(rows=[])):
-        assert f"<thead><tr>{heads}</tr></thead>" in page
-        assert f'</table></div><p class="note">{TABLE_NOTE}</p><details>' in page
+
+def test_a_store_type_not_read_today_says_so_and_lists_none():
+    """Review Focus 2: on a promotion hole (Shufersal Deal on 2026-11-08) the page says "Sale prices could not be read
+    today." and lists no deal; on a hole (prices from too few files) it says the too-few line and lists none; a hole
+    first, then the promotion hole, then "None yet". Another store type's hole lists this one's deals as ever."""
+    promo_hole = _storepage(days=_days(promo_holes={(SHELI, DAY)}))
+    hole = _storepage(days=_days(holes={(SHELI, DAY)}))
+    for page in (promo_hole, hole):
+        assert _table_rows(page) == [] and "No deals to show." in page and "One of today's deals" not in page
+    assert _lede(promo_hole) == "Sale prices could not be read today."
+    assert _lede(hole) == "too few files today: 5 of 20 stores"
+    both = _days(holes={(SHELI, DAY)}, promo_holes={(SHELI, DAY)})
+    assert _lede(_storepage(days=both)) == _lede(hole)
+    assert _lede(_storepage(_front(ready=False), days=_days(promo_holes={(SHELI, DAY)}))) == _lede(promo_hole)
+    other = _storepage(days=_days(holes={(DEAL, DAY)}, promo_holes={(DEAL, DAY)}))
+    assert _table_rows(other) == [CODE] and _lede(other).startswith("At Shufersal Sheli today: 1 of 3 ")
 
 
-def test_the_fold_out_holds_every_condition_of_the_rule():
-    """The owner's plain words (2026-11-10): under the note, a fold-out, closed (no `open`, no script), holding every
-    condition `shopper.measures.on_front` applies, in the store format's words (question O: a deal is tested at its own
-    format); what the filters read, from the chains' fields (question K), with the chains whose files mark none;
-    today's counts, the site's whole (until the plan's Task 6); and the method page, from the site's root. The review
-    round (2026-11-10): the five rules are required, not enough on their own (the shown figures' rounding, one row per
-    format's lowest deal), so "only when"; and both windows count only a format's days with records
-    (`shopper.history.counted`, which `window` and `column_ready` read)."""
-    assert FRONT_RULES == (
-        "Its deal price is below every listed price the product had at that store format in the 90 days before today.",
-        "At least half of the format's stores that sent price files today carry the promotion.",
-        "At least half of the format's stores sent price files today.",
-        "Its deal price could be read.",
-        "The product had a listed price there on at least 20 of the 30 days before today.")
-    page = _front(counts=Counts(11_255, 14_060, 37), marking=("shufersal", "osherad"))
-    fold, = re.findall(r"<details>(.*?)</details>", page, re.DOTALL)
-    assert "<details open" not in page and page.count("<details") == 1
-    rules = "".join(f"<li>{rule}</li>" for rule in FRONT_RULES)
-    assert fold == (
-        "<summary>How a deal passes</summary>"
-        "<p>A deal passes only when all of these are true at the store format in its row:</p>"
-        f"<ul>{rules}</ul>"
-        "<p>The 90 days and the 30 days count only days when at least half of the format's stores sent price files.</p>"
-        "<p>\"Hide club-only deals\" hides the deals the chains' fields mark for club members, the chain's card holders "
-        "or some customers only. Today Shufersal's and Osher Ad's files mark no deal this way.</p>"
-        "<p>\"Hide deals with a minimum spend\" hides the deals whose fields give a minimum spend.</p>"
-        "<p>Today the five chains list 11,255 promotions carried by at least half of a store format's stores, on 14,060 "
-        "products.</p>"
-        '<p><a href="../method.html">All the rules: How this is made</a></p>')
-    # every chain marking a restricted promotion today: no sentence naming none
-    assert "<p>\"Hide club-only deals\" hides" in _front(marking=()) and "mark no deal" not in _front(marking=())
-
-
-def test_a_front_row_shows_its_deal_median_depth_and_conditions():
-    """One row per (column, product): the product's link with its name in its span, the column's name, the deal price
-    per unit or kilogram with "buy N", the column's 30-day median listed price, the depth as a whole percent from the
-    shown figures, the conditions with their source and the fine print label."""
-    struct = _struct(Fraction("3.01") / 2, kind="n_for_m", buy="2", per="kg", restrictions=["club"],
-                     programmes=["מועדון"], min_spend="150")
-    rows = front_rows_of(CODE, "שם", {DEAL: _pair(DEAL, _listed("2.05"), promotions=[struct])}, _days(), DAY)
-    assert rows[0].gap.percent == 27 and shown_below(rows[0].gap) == (Decimal("0.54"), 26)    # 1.505 shown 1.51
-    page = _front(DEAL, rows=rows)
-    row = re.search(r"<tr data-column[^>]*>(.*?)</tr>", page, re.DOTALL).group(1)
-    assert f'<a href="../{page_path(CODE)}">{CHAIN_SPAN.format("שם")}</a>' in row
-    assert "<td>Shufersal Deal</td>" in row
-    assert "Deal price ₪1.51 per kilogram, buy 2" in row
-    assert "<td>₪2.05</td>" in row and "<td>26%</td>" in row and "27%" not in row
-    assert (f"club members only ({CHAIN_SPAN.format('מועדון')}), from the chain's fields; minimum spend ₪150.00, "
-            f"from the chain's fields; {FINE_PRINT}") in row
-
-
-def test_a_front_rows_gap_under_half_a_percent_is_under_one_percent():
-    """Deploy prep: ₪99.90 against a 90-day low and a 30-day median of ₪100.00 passes the front test; its cell says
-    "under 1%", as P7's first sentence does, never "0%"; the site-day file keeps the whole percent's number."""
-    rows = front_rows_of(CODE, "T", {DEAL: _pair(DEAL, _listed("100.00"), promotions=[_struct("99.90")])}, _days(), DAY)
-    assert shown_below(rows[0].gap) == (Decimal("0.10"), 0)
-    row = re.search(r"<tr data-column[^>]*>(.*?)</tr>", _front(DEAL, rows=rows), re.DOTALL).group(1)
-    assert "<td>under 1%</td>" in row and "<td>0%</td>" not in row
-    assert "₪0.10, under 1%, below the 30-day median listed price of ₪100.00" in _front(DEAL, rows=rows)
+def test_a_row_shows_the_badge_its_condition_todays_price_and_the_usual_price():
+    """The design's list: the product (its link, its name in the chain's span, its barcode), the deal badge with its
+    shade and the condition beside it when there is one, today's price and the usual price, each as shown; a weighed
+    product's a kilogram's. "2 for ₪7.00" for club members, against 6.50 every day: ₪3.50 a unit, ₪3.00 off."""
+    heads = "".join(f'<th scope="col">{head}</th>' for head in ("Product", "Deal", "Price today", "Usually"))
+    two = _deal_row(listed="6.50", price=Fraction(7, 2), kind="n_for_m", buy="2", restrictions=["club"])
+    page = _storepage(_front(rows=[two]))
+    assert f"<thead><tr>{heads}</tr></thead>" in page
+    row = re.search(r"<tr data-column[^>]*>(.*?)</tr>", page).group(1)
+    assert row == (f'<th scope="row"><a href="../{page_path(CODE)}">{CHAIN_SPAN.format(TITLE)}</a><small>{CODE}</small>'
+                   '</th><td><span class="badge deal-2">At Shufersal Sheli: DEAL · ₪3.00 off</span>'
+                   "<small>Club members only; When you buy 2</small></td><td>₪3.50</td><td>₪6.50</td>")
+    kg = _deal_row(RAMI, listed="69.90", price="50.00", per="kg", buy="1.5", kind="n_for_m")
+    cells = re.search(r"<tr data-column[^>]*>(.*?)</tr>", _storepage(_front(RAMI, rows=[kg]))).group(1)
+    assert ('<span class="badge deal-3">At Rami Levy: DEAL · ₪19.90 off a kilogram</span><small>When you buy 1.5 '
+            "kilograms</small></td><td>₪50.00 a kilogram</td><td>₪69.90 a kilogram</td>") in cells
+    plain = re.search(r"<tr data-column[^>]*>(.*?)</tr>", _storepage()).group(1)
+    assert '<span class="badge deal-2">At Shufersal Sheli: DEAL · ₪3.00 off</span></td>' in plain     # no condition
+    assert BADGE_STYLE in page
 
 
 def test_the_filters_need_no_script():
     """The club-only and minimum-spend checkboxes, each ruled by CSS alone (`:checked` and the sibling combinator); a
-    row says what the filters read. No store radio: the page is one store type's. The labels are the owner's plain
+    row carries what the filters read from the promotion its verdict judges (`data-club` for any restriction,
+    `data-spend` for a minimum spend). No store radio: the page is one store type's. The labels are the owner's plain
     words (2026-11-10); their caveats are the fold-out's."""
-    restricted = _struct("7.90", restrictions=["chain_card"], promotion_id="1")
-    spend = _struct("10.00", min_spend="200", promotion_id="2")
-    rows = front_rows_of(CODE, "T", {DEAL: _pair(DEAL, _listed("11.90"), promotions=[restricted])}, _days(), DAY)
-    rows += front_rows_of("7290000000008", "U", {DEAL: _pair(DEAL, _listed("20.00"), promotions=[spend])}, _days(), DAY)
-    page = _front(DEAL, rows=rows, marking=("shufersal", "osherad"))
+    restricted = _deal_row(DEAL, code="1", restrictions=["chain_card"])
+    spend = _deal_row(DEAL, code="2", price="8.00", min_spend="200")
+    page = _storepage(_front(DEAL, rows=[restricted, spend, _deal_row(DEAL, code="3", price="9.00")]))
     assert ('<section class="deals"><input type="checkbox" id="f-club"><label for="f-club">Hide club-only deals</label>'
             '<input type="checkbox" id="f-spend"><label for="f-spend">Hide deals with a minimum spend</label>'
             '<div class="table"') in page
     assert "#f-club:checked ~ .table tbody tr[data-club] { display: none; }" in page
     assert "#f-spend:checked ~ .table tbody tr[data-spend] { display: none; }" in page
     assert 'type="radio"' not in page and not re.search(r"#f-(?!club|spend)", page)
-    assert re.search(r'<tr data-column="shufersal-deal" data-club="">', page)
-    assert re.search(r'<tr data-column="shufersal-deal" data-spend="">', page)
-    plain = front_rows_of(CODE, "T", _two_columns(), _days(), DAY)
-    assert re.findall(r"<tr data-column=\"[^\"]+\"( [^>]*)?>", _front(SHELI, rows=plain)) == [""]
+    assert re.findall(r"<tr data-column=\"shufersal-deal\"( [^>]*)?>", page) == [' data-club=""', ' data-spend=""', ""]
 
 
-def test_the_story_is_the_top_rows_p7():
-    """One deal's story, in the product page's words: the store page's top row's P7 sentences, with its product's
-    link from the site's root."""
-    deeper = front_rows_of("7290000000008", "T", {SHELI: _pair(SHELI, _listed("20.00"),
-                                                                 promotions=[_struct("5.00")])}, _days(), DAY)
-    rows = _rows() + deeper                       # at Sheli: CODE 50% below, the second product 75%
-    top = ordered(row for row in rows if row.column == SHELI)[0]
-    assert top.code == "7290000000008"
-    page = _front(SHELI, rows=list(reversed(rows)))
-    story = re.search(r'<section class="story">(.*?)</section>', page, re.DOTALL).group(1)
-    assert GAP_HEADING in story
-    assert " ".join(gap_sentences(top.gap)) in story
-    assert f'<a href="../{page_path(top.code)}">' in story and BY_KEY[SHELI].name in story
-    assert '<section class="story">' not in _front(rows=[])
+def test_the_fold_out_says_how_a_deal_passes_for_that_store_type():
+    """The fold-out "How a deal passes", closed (no `open`, no script), in the design's order: its first line, the
+    design's verbatim; the rules in shopper words; what the two filters hide, with the store's own chain when its files
+    mark no restricted promotion today (never another chain); one deal's story; the store type's promotions line;
+    the note carrying the four ALWAYS phrases; the method page, from the site's root."""
+    assert FOLD_INTRO == "Promotions checked against what the product usually costs, sales included, over up to 3 months."
+    assert f'"How a deal passes": "{FOLD_INTRO}"' in STORE_FIRST
+    page = _storepage(marking=("shufersal", "osherad"))
+    fold, = re.findall(r"<details>(.*?)</details>", page, re.DOTALL)
+    assert "<details open" not in page and page.count("<details") == 1
+    rules = "".join(f"<li>{rule}</li>" for rule in STORE_RULES)
+    story = re.search(r"<h3>One of today's deals</h3>.*?(?=<p>Today Shufersal Sheli lists)", fold).group(0)
+    assert fold == (
+        f"<summary>How a deal passes</summary><p>{FOLD_INTRO}</p><ul>{rules}</ul>"
+        "<p>\"Hide club-only deals\" hides the deals the chains' fields mark for club members, the chain's card holders "
+        "or some customers only. Today Shufersal's files mark no deal this way.</p>"
+        "<p>\"Hide deals with a minimum spend\" hides the deals whose fields give a minimum spend.</p>"
+        f"{story}"
+        "<p>Today Shufersal Sheli lists 1,840 promotions carried by at least half its stores, on 6,210 products.</p>"
+        f'<p class="note">{ALWAYS_SENTENCE}</p>'
+        '<p><a href="../method.html">All the rules: How this is made</a></p>')
+    assert all(flatten(phrase) in _visible(f'<p class="note">{ALWAYS_SENTENCE}</p>') for phrase in ALWAYS)
+    osher = _storepage(_front(OSHER, rows=[]), marking=("shufersal", "osherad"))
+    assert "Today Osher Ad's files mark no deal this way." in osher and "Shufersal's files" not in osher
+    assert "mark no deal" not in _storepage(marking=("osherad",)) and "mark no deal" not in _storepage(marking=())
+    assert "One of today's deals" not in _storepage(_front(rows=[]))
+
+
+def test_the_story_is_the_top_rows_verdict():
+    """One of today's deals, in the product page's words: the top row's product, from the site's root, its badge in
+    its shade, its reason, last this low and how often."""
+    top, second = _deal_row(code="2", price="7.00"), _deal_row(code="1", price="8.50")
+    page = _storepage(_front(rows=[second, top]))
+    found = top.verdict
+    said = "".join(f"<p>{line}</p>" for line in (reason(found), last_low(found), how_often(found)))
+    assert (f"<h3>One of today's deals</h3><p class=\"story-head\"><a href=\"../{page_path('2')}\">"
+            f'{CHAIN_SPAN.format(TITLE)}</a></p><p class="badge deal-2">At Shufersal Sheli: DEAL · ₪3.00 off</p>'
+            f"{said}") in page
+    assert said == ("<p>Usually ₪10.00, sales included (90 days tracked).</p><p>Lowest in the 90 days tracked.</p>"
+                    "<p>On sale on 0 of the 90 days tracked.</p>")
 
 
 def test_a_store_pages_links_lead_up_to_the_root():
     """The footer reaches the basket, the record and the method pages, and the browse pages when there are any, each
     from the site's root; the hiring line is the root's alone."""
-    page = _front()
+    page = _storepage()
     footer = re.search(r"<footer>(.*?)</footer>", page, re.DOTALL).group(1)
     assert re.findall(r'<a href="([^"]+)">', footer) == ["../browse/05d2.html", "../basket.html", "../record.html",
                                                           "../method.html"]
-    assert 'href="browse/' not in _front(browse=None) and 'href="../browse/' not in _front(browse=None)
+    assert 'href="browse/' not in _storepage(browse=None) and 'href="../browse/' not in _storepage(browse=None)
     assert '<p class="hiring">' not in page
 
 
-def test_the_front_page_is_the_same_bytes_whatever_the_rows_order():
-    rows = _rows()
-    assert _front(rows=rows) == _front(rows=list(reversed(rows)))
+def test_the_store_page_is_the_same_bytes_whatever_the_rows_order():
+    """A pure function of its inputs: the rows come in `front_list`'s order whatever order they were made in, and the
+    column-days and the chains marking none in any order give the same bytes."""
+    rows = [_deal_row(code="1", price="8.50"), _deal_row(code="2"), _deal_row(code="3", price="8.50")]
+    page = _storepage(_front(rows=rows), marking=("shufersal", "osherad"))
+    assert page == _storepage(_front(rows=list(reversed(rows))), marking=("osherad", "shufersal"))
+    assert page == _storepage(_front(rows=rows), days=dict(reversed(list(_days().items()))), marking=("osherad", "shufersal"))
 
 
 # ---- every page: the header and the one script (store first, q33) ----
@@ -455,7 +403,7 @@ def _every_page() -> list[tuple[str, str]]:
     pages, a product page and a browse page."""
     covered, pairs = _typical()
     browse = browse_pages({CODE: covered}, DAY, "12:03")
-    return [(_root(), ""), (_front(), "../"), (_method(), ""), (_record(), ""), (_basket_page(), ""),
+    return [(_root(), ""), (_storepage(), "../"), (_method(), ""), (_record(), ""), (_basket_page(), ""),
             (_render(covered, pairs), "../"), (next(iter(browse.values())), "../")]
 
 

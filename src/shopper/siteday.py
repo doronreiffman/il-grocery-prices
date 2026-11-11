@@ -10,8 +10,14 @@ covered registry it carried forward (None for none); then:
 - `columns`, a block per column in `shopper.columns.COLUMNS`' order: its chain and name; its day (a record or not, a
   hole, a promotion hole, its included stores, those with a price file, those counted, those with a promotion file,
   under the floor); its gate, its own, never its chain's (closed in step one: its conditions and which hold, from the
-  scorecard); and its counts (the items table's items, those listed across it, those on a promotion listed across it,
-  the valid deals running today, and its front page rows).
+  scorecard); its counts (the items table's items, those listed across it, those on a promotion listed across it, the
+  valid deals running today); and `front`, every number its store type's front page shows (store first, q33): whether
+  a product could pass the bar yet (`ready`), the headline's N (`deals`, every deal of the front, never only those
+  shown) and M (`checked`), the promotions line's `promotions` and `products`, and the rows the page shows
+  (`shopper.pages.shown_rows`: the first 100, none on a hole or a promotion hole), each with its barcode, today's
+  price, the usual price and the saving as shown, the days its reason rests on (those with a day price), per unit or
+  kilogram, "buy N", and its conditions from the fields (restrictions, programmes' names, minimum spend). No product
+  name or promotion text: the numbers, which the pages show beside the chains' own words.
 - `chains`, a block per chain, P10's state: its promotions error, or None, and its items table's key. P10's sentence
   goes on every section of a chain's columns, so it stays per chain. The error is published by its kind, its file and
   its field, never a value (`public_error`; the task review's finding 2): the kind is "file not read" when the message
@@ -24,13 +30,6 @@ covered registry it carried forward (None for none); then:
   (`shopper.promotions.KNOWN_FIELDS`). Whatever a chain puts in a field or a tag therefore stays out of the public file;
   the whole message, with the value, goes to the run's log and its alert only (the items table's private report and
   `shopper.build.SiteOutcome.promotions_errors`).
-- `counts`, the front page's count line: the promotions listed across a column today (distinct by chain and id), the
-  products they are on, and the products with a front page row (question A: products are barcodes).
-- `front_rows`, the front page's rows in its order, each with every number the row shows: its column and barcode, the
-  deal as shown (to the agora) and exact (the fraction's text), per unit or kilogram, "buy N", the 30-day median listed
-  price as shown, the gap below it as shown (amount and whole percent, `shopper.words.shown_below`; None when the deal
-  as shown is not below), and its conditions from the fields (restrictions, programmes' names, minimum spend). No
-  product name or promotion text: the numbers, which the pages show beside the chains' own words.
 - `forecasts`, the day's frozen forecasts file as the archive holds it: "frozen" (before the day's cutoff by S3's
   time), "late", or "none" when no file is frozen for the day; its SHA-256, S3's time (UTC to the second, as the
   ledger writes it), whether on time, and its rows. Whether this run wrote the file or met it ("same") is the run's,
@@ -45,7 +44,8 @@ files are (`basket.page.render_day`: keys sorted, Hebrew as written).
 Publishing (B12). `publish_site_day` is the basket's own rule, `basket.build.publish_day_file`: no published file, the
 day as built; one whose numbers are the same, the published day, left as it is (not even written again), so the pages
 go on showing it; other numbers, RevisionNeeded naming what differs, unless a one-line reason is given; then the earlier
-run goes to the end of `revisions` with its count line's numbers, and `revised` is the reason and the Israel date. What
+run goes to the end of `revisions` with each store type's headline numbers (`front`: its `deals` and `checked`), and
+`revised` is the reason and the Israel date. What
 B12 compares is the file without the run's own fields and provenance, `basket.record.NOT_COMPARED`, imported, never a
 second list: `site_day` writes the provenance under exactly those names.
 """
@@ -62,17 +62,16 @@ from basket.archive import kind_key
 from basket.build import publish_day_file
 from basket.chains import SLUGS
 from basket.page import render_day
-from basket.record import NOT_COMPARED, comparable, money
+from basket.record import NOT_COMPARED, comparable
 from collector.names import parse_file_name
 from collector.store import published_name
 from shopper.columns import BY_KEY, COLUMNS
-from shopper.deals import to_agora
 from shopper.freeze import Frozen, utc_text
 from shopper.history import ColumnDay
-from shopper.pages import Counts, FrontRow, ordered
+from shopper.pages import StoreFront, shown_rows
 from shopper.promofile import FieldSets
 from shopper.promotions import KNOWN_FIELDS
-from shopper.words import shown_below
+from shopper.verdict import DealRow
 
 __all__ = ["NOT_COMPARED", "Inputs", "comparable", "public_error", "publish_site_day", "site_day", "site_day_path",
            "write_site_day"]
@@ -92,7 +91,7 @@ class Inputs:
     registry: str | None
 
 
-def _column(key: str, today: ColumnDay, report: Mapping, rows: Sequence[FrontRow], scorecard: Mapping) -> dict:
+def _column(key: str, today: ColumnDay, report: Mapping, front: StoreFront, scorecard: Mapping) -> dict:
     """A column's block (the module's docstring)."""
     found = report["columns"][key]
     return {"chain": today.slug, "name": BY_KEY[key].name, "record": today.record, "hole": today.hole,
@@ -100,7 +99,10 @@ def _column(key: str, today: ColumnDay, report: Mapping, rows: Sequence[FrontRow
             "counted": today.counted, "promo_files": today.promo_files, "under_floor": found["under_floor"],
             "gate": scorecard["columns"][key]["gate"],
             "counts": {"items": found["items"], "wide": found["wide"], "on_promotion": found["on_promotion"],
-                       "valid_deals": found["valid_deals"], "front_rows": sum(row.column == key for row in rows)}}
+                       "valid_deals": found["valid_deals"]},
+            "front": {"ready": front.ready, "deals": len(front.rows), "checked": front.checked,
+                      "promotions": front.promotions, "products": front.products,
+                      "rows": [_row(row) for row in shown_rows(front, today)]}}
 
 
 def public_error(slug: str, message: str) -> dict:
@@ -117,15 +119,14 @@ def public_error(slug: str, message: str) -> dict:
             "field": word if word in FIELD_NAMES else None}
 
 
-def _row(row: FrontRow) -> dict:
-    """A front page row's numbers (the module's docstring)."""
-    below = shown_below(row.gap)
-    deal = row.deal
-    return {"column": row.column, "barcode": row.code, "deal": str(to_agora(deal.price)), "deal_exact": str(deal.price),
-            "per": deal.per, "buy": str(deal.buy), "median30": money(row.gap.median30),
-            "below": None if below is None else str(below[0]), "percent": None if below is None else below[1],
-            "restrictions": list(row.restrictions), "programmes": list(row.programmes),
-            "min_spend": None if row.min_spend is None else str(row.min_spend)}
+def _row(row: DealRow) -> dict:
+    """A shown row's numbers (the module's docstring)."""
+    found = row.verdict
+    struct = found.struct
+    return {"barcode": row.code, "today": str(found.today_price), "usual": str(found.usual),
+            "saving": str(found.saving), "days": len(found.priced), "per": struct["per"], "buy": str(struct["buy"]),
+            "restrictions": list(struct["restrictions"]), "programmes": list(struct["programmes"]),
+            "min_spend": None if struct["min_spend"] is None else str(struct["min_spend"])}
 
 
 def _rows_in(body: bytes) -> int:
@@ -146,23 +147,20 @@ def _error(slug: str, message: str | None) -> dict | None:
 
 
 def site_day(day: date, run_id: str, code_sha: str, built_at: datetime, collected_by: str, inputs: Inputs,
-             column_days: Mapping[tuple[str, date], ColumnDay], chains: Mapping[str, Mapping], counts: Counts,
-             rows: Sequence[FrontRow], frozen: Frozen | None, scorecard: Mapping,
+             column_days: Mapping[tuple[str, date], ColumnDay], chains: Mapping[str, Mapping],
+             fronts: Mapping[str, StoreFront], frozen: Frozen | None, scorecard: Mapping,
              scored_days: Sequence[date] = (), out_of_reach: Sequence[date] = ()) -> dict:
     """The site-day file's content (the module's docstring), JSON-ready: `column_days` holds every column's day,
-    `chains` each chain's items report of the day as written (Task 6's `report.json`), by slug; `rows` the front
-    page's; `frozen` the day's forecasts file as the archive holds it, or None; `built_at` aware."""
-    shown = ordered(rows)
+    `chains` each chain's items report of the day as written (Task 6's `report.json`), by slug; `fronts` each store
+    type's front, by column; `frozen` the day's forecasts file as the archive holds it, or None; `built_at` aware."""
     found = {
         "day": day.isoformat(), "run_id": run_id, "code_sha": code_sha, "built_at": utc_text(built_at),
         "collected_by": collected_by, "revisions": [], "revised": None,
         "inputs": {"items_tables": list(inputs.items_tables), "registry": inputs.registry},
-        "columns": {column.key: _column(column.key, column_days[(column.key, day)], chains[column.slug], shown,
-                                        scorecard) for column in COLUMNS},
+        "columns": {column.key: _column(column.key, column_days[(column.key, day)], chains[column.slug],
+                                        fronts[column.key], scorecard) for column in COLUMNS},
         "chains": {slug: {"promotions_error": _error(slug, chains[slug]["promotions_error"]),
                           "items_table": kind_key("items", slug, day, "items.parquet")} for slug in SLUGS},
-        "counts": {"promotions": counts.promotions, "products": counts.products, "below": counts.below},
-        "front_rows": [_row(row) for row in shown],
         "forecasts": _forecasts(frozen),
         "scorecard": scorecard,
         "scored_days": sorted(scored.isoformat() for scored in scored_days),
@@ -177,8 +175,9 @@ def site_day_path(site_dir: Path, day: date) -> Path:
 
 
 def _earlier(previous: dict) -> dict:
-    """What a revision keeps of the earlier run's figures: its count line's numbers."""
-    return {"counts": previous["counts"]}
+    """What a revision keeps of the earlier run's figures: each store type's headline numbers, its deals and checked."""
+    return {"front": {key: {"deals": block["front"]["deals"], "checked": block["front"]["checked"]}
+                      for key, block in previous["columns"].items()}}
 
 
 def publish_site_day(new: dict, site_dir: Path, now: datetime, revise: str | None) -> tuple[dict, bool, bool]:
