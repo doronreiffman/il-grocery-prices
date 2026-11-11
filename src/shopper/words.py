@@ -114,6 +114,14 @@ joined in the order club, card, other ("club members only, and some customers on
 them, as published, in the chain's own span (the product page's). The front page's fold-out names the chains whose
 files mark no restricted promotion that day ("Today Shufersal's files mark no deal this way.", `marked_none`), after
 what the club-only filter hides.
+
+The price chart (store first, q33: docs/store-first.md, "The chart"; the plan's "Words this plan adds", provisional
+until the owner's read). Its labels are a kind and a price as shown, "usually ₪8.90", "lowest ₪6.90", "highest
+₪8.90", "today ₪6.90" (`chart_label`); its key, after the SVG, is CHART_KEY's three marks, the shelf price in
+shopper text; its text alternative, the SVG's title, names the labels in CHART_KINDS' order: "Price chart: usually
+₪8.90, lowest ₪6.90, highest ₪8.90, today ₪6.90." (`chart_summary`), each when the chart draws it (`shopper.chart`:
+the usual price with a verdict of deal or no deal, the lowest and highest day prices of the tracked days when one has
+a price, today's price when it is known), and "Price chart." with none.
 """
 from collections.abc import Mapping, Sequence
 from datetime import date, timedelta
@@ -131,6 +139,7 @@ from shopper.history import READ_DAYS, ColumnDay, Pair, Window, window
 from shopper.measures import (MIN_FRONT_DAYS, RECENT_DAYS, Change, Gap, Run, changes, days_since, gaps, promoted_today,
                               promotion_days_of, promotion_points, runs_of, whole)
 from shopper.promotions import RESTRICTIONS
+from shopper.verdict import Verdict
 
 SITE_NAME = "Deal or No Deal"                       # question J, as the owner changed it on 2026-11-10
 CHAINS_LINE = " · ".join(CHAIN_NAMES[slug] for slug in SLUGS)              # every page's header, under the name
@@ -171,6 +180,9 @@ NOT_LISTED = "not listed today"                              # P9, and a section
 PER = {"unit": "per unit", "kg": "per kilogram"}             # P4: a weighed deal's price is a kilogram's
 ACROSS_HEADING = "Today at each column, in name order"       # P9
 BROWSE_LINK = "Browse by first letter"                       # search.js's own "browse by first letter"
+# The price chart (store first, q33; the module's docstring)
+CHART_KEY = ("shelf price", "on sale", "on sale, price not read")    # the grey line, the green stretches, the foot marks
+CHART_KINDS = ("usually", "lowest", "highest", "today")               # the labels, in the text alternative's order
 
 
 def _day(day: date) -> str:
@@ -243,6 +255,23 @@ def chart_key(column: str) -> tuple[str, str]:
     """The history chart's two marks: the line of listed prices, and the days on a promotion listed across the
     column, in P8's words."""
     return ALWAYS[0], f"a promotion {across(column)}"
+
+
+def chart_label(kind: str, price: Decimal) -> str:
+    """A label on the price chart, one of CHART_KINDS and the price as shown: "usually ₪8.90"."""
+    if kind not in CHART_KINDS:
+        raise ValueError(f"no chart label {kind!r}")
+    return f"{kind} ₪{money(price)}"
+
+
+def chart_summary(found: Verdict) -> str:
+    """The price chart's text alternative: its labels in CHART_KINDS' order, each when the chart draws it (the module's
+    docstring); "Price chart." with none."""
+    priced = [day.price for day in found.priced]
+    prices = {"usually": found.usual, "lowest": min(priced, default=None), "highest": max(priced, default=None),
+              "today": found.today_price}
+    said = [chart_label(kind, prices[kind]) for kind in CHART_KINDS if prices[kind] is not None]
+    return f"Price chart: {', '.join(said)}." if said else "Price chart."
 
 
 def across(column: str) -> str:

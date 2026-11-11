@@ -43,7 +43,7 @@ ROOT = Path(__file__).resolve().parent.parent
 # Seconds a mutation's pytest run may take (q25), and the same tests' run unmutated after a time-out. The slowest target
 # tests are tests/test_golden_90.py: 417 to 552 s run alone on the Mac (docs/shopper-site-plan.md, Task 25 and its
 # speed-ups; 448 s on 2026-11-11) and about 689 s for its two big tests inside a full run beside another copy's (the
-# same doc). The other 86 target sets took at most 57 s each unmutated (tests/test_basket_handler.py, 2026-11-11). CI's
+# same doc). The other 87 target sets took at most 57 s each unmutated (tests/test_basket_handler.py, 2026-11-11). CI's
 # runner is about as fast: the whole suite in 914 s (CI run 42925889780's pytest step) against 750 to 933 s on the Mac
 # (749.7 s in this change's own full run on 2026-11-11; 933 s in the same doc, at Task 25).
 # 1,400 s is twice the loaded run; the clean run has the same limit, so a clean golden run under load reads as passing.
@@ -156,6 +156,10 @@ RULES_FOR_SHOP_HISTORY = ("src/basket/rules.py", ["tests/test_history.py"])
 SHOP_MEASURES = ("src/shopper/measures.py", ["tests/test_measures.py"])
 # The verdict's rules, S0 to S8, and the store types' front list (store first, q33).
 SHOP_VERDICT = ("src/shopper/verdict.py", ["tests/test_verdict.py"])
+# The price chart drawn from a verdict (store first, q33).
+SHOP_CHART = ("src/shopper/chart.py", ["tests/test_chart.py"])
+# The chart's words: chart_summary's own copy of the labels' choice, which tests/test_shop_words.py never tests.
+WORDS_FOR_SHOP_CHART = ("src/shopper/words.py", ["tests/test_chart.py"])
 SHOP_WORDS = ("src/shopper/words.py", ["tests/test_shop_words.py"])
 # Search and browse (Task 17): shopper/search.py with its Python tests, and the one script with its Node tests (Node is a CI
 # tool for this file; a machine without it errs every SHOP_SEARCH_JS mutation to exit 1, a vacuous catch: the first
@@ -3176,6 +3180,27 @@ MUTATIONS = {
     'the bar at 19 days (q33 verdict)': (SHOP_VERDICT, '.days >= MIN_FRONT_DAYS\n', '.days >= MIN_FRONT_DAYS - 1\n'),
     # the golden 90 days: the usual price's higher middle, the golden alone to catch it
     'the usual price the lower middle, in the golden (q33 golden)': (VERDICT_FOR_SHOP_GOLDEN, '    return ordered[len(ordered) // 2]\n', '    return ordered[(len(ordered) - 1) // 2]\n'),
+    # store first (q33): the price chart (shopper.chart)
+    'an untracked day drawn across (q33 chart)': (SHOP_CHART, '        if found and found[-1][-1][0] + timedelta(days=1) == seen:\n', '        if found:\n'),
+    'a sale stretch on a day off sale (q33 chart)': (SHOP_CHART, 'for each in days if each.on_sale and each.price is not None]', 'for each in days if each.price is not None]'),
+    "the unknown-price mark at the listed price's height (q33 chart)": (SHOP_CHART, 'unread = [(each.day, FOOT) for each in days', 'unread = [(each.day, height(each.listed)) for each in days'),
+    "today's dot at the usual price (q33 chart)": (SHOP_CHART, 'cy="{level}"', 'cy="{height(found.usual)}"'),
+    'the dashed line stopping at today (q33 chart)': (SHOP_CHART, 'x2="{edge}"', 'x2="{_x(day, first)}"'),
+    'the span a fixed 90 days (q33 chart)': (SHOP_CHART, '    first = days[0].day\n', '    first = day - timedelta(days=90)\n'),
+    'the lowest label from the listed prices alone (q33 chart)': (SHOP_CHART, '("lowest", min(priced))', '("lowest", min(each.listed for each in days))'),
+    'the highest label the shown maximum (q33 chart)': (SHOP_CHART, '("highest", max(priced))', '("highest", high)'),
+    'the text alternative left out (q33 chart)': (SHOP_CHART, """f'<title id="chart-{found.column}">{text(chart_summary(found))}</title>{"".join(drawn)}</svg>'""", """f'{"".join(drawn)}</svg>'"""),
+    'a run of one price drawn day by day (q33 chart)': (SHOP_CHART, '            if height != level:\n', '            if True:\n'),
+    'the labels drawn over each other (q33 chart)': (SHOP_CHART, 'levels = _placed([height(price) for _, price in labels])', 'levels = [height(price) for _, price in labels]'),
+    'the labels stacked at the top (q33 chart)': (SHOP_CHART, 'levels = _placed([height(price) for _, price in labels])', 'levels = _placed([TOP] * len(labels))'),
+    "today's price left out of the heights (q33 chart)": (SHOP_CHART, '    shown = [*(each.listed for each in days), *priced, *known]\n', '    shown = [*(each.listed for each in days), *priced]\n'),
+    'the days drawn in the order given (q33 chart)': (SHOP_CHART, '    days = sorted(found.days, key=lambda each: each.day)\n', '    days = list(found.days)\n'),
+    'the key naming every mark, drawn or not (q33 chart)': (SHOP_CHART, '*([("sale", CHART_KEY[1])] if sale else []),\n             *([("unread", CHART_KEY[2])] if unread else [])]', '("sale", CHART_KEY[1]), ("unread", CHART_KEY[2])]'),
+    "the key's entries run together (q33 chart)": (SHOP_CHART, 'key = " · ".join(', 'key = " ".join('),
+    "the summary without the usual price (q33 chart)": (WORDS_FOR_SHOP_CHART, 'prices = {"usually": found.usual, "lowest"', 'prices = {"usually": None, "lowest"'),
+    "the summary's lowest from the listed prices alone (q33 chart)": (WORDS_FOR_SHOP_CHART, '"lowest": min(priced, default=None)', '"lowest": min((day.listed for day in found.days), default=None)'),
+    "the summary's highest the listed maximum (q33 chart)": (WORDS_FOR_SHOP_CHART, '"highest": max(priced, default=None)', '"highest": max((day.listed for day in found.days), default=None)'),
+    "the summary without today's price (q33 chart)": (WORDS_FOR_SHOP_CHART, '              "today": found.today_price}\n', '              "today": None}\n'),
 }
 
 
