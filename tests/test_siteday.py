@@ -359,3 +359,22 @@ def test_a_revision_keeps_each_columns_deals_and_checked(tmp_path):
     assert revised and list(kept) == [column.key for column in COLUMNS]
     assert kept[SHELI] == {"deals": 3, "checked": 7} and kept[DEAL] == {"deals": 1, "checked": 1}
     assert kept["ramilevy"] == {"deals": 0, "checked": 0}
+
+
+def test_a_revision_of_a_day_published_before_the_store_pages_keeps_its_counts(tmp_path):
+    """A site-day file the code before store first published has no front block, but the old top-level counts (and
+    front rows). Revising such a day (operations: a build with --revise after RevisionNeeded) keeps that run's counts,
+    as the code then kept them, instead of stopping on the missing front block."""
+    site = tmp_path / "site"
+    old = _site_day()
+    old = old | {"columns": {key: {name: value for name, value in block.items() if name != "front"}
+                             for key, block in old["columns"].items()},
+                 "counts": {"promotions": 3, "products": 2, "below": 1}, "front_rows": []}
+    write_site_day(old, site)
+    with pytest.raises(RevisionNeeded, match="columns, counts, front_rows differ"):
+        publish_site_day(_site_day(), site, LATER, None)
+    shown, unchanged, revised = publish_site_day(_site_day(), site, LATER, "the store pages")
+    assert (unchanged, revised) == (False, True)
+    assert shown["revisions"] == [{"run_id": old["run_id"], "code_sha": old["code_sha"], "built_at": old["built_at"],
+                                   "revised": None, "counts": {"promotions": 3, "products": 2, "below": 1}}]
+    assert "counts" not in shown and all("front" in block for block in shown["columns"].values())

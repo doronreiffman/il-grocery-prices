@@ -35,12 +35,13 @@ product's link with its name and barcode, the deal badge in its shade (`shopper.
 price and the usual price, each a kilogram's for a weighed product; then the fold-out, `<details>` "How a deal passes",
 closed, needing no script, in the design's order: its first line (`shopper.words.FOLD_INTRO`), the rules in shopper
 words (`shopper.words.STORE_RULES`), what the two filters hide, with the store's chain when its files mark no
-restricted promotion today (`shopper.words.marked_none`), the top row's story under "One of today's deals" (its badge,
-reason, last this low and how often, the product page's words), the store type's promotions line
-(`shopper.words.store_promotions_line`), one note carrying the four ALWAYS phrases (`shopper.words.ALWAYS_SENTENCE`),
-so the page carries them on any morning, and the method page. Every link leads up to the site's root. The badges'
-shades are `shopper.product.BADGE_STYLE`, the product pages' own, whose `[hidden]` rule hides only what the script
-hid.
+restricted promotion today (`shopper.words.marked_none`), where the rows' conditions come from and that the fine print
+was not read (CONDITIONS_NOTE: the design's Always, the source of every condition), the top row's story under "One
+of today's deals" (its badge, reason, last this low and how often, the product page's words), the store type's
+promotions line (`shopper.words.store_promotions_line`), one note carrying the four ALWAYS phrases
+(`shopper.words.ALWAYS_SENTENCE`), so the page carries them on any morning, and the method page. Every link leads up to
+the site's root. The badges' shades are `shopper.product.BADGE_STYLE`, the product pages' own, whose `[hidden]` rule
+hides only what the script hid.
 
 The method page: what a column is and the nine, with how each one's stores are chosen and how many the day's store list
 includes; the stores left out by rule, which of them sit in a column's part of the store list, and store 779 (Task 15's
@@ -100,11 +101,11 @@ from shopper.product import BADGE_STYLE, CHAIN_SPAN, badge_class, page_path
 from shopper.record import BIN_OFF, BIN_SHARE, BLOCK, CAL_MAX, DRAWS, GATE_DAYS, LEVEL, MIN_DAYS, SEED, holds_share
 from shopper.shell import SCRIPT_TAG, band, page, text
 from shopper.verdict import DEAL_MIN, FRONT_LIMIT, SHADES, DealRow
-from shopper.words import (ALWAYS_SENTENCE, BROWSE_LINK, ELSEWHERE, FINE_PRINT, FOLD_INTRO, FRONT_SUBTITLE, FRONT_TITLE,
-                           HIRING, METHOD_TITLE, NEVER, NO_VERDICT, NONE_YET, NUMBER_WORDS, RECORD_TITLE, SEARCH_LABEL,
-                           SITE_NAME, STORE_RULES, STORY_HEADING, badge, columns_tested, conditions, credit, date_range,
-                           formats_note, how_often, last_low, marked_none, no_odds_yet, price_text, reason, store_lead,
-                           store_promotions_line, unreadable)
+from shopper.words import (ALWAYS_SENTENCE, BROWSE_LINK, ELSEWHERE, FINE_PRINT, FOLD_INTRO, FROM_FIELDS, FRONT_SUBTITLE,
+                           FRONT_TITLE, HIRING, METHOD_TITLE, NEVER, NO_VERDICT, NONE_YET, NUMBER_WORDS, RECORD_TITLE,
+                           SEARCH_LABEL, SITE_NAME, STORE_RULES, STORY_HEADING, badge, columns_tested, conditions,
+                           credit, date_range, formats_note, how_often, last_low, marked_none, no_odds_yet, price_text,
+                           reason, store_lead, store_promotions_line, unreadable)
 
 BASKET_SECTION = "headline-basket"     # the basket's method on the method page: not its inner heading's id, "basket"
 BASKET_PAGE = "the basket page"        # what the basket's method section speaks of on the method page
@@ -128,6 +129,8 @@ RULES_TITLE = "How a deal passes"
 CLUB_NOTE = (f'"{CLUB_FILTER}" hides the deals the chains\' fields mark for club members, the chain\'s card holders or '
              "some customers only.")                         # question K: every restricted promotion, `data-club`
 SPEND_NOTE = f'"{SPEND_FILTER}" hides the deals whose fields give a minimum spend.'    # `min_spend`, the fields' alone
+# the design's Always: the source of every condition, and that the fine print was not read (step one reads none)
+CONDITIONS_NOTE = f"The conditions beside each deal are {FROM_FIELDS}; {FINE_PRINT}."
 RULES_LINK = f"All the rules: {METHOD_TITLE}"
 # The record page's own words
 FINE_PRINT_UNREAD = "Promotion fine print is not read yet."
@@ -306,7 +309,7 @@ def _rules(front: StoreFront, shown: Sequence[DealRow], marking_none: Sequence[s
                     if part)
     story = _story(shown[0]) if shown else ""
     return (f'<details><summary>{text(RULES_TITLE)}</summary><p>{text(FOLD_INTRO)}</p><ul>{rules}</ul>'
-            f"<p>{text(club)}</p><p>{text(SPEND_NOTE)}</p>{story}"
+            f"<p>{text(club)}</p><p>{text(SPEND_NOTE)}</p><p>{text(CONDITIONS_NOTE)}</p>{story}"
             f"<p>{text(store_promotions_line(front.column, front.promotions, front.products))}</p>"
             f'<p class="note">{text(ALWAYS_SENTENCE)}</p>'
             f'<p><a href="{UP}method.html">{text(RULES_LINK)}</a></p></details>')

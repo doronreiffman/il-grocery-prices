@@ -165,7 +165,7 @@ STORE_RULES = (
     f"{READ_DAYS} days before today: each day, the lower of its listed price and its sale price that day, so sales "
     "are included.",
     f"It is a deal when today's price is at least ₪{DEAL_MIN} below what it usually costs; a promotion for club "
-    "members or for buying 2 counts too, its condition named beside it.",
+    f"members or for buying 2 counts too, its condition {FROM_FIELDS} named beside it.",
     "A day is tracked when the store type's prices and promotions were both read that day; a day not read is left "
     "out, never filled in.",
     f"Deals are listed by the shekels saved, biggest first; the top {FRONT_LIMIT} are shown, and every other product is "

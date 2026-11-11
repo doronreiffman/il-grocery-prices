@@ -498,7 +498,7 @@ def test_the_store_pages_words():
         "What it usually costs is the middle of its day prices over the days tracked in the 90 days before today: each "
         "day, the lower of its listed price and its sale price that day, so sales are included.",
         "It is a deal when today's price is at least ₪1.00 below what it usually costs; a promotion for club members "
-        "or for buying 2 counts too, its condition named beside it.",
+        "or for buying 2 counts too, its condition from the chain's fields named beside it.",
         "A day is tracked when the store type's prices and promotions were both read that day; a day not read is left "
         "out, never filled in.",
         "Deals are listed by the shekels saved, biggest first; the top 100 are shown, and every other product is a "

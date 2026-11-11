@@ -25,9 +25,10 @@ from basket.words import ALWAYS as BASKET_ALWAYS, CHAIN_NAMES, METHOD_INTRO, TIT
 from shopper.columns import BY_KEY, COLUMNS, FLOOR
 import shopper.pages as pages_module
 from shopper.history import READ_DAYS, ColumnDay
-from shopper.pages import (BASKET_PAGE, BASKET_SECTION, CONDITIONS, NO_DEALS, PICK_GROUPS, PICK_TITLE, ROOT_LINE,
-                           SCORED_SO_FAR, ColumnsToday, StoreFront, column_ready, render_basket, render_method,
-                           render_record, render_root, render_store, scorecard_section, shown_rows, store_path)
+from shopper.pages import (BASKET_PAGE, BASKET_SECTION, CONDITIONS, CONDITIONS_NOTE, NO_DEALS, PICK_GROUPS, PICK_TITLE,
+                           ROOT_LINE, SCORED_SO_FAR, ColumnsToday, StoreFront, column_ready, render_basket,
+                           render_method, render_record, render_root, render_store, scorecard_section, shown_rows,
+                           store_path)
 from shopper.product import BADGE_STYLE, CHAIN_SPAN, page_path
 from shopper.search import browse_pages
 from shopper.shell import SCRIPT_TAG
@@ -35,9 +36,10 @@ from shopper.items import HORIZON
 from shopper.record import scorecard
 from shopper.measures import MIN_FRONT_DAYS, RECENT_DAYS
 from shopper.verdict import DEAL_MIN, FRONT_LIMIT, SHADES, DealRow, checked, front_list, on_list, verdict
-from shopper.words import (ALWAYS, ALWAYS_SENTENCE, CHAINS_LINE, CREDIT_START, FOLD_INTRO, FRONT_SUBTITLE, FRONT_TITLE,
-                           HIRING, NEVER, NO_VERDICT, NONE_YET, SEARCH_LABEL, SITE_NAME, STORE_RULES, columns_tested,
-                           date_line, formats_note, headline, how_often, last_low, no_odds_yet, reason, unreadable)
+from shopper.words import (ALWAYS, ALWAYS_SENTENCE, CHAINS_LINE, CREDIT_START, FINE_PRINT, FOLD_INTRO, FROM_FIELDS,
+                           FRONT_SUBTITLE, FRONT_TITLE, HIRING, NEVER, NO_VERDICT, NONE_YET, SEARCH_LABEL, SITE_NAME,
+                           STORE_RULES, columns_tested, date_line, formats_note, headline, how_often, last_low,
+                           no_odds_yet, reason, unreadable)
 from test_build import NOW, LATER, PAST, build_at, day_file, golden_tree
 from test_page import BASKET, EXCLUSIONS, a_public
 from test_product import CODE, DAY, SPAN, _days, _listed, _pair, _render, _struct, _typical, back
@@ -340,8 +342,12 @@ def test_the_filters_need_no_script():
 def test_the_fold_out_says_how_a_deal_passes_for_that_store_type():
     """The fold-out "How a deal passes", closed (no `open`, no script), in the design's order: its first line, the
     design's verbatim; the rules in shopper words; what the two filters hide, with the store's own chain when its files
-    mark no restricted promotion today (never another chain); one deal's story; the store type's promotions line;
-    the note carrying the four ALWAYS phrases; the method page, from the site's root."""
+    mark no restricted promotion today (never another chain); where the rows' conditions come from and that the fine
+    print was not read (the design's Always: the source of every condition); one deal's story; the store type's
+    promotions line; the note carrying the four ALWAYS phrases; the method page, from the site's root."""
+    assert CONDITIONS_NOTE == ("The conditions beside each deal are from the chain's fields; fine print not read: "
+                               "club-only or other conditions may apply.")
+    assert FROM_FIELDS in CONDITIONS_NOTE and FINE_PRINT in CONDITIONS_NOTE
     assert FOLD_INTRO == "Promotions checked against what the product usually costs, sales included, over up to 3 months."
     assert f'"How a deal passes": "{FOLD_INTRO}"' in STORE_FIRST
     page = _storepage(marking=("shufersal", "osherad"))
@@ -354,6 +360,7 @@ def test_the_fold_out_says_how_a_deal_passes_for_that_store_type():
         "<p>\"Hide club-only deals\" hides the deals the chains' fields mark for club members, the chain's card holders "
         "or some customers only. Today Shufersal's files mark no deal this way.</p>"
         "<p>\"Hide deals with a minimum spend\" hides the deals whose fields give a minimum spend.</p>"
+        f"<p>{CONDITIONS_NOTE}</p>"
         f"{story}"
         "<p>Today Shufersal Sheli lists 1,840 promotions carried by at least half its stores, on 6,210 products.</p>"
         f'<p class="note">{ALWAYS_SENTENCE}</p>'

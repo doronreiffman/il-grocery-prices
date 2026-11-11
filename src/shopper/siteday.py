@@ -44,8 +44,10 @@ files are (`basket.page.render_day`: keys sorted, Hebrew as written).
 Publishing (B12). `publish_site_day` is the basket's own rule, `basket.build.publish_day_file`: no published file, the
 day as built; one whose numbers are the same, the published day, left as it is (not even written again), so the pages
 go on showing it; other numbers, RevisionNeeded naming what differs, unless a one-line reason is given; then the earlier
-run goes to the end of `revisions` with each store type's headline numbers (`front`: its `deals` and `checked`), and
-`revised` is the reason and the Israel date. What
+run goes to the end of `revisions` with each store type's headline numbers (`front`: its `deals` and `checked`); a
+file published before store first, with its top-level `counts` and no front block, keeps those `counts` there, so the
+morning of the deploy, published by the old code, can still be revised; and `revised` is the reason and the Israel
+date. What
 B12 compares is the file without the run's own fields and provenance, `basket.record.NOT_COMPARED`, imported, never a
 second list: `site_day` writes the provenance under exactly those names.
 """
@@ -175,7 +177,11 @@ def site_day_path(site_dir: Path, day: date) -> Path:
 
 
 def _earlier(previous: dict) -> dict:
-    """What a revision keeps of the earlier run's figures: each store type's headline numbers, its deals and checked."""
+    """What a revision keeps of the earlier run's figures: each store type's headline numbers, its deals and checked;
+    of a file the code before store first published (its top-level `counts`, no front block), those counts, as that
+    code kept them (the module's docstring)."""
+    if "counts" in previous:
+        return {"counts": previous["counts"]}
     return {"front": {key: {"deals": block["front"]["deals"], "checked": block["front"]["checked"]}
                       for key, block in previous["columns"].items()}}
 

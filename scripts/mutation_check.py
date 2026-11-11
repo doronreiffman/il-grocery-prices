@@ -185,6 +185,8 @@ BUILD_FOR_SHOP_PAGES = ("src/basket/build.py", ["tests/test_shop_pages.py"])
 SHELL_FOR_SHOP_PAGES = ("src/shopper/shell.py", ["tests/test_shop_pages.py"])
 # The record page states its shares as whole percents through shopper.measures.whole, whose break its tests must catch.
 MEASURES_FOR_SHOP_PAGES = ("src/shopper/measures.py", ["tests/test_shop_pages.py"])
+# A store page's price cells say a weighed product's prices a kilogram's through shopper.words.price_text, tested there.
+SHOP_WORDS_FOR_SHOP_PAGES = ("src/shopper/words.py", ["tests/test_shop_pages.py"])
 # The build's promotions line reads a product's promotions running today through shopper.product.running_today.
 PRODUCT_FOR_SHOP_BUILD = ("src/shopper/product.py", ["tests/test_shop_build.py"])
 RECORD_FOR_SHOP_PAGES = ("src/shopper/record.py", ["tests/test_shop_pages.py"])
@@ -2992,8 +2994,19 @@ MUTATIONS = {
     'checked counted below the bar (q33 front)': (SHOP_BUILD, '            self.checked[key] += checked(judged, pair, self.column_days, self.day)\n', '            self.checked[key] += judged.counting\n'),
     'a no deal counted in N (q33 front)': (SHOP_BUILD, '            if on_list(judged, pair, self.column_days, self.day):\n', '            if checked(judged, pair, self.column_days, self.day):\n'),
     "a store type's promotion counted once a product (q33 front)": (SHOP_BUILD, '{struct["promotion_id"] for struct in listed}', '{(pair.code, struct["promotion_id"]) for struct in listed}'),
+    'the fold-out without where the conditions come from (q33 front)': (SHOP_PAGES, '<p>{text(SPEND_NOTE)}</p><p>{text(CONDITIONS_NOTE)}</p>{story}', '<p>{text(SPEND_NOTE)}</p>{story}'),
+    "the fold-out not saying the conditions are the chain's fields (q33 front)": (SHOP_PAGES, 'CONDITIONS_NOTE = f"The conditions beside each deal are {FROM_FIELDS}; {FINE_PRINT}."', 'CONDITIONS_NOTE = f"The conditions beside each deal are {FINE_PRINT}."'),
+    'the fold-out not saying the fine print was not read (q33 front)': (SHOP_PAGES, 'CONDITIONS_NOTE = f"The conditions beside each deal are {FROM_FIELDS}; {FINE_PRINT}."', 'CONDITIONS_NOTE = f"The conditions beside each deal are {FROM_FIELDS}."'),
+    "the rules' condition without its source (q33 front)": (SHOP_WORDS, 'its condition {FROM_FIELDS} named beside it', 'its condition named beside it'),
+    'a row without its condition (q33 front)': (SHOP_PAGES, '    said = f"<small>{text(\'; \'.join(named))}</small>" if named else ""\n', '    said = ""\n'),
+    "a weighed row's prices without a kilogram (q33 front)": (SHOP_WORDS_FOR_SHOP_PAGES, '    return f"₪{price}{_per(found)}"\n', '    return f"₪{price}"\n'),
+    "the store pages without the badges' shades (q33 front)": (SHOP_PAGES, 'STORE_STYLE = BADGE_STYLE + PAGE_STYLE + """', 'STORE_STYLE = PAGE_STYLE + """'),
+    'the story without its reason (q33 front)': (SHOP_PAGES, 'for line in (reason(found), last_low(found), how_often(found)) if line)', 'for line in (last_low(found), how_often(found)) if line)'),
+    'the story without last this low (q33 front)': (SHOP_PAGES, 'for line in (reason(found), last_low(found), how_often(found)) if line)', 'for line in (reason(found), how_often(found)) if line)'),
+    'the story without how often (q33 front)': (SHOP_PAGES, 'for line in (reason(found), last_low(found), how_often(found)) if line)', 'for line in (reason(found), last_low(found)) if line)'),
     "the site-day rows not the page's (q33 siteday)": (SHOP_SITEDAY, '"rows": [_row(row) for row in shown_rows(front, today)]}}', '"rows": [_row(row) for row in front.rows]}}'),
     "a revision dropping a column's numbers (q33 siteday)": (SHOP_SITEDAY, 'for key, block in previous["columns"].items()}}', 'for key, block in previous["columns"].items() if block["front"]["deals"]}}'),
+    'a revision of a day published before the store pages keeping nothing (q33 siteday)': (SHOP_SITEDAY, '        return {"counts": previous["counts"]}\n', '        return {}\n'),
     'a deal from ₪0.99, in the golden (q33 golden)': (VERDICT_FOR_SHOP_GOLDEN, 'call = "deal" if saving >= DEAL_MIN else "no_deal"', 'call = "deal" if saving >= DEAL_MIN - Decimal("0.01") else "no_deal"'),
     "the method page's ₪1.00 not the code's (q33 method)": (SHOP_PAGES, 'f"is ₪{DEAL_MIN} or more, worked', 'f"is ₪1.00 or more, worked'),
     'the lower middle stated (q33 method)': (SHOP_PAGES, 'the higher of "\n         "the two middle values', 'the lower of "\n         "the two middle values'),
