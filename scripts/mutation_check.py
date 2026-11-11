@@ -14,11 +14,13 @@ leaves the module importable. Exit code 1 if any mutation goes unnoticed or errs
 break is not found exactly once (the script is out of date). Exit code 2, before anything runs, if
 two entries share a name: the dict literal would keep only the last, and the first would never run.
 
-Each pytest run has a time limit (TIME_LIMIT, q25). A run still going at the limit is killed and counts
-as caught, printed "CAUGHT <name> (timed out after N s)": a break that makes a test hang is a break the
-tests noticed, and without the limit it would freeze the whole check. subprocess.run kills pytest
-itself, not a process a test started (node, sh, the golden run's second process): those end by their
-own tests' limits or on their own.
+Each pytest run has a time limit (TIME_LIMIT, q25) and a session of its own. A run still going at the
+limit is killed with everything it started (a test's own process: node, sh, the golden test's second
+run), and so is the run in hand when the check is interrupted (in a session of its own, pytest no
+longer gets the terminal's Ctrl-C). A time-out counts as caught (a break that makes a test hang is a
+break the tests noticed) only when the same tests, run once unmutated (once for each set of target
+tests), pass within CLEAN_LIMIT: printed "CAUGHT <name> (timed out after N s; its tests pass
+unmutated)" and named in the closing line. Otherwise the time-out proves nothing and is an ERROR.
 
 Copied from flights-archive's harness, with two changes: only exit 1 counts as caught (above), and
 the test runs write no bytecode. Python trusts a cached .pyc whose source has the same size and the
@@ -27,6 +29,7 @@ otherwise leave the broken code cached for the next run.
 """
 import ast
 import os
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -34,11 +37,15 @@ from pathlib import Path
 from pytest import ExitCode
 
 ROOT = Path(__file__).resolve().parent.parent
-# Seconds each pytest run may take (q25). The slowest normal run of any mutation's target tests, unmutated and with this
-# script's own command, is tests/test_golden_90.py: 448 s on the Mac on 2026-11-11 (the other 86 target sets took at most
-# 57 s, tests/test_basket_handler.py). The limit is three times that, room for a slower CI runner; a run that hangs costs
-# the check this long.
-TIME_LIMIT = 1350
+# Seconds a mutation's pytest run may take (q25), and the same tests' run unmutated after a time-out. The slowest target
+# tests are tests/test_golden_90.py: 417 to 552 s run alone on the Mac (docs/shopper-site-plan.md, Task 25 and its
+# speed-ups; 448 s on 2026-11-11) and about 689 s for its two big tests inside a full run beside another copy's (the
+# same doc). The other 84 target sets took at most 57 s each unmutated (tests/test_basket_handler.py, 2026-11-11). CI's
+# runner is about as fast: the whole suite in 914 s (CI run 42925889780's pytest step) against 750 to 933 s on the Mac.
+# 1,400 s is twice the loaded run; the clean run has the same limit, so a clean golden run under load reads as passing.
+# A run that hangs costs the check this long, and its tests' clean run after it.
+TIME_LIMIT = 1400
+CLEAN_LIMIT = TIME_LIMIT
 NAMES = ("src/collector/names.py", ["tests/test_names.py"])
 PAYLOAD = ("src/collector/payload.py", ["tests/test_payload.py"])
 STORELIST = ("src/collector/storelist.py", ["tests/test_storelist.py"])
@@ -3006,17 +3013,31 @@ MUTATIONS = {
     "layer's old versions retained": (BASKET_TEMPLATE, "RetentionPolicy: Delete", "RetentionPolicy: Retain"),
     # the mutation check itself (each text to break spans a line end, so it occurs once: here it is written \n)
     "mutation check counts any non-zero exit as caught": (MUTATION_CHECK, '    if returncode == ExitCode.TESTS_FAILED:\n        return "CAUGHT"', '    if returncode != ExitCode.OK:\n        return "CAUGHT"'),
-    "mutation check passes with errors": (MUTATION_CHECK, '(found or " Every mutation was caught."))\n    return 1 if missed or errors else 0', '(found or " Every mutation was caught."))\n    return 1 if missed else 0'),
+    "mutation check passes with errors": (MUTATION_CHECK, '    return 1 if missed or errors else 0\n', '    return 1 if missed else 0\n'),
     "mutation check runs with duplicate names": (MUTATION_CHECK, '    if duplicates:\n        print(f"DUPLICATE', '    if False:\n        print(f"DUPLICATE'),
     "mutation check shows the file, not a collection error's cause": (MUTATION_CHECK, '    exception = [line for line in lines if line.startswith("E ")]\n', '    exception = []\n'),
     "mutation check shows pytest's last line, not a missing test's id": (MUTATION_CHECK, '    error = [line for line in lines if line.startswith("ERROR")]\n', '    error = []\n'),
     "mutation check crashes on a signal's exit": (MUTATION_CHECK, '    try:\n        return ExitCode(returncode).name\n    except ValueError:', '    if True:\n        return ExitCode(returncode).name\n    if False:'),
-    "mutation check runs pytest with no time limit": (MUTATION_CHECK, 'cwd=ROOT, env=env, timeout=limit)\n', 'cwd=ROOT, env=env)\n'),
-    "mutation check runs pytest with no time limit unless given one": (MUTATION_CHECK, 'def main(wanted: list[str], limit: float = TIME_LIMIT) -> int:\n', 'def main(wanted: list[str], limit: float | None = None) -> int:\n'),
-    "mutation check crashes on a timed-out run": (MUTATION_CHECK, '            except subprocess.TimeoutExpired:  # subprocess.run has killed pytest and waited for it\n', '            except ZeroDivisionError:\n'),
-    "mutation check counts a timed-out run as missed": (MUTATION_CHECK, '                print(f"CAUGHT {name} (timed out after {limit:g} s)")\n                continue', '                print(f"MISSED {name}")\n                missed.append(name)\n                continue'),
-    "mutation check counts a timed-out run as an error": (MUTATION_CHECK, '                print(f"CAUGHT {name} (timed out after {limit:g} s)")\n                continue', '                print(f"ERROR  {name}: timed out")\n                errors.append(name)\n                continue'),
-    "mutation check does not say a run timed out": (MUTATION_CHECK, '                print(f"CAUGHT {name} (timed out after {limit:g} s)")\n', '                print(f"CAUGHT {name}")\n'),
+    "mutation check runs pytest with no time limit": (MUTATION_CHECK, '                run = run_limited(_pytest(tests), limit, cwd=ROOT, env=env)\n', '                run = run_limited(_pytest(tests), None, cwd=ROOT, env=env)\n'),
+    "mutation check runs pytest with no time limit unless given one": (MUTATION_CHECK, 'def main(wanted: list[str], limit: float = TIME_LIMIT, clean_limit: float = CLEAN_LIMIT) -> int:\n', 'def main(wanted: list[str], limit: float | None = None, clean_limit: float = CLEAN_LIMIT) -> int:\n'),
+    "mutation check kills only pytest, not what it started": (MUTATION_CHECK, '        os.killpg(pid, signal.SIGKILL)\n', '        os.kill(pid, signal.SIGKILL)\n'),
+    "mutation check runs pytest in its own session": (MUTATION_CHECK, '                          start_new_session=True,\n', '                          start_new_session=False,\n'),
+    "mutation check leaves the run going on an interrupt": (MUTATION_CHECK, '        except BaseException:\n', '        except Exception:\n'),
+    "mutation check counts a run that ended in time but left a child as a time-out": (MUTATION_CHECK, '            code = process.poll()\n', '            code = None\n'),
+    "mutation check crashes on a group with nothing left to kill": (MUTATION_CHECK, '    except (ProcessLookupError, PermissionError):\n', '    except ChildProcessError:\n'),
+    "mutation check reads the pipes only after the run ends": (MUTATION_CHECK, '            stdout, stderr = process.communicate(timeout=limit)\n', '            process.wait(timeout=limit)\n            stdout, stderr = process.stdout.read(), process.stderr.read()\n'),
+    "mutation check counts a time-out as caught without the clean run": (MUTATION_CHECK, '                doubt = _doubt(clean_runs[key], clean_limit)\n', '                doubt = None\n'),
+    "mutation check takes a clean run past its limit as passing": (MUTATION_CHECK, '        return f"its tests ran past {clean_limit:g} s unmutated too, so the time-out proves nothing"\n', '        return None\n'),
+    "mutation check takes a clean run that fails as passing": (MUTATION_CHECK, '    if clean.returncode != ExitCode.OK:\n', '    if False:\n'),
+    "mutation check gives the clean run the mutation's limit": (MUTATION_CHECK, '                    clean_runs[key] = run_limited(_pytest(tests), clean_limit, cwd=ROOT, env=env)\n', '                    clean_runs[key] = run_limited(_pytest(tests), limit, cwd=ROOT, env=env)\n'),
+    "mutation check gives the clean run no limit unless given one": (MUTATION_CHECK, 'clean_limit: float = CLEAN_LIMIT) -> int:\n', 'clean_limit: float | None = None) -> int:\n'),
+    "mutation check makes the clean run over the break": (MUTATION_CHECK, '                if key not in clean_runs:\n                    clean_runs', '                if key not in clean_runs:\n                    path.write_text(original.replace(old, new))\n                    clean_runs'),
+    "mutation check makes a clean run at every time-out": (MUTATION_CHECK, '                if key not in clean_runs:\n', '                if True:\n'),
+    "mutation check shares one clean run across target sets": (MUTATION_CHECK, '                key = tuple(tests)\n', '                key = ()\n'),
+    "mutation check counts a timed-out run as missed": (MUTATION_CHECK, '                    timed_out.append(name)\n', '                    missed.append(name)\n'),
+    "mutation check counts a timed-out run as an error": (MUTATION_CHECK, '                    timed_out.append(name)\n', '                    errors.append(name)\n'),
+    "mutation check does not say a run timed out": (MUTATION_CHECK, '                    print(f"CAUGHT {name} (timed out after {limit:g} s; its tests pass unmutated)")\n', '                    print(f"CAUGHT {name}")\n'),
+    "mutation check leaves the time-outs out of its closing line": (MUTATION_CHECK, '          + (f" Timed out, counted as caught: {timed_out}" if timed_out else ""))\n', '          + "")\n'),
     # The final review's fix wave (Task 28): each break undoes one of its fixes.
     "the product pages staged outside the run's work folder (q22 site run)": (SHOP_BUILD_FOR_BASKET_HANDLER, 'tempfile.TemporaryDirectory(prefix="shopper-pages-", dir=site_dir.parent)', 'tempfile.TemporaryDirectory(prefix="shopper-pages-")'),
     "basket /tmp back at 2 GB (q22 template)": (TMP_SIZE, "{Size: 10240}", "{Size: 2048}"),
@@ -3117,9 +3138,58 @@ def _telling_line(run: subprocess.CompletedProcess) -> str:
     return (exception or error or lines or ["(no output)"])[-1]
 
 
-def main(wanted: list[str], limit: float = TIME_LIMIT) -> int:
-    """Run every mutation, or with `wanted` only those whose name contains one of its strings, each pytest run stopped
-    after `limit` seconds."""
+def _kill_group(pid: int) -> None:
+    """Kill every process in the session run_limited started for `pid`. A group with nothing left to kill is no
+    error: only its exited, unreaped first process (macOS answers PermissionError), or nothing at all."""
+    try:
+        os.killpg(pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
+def run_limited(args: list[str], limit: float | None, **popen) -> subprocess.CompletedProcess | None:
+    """Run `args` to its end and return its exit code and output; None when it runs past `limit` seconds. It runs in a
+    session of its own, so that past the limit, or on a Ctrl-C (which a session of its own does not get from the
+    terminal), everything it started (a test's own process) is killed with it."""
+    with subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                          start_new_session=True,
+                          **popen) as process:
+        try:
+            stdout, stderr = process.communicate(timeout=limit)
+        except subprocess.TimeoutExpired:
+            # The run may have ended in time, a process it started still holding the pipes: its exit code stands.
+            code = process.poll()
+            _kill_group(process.pid)
+            if code is None:
+                process.wait()  # not communicate(): a process that escaped the kill could hold the pipes open
+                return None
+            stdout, stderr = process.communicate()  # the rest of its output, the group that held the pipes killed
+            return subprocess.CompletedProcess(args, code, stdout, stderr)
+        except BaseException:
+            _kill_group(process.pid)
+            process.wait()
+            raise
+    return subprocess.CompletedProcess(args, process.returncode, stdout, stderr)
+
+
+def _pytest(tests: list[str]) -> list[str]:
+    return [sys.executable, "-m", "pytest", *tests, "-q", "-x", "-p", "no:cacheprovider"]
+
+
+def _doubt(clean: subprocess.CompletedProcess | None, clean_limit: float) -> str | None:
+    """Why a time-out proves nothing, from the same tests' run unmutated (`clean`); None when they pass within
+    `clean_limit`, so the break made them hang."""
+    if clean is None:
+        return f"its tests ran past {clean_limit:g} s unmutated too, so the time-out proves nothing"
+    if clean.returncode != ExitCode.OK:
+        return (f"its tests fail unmutated too (pytest exited {clean.returncode}, {_exit_name(clean.returncode)}): "
+                f"{_telling_line(clean)}")
+    return None
+
+
+def main(wanted: list[str], limit: float = TIME_LIMIT, clean_limit: float = CLEAN_LIMIT) -> int:
+    """Run every mutation, or with `wanted` only those whose name contains one of its strings. Each pytest run is
+    stopped after `limit` seconds; after a time-out, the same tests run once unmutated, stopped after `clean_limit`."""
     duplicates = duplicate_names(Path(__file__).read_text())
     if duplicates:
         print(f"DUPLICATE mutation names, each given to more than one entry (only the last would run): {duplicates}")
@@ -3132,6 +3202,8 @@ def main(wanted: list[str], limit: float = TIME_LIMIT) -> int:
     originals = {}
     missed = []
     errors = []
+    timed_out = []
+    clean_runs = {}  # target tests: their run unmutated, made at the first time-out on them
     try:
         for name, ((rel, tests), old, new) in chosen.items():
             path = ROOT / rel
@@ -3142,14 +3214,20 @@ def main(wanted: list[str], limit: float = TIME_LIMIT) -> int:
                 continue
             path.write_text(original.replace(old, new))
             try:
-                run = subprocess.run([sys.executable, "-m", "pytest", *tests, "-q", "-x", "-p", "no:cacheprovider"],
-                                     capture_output=True, text=True, cwd=ROOT, env=env, timeout=limit)
-            except subprocess.TimeoutExpired:  # subprocess.run has killed pytest and waited for it
-                run = None
+                run = run_limited(_pytest(tests), limit, cwd=ROOT, env=env)
             finally:
                 path.write_text(original)
             if run is None:
-                print(f"CAUGHT {name} (timed out after {limit:g} s)")
+                key = tuple(tests)
+                if key not in clean_runs:
+                    clean_runs[key] = run_limited(_pytest(tests), clean_limit, cwd=ROOT, env=env)
+                doubt = _doubt(clean_runs[key], clean_limit)
+                if doubt:
+                    print(f"ERROR  {name}: timed out after {limit:g} s, but {doubt}")
+                    errors.append(name)
+                else:
+                    print(f"CAUGHT {name} (timed out after {limit:g} s; its tests pass unmutated)")
+                    timed_out.append(name)
                 continue
             outcome = verdict(run.returncode)
             if outcome == "ERROR":
@@ -3164,7 +3242,8 @@ def main(wanted: list[str], limit: float = TIME_LIMIT) -> int:
         for path, original in originals.items():
             path.write_text(original)
     found = (f" Missed: {missed}" if missed else "") + (f" Errors: {errors}" if errors else "")
-    print("Files restored." + (found or " Every mutation was caught."))
+    print("Files restored." + (found or " Every mutation was caught.")
+          + (f" Timed out, counted as caught: {timed_out}" if timed_out else ""))
     return 1 if missed or errors else 0
 
 
