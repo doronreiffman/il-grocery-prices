@@ -56,12 +56,6 @@ PROMO_REPLAY = ("src/collector/run.py", ["tests/test_replay.py::test_a_day_of_sh
 # out by itself.
 PROMO_REPUBLISHED = ("src/collector/sources/shufersal.py",
                      ["tests/test_replay.py::test_a_store_republished_at_the_resume_point_still_completes_the_pass"])
-# Two q24 breaks that pause where the rule has no pause. The older tests in test_shufersal.py build their sources with
-# the default sleep, time.sleep, so under these breaks they would wait for real (10 s a page) before -x reached the q24
-# tests near the end of the file: each names the one test that must catch it by itself.
-_S = "tests/test_shufersal.py::"
-PAUSE_ON_FIRST_TRY = ("src/collector/sources/shufersal.py", [_S + "test_a_page_read_on_its_first_try_records_one_try"])
-BLOCK_TRIED_AGAIN = ("src/collector/sources/shufersal.py", [_S + "test_a_block_on_the_second_try_stops_the_listing"])
 NAME_CHECK = ("src/collector/sources/__init__.py", ["tests/test_chains.py"])
 NCR = ("src/collector/sources/ncr.py", ["tests/test_ncr.py"])
 # The NCR directory read to its last answer before the first row (q26, ruling R40): the one test that takes a row from a
@@ -544,7 +538,7 @@ MUTATIONS = {
     "a timed-out page not asked again, the 2026-11-06 replay alone (q24 replay)": (NOV_6_REPLAY, "PAGE_TRIES = 3  #", "PAGE_TRIES = 1  #"),
     "a fourth try (q24 tries)": (SHUFERSAL, "PAGE_TRIES = 3  #", "PAGE_TRIES = 4  #"),
     "no pause (q24 tries)": (SHUFERSAL, "            sleep(RETRY_PAUSE)\n", "            pass\n"),
-    "a pause before the first try (q24 tries)": (PAUSE_ON_FIRST_TRY, "        if attempt > 1:\n            sleep(RETRY_PAUSE)\n", "        sleep(RETRY_PAUSE)\n"),
+    "a pause before the first try (q24 tries)": (SHUFERSAL, "        if attempt > 1:\n            sleep(RETRY_PAUSE)\n", "        sleep(RETRY_PAUSE)\n"),
     "a pause of another length (q24 tries)": (SHUFERSAL, "RETRY_PAUSE = 10.0", "RETRY_PAUSE = 1.0"),
     "no time check before the pause (q24 tries)": (SHUFERSAL, "            stopped = attempt < PAGE_TRIES and short_of_time()", "            stopped = False"),
     "a time check after the last try (q24 tries)": (SHUFERSAL, "stopped = attempt < PAGE_TRIES and short_of_time()", "stopped = short_of_time()"),
@@ -554,7 +548,7 @@ MUTATIONS = {
                                                    "        if short_of_time():\n            raise OutOfTime(stop)\n        if attempt > 1:\n            sleep(RETRY_PAUSE)\n"),
     "the time not checked after the pause (q24 tries)": (SHUFERSAL, "        if short_of_time():\n            raise OutOfTime(stop)\n        started", "        if attempt == 1 and short_of_time():\n            raise OutOfTime(stop)\n        started"),
     "any HttpError asked again (q24 tries)": (SHUFERSAL, "        except HttpTimeout as timeout:", "        except HttpError as timeout:"),
-    "a block asked again (q24 tries)": (BLOCK_TRIED_AGAIN, "        except HttpTimeout as timeout:", "        except (HttpTimeout, Blocked) as timeout:"),
+    "a block asked again (q24 tries)": (SHUFERSAL, "        except HttpTimeout as timeout:", "        except (HttpTimeout, Blocked) as timeout:"),
     "tries not recorded (q24 tries)": (SHUFERSAL, "_in_order(names, self.before, page), tries)", "_in_order(names, self.before, page))"),
     "the failed tries' seconds kept (q24 tries)": (SHUFERSAL, "        started = timer()\n", "        started = timer() if attempt == 1 else started\n"),
     "the error not naming the page and the tries (q24 tries)": (SHUFERSAL, '    raise HttpError(f"{kind} page {page} timed out on {PAGE_TRIES} tries: {last}") from last', "    raise last"),
