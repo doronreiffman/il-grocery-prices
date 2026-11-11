@@ -43,7 +43,7 @@ ROOT = Path(__file__).resolve().parent.parent
 # Seconds a mutation's pytest run may take (q25), and the same tests' run unmutated after a time-out. The slowest target
 # tests are tests/test_golden_90.py: 417 to 552 s run alone on the Mac (docs/shopper-site-plan.md, Task 25 and its
 # speed-ups; 448 s on 2026-11-11) and about 689 s for its two big tests inside a full run beside another copy's (the
-# same doc). The other 85 target sets took at most 57 s each unmutated (tests/test_basket_handler.py, 2026-11-11). CI's
+# same doc). The other 86 target sets took at most 57 s each unmutated (tests/test_basket_handler.py, 2026-11-11). CI's
 # runner is about as fast: the whole suite in 914 s (CI run 42925889780's pytest step) against 750 to 933 s on the Mac
 # (749.7 s in this change's own full run on 2026-11-11; 933 s in the same doc, at Task 25).
 # 1,400 s is twice the loaded run; the clean run has the same limit, so a clean golden run under load reads as passing.
@@ -154,6 +154,8 @@ FREEZE_FOR_SHOP_SCORE = ("src/shopper/freeze.py", ["tests/test_score.py"])
 # The covered registry takes a product's size by B7's tie rule over its columns (basket.rules.most_common_size).
 RULES_FOR_SHOP_HISTORY = ("src/basket/rules.py", ["tests/test_history.py"])
 SHOP_MEASURES = ("src/shopper/measures.py", ["tests/test_measures.py"])
+# The verdict's rules, S0 to S8, and the store types' front list (store first, q33).
+SHOP_VERDICT = ("src/shopper/verdict.py", ["tests/test_verdict.py"])
 SHOP_WORDS = ("src/shopper/words.py", ["tests/test_shop_words.py"])
 # Search and browse (Task 17): shopper/search.py with its Python tests, and the one script with its Node tests (Node is a CI
 # tool for this file; a machine without it errs every SHOP_SEARCH_JS mutation to exit 1, a vacuous catch: the first
@@ -204,6 +206,9 @@ FORECAST_FOR_SHOP_GOLDEN = ("src/shopper/forecast.py", ["tests/test_golden_90.py
 MEASURES_FOR_SHOP_GOLDEN = ("src/shopper/measures.py", ["tests/test_golden_90.py"])
 PROMOS_FOR_SHOP_GOLDEN = ("src/shopper/promos.py", ["tests/test_golden_90.py"])
 ITEMS_FOR_SHOP_GOLDEN = ("src/shopper/items.py", ["tests/test_golden_90.py"])
+# The verdicts worked by hand in the golden 90 days (store first, q33): the golden must catch the usual price's higher
+# middle lost by itself.
+VERDICT_FOR_SHOP_GOLDEN = ("src/shopper/verdict.py", ["tests/test_golden_90.py"])
 # The uploads (Task 22): publish.sh with its tests, beside sync.sh's (SYNC_SCRIPT, Task 2's).
 PUBLISH_SCRIPT = ("scripts/publish.sh", ["tests/test_scripts.py"])
 # The basket's reproduce words name the page the day file's numbers are on (Task 18, fix round 1).
@@ -3113,6 +3118,31 @@ MUTATIONS = {
     'the subtitle\'s "up to" dropped (front words)': (SHOP_WORDS, 'checked against up to {READ_DAYS // 30}', 'checked against {READ_DAYS // 30}'),
     'the subtitle left off the front page (front words)': (SHOP_PAGES, 'f\'<p class="sub">{text(FRONT_SUBTITLE)}</p>\',', ''),
     # (the front page's end)
+    # store first (q33): the verdict's rules, S0 to S8, and the front list (shopper.verdict)
+    'a promotion hole counted as tracked (q33 verdict)': (SHOP_VERDICT, 'promotion_points(pair, column_days, day, READ_DAYS)', 'promotion_points(pair, {key: found.__class__(**{**vars(found), "promo_hole": False}) for key, found in column_days.items()}, day, READ_DAYS)'),
+    'a price hole counted as tracked (q33 verdict)': (SHOP_VERDICT, 'promotion_points(pair, column_days, day, READ_DAYS)', 'promotion_points(pair, {key: found.__class__(**{**vars(found), "hole": False}) for key, found in column_days.items()}, day, READ_DAYS)'),
+    'the day price the listed price alone (q33 verdict)': (SHOP_VERDICT, '        return min(listed, *deals)\n', '        return listed\n'),
+    'a not-wide deal in the day price (q33 verdict)': (SHOP_VERDICT, 'counts_today(found, day)', 'counts_today({**found, "wide": True}, day)'),
+    'an invalid deal in the day price (q33 verdict)': (SHOP_VERDICT, 'counts_today(found, day)', 'counts_today({**found, "valid": True}, day)'),
+    'a sale day of unknown price given the listed price (q33 verdict)': (SHOP_VERDICT, '    return None if point.on_promotion else listed\n', '    return listed\n'),
+    'the usual price the lower middle (q33 verdict)': (SHOP_VERDICT, '    return ordered[len(ordered) // 2]\n', '    return ordered[(len(ordered) - 1) // 2]\n'),
+    'the usual price the mean of the middle two (q33 verdict)': (SHOP_VERDICT, '    return ordered[len(ordered) // 2]\n', '    return ordered[len(ordered) // 2] if len(ordered) % 2 else (ordered[len(ordered) // 2 - 1] + ordered[len(ordered) // 2]) / 2\n'),
+    '₪1.00 not a deal (q33 verdict)': (SHOP_VERDICT, 'call = "deal" if saving >= DEAL_MIN else "no_deal"', 'call = "deal" if saving > DEAL_MIN else "no_deal"'),
+    'the minimum compared on exact prices (q33 verdict)': (SHOP_VERDICT, 'call = "deal" if saving >= DEAL_MIN else "no_deal"', 'call = "deal" if usual - Decimal(price.numerator) / price.denominator >= DEAL_MIN else "no_deal"'),
+    'the shade bands an agora off (q33 verdict)': (SHOP_VERDICT, 'SHADES = ((Decimal("5.00"), "deal-3"), (Decimal("3.00"), "deal-2"),', 'SHADES = ((Decimal("5.01"), "deal-3"), (Decimal("3.01"), "deal-2"),'),
+    'a hole today judged (q33 verdict)': (SHOP_VERDICT, '    if not today.record:\n', '    if not today.present:\n'),
+    'a promotion hole today judged (q33 verdict)': (SHOP_VERDICT, '    if today.promo_hole:\n', '    if False:\n'),
+    'a not-wide promotion judged (q33 verdict)': (SHOP_VERDICT, 'counts_today(struct, day)', 'counts_today({**struct, "wide": True}, day)'),
+    'an unreadable price judged (q33 verdict)': (SHOP_VERDICT, 'counts_today(struct, day)', 'counts_today({**struct, "valid": True}, day)'),
+    'unknown days at exactly half called most days (q33 verdict)': (SHOP_VERDICT, 'if 2 * unknown > len(days):', 'if 2 * unknown >= len(days):'),
+    'a zero link counted as a sale (q33 verdict)': (SHOP_VERDICT, '    return struct["kind"] is not None and struct["start"] <= day <= struct["end"]\n', '    return struct["start"] <= day <= struct["end"]\n'),
+    'last this low strictly below (q33 verdict)': (SHOP_VERDICT, 'found.price <= today_price', 'found.price < today_price'),
+    'the sale running into today taken as the last sale (q33 verdict)': (SHOP_VERDICT, '    if on_sale_today and ends and ends[-1] is days[-1]:\n', '    if False:\n'),
+    'the front list smallest saving first (q33 verdict)': (SHOP_VERDICT, 'key=lambda row: (-row.verdict.saving, by_number(row.code))', 'key=lambda row: (row.verdict.saving, by_number(row.code))'),
+    'a no deal on the front list (q33 verdict)': (SHOP_VERDICT, 'return found.call == "deal" and passes_bar(', 'return found.call in ("deal", "no_deal") and passes_bar('),
+    'the bar at 19 days (q33 verdict)': (SHOP_VERDICT, '.days >= MIN_FRONT_DAYS\n', '.days >= MIN_FRONT_DAYS - 1\n'),
+    # the golden 90 days: the usual price's higher middle, the golden alone to catch it
+    'the usual price the lower middle, in the golden (q33 golden)': (VERDICT_FOR_SHOP_GOLDEN, '    return ordered[len(ordered) // 2]\n', '    return ordered[(len(ordered) - 1) // 2]\n'),
 }
 
 

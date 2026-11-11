@@ -1,7 +1,8 @@
 """The golden 90 days end to end (docs/shopper-site.md, "Testing"; the plan's Task 25): the history of
 tests/shopper_golden.py, 1 January to 30 April 2026 at the five chains with Shufersal and Carrefour each a chain of two
-formats, built a day at a time through the real code, once a module (the plan's "Deviations" give the time). The
-expected values are worked by hand in tests/shopper_golden.py's docstring, which names each one.
+formats (Shufersal of three from 2 April, when Universe's stores open), built a day at a time through the real code,
+once a module (the plan's "Deviations" give the time). The expected values are worked by hand in
+tests/shopper_golden.py's docstring, which names each one.
 
 The run is the site run's: `build_site` for every day from the first forecast day (30 January) to 30 April at 12:33
 Israel time, freezing and scoring through the archive's freezer over a MemoryArchive whose S3 clock gives the run's
@@ -45,8 +46,8 @@ from shopper.freeze import cutoff
 from shopper.history import load
 from shopper.record import gate
 from shopper.score import read_summary
-from shopper_golden import (DAYS, F3_DAY, FINGERPRINT, G1, G2, G3, G4, G5, G6, build_day, day_of, exact_digests,
-                            fixed_provenance, manifest, run)
+from shopper_golden import (DAYS, F3_DAY, FINGERPRINT, G1, G2, G3, G4, G5, G6, U1, U2, U3, U4, U5, U6, U7, U8, U9, U10,
+                            UNIVERSE_CODES, build_day, day_of, exact_digests, fixed_provenance, manifest, run)
 
 TESTS = Path(__file__).parent
 ROOT = TESTS.parent
@@ -195,6 +196,82 @@ def test_the_golden_pages_windows_and_gaps(golden):
     assert shown["Rami Levy"] == ["89", "9 to 10 February 2026", "none", "none"]
     assert shown["Shufersal Sheli"] == ["91", "none", "none", "none"]
     assert shown["Shufersal Express"] == ["0", "30 January to 30 April 2026", "none", "none"]   # no store: a hole
+
+
+# ---- the verdicts (S0 to S8) and the front list, by hand ----
+
+def _found(found) -> tuple:
+    """A verdict's figures as the docstring works them: the call, the usual price, the saving, the shade, the priced and
+    the tracked days, last this low and the last sale (each its day and price), and the days on sale."""
+    low, sale = found.last_low, found.last_sale
+    return (found.call, found.usual, found.saving, found.shade, len(found.priced), len(found.days),
+            None if low is None else (low.day, low.price), sum(day.on_sale for day in found.days),
+            None if sale is None else (sale.day, sale.price))
+
+
+def test_the_golden_verdicts(golden):
+    """The verdicts worked by hand in tests/shopper_golden.py's docstring ("The verdicts"), each from its day's history
+    as the build loads it."""
+    # imported here, so that the module's other tests ran while shopper.verdict did not yet exist (the plan's Task 1)
+    from shopper.verdict import DealRow, checked, front_list, on_list, passes_bar, verdict
+    D, n = Decimal, day_of
+    histories = {}
+
+    def judged(day: int, column: str, code: str):
+        if day not in histories:
+            history = load(golden.data / "tables", n(day), SLUGS)
+            histories[day] = history, {(pair.column, pair.code): pair for pair in history.pairs()}
+        history, pairs = histories[day]
+        pair = pairs.get((column, code))
+        return verdict(pair, column, history.column_days, n(day)), pair, history.column_days
+
+    expected = {
+        (75, "shufersal-sheli", G3): ("deal", D("10.90"), D("3.00"), "deal-2", 74, 74, None, 0, None),
+        (120, "shufersal-sheli", G3): ("deal", D("10.90"), D("3.00"), "deal-2", 90, 90, (n(119), D("7.90")), 45, None),
+        (85, "ramilevy", G4): ("deal", D("69.90"), D("19.90"), "deal-3", 82, 82, None, 0, None),
+        (99, "shufersal-deal", G5): ("deal", D("6.00"), D("1.50"), "deal-1", 88, 88, (n(44), D("4.50")), 0, None),
+        (99, "shufersal-sheli", G5): ("no_sale", None, None, None, 90, 90, (n(98), D("6.50")), 0, None),
+        (120, "osherad", G1): ("no_sale", None, None, None, 90, 90, (n(119), D("5.00")), 31, (n(116), D("3.90"))),
+        (50, "osherad", G1): ("deal", D("5.00"), D("1.10"), "deal-1", 49, 49, (n(49), D("3.90")), 17,
+                              (n(32), D("3.90"))),
+        (50, "shufersal-deal", G1): ("too_few", None, None, None, 49, 49, None, 17, None),
+    }
+    universe = {
+        U1: ("no_deal", D("9.90"), D("0.00"), None, 27, 27, (n(119), D("9.90")), 27, None),
+        U2: ("deal", D("8.90"), D("2.00"), "deal-1", 27, 27, (n(119), D("6.90")), 10, (n(101), D("6.90"))),
+        U3: ("deal", D("9.90"), D("2.00"), "deal-1", 26, 26, (n(119), D("7.90")), 13, None),
+        U4: ("deal", D("4.50"), D("1.30"), "deal-1", 5, 5, None, 0, None),
+        U5: ("new", None, None, None, 0, 0, None, 0, None),
+        U6: ("no_deal", D("5.00"), D("0.99"), None, 27, 27, None, 0, None),
+        U7: ("deal", D("5.00"), D("1.00"), "deal-1", 27, 27, None, 0, None),
+        U8: ("deal", D("6.00"), D("1.50"), "deal-1", 27, 27, None, 0, None),
+        U9: ("some_stores", None, None, None, 27, 27, (n(119), D("7.00")), 0, None),
+        U10: ("price_unread", None, None, None, 27, 27, (n(119), D("3.00")), 0, None),
+    }
+    expected |= {(DAYS, "shufersal-universe", code): figures for code, figures in universe.items()}
+    found = {key: judged(*key)[0] for key in expected}
+    assert {key: _found(verdict_) for key, verdict_ in found.items()} == expected
+    # today's prices, as shown: S3's when a promotion counts, else the listed price; none on a hole
+    assert {key: str(found[key].today_price) for key in [(120, "osherad", G1), (99, "shufersal-sheli", G5),
+                                                         (85, "ramilevy", G4)]} == {
+        (120, "osherad", G1): "5.00", (99, "shufersal-sheli", G5): "6.50", (85, "ramilevy", G4): "50.00"}
+    assert found[(50, "shufersal-deal", G1)].today_price is None
+    assert str(found[(DAYS, "shufersal-universe", U1)].saving) == "0.00"
+    assert found[(DAYS, "shufersal-universe", U8)].struct["buy"] == Decimal("2")
+    assert found[(DAYS, "shufersal-universe", U5)].today_price == Decimal("5.00")
+    assert found[(DAYS, "shufersal-universe", U10)].on_sale_today is True       # on sale, its price unread
+    assert found[(DAYS, "shufersal-universe", U9)].on_sale_today is False       # at some stores only
+    # the front list at Universe on day 120: the deals passing the bar, by saving, then barcode; U4 fails the bar
+    rows, held = [], []
+    for code in UNIVERSE_CODES:
+        verdict_, pair, column_days = judged(DAYS, "shufersal-universe", code)
+        if on_list(verdict_, pair, column_days, n(DAYS)):
+            rows.append(DealRow("shufersal-universe", code, code, verdict_))
+        if checked(verdict_, pair, column_days, n(DAYS)):
+            held.append(code)
+    assert not passes_bar(judged(DAYS, "shufersal-universe", U4)[1], judged(DAYS, "shufersal-universe", U4)[2], n(DAYS))
+    assert [row.code for row in front_list(rows)] == [U2, U3, U8, U7]           # N = 4
+    assert held == [U1, U2, U3, U6, U7, U8]                                    # M = 6
 
 
 # ---- the forecasts, the baselines and the scores, by hand ----

@@ -791,3 +791,19 @@ What the deploy needs to know, after the merge:
 ## Deviations
 
 (Append here when reality forces a change from this plan: what changed, why, and when.)
+
+- Baseline on q33-store-first at 0e689af (2026-11-11): 2,529 tests passed, coverage 99.86%, 820.7 s (the plan's fd2d30d figure, 2,514, predates the mutation-check work merged since).
+- Task 1, from the pre-flight scan before it (2026-11-11), each a reading the plan left open or a case it could not catch:
+  - S0 is read per product, as the plan's worked golden values read it: a day the product is not listed is not one of its tracked days. `shopper.verdict`'s docstring says so.
+  - `counts_today` also requires a `kind`: a `RewardType` 0 struct (`kind` None) never counts, as "A `RewardType` 0 promotion is not a sale" reads it. The interface's comment named only wide, valid and the dates.
+  - With no promotion counting today, a running wide struct with a kind (its price unread) gives `price_unread` before a running struct with a kind that is not wide gives `some_stores`; the plan's order put both in its step 4 without an order between them.
+  - `test_each_no_verdict_call` gains a case of 13 unknown-price sale days of 26 tracked, which must be judged: the plan's 14-of-27 and 13-of-27 cases cannot catch "more than half" broken to "at least half" on an odd count.
+  - `tests/test_golden_90.py` imports `shopper.verdict` inside `test_the_golden_verdicts`, so before the module existed only that test failed and the rest of the golden module still ran.
+- Task 1, the RED run (Step 4) added `--continue-on-collection-errors` to the brief's command: `tests/test_verdict.py` imports `shopper.verdict` at module level, and without the flag its collection error stops pytest before the golden module runs.
+- Task 1, readings the plan was silent on, made in `shopper.verdict`:
+  - The calls before today's promotions (`too_few`, `not_sold`, `unread_today`) carry no `struct`, no today's price, no `last_low` and no `last_sale`, and `on_sale_today` False: today is not known, so S7 cannot tell "this one" from the last sale. Their tracked days are given all the same.
+  - `on_sale_today` is today's `Point.on_promotion` from call 4 on (a running wide struct with a kind, its price read or not), so `price_unread` is on sale today and `some_stores` is not.
+  - `front_list` sorts every row it is given; the caller keeps the deals (`on_list`) and cuts to `FRONT_LIMIT`.
+- Task 1, the mutations: "a not-wide deal in the day price" and "an invalid deal in the day price" break `day_price`'s call of `counts_today`, and "a not-wide promotion judged" and "an unreadable price judged" break `verdict`'s, so each rule's own test must catch its own break. "The shade bands an agora off" raises the two upper bands' floors by ₪0.01. The `TIME_LIMIT` comment in `scripts/mutation_check.py` now counts 86 other target sets (`tests/test_verdict.py` is a new one).
+- Task 1, the golden: every hand-worked value of the plan's Step 3 was worked again in `tests/shopper_golden.py`'s docstring and agrees; none is disputed. `store_list` takes the day (day 1 by default), and `stores_on` gives a chain's stores of a day.
+- Task 1, the repin (Step 7): 128 names moved, all of Step 7's kinds, and one more: the final site's `basket.html`. The basket page states each chain's store counts, and from 2 April Shufersal's are 8 rather than 5 ("from 8 stores' files", "5 of 8 list it", "files from 8 of its 8 stores"); every total is unchanged (Shufersal ₪15.10). It is the cause Step 7 gives for the `days/` files, Shufersal's included stores, on a page Step 7's list left out. No `day/` line before 2026-04-02 and no `forecasts/`, `scores/`, `ledger` or `tables/scored/` line moved. Reported to the controller before the commit, as Step 7 says; the controller accepted it (2026-11-11), the basket's words printing each chain's store count (`src/basket/words.py`).

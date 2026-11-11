@@ -6,13 +6,16 @@ hand. Names, barcodes and prices are synthetic. tests/test_golden_90.py asserts 
 
 Day n is 1 January plus n - 1 days: day 31 is 31 January, 59 is 28 February, 90 is 31 March, 120 is 30 April.
 
-The stores (the store lists of day 1 hold for every day). Shufersal: Sheli (sub-chain 1) 11 and 12, Deal (2) 21 and
-22, Yesh Chesed (6, in no column) 61; its files are named under the store's own sub-chain. Carrefour: 62 and 64 in
+The stores (the store lists of day 1 hold for every day, but Shufersal's of day 92). Shufersal: Sheli (sub-chain 1) 11
+and 12, Deal (2) 21 and 22, Yesh Chesed (6, in no column) 61, and from day 92 (2 April), when its list of that day adds
+them, Universe (8) 81, 82 and 83; its files are named under the store's own sub-chain. Carrefour: 62 and 64 in
 `CARREFOUR_COLUMNS`' City, 2 and 12 in its Market, 1 in neither. Rami Levy, Osher Ad and Yochananof: 1 and 2, each
-chain one column. Express and Universe have no store: each is a hole every day (`chain_day` with no included store), so
-they have no day of records and no forecast. Every store publishes a promotion file every day it publishes a price file
-(an empty one when it lists no promotion), so no column-day is a promotion hole. Files missing: both Rami Levy stores'
-on days 40 and 41 (9 and 10 February); both Deal stores' on days 50 and 51 (19 and 20 February), while Sheli's and Yesh
+chain one column. Express has no store: a hole every day (`chain_day` with no included store), so it has no day of
+records and no forecast; so is Universe before day 92. Every store publishes a promotion file every day it publishes a
+price file (an empty one when it lists no promotion), but Universe's three stores on day 110 (20 April), when they
+publish price files only: Universe's promotion hole, the store-first design's "a hole" (0 of its 3 counted stores with
+a promotion file), its prices read. No other column-day is a promotion hole. Files missing: both Rami Levy stores' on
+days 40 and 41 (9 and 10 February); both Deal stores' on days 50 and 51 (19 and 20 February), while Sheli's and Yesh
 Chesed's are there.
 
 The products (`PRODUCTS`, `listed`, `promotions`):
@@ -31,6 +34,20 @@ The products (`PRODUCTS`, `listed`, `promotions`):
 - G6, the basket's item priced apart: Shufersal 8.00 (11), 8.20 (12), 7.00 (21), 7.20 (22), 7.60 (61); Carrefour 8.40
   (62), 8.60 (64), 7.90 (2), 8.10 (12), 8.30 (1); Rami Levy 7.40 and 7.60; Osher Ad 7.10 and 7.30; Yochananof 7.80 and
   8.00. Never on promotion.
+- U1 to U10 at Universe's three stores alone, and nothing else there, each at the same price in the three unless said
+  (`UNIVERSE`; the store-first design's "Building order" 1), each promotion a fixed price (`RewardType` 3) unless said,
+  listed in a promotion file on its days only:
+  - U1, always on: 12.90 on days 92 to 120; 9.90 (promotion 60) on days 92 to 125.
+  - U2, a monthly sale: 8.90 on days 92 to 120; 6.90 on days 95 to 101 (61) and on days 117 to 123 (62).
+  - U3, on sale exactly half its days: 9.90 on days 93 to 120; 7.90 (63) on days 106 to 125.
+  - U4, a short history: 4.50 on days 115 to 120; 3.20 (64) on days 120 to 126.
+  - U5, new today: 6.00 on day 120 alone; 5.00 (65) on days 120 to 126.
+  - U6, saving ₪0.99: 5.00 on days 92 to 120; 4.01 (66) on days 120 to 126.
+  - U7, saving ₪1.00: 5.00 on days 92 to 120; 4.00 (67) on days 120 to 126.
+  - U8, buy 2: 6.00 on days 92 to 120; "2 for ₪9.00", `RewardType` 1, `MinQty` 2, `DiscountedPrice` 9.00 (68), on
+    days 120 to 126.
+  - U9, at some stores only: 7.00 on days 92 to 120; 5.00 (69) at store 81 alone, on days 120 to 126.
+  - U10, an unreadable price: 3.00 on days 92 to 120; 6.50 (70), twice the listed price or more, on days 120 to 126.
 
 The run (`run`): days 1 to 29 extracted; from day 30, the first forecast day, the site run of each day at 12:33 Israel
 time, S3's clock at 12:33:07, so every day is frozen on time. The basket is G1, G2 and G6, with at least 3 items.
@@ -39,12 +56,17 @@ Worked by hand.
 
 The days of records. Sheli, City, Market, Osher Ad and Yochananof: every day. Deal: no record on days 50 and 51 (0 of
 its 2 stores with a file: 0 x 2 < 2), Sheli's those days are (2 of 2), and Shufersal's chain-day for the basket has 3 of
-5 (3 x 2 >= 5: no hole). Rami Levy: none on days 40 and 41. Day 120's read is days 30 to 120 (91 days): Deal and Rami
-Levy have 89 days with records there, Sheli 91, Express none (a hole on each of the 91).
+5 (3 x 2 >= 5: no hole). Rami Levy: none on days 40 and 41. Universe: days 92 to 120 (29), its promotion hole of day
+110 one of them (a record: its prices were read). Day 120's read is days 30 to 120 (91 days): Deal and Rami Levy have
+89 days with records there, Sheli 91, Universe 29, Express none (a hole on each of the 91). From day 92 Shufersal's
+chain-day for the basket has 8 included stores, every one with a file; Universe's stores list no basket item, so
+every chain price of the basket stands.
 
 The first forecast day. Day 30 is each column's 30th day of records (days 1 to 30), with closed days to learn from
-(days 1 to 16); day 29 has 29, and no forecast. Day 30's rows: G2 and G6 at City, Market, Osher Ad and Yochananof (G1
-is on its run of days 26 to 32), G2, G4 and G6 at Rami Levy, G2, G3, G5 and G6 at Sheli and at Deal: 8 + 3 + 4 + 4 = 19.
+(days 1 to 16); day 29 has 29, and no forecast. Universe's 29 days of records, 92 to 120, never reach its 30th
+(`FIRST_RECORD_DAY`): it has no forecast and no score. Day 30's rows: G2 and G6 at City, Market, Osher Ad and
+Yochananof (G1 is on its run of days 26 to 32), G2, G4 and G6 at Rami Levy, G2, G3, G5 and G6 at Sheli and at Deal: 8 +
+3 + 4 + 4 = 19.
 At City on day 30 the closed days are 1 to 16: G2 and G6 16 each with outcome 0, G1 9 (1-4, 12-16) with outcome 1, so
 the column's share is 9/41; G2's A, from 16 closed days (under 20), is the column's, 9/41 = 0.219512; the hazard of "no
 run seen" is G1's 4 ones of 36 days, 1/9; p = (16/46)(9/41) + (30/46)(1/9) = 0.148816; B, with no two runs before any
@@ -115,6 +137,57 @@ The pages.
   "Runs seen", "at most 14". G4 at Rami Levy: on promotion on 14 of its 88 days (85 to 98), the run "seen" (40 and 41
   outside it), ended on day 98, 22 days ago; its listed price "did not change on the 88 days with records of the 90".
 
+The verdicts (docs/store-first.md, S0 to S8; `shopper.verdict`). The tracked days are those of the 90 before the day
+with records at the column, its promotions read and the product listed (S0, per product); a day price is the lower of
+the listed price and the lowest promotion that counts (S1); the usual price is the higher middle of the sorted day
+prices (S2), and the figures are as shown, to the agora.
+- G3 at Sheli, day 75: the 90 days before reach back past day 1, so days 1 to 74 are tracked, 74: 59 at 10.90 (1-59)
+  and 15 at 11.90 (60-74), none on sale. Of the 74 sorted, the 38th (index 37) is 10.90. Today 7.90 (promotion 30):
+  10.90 - 7.90 = 3.00, a deal, shade deal-2 (3.00 to 4.99). No day at or below 7.90: no "last this low". On sale on 0
+  of 74, no last sale.
+- G3 at Sheli, day 120: days 30 to 119, 90 tracked: 30 at 10.90 (30-59), 15 at 11.90 (60-74) and 45 on sale at 7.90
+  (75-119: the lower of 11.90 and 7.90). Of the 90 sorted, the 46th (index 45) is 10.90, the first 45 being 7.90: on
+  sale on exactly half the days, the higher middle holds the shelf price. Today 7.90: 3.00 off, deal-2; last this low
+  day 119 at 7.90; on sale on 45 of 90; the run of 75 to 119 runs into today, with no sale before it: no last sale.
+- G4 at Rami Levy, day 85: days 1 to 84 but 40 and 41 (no files), 82 tracked, all 69.90; today 75.00 / 1.5 = 50.00 a
+  kilogram (promotion 40): 19.90 off, deal-3 (5.00 or more); no day at or below 50.00; on sale on 0 of 82.
+- G5 at Deal, day 99: days 9 to 98 but 50 and 51, 88 tracked: 15 at 4.50 (30-44) and 73 at 6.00. Of the 88 sorted, the
+  45th (index 44) is 6.00. Today 4.50 (promotion 50, store 21's alone, wide): 1.50 off, deal-1 (1.00 to 2.99); last
+  this low day 44 (13 February) at 4.50, equal to today's; on sale on 0 of 88. At Sheli that day no promotion runs on
+  G5: no sale, today's price the listed 6.50, 90 tracked (days 9 to 98), last this low day 98 at 6.50.
+- G1 at Osher Ad, day 120: days 30 to 119, 90 tracked, on sale on 30-32, 47-53, 68-74, 89-95 and 110-116 (31 days at
+  3.90), 59 at 5.00. No promotion runs today (the next run starts on day 131): no sale, today's price the listed 5.00,
+  last this low day 119 at 5.00; the latest run, 110 to 116, is the last sale: it ended on day 116 (26 April) at 3.90.
+- G1 at Osher Ad, day 50: days 1 to 49, 49 tracked, on sale on 5-11, 26-32 and 47-49 (17 days at 3.90), 32 at 5.00. Of
+  the 49 sorted, the 25th (index 24) is 5.00. Today 3.90 (promotion 12): 1.10 off, deal-1; last this low day 49 at
+  3.90; the run of 47 to 49 runs into today, so the last sale before this one is the run of 26 to 32: it ended on day 32
+  (1 February) at 3.90.
+- G1 at Deal, day 50: Deal is a hole (0 of its 2 stores with a file): too few files, no verdict; its 49 tracked days
+  (1 to 49) are given all the same, 17 of them on sale.
+- Universe, day 120: the 90 days before are 30 to 119; Universe's records are 92 to 119, its promotions unread on day
+  110, so a product listed from day 92 has 27 tracked days (92-109 and 111-119). Today every promotion running at all
+  three stores counts but U10's.
+  - U1: on sale every day at 9.90 (below 12.90): 27 at 9.90, usual 9.90, today 9.90: 0.00 off, no deal; last this low
+    day 119 at 9.90; on sale on 27 of 27, one run into today and none before it: no last sale.
+  - U2: 10 days on sale at 6.90 (95-101, 117-119), 17 at 8.90; of the 27 sorted, the 14th (index 13) is 8.90. Today
+    6.90 (promotion 62): 2.00 off, deal-1; last this low day 119; on sale on 10 of 27; the run of 117 to 119 runs into
+    today, so the last sale before this one ended on day 101 (11 April) at 6.90.
+  - U3: listed from day 93, 26 tracked (93-109, 111-119): 13 at 9.90 (93-105) and 13 on sale at 7.90 (106-109,
+    111-119, one run across day 110). Of the 26 sorted, the 14th (index 13) is 9.90: on sale on exactly half, the shelf
+    price is usual. Today 7.90: 2.00 off, deal-1; on sale on 13 of 26; no last sale before this one.
+  - U4: listed from day 115, 5 tracked (115-119) at 4.50: usual 4.50, today 3.20: 1.30 off, deal-1, resting on 5 days.
+    Its 5 days with records in the 30 before are under the front list's 20.
+  - U5: first listed today, a promotion counting: new, no verdict, no tracked day.
+  - U6: 27 days at 5.00, today 4.01: 0.99 off, no deal. U7: today 4.00: 1.00 off, deal-1.
+  - U8: 27 days at 6.00, today 9.00 / 2 = 4.50, buy 2: 1.50 off, deal-1.
+  - U9: its promotion is carried by store 81 alone, 1 of 3 counted stores (1 x 2 < 3): not wide, on sale at some
+    stores only, no verdict; today's price the listed 7.00, last this low day 119.
+  - U10: 6.50 is not below twice 3.00 (6.00): not valid, on sale with its price unread, no verdict; today's price the
+    listed 3.00, last this low day 119.
+  The front list: the deals with 20 days with records in the 30 before (days 90 to 119: Universe's 92 to 119, 28, its
+  promotion hole a record; U3 27): U2 (2.00), U3 (2.00, after U2 by barcode), U8 (1.50) and U7 (1.00); N = 4. Checked
+  (a promotion counting today, the bar passed): U1, U2, U3, U6, U7 and U8; M = 6 (U4 and U5 under the bar).
+
 The basket. Shufersal's G6 is the median of its five stores' 7.00, 7.20, 7.60, 8.00 and 8.20: 7.60, Yesh Chesed's own,
 not Sheli's 8.10 nor Deal's 7.10, the product page's; on days 50 and 51, of the three with a file, 7.60, 8.00 and 8.20:
 8.00. Carrefour's: 7.90, 8.10, 8.30, 8.40 and 8.60: 8.30, store 1's. Rami Levy is out of the ranking on days 40 and 41.
@@ -122,8 +195,8 @@ The totals of day 120: Osher Ad 5.00 + 2.50 + 7.20 = 14.70, Rami Levy 15.00, Shu
 Carrefour 15.80; 1.10/14.70 = 7.48%: 7%.
 
 The record on day 120: the days frozen 30 January to 30 April, scored 30 January to 16 April (each on its 14th day
-after): 77 days at each column but Deal and Rami Levy, with 75 (no forecast on their holes). Every gate is closed, its
-days short of 90.
+after): 77 days at each column with forecasts but Deal and Rami Levy, with 75 (no forecast on their holes); Express and
+Universe have none. Every gate is closed, its days short of 90.
 """
 import gzip
 import hashlib
@@ -160,9 +233,9 @@ def day_of(n: int) -> date:
     return FIRST + timedelta(days=n - 1)
 
 
-# The stores: (store, sub-chain), as the store lists name them. Shufersal: Sheli (sub-chain 1) 11 and 12, Deal (2) 21
-# and 22, Yesh Chesed (6, in no column) 61. Carrefour: 62 and 64 in CARREFOUR_COLUMNS' City, 2 and 12 in its Market,
-# 1 in neither (outside the table). The other three chains: stores 1 and 2, each chain one column.
+# The stores of day 1: (store, sub-chain), as the store lists name them. Shufersal: Sheli (sub-chain 1) 11 and 12, Deal
+# (2) 21 and 22, Yesh Chesed (6, in no column) 61. Carrefour: 62 and 64 in CARREFOUR_COLUMNS' City, 2 and 12 in its
+# Market, 1 in neither (outside the table). The other three chains: stores 1 and 2, each chain one column.
 STORES: dict[str, tuple[tuple[str, str], ...]] = {
     "shufersal": (("11", "1"), ("12", "1"), ("21", "2"), ("22", "2"), ("61", "6")),
     "ramilevy": (("1", "1"), ("2", "1")),
@@ -171,10 +244,18 @@ STORES: dict[str, tuple[tuple[str, str], ...]] = {
     "yochananof": (("1", "0"), ("2", "0")),
 }
 SHELI, DEAL, YESH_CHESED = ("11", "12"), ("21", "22"), ("61",)
+# Shufersal Universe (sub-chain 8): stores 81, 82 and 83, on Shufersal's store list from day 92 (2 April); on day 110
+# (20 April) they publish price files only, Universe's promotion hole
+UNIVERSE, UNIVERSE_SUB_CHAIN, UNIVERSE_FROM, UNIVERSE_PROMO_HOLE = ("81", "82", "83"), "8", 92, 110
 
 # The products, each a synthetic GS1 barcode (the check digit is checked below)
 G1, G2, G3, G4, G5, G6 = ("2000000000077", "2000000000084", "2000000000091", "2000000000107", "2000000000114",
                           "2000000000121")
+# Universe's ten, in ascending numeric order, so a tie between them sorts as listed here
+U1, U2, U3, U4, U5, U6, U7, U8, U9, U10 = (
+    "2000000000138", "2000000000145", "2000000000152", "2000000000169", "2000000000176", "2000000000183",
+    "2000000000190", "2000000000206", "2000000000213", "2000000000220")
+UNIVERSE_CODES = (U1, U2, U3, U4, U5, U6, U7, U8, U9, U10)
 PRODUCTS = {   # code: (name, Quantity, UnitQty), as every price file states them
     G1: ("חטיף בדיקה 500 גרם", "500", "גרם"),
     G2: ("משקה בדיקה 1 ליטר", "1", "ליטר"),
@@ -182,6 +263,16 @@ PRODUCTS = {   # code: (name, Quantity, UnitQty), as every price file states the
     G4: ("בשר בדיקה לק\"ג", "1", "קילוגרם"),
     G5: ("גבינה בדיקה 200 גרם", "200", "גרם"),
     G6: ("ביצי בדיקה 12", "12", "יחידות"),
+    U1: ("קפה בדיקה 200 גרם", "200", "גרם"),
+    U2: ("אורז בדיקה 1 קילוגרם", "1", "קילוגרם"),
+    U3: ("פסטה בדיקה 500 גרם", "500", "גרם"),
+    U4: ("יוגורט בדיקה 150 גרם", "150", "גרם"),
+    U5: ("מיץ בדיקה 1 ליטר", "1", "ליטר"),
+    U6: ("קמח בדיקה 1 קילוגרם", "1", "קילוגרם"),
+    U7: ("סוכר בדיקה 1 קילוגרם", "1", "קילוגרם"),
+    U8: ("עוגיות בדיקה 300 גרם", "300", "גרם"),
+    U9: ("תה בדיקה 100 גרם", "100", "גרם"),
+    U10: ("מלח בדיקה 500 גרם", "500", "גרם"),
 }
 assert all(is_gs1(code) for code in PRODUCTS)
 
@@ -200,10 +291,41 @@ G3_RISE, G3_PROMOTION = 60, 75        # Sheli's G3: 10.90, then 11.90 from day 6
 G4_PROMOTION = (85, 98)               # Rami Levy's G4: "2 for 100" stored as 1.5 for 75.00, weighed
 G5_PROMOTION = {"21": (99, 106), "22": (100, 106)}   # Deal's G5 at 4.50: store 21 a day before store 22
 BASKET_ITEMS = (G1, G2, G6)
+# Universe's products: code: (its listed price, its first day listed), each to day 120 (U5 on day 120 alone)
+UNIVERSE_LISTED = {U1: ("12.90", 92), U2: ("8.90", 92), U3: ("9.90", 93), U4: ("4.50", 115), U5: ("6.00", 120),
+                   U6: ("5.00", 92), U7: ("5.00", 92), U8: ("6.00", 92), U9: ("7.00", 92), U10: ("3.00", 92)}
+# Universe's promotions: (id, code, RewardType, MinQty, DiscountedPrice, first day, last day, the stores carrying it)
+UNIVERSE_PROMOTIONS = (
+    ("60", U1, "3", "1", "9.90", 92, 125, UNIVERSE),
+    ("61", U2, "3", "1", "6.90", 95, 101, UNIVERSE),
+    ("62", U2, "3", "1", "6.90", 117, 123, UNIVERSE),
+    ("63", U3, "3", "1", "7.90", 106, 125, UNIVERSE),
+    ("64", U4, "3", "1", "3.20", 120, 126, UNIVERSE),
+    ("65", U5, "3", "1", "5.00", 120, 126, UNIVERSE),
+    ("66", U6, "3", "1", "4.01", 120, 126, UNIVERSE),
+    ("67", U7, "3", "1", "4.00", 120, 126, UNIVERSE),
+    ("68", U8, "1", "2", "9.00", 120, 126, UNIVERSE),
+    ("69", U9, "3", "1", "5.00", 120, 126, ("81",)),
+    ("70", U10, "3", "1", "6.50", 120, 126, UNIVERSE),
+)
+
+
+def stores_on(slug: str, n: int) -> tuple[tuple[str, str], ...]:
+    """The chain's stores on day n, (store, sub-chain): day 1's, and Universe's three at Shufersal from day 92."""
+    if slug == "shufersal" and n >= UNIVERSE_FROM:
+        return STORES[slug] + tuple((store, UNIVERSE_SUB_CHAIN) for store in UNIVERSE)
+    return STORES[slug]
 
 
 def listed(slug: str, store: str, code: str, n: int) -> str | None:
     """The store's listed price of `code` on day n as its price file states it; None when it does not list it."""
+    if slug == "shufersal" and store in UNIVERSE:
+        if code not in UNIVERSE_LISTED:
+            return None
+        price, first = UNIVERSE_LISTED[code]
+        return price if n >= first else None
+    if code in UNIVERSE_LISTED:
+        return None
     if code == G1:
         return "5.00"
     if code == G2:
@@ -242,6 +364,11 @@ def _iso(n: int) -> str:
 
 def promotions(slug: str, store: str, n: int) -> list[str]:
     """The promotions the store's full promotion file lists on day n, as XML."""
+    if slug == "shufersal" and store in UNIVERSE:
+        return [_promotion(promotion_id, _group(items=[_item(code, reward=reward, min_qty=quantity, price=price)]),
+                           start=_iso(start), end=_iso(end))
+                for promotion_id, code, reward, quantity, price, start, end, carrying in UNIVERSE_PROMOTIONS
+                if store in carrying and start <= n <= end]
     found = []
     for k, (start, end) in enumerate(G1_RUNS):
         if start <= n <= end:
@@ -291,13 +418,13 @@ def promo_file(slug: str, store: str, sub_chain: str, n: int) -> bytes:
     return gzip.compress(xml.encode(), mtime=0)
 
 
-def store_list(slug: str) -> tuple[str, bytes]:
-    """The chain's `Stores` file of day 1 and its name, in the layout its portal uses (as tests/test_build.py's
+def store_list(slug: str, n: int = 1) -> tuple[str, bytes]:
+    """The chain's `Stores` file of day n and its name, in the layout its portal uses (as tests/test_build.py's
     `store_list`): Shufersal's gzipped UTF-8 with root <Chain>, a <SubChain> per sub-chain; Yochananof's plain UTF-8
     with the tags spelled `SubChainId` and `StoreId`; the others' plain UTF-16 with root <Root>."""
-    chain_id, day = CHAIN_IDS[slug], f"{FIRST:%Y%m%d}"
+    chain_id, day = CHAIN_IDS[slug], f"{day_of(n):%Y%m%d}"
     by_sub: dict[str, list[str]] = {}
-    for store, sub_chain in STORES[slug]:
+    for store, sub_chain in stores_on(slug, n):
         by_sub.setdefault(sub_chain, []).append(store)
     if slug == "yochananof":
         stores = "".join(f"<Store><StoreId>{store}</StoreId><StoreName>סניף {store}</StoreName></Store>"
@@ -321,17 +448,20 @@ def store_list(slug: str) -> tuple[str, bytes]:
 
 def write_day(raw_dir: Path, n: int) -> None:
     """Every chain's files of day n under `raw_dir`: each store's price and promotion files (none for a store whose
-    files are missing that day) and, on day 1, the store lists, which hold for every later day."""
-    for slug, stores in STORES.items():
+    files are missing that day, no promotion file for Universe's on day 110) and, on day 1, the store lists, which hold
+    for every later day but Shufersal's, written again on day 92 with Universe's stores."""
+    for slug in STORES:
         folder = raw_dir / f"chain={slug}" / f"date={day_of(n).isoformat()}"
         folder.mkdir(parents=True, exist_ok=True)
-        if n == 1:
-            name, body = store_list(slug)
+        if n == 1 or (slug == "shufersal" and n == UNIVERSE_FROM):
+            name, body = store_list(slug, n)
             (folder / name).write_bytes(body)
-        for store, sub_chain in stores:
+        for store, sub_chain in stores_on(slug, n):
             if store in MISSING.get(slug, {}).get(n, ()):
                 continue
             (folder / _name("PriceFull", slug, store, sub_chain, n)).write_bytes(price_file(slug, store, n))
+            if n == UNIVERSE_PROMO_HOLE and slug == "shufersal" and store in UNIVERSE:
+                continue
             (folder / _name("PromoFull", slug, store, sub_chain, n)).write_bytes(promo_file(slug, store, sub_chain, n))
 
 
