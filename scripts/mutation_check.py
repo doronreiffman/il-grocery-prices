@@ -23,9 +23,12 @@ tests), pass within CLEAN_LIMIT: printed "CAUGHT <name> (timed out after N s; it
 unmutated)" and named in the closing line. Otherwise the time-out proves nothing and is an ERROR.
 
 Copied from flights-archive's harness, with three changes: only exit 1 counts as caught (above), each
-run has a time limit and a session of its own (above), and the test runs write no bytecode. Python trusts a cached .pyc whose source has the same size and the
-same whole-second mtime, so a same-length mutation written and restored within one second could
-otherwise leave the broken code cached for the next run.
+run has a time limit and a session of its own (above), and no run uses the broken module's bytecode
+cached by an earlier run. Python trusts a cached .pyc whose source has the same size and the same whole-second mtime,
+so a same-length mutation written and restored within one second could otherwise run the code
+cached by the run before. The runs are started with PYTHONDONTWRITEBYTECODE, and since a test that
+starts Python with an environment of its own could still write bytecode, the broken module's
+cached files are deleted after each break is written and after the file is restored.
 """
 import ast
 import os
@@ -3032,6 +3035,9 @@ MUTATIONS = {
     "mutation check leaves the run going on an interrupt": (MUTATION_CHECK, '        except BaseException:\n', '        except Exception:\n'),
     "mutation check counts a run that ended in time but left a child as a time-out": (MUTATION_CHECK, '            code = process.poll()\n', '            code = None\n'),
     "mutation check crashes on a group with nothing left to kill": (MUTATION_CHECK, '    except (ProcessLookupError, PermissionError):\n', '    except ChildProcessError:\n'),
+    "mutation check leaves the broken module's cached bytecode for its run": (MUTATION_CHECK, '            path.write_text(original.replace(old, new))\n            _drop_bytecode(path)\n', '            path.write_text(original.replace(old, new))\n'),
+    "mutation check leaves the cached bytecode after restoring the file": (MUTATION_CHECK, '                path.write_text(original)\n                _drop_bytecode(path)\n', '                path.write_text(original)\n'),
+    "mutation check deletes every module's cached bytecode": (MUTATION_CHECK, '.glob(f"{path.stem}.*.pyc"):\n', '.glob("*.pyc"):\n'),
     "mutation check reads a run's last output with no limit": (MUTATION_CHECK, '                stdout, stderr = process.communicate(timeout=drain)  # the rest of its output, its group killed\n', '                stdout, stderr = process.communicate()\n'),
     "mutation check crashes when a process that left the session holds the pipes": (MUTATION_CHECK, '            except subprocess.TimeoutExpired as late:  # a process that left the session holds the pipes: stop reading\n', '            except ZeroDivisionError as late:\n'),
     "mutation check reads the pipes only after the run ends": (MUTATION_CHECK, '            stdout, stderr = process.communicate(timeout=limit)\n', '            process.wait(timeout=limit)\n            stdout, stderr = process.stdout.read(), process.stderr.read()\n'),
@@ -3147,6 +3153,12 @@ def _telling_line(run: subprocess.CompletedProcess) -> str:
     return (exception or error or lines or ["(no output)"])[-1]
 
 
+def _drop_bytecode(path: Path) -> None:
+    """Delete the cached bytecode of the module at `path` (see the docstring: a .pyc from the run before could run)."""
+    for cached in (path.parent / "__pycache__").glob(f"{path.stem}.*.pyc"):
+        cached.unlink(missing_ok=True)
+
+
 # Seconds to read the rest of a run's output when it ended in time but its pipes stayed open past the limit: its group
 # is killed by then, so what is left is already in the pipes, unless a process that left the session still holds them.
 DRAIN_SECONDS = 5
@@ -3231,10 +3243,12 @@ def main(wanted: list[str], limit: float = TIME_LIMIT, clean_limit: float = CLEA
                 missed.append(name)
                 continue
             path.write_text(original.replace(old, new))
+            _drop_bytecode(path)
             try:
                 run = run_limited(_pytest(tests), limit, cwd=ROOT, env=env)
             finally:
                 path.write_text(original)
+                _drop_bytecode(path)
             if run is None:
                 key = tuple(tests)
                 if key not in clean_runs:

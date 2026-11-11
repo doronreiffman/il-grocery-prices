@@ -148,6 +148,30 @@ def test_the_real_mutations_have_no_duplicate_names(check):
     assert check.duplicate_names(SCRIPT.read_text()) == []
 
 
+def test_the_broken_modules_cached_bytecode_is_deleted_before_each_run_and_after(check, rule, monkeypatch):
+    """Python trusts a cached .pyc whose source has the same size and whole-second mtime, so one left from the last run
+    could run the last break. The check's runs write none, but a test that starts Python with an environment of its own
+    might: the module's cached files are deleted after each break is written and after the file is restored. Another
+    module's are kept."""
+    cache = rule.parent / "__pycache__"
+    cache.mkdir()
+    cached, other = cache / "rule.cpython-313.pyc", cache / "rules.cpython-313.pyc"
+    cached.write_bytes(b"from before")
+    other.write_bytes(b"another module's")
+    present = []
+
+    def run(args, limit, **popen):
+        present.append(cached.exists())
+        cached.write_bytes(b"written during the run")  # as a Python started without PYTHONDONTWRITEBYTECODE would
+        return subprocess.CompletedProcess(args, 1, "", "")
+    monkeypatch.setattr(check, "MUTATIONS", mutations(first=1, second=1))
+    monkeypatch.setattr(check, "run_limited", run)
+    assert check.main([]) == 0
+    assert present == [False, False]
+    assert not cached.exists()
+    assert other.read_bytes() == b"another module's"
+
+
 # ---- the time limit (q25) ----
 
 def test_a_time_out_counts_as_caught_when_its_tests_pass_unmutated(check, rule, monkeypatch, capsys):
