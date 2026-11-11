@@ -5,14 +5,20 @@
 
 Each mutation names the file it breaks and the test files that must catch it. It edits source files
 in place while it runs: run nothing else from this checkout until it finishes. Files are restored
-afterwards. A mutation is caught only when pytest exits 1 (a test failed or errored); any other
-non-zero exit means pytest could not run the tests as asked (a test id that no longer exists, 4; a
-module that no longer imports, 2; no tests collected, 5), which proves nothing about the rule, so it
-is reported as ERROR. That includes a break that stops the broken module importing (a syntax error,
-a name a test imports removed): pick a break that leaves the module importable. Exit code 1 if any
-mutation goes unnoticed or errs, or if its text to break is not found exactly once (the script is
-out of date). Exit code 2, before anything runs, if two entries share a name: the dict literal would
-keep only the last, and the first would never run.
+afterwards. A run that ends by itself (for one that hangs, see below) is caught only when pytest
+exits 1 (a test failed or errored); any other non-zero exit means pytest could not run the tests as
+asked (a test id that no longer exists, 4; a module that no longer imports, 2; no tests collected,
+5), which proves nothing about the rule, so it is reported as ERROR. That includes a break that
+stops the broken module importing (a syntax error, a name a test imports removed): pick a break that
+leaves the module importable. Exit code 1 if any mutation goes unnoticed or errs, or if its text to
+break is not found exactly once (the script is out of date). Exit code 2, before anything runs, if
+two entries share a name: the dict literal would keep only the last, and the first would never run.
+
+Each pytest run has a time limit (TIME_LIMIT, q25). A run still going at the limit is killed and counts
+as caught, printed "CAUGHT <name> (timed out after N s)": a break that makes a test hang is a break the
+tests noticed, and without the limit it would freeze the whole check. subprocess.run kills pytest
+itself, not a process a test started (node, sh, the golden run's second process): those end by their
+own tests' limits or on their own.
 
 Copied from flights-archive's harness, with two changes: only exit 1 counts as caught (above), and
 the test runs write no bytecode. Python trusts a cached .pyc whose source has the same size and the
@@ -28,6 +34,11 @@ from pathlib import Path
 from pytest import ExitCode
 
 ROOT = Path(__file__).resolve().parent.parent
+# Seconds each pytest run may take (q25). The slowest normal run of any mutation's target tests, unmutated and with this
+# script's own command, is tests/test_golden_90.py: 448 s on the Mac on 2026-11-11 (the other 86 target sets took at most
+# 57 s, tests/test_basket_handler.py). The limit is three times that, room for a slower CI runner; a run that hangs costs
+# the check this long.
+TIME_LIMIT = 1350
 NAMES = ("src/collector/names.py", ["tests/test_names.py"])
 PAYLOAD = ("src/collector/payload.py", ["tests/test_payload.py"])
 STORELIST = ("src/collector/storelist.py", ["tests/test_storelist.py"])
@@ -3006,6 +3017,12 @@ MUTATIONS = {
     "mutation check shows the file, not a collection error's cause": (MUTATION_CHECK, '    exception = [line for line in lines if line.startswith("E ")]\n', '    exception = []\n'),
     "mutation check shows pytest's last line, not a missing test's id": (MUTATION_CHECK, '    error = [line for line in lines if line.startswith("ERROR")]\n', '    error = []\n'),
     "mutation check crashes on a signal's exit": (MUTATION_CHECK, '    try:\n        return ExitCode(returncode).name\n    except ValueError:', '    if True:\n        return ExitCode(returncode).name\n    if False:'),
+    "mutation check runs pytest with no time limit": (MUTATION_CHECK, 'cwd=ROOT, env=env, timeout=limit)\n', 'cwd=ROOT, env=env)\n'),
+    "mutation check runs pytest with no time limit unless given one": (MUTATION_CHECK, 'def main(wanted: list[str], limit: float = TIME_LIMIT) -> int:\n', 'def main(wanted: list[str], limit: float | None = None) -> int:\n'),
+    "mutation check crashes on a timed-out run": (MUTATION_CHECK, '            except subprocess.TimeoutExpired:  # subprocess.run has killed pytest and waited for it\n', '            except ZeroDivisionError:\n'),
+    "mutation check counts a timed-out run as missed": (MUTATION_CHECK, '                print(f"CAUGHT {name} (timed out after {limit:g} s)")\n                continue', '                print(f"MISSED {name}")\n                missed.append(name)\n                continue'),
+    "mutation check counts a timed-out run as an error": (MUTATION_CHECK, '                print(f"CAUGHT {name} (timed out after {limit:g} s)")\n                continue', '                print(f"ERROR  {name}: timed out")\n                errors.append(name)\n                continue'),
+    "mutation check does not say a run timed out": (MUTATION_CHECK, '                print(f"CAUGHT {name} (timed out after {limit:g} s)")\n', '                print(f"CAUGHT {name}")\n'),
     # The final review's fix wave (Task 28): each break undoes one of its fixes.
     "the product pages staged outside the run's work folder (q22 site run)": (SHOP_BUILD_FOR_BASKET_HANDLER, 'tempfile.TemporaryDirectory(prefix="shopper-pages-", dir=site_dir.parent)', 'tempfile.TemporaryDirectory(prefix="shopper-pages-")'),
     "basket /tmp back at 2 GB (q22 template)": (TMP_SIZE, "{Size: 10240}", "{Size: 2048}"),
@@ -3106,8 +3123,9 @@ def _telling_line(run: subprocess.CompletedProcess) -> str:
     return (exception or error or lines or ["(no output)"])[-1]
 
 
-def main(wanted: list[str]) -> int:
-    """Run every mutation, or with `wanted` only those whose name contains one of its strings."""
+def main(wanted: list[str], limit: float = TIME_LIMIT) -> int:
+    """Run every mutation, or with `wanted` only those whose name contains one of its strings, each pytest run stopped
+    after `limit` seconds."""
     duplicates = duplicate_names(Path(__file__).read_text())
     if duplicates:
         print(f"DUPLICATE mutation names, each given to more than one entry (only the last would run): {duplicates}")
@@ -3131,9 +3149,14 @@ def main(wanted: list[str]) -> int:
             path.write_text(original.replace(old, new))
             try:
                 run = subprocess.run([sys.executable, "-m", "pytest", *tests, "-q", "-x", "-p", "no:cacheprovider"],
-                                     capture_output=True, text=True, cwd=ROOT, env=env)
+                                     capture_output=True, text=True, cwd=ROOT, env=env, timeout=limit)
+            except subprocess.TimeoutExpired:  # subprocess.run has killed pytest and waited for it
+                run = None
             finally:
                 path.write_text(original)
+            if run is None:
+                print(f"CAUGHT {name} (timed out after {limit:g} s)")
+                continue
             outcome = verdict(run.returncode)
             if outcome == "ERROR":
                 print(f"ERROR  {name}: pytest exited {run.returncode} ({_exit_name(run.returncode)}), not a test "
