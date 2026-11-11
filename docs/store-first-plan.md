@@ -1,0 +1,793 @@
+# Store first: the verdict, the price chart and the store picker (implementation plan)
+
+Grade, quoted from the approved design (`docs/store-first.md`, "Grade"): "the public site's production grade, as for the shopper site: test-first, a mutation for every rule, a fresh review before merge, and the owner's read of the built pages before merge."
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** the shopper picks a store type once; every product page then answers for that store type with "Deal" or "No deal" against what the product usually costs, sales included, with the shekel saving, one measured reason, a price chart, "Last this low" and "How often on sale"; each store type gets its own front page of deals, biggest saving first.
+
+**Architecture:** two new modules beside the existing ones. `shopper.verdict` holds rules S0 to S8 and the front list, pure functions over the history `shopper.history.load` already reads (no new table, no change to collecting or extracting). `shopper.chart` draws one SVG per store type from a verdict. `shopper.product` renders the verdict, chart and fold-out in place of P7, P8, the price-change text and P9. `shopper.pages` renders the root page as the picker and one front page per store type under `store/`. The one script, `static/search.js`, keeps its name and gains the picker: it is loaded on every page, remembers the pick under one localStorage key, and rearranges a product page for the pick. Every fact stays in the HTML. The build computes each pair's verdict once, in its existing single pass, and the site-day file gains a front block per store type.
+
+**Tech Stack:** Python 3.13 standard library, `duckdb==1.5.6` (already pinned), pytest and pytest-cov, `scripts/mutation_check.py`; Node 22.11.0 (already in CI, `.github/workflows/ci.yml`) for the script's tests through `tests/search_harness.js`. No new dependency.
+
+**Spec:** `docs/store-first.md` (approved by the owner 2026-11-11). Read it in full first. Then read the parts of `docs/shopper-site.md` it changes: "What a visitor sees", P6 to P10, Q2 to Q4, "Words", "Build and hosting" ("Checks before upload"), and "Changed after the survey" ("The column"). The code this builds on: `src/shopper/` (`history.py`, `items.py`, `deals.py`, `measures.py`, `product.py`, `pages.py`, `words.py`, `shell.py`, `build.py`, `siteday.py`, `check.py`, `static/search.js`), `src/basket/site.py`, `src/basket/page.py` (`BASE_STYLE`, `Frame`), `template.yaml` (`WriteSite`), `site-template.yaml` (the lifecycle rules), `tests/shopper_golden.py`, `tests/test_golden_90.py`, `tests/search_harness.js`.
+
+## Global Constraints
+
+- The grade above binds every task: test-first, a mutation for every rule, a fresh review per task and of the whole branch, and the owner's read of a real day's built pages before merge.
+- Branch `q33-store-first`, worktree `/Users/doronreiffman/Projects/il-grocery-prices-q33-store-first`. One commit per task, each message naming q33. Never push; no `gh`; no AWS write, deploy or upload (each is the owner's go, outside this plan). Before each commit, run `git status` and stage only the task's files.
+- `PY` is `/Users/doronreiffman/Projects/il-grocery-prices/.venv/bin/python`. The worktree has no venv; pytest's `pythonpath` (`src`, `tests`) makes it test the worktree's code. Commands run from the worktree root.
+- The full test command: `$PY -m pytest -o addopts="" --cov=collector --cov=src/basket --cov=src/shopper --cov-fail-under=95 -q`. Baseline on main at fd2d30d: 2,514 tests, 99.86%. Measure it once on the new branch before Task 1 and write it in "Deviations". The floor is 95%. The new modules `verdict.py` and `chart.py` reach 100%.
+- Test-first: a failing test before the code, for every rule.
+- A named mutation in `scripts/mutation_check.py` for every rule, added in the task that adds the rule. The name says what the break does, then the group in brackets: `(q33 verdict)`, `(q33 golden)`, `(q33 chart)`, `(q33 product)`, `(q33 words)`, `(q33 script)`, `(q33 picker)`, `(q33 front)`, `(q33 siteday)`, `(q33 method)`. New targets: `SHOP_VERDICT = ("src/shopper/verdict.py", ["tests/test_verdict.py"])`, `SHOP_CHART = ("src/shopper/chart.py", ["tests/test_chart.py"])`, `VERDICT_FOR_SHOP_GOLDEN = ("src/shopper/verdict.py", ["tests/test_golden_90.py"])`. Only pytest exit 1 counts as caught. `tests/test_mutation_targets.py` runs with the suite and refuses a target whose text or test is gone.
+- Each task's mutation step runs `$PY scripts/mutation_check.py "q33 <group>" ...` over its groups and every name it re-pointed, then the staleness check. Expected: every one CAUGHT, then `none stale`. The mutation check edits files in place, so nothing else runs from the worktree while it runs. The full check runs weekly in CI.
+- **The staleness check** reads and edits nothing, so it is safe at any time: `$PY -I -c "import importlib.util as u; s = u.spec_from_file_location('m', 'scripts/mutation_check.py'); m = u.module_from_spec(s); s.loader.exec_module(m); bad = [n for n, ((f, _), old, _) in m.MUTATIONS.items() if (m.ROOT / f).read_text().count(old) != 1]; print(len(m.MUTATIONS), bad or 'none stale')"`.
+- **Re-point or retire.** A mutation whose code stays but whose text moved is re-pointed at the new text, with the same break. A mutation of a rule the design removes (P7's sentences, P8's sentences, the price-change text, P9's row, the old front test, the old chart) is retired with its code, because the rule it guarded no longer exists. Each retired mutation is named in its task's commit message and in "Deviations", with the rule it guarded.
+- **Golden repins.** Run `GOLDEN_90_REPIN=1 $PY -m pytest tests/test_golden_90.py -k pinned` only after every other golden test passes. Then list the moved names with `git diff -U0 tests/golden/golden-90.sha256 | grep '^[-+][0-9a-f]' | awk '{print $2}' | sort -u`. Compare that list with the task's expected list, and name the reason and the kinds of lines that moved in the commit message.
+- Test data never reads the clock: fixed days and times, `gzip.compress(..., mtime=0)`. Every datetime is time-zone aware; never a naive `astimezone()` (the Mac runs Asia/Jerusalem, CI runs UTC). The rules here work on dates only.
+- **Figures as shown** (design, call 13). Every comparison and threshold works on two-place figures, half up: a listed price by `basket.record.money`, a deal price by `shopper.deals.to_agora`. A day price, the usual price, today's price and the saving are `Decimal`s with two places.
+- **The design's values, copied, never re-derived:** ₪1.00 for a deal (≥); shades ₪1.00 to ₪2.99, ₪3.00 to ₪4.99, ₪5.00 or more; the window is `READ_DAYS` (90), today excluded; the higher middle value for an even count; `MIN_FRONT_DAYS` (20) of `RECENT_DAYS` (30) for the front bar; the top 100 per store type; the nine store types of `shopper.columns.COLUMNS`; the page-size shrink line of 45,000 bytes, with the check's `MAX_PAGE` of 60,000 kept; one script file; one localStorage key.
+- **Public page words.** Every headline and label is what a shopper would say out loud. Shopper text says "shelf price"; fold-outs and the method page say "listed price" with its definition. Never "we", "our" or "us" (`shopper.check` refuses them), never a NEVER phrase, never a word that says a chain did wrong ("No deal" is neutral grey, never red). The design's Words table is copied verbatim. The words this plan adds are listed under "Words this plan adds"; they are provisional until the owner's read (Task 9).
+- No new dependency. Nothing in the code deletes: no `delete_object`, no `s3:Delete*` in the role, no `--delete` in the scripts.
+- Every page is a pure function of its inputs: the same bytes whatever order the rows or mappings come in.
+- Docs, this plan included, are in plain words with no "we". This plan and every doc are public: no pointer to the owner's private notes, no email address, no claude.ai link, no health-check URL.
+- Models (the owner's rule): implementers and task reviews on the newest Opus (`opus`). The whole-branch review runs on Fable (`fable`), or on the newest Opus while Fable is at its usage limit, with the report naming the swap. A task still open after fix round 3 escalates to Fable. Subagents never run `gh` or push.
+
+## Review Focus
+
+1. **A pick that no longer fits.** Storage may hold a key that is not one of the nine (an old value, garbage), or reading storage may throw (private browsing). Either way the page behaves as with no pick: every part listed, search working, no error stops the script. Tests in Task 4: `test_read_pick` (the unknown-key and throwing-storage cases) and `test_blocked_storage_leaves_search_working`.
+2. **The picked store type's day is not readable.** Its promotions were not read today (a promotion hole, as at Shufersal Deal on 2026-11-08), or its prices came from too few files (a hole). The product page gives no verdict and never says "No sale today" or "No deal". That store type's front page lists no deal and says why. Tests in Task 1 (`test_each_no_verdict_call`, the `too_few` and `unread_today` cases) and Task 6 (`test_a_store_type_not_read_today_says_so_and_lists_none`).
+3. **The ₪1.00 line on figures as shown.** "3 for ₪10.00" shows ₪3.33; against a usual ₪4.33 that is ₪1.00 off, a Deal, although the exact saving is ₪0.9966. Every shade band edge works the same way (₪2.99 and ₪3.00, ₪4.99 and ₪5.00). Test in Task 1: `test_deal_from_one_shekel_on_figures_as_shown`.
+4. **A product the picked store type does not sell.** If the store type never sold it, the page has no part for it; if the product is sold nowhere today, no store type does. The page says "Not sold at … today" and shows the badge row, which may be empty, with no script error and with every fact in the HTML. Tests in Task 3 (`test_a_product_sold_nowhere_today_has_no_badges_and_every_part`) and Task 4 (`test_arrange`, the cases with the pick absent from the parts and with no badges).
+5. **"change" from a store page.** The root shows the picker instead of sending the visitor straight back to the remembered store; picking another store type replaces the pick. Test in Task 4: `test_the_root_sends_a_remembered_pick_to_its_store_page_and_change_does_not`.
+
+---
+
+## Questions for the owner
+
+Answered by the owner 2026-11-11: question 1, the recommendation (tapping a badge with no pick yet sets the pick). Nothing in this plan waits on the owner now.
+
+1. **Tapping a badge on a product page with no pick yet** (design, "What a visitor sees" 6: the badge row is shown "as the picker"; call 6 covers taps once a pick exists). **Recommended:** with no pick, tapping a badge both shows that part and sets the pick, because the row is the picker on that page. With a pick, tapping only shows that part (call 6). Why: a shopper who arrives from a shared link or from search and taps their store expects the next product page to remember it. **The alternative:** a pick is set only by opening a store type's front page. Task 4 is built on the recommendation. The other answer changes one function (`onBadge`), one test and one mutation. This blocks Task 4 only.
+
+## Where the design leaves room, this plan decides
+
+From "Left to the builder", and from places where the rules are silent. The owner can overturn any of these.
+
+- **Modules.** The rules go in `shopper.verdict` and the drawing in `shopper.chart`. The words go in `shopper.words`, as every page word already does.
+- **The store-type front pages' file names:** `store/<column key>.html` (`store/carrefour-market.html`). A folder of their own means one more line in `BasketFunction`'s role (`WriteSite`: `store/*`) and one more lifecycle rule in the site stack (`old-store-pages`, prefix `store/`), each pinned by the existing template tests. Both are part of the deploy ("Deploying this branch", below).
+- **The script's structure.** The file keeps its name, `search.js`, because the role, the lifecycle rule, `basket.site.FIXED_PAGES` and `scripts/publish.sh` already name it. The picker is pure functions exported for the Node harness, beside a thin DOM wiring. The script finds the site's root from the header's pick link (`#pick-link`, whose `href` is `<up>index.html#pick`). Search builds its requests from that root, so it works from `store/` pages.
+- **The pick.** It is kept under the localStorage key `store` and holds a column key; any other value counts as no pick. It is set when a store type's front page opens, and on a badge tap when there is no pick yet (Question 1). Every storage read and write is inside try/catch.
+- **Ties in the front list:** the saving as shown, largest first, then the barcode as a number (`shopper.items.by_number`).
+- **The colours.** The tokens live in `shopper.product.BADGE_STYLE`, light and dark, shared by product and store pages: a light, a middle and a deep green for the three deal bands, and a neutral grey for No deal. Each badge's text must contrast at least 4.5:1 with its background in both themes (WCAG AA for normal text), and a test checks it.
+- **The chart.** Each calendar day from the first tracked day to today is `DAY_WIDTH` (4) units, so the viewBox width follows the span and a short history draws a short chart. Heights run between the lowest and highest of the shown listed prices, day prices and today's price. A run of one price is one segment from the start (the design's first simplification is built in). The labels sit at the right, and a `<title>` holds a text alternative. Untracked days are gaps; a sale day of unknown price gets a mark at the foot and no price.
+- **The order of the calls** (S4, where several no-verdict lines could apply). The first that applies wins:
+  1. `too_few`: today is a hole for the store type (prices from too few files). The section shows `basket.words.too_few`, as today.
+  2. `not_sold`: no point today, or no listed price.
+  3. `unread_today`: today is a promotion hole.
+  4. `no_sale`, `some_stores` or `price_unread`, by today's promotions.
+  5. `new`: the pair has no point on any day before today.
+  6. `mostly_unknown`: sale days of unknown price are more than half the tracked days.
+  7. `no_history`: no tracked day has a day price.
+  8. `deal` or `no_deal`.
+- **A `RewardType` 0 promotion is not a sale.** A struct with no `kind` never counts for S1, S3 or S7, as the approved amendment's S2 reads it (an item named only by 0 links is not on promotion). S7's "on sale" is the items table's `Point.on_promotion`: a wide link with a kind, running that day. "Some stores only" is a running struct with a kind on a day that is not `on_promotion`.
+- **Which No-deal reason is used.** When today's price is at or above the usual price (saving ≤ ₪0.00), the reason is the "always on" form, "It's been ₪X or less on K of the N days tracked.". With the higher middle value, K is then more than half of N. When 0 < saving < ₪1.00, the reason is the "small" form.
+- **What the counts count.** The reason line and S6 count the days that have a day price (S8: "the number of days it rests on"). S7 counts every tracked day, unknown-price sale days included.
+- **S6's today.** S6 uses S3's price when a promotion counts, else the listed price. It shows only when today's price is known: not on `too_few`, `not_sold` or `unread_today`. On those days the chart draws no today mark.
+- **S7's last sale.** Runs are made over the tracked days by `on_sale`; an untracked day neither breaks nor extends a run. A run that reaches the last tracked day while today is on sale is "this one". The last sale before it is the latest earlier run. Its price is the day price on its last day, left out when that price is unknown.
+- **The fold-out "How this is worked out"** holds, in this order:
+  - today's listed price with its range and store count (today's `_today`, moved);
+  - "last seen listed across …" when the product is listed today but not wide;
+  - every promotion running today, in today's words;
+  - F10's sentence (`no_odds_yet`).
+  P10's sentence stays at the top of the section. `ALWAYS_SENTENCE` moves to one note after the sections.
+- **The badge row.** There is one badge per store type with a point today, sorted by saving as shown (largest first; deals, then No deals). The rest follow in `COLUMNS` order. Each badge links to its section (`#c-<key>`). The row sits after the name block. Its heading, "Elsewhere today", is `hidden` until the script finds a pick.
+- **Nothing is hidden without the script.** The script adds the class `js` to `<html>`, and only `.js` rules hide parts.
+- **The ALWAYS check moves.** `shopper.check` holds every `store/*.html` and every `p/*.html` to the four ALWAYS phrases. `index.html`, now the picker, shows no price and is not held to them. Each store page carries the phrases in its fold-out.
+- **The site-day file.** Each column's block gains `front`: `ready`, `deals` (N), `checked` (M), `promotions`, `products`, and the shown rows' numbers. The top-level `counts` and `front_rows` go. B12's revision keeps each column's `deals` and `checked`.
+- **Code that only the removed rules used is removed** (Task 6), with its tests and mutations: in `measures`, `gap`, `Gap`, `depth`, `on_front`, `changes`, `Change`, `gaps` and `promoted_today`; in `words`, `gap_sentences`, `history_sentences`, `price_history` and their helpers; in `pages`, `FrontRow`, `front_rows_of` and `ordered`; in `product`, `_across`, `_cell` and the old `_chart`. `runs`, `days_since`, `promotion_points` and `whole` stay, because the forecast and the record use them.
+- **The real day for measuring and for the owner's read.** Use the latest day for which all five chains' items tables are in the main checkout's `data/tables/items/` (2026-11-10 when this plan was written). A read-only `sh scripts/sync.sh` may bring a later one, after the identity check.
+
+## Words this plan adds (provisional until the owner's read, Task 9)
+
+The design's Words table is used verbatim. The design's words do not cover the cases below, so these are proposed and pinned in tests, and changed on the owner's word.
+
+- A product seen before whose tracked days have no day price: "No price history yet."
+- S7 with no sale today: "The last sale ended 12 October, at ₪9.90."; with no readable price: "The last sale before this one ended 12 October." (or "The last sale ended 12 October.").
+- One day: "(1 day tracked)", "Lowest in the 1 day tracked.", "On sale on 1 of the 1 day tracked.".
+- Weighed products: "DEAL · ₪19.90 off a kilogram", "Usually ₪69.90 a kilogram, sales included (82 days tracked).", "When you buy 1.5 kilograms".
+- Conditions beyond the design's two, from question K's phrases with a capital letter: "The chain's card holders only", "Some customers only", "Minimum spend ₪150.00", joined by "; ". A programme's name goes in the chain's span, in the fold-out only.
+- Badges under "Elsewhere today": "Rami Levy · DEAL · ₪1.90 off", "Rami Levy · NO DEAL", "Rami Levy · no sale today" (each no-verdict line in lower case, without its full stop).
+- The chart: the labels "usually ₪8.90", "lowest ₪6.90", "highest ₪8.90", "today ₪6.90"; the key "shelf price", "on sale", "on sale, price not read"; the text alternative "Price chart: usually ₪8.90, lowest ₪6.90, highest ₪8.90, today ₪6.90.".
+- The root page's line on what the site does: "Pick the store you're in, then look up a product: each sale is checked against what it usually costs there."
+- The header: "Pick your store"; "Carrefour Market · change" (the design's).
+- A store type's front page:
+  - the list's heads: "Product", "Deal", "Price today", "Usually";
+  - the headline, with the noun always plural and the verb by N: "At Shufersal Sheli today: 1 of 3 promotions is actually a deal.";
+  - with M = 0: "At Shufersal Sheli today: no promotions to check.";
+  - on a promotion hole: "Sale prices could not be read today.";
+  - on a hole: `basket.words.too_few`;
+  - the fold-out's count line: "Today Shufersal Sheli lists 1,840 promotions carried by at least half its stores, on 6,210 products.";
+  - the story's heading: "One of today's deals";
+  - the fold-out's rules in shopper words (Task 6).
+
+---
+
+### Task 1: The rules: tracked days, the usual price, the verdict, last this low, how often, the front list (S0 to S8)
+
+**Files:**
+- Create: `src/shopper/verdict.py`, `tests/test_verdict.py`
+- Modify: `tests/shopper_golden.py` (Shufersal Universe's three stores from day 92; products U1 to U10; the docstring's worked values), `tests/test_golden_90.py` (`test_the_golden_verdicts`), `tests/golden/golden-90.sha256` (repinned)
+- Modify: `scripts/mutation_check.py`
+
+**Interfaces:**
+- Consumes: `shopper.history` (`Pair`, `Point`, `ColumnDay`, `window`, `READ_DAYS`), `shopper.measures` (`promotion_points`, `MIN_FRONT_DAYS`, `RECENT_DAYS`), `shopper.deals` (`deal_from_row`, `to_agora`), `basket.record.money`, `shopper.items.by_number`. `shopper.verdict` imports nothing from `words`, `product`, `pages` or `chart`, which all import it. That keeps the imports from going round in a circle, so `counts_today` checks start ≤ day ≤ end itself, without `product.running_today`.
+- Produces (in `shopper.verdict`):
+
+```python
+DEAL_MIN = Decimal("1.00")                                                       # S4
+SHADES = ((Decimal("5.00"), "deal-3"), (Decimal("3.00"), "deal-2"), (Decimal("1.00"), "deal-1"))   # S5, deepest first
+FRONT_LIMIT = 100
+CALLS = ("deal", "no_deal", "too_few", "not_sold", "unread_today", "no_sale", "some_stores", "price_unread",
+         "new", "mostly_unknown", "no_history")
+
+@dataclass(frozen=True)
+class Day:                       # one tracked day (S0) of the window
+    day: date
+    listed: Decimal              # as shown
+    price: Decimal | None        # S1, as shown; None on a sale day of unknown price
+    on_sale: bool                # S7: Point.on_promotion
+
+@dataclass(frozen=True)
+class Verdict:
+    column: str
+    call: str                    # one of CALLS (the order under "Where the design leaves room")
+    days: tuple[Day, ...]        # the tracked days of the READ_DAYS before the day, in day order
+    today_price: Decimal | None  # S6's today: S3's price when a promotion counts, else the listed price; None when unknown
+    struct: Mapping | None       # S3: the counting promotion with the lowest exact price (its conditions); a tie to the first
+    usual: Decimal | None        # S2, with call deal or no_deal
+    saving: Decimal | None       # usual - today_price, with call deal or no_deal
+    last_low: Day | None         # S6
+    last_sale: Day | None        # S7: the last day of the last sale before this one
+    on_sale_today: bool
+
+    @property
+    def priced(self) -> tuple[Day, ...]: ...     # the days with a day price
+    @property
+    def shade(self) -> str | None: ...           # S5, a deal's only
+    @property
+    def counting(self) -> bool: ...              # a promotion counts today (struct is not None)
+
+def counts_today(struct: Mapping, day: date) -> bool       # S3's filter: wide, valid, start <= day <= end
+def day_price(point: Point, day: date) -> Decimal | None   # S1
+def tracked(pair: Pair, column_days, day: date) -> tuple[Day, ...]           # S0 and S1, over promotion_points
+def usual_price(prices: Sequence[Decimal]) -> Decimal                         # S2: sorted, element len // 2
+def verdict(pair: Pair | None, column: str, column_days, day: date) -> Verdict
+def passes_bar(pair: Pair, column_days, day: date) -> bool   # window(..., RECENT_DAYS).days >= MIN_FRONT_DAYS
+def on_list(found: Verdict, pair: Pair, column_days, day: date) -> bool       # call "deal" and passes_bar
+def checked(found: Verdict, pair: Pair, column_days, day: date) -> bool       # found.counting and passes_bar (M)
+
+@dataclass(frozen=True)
+class DealRow:
+    column: str
+    code: str
+    title: str
+    verdict: Verdict
+
+def front_list(rows: Iterable[DealRow]) -> list[DealRow]   # saving desc, then barcode as a number; all N of them
+```
+
+- [ ] **Step 1: Write the failing tests** in `tests/test_verdict.py`. Build the pairs in the style of `tests/test_measures.py`'s `_pair` and `_days` (day `DAY = date(2026, 11, 20)`, synthetic code `2000000000046`), extended with promotion structs as `shopper.items` writes them (`wide`, `valid`, `kind`, `start`, `end`, `price_exact`, `per`, `buy`, `restrictions`, `programmes`, `min_spend`).
+  - `test_a_tracked_day_has_prices_and_promotions_read` (S0): a price hole, a promotion hole, a missing table and a day not listed are each absent from `[d.day for d in tracked(...)]`; every other day of the 90 is present.
+  - `test_the_day_price_is_the_lower_of_listed_and_the_lowest_counting_deal` (S1): with listed 5.00, counting deals 4.20 and 4.50, a not-wide 3.00 and an invalid 2.00, the day price is `Decimal("4.20")`. A valid deal of 5.50 gives 5.00.
+  - `test_a_sale_day_of_unknown_price_has_no_day_price_and_is_on_sale` (S1, S7): `on_promotion` True and only invalid structs give `Day(price=None, on_sale=True)`.
+  - `test_the_usual_price_is_the_higher_middle` (S2): `usual_price([D("3"), D("1"), D("2")]) == D("2")`; `usual_price([D("1"), D("2"), D("3"), D("4")]) == D("3")`; thirteen 7.90 and thirteen 9.90 give `D("9.90")`.
+  - `test_unknown_price_days_never_push_the_usual_price_up` (call 9): ten 4.00 sale days, eight unknown-price sale days and nine 6.00 days give usual 4.00 over the 19 priced days.
+  - `test_todays_price_is_the_lowest_counting_deal_club_only_included` (S3): a club-only struct at 3.90 and a plain one at 4.20 give `today_price == D("3.90")`, and `struct["restrictions"] == ["club"]`.
+  - `test_deal_from_one_shekel_on_figures_as_shown` (S4, call 13; Review Focus 3): usual 5.00 against today 4.00 is a `deal` (saving 1.00); 4.01 is a `no_deal` (0.99). "3 for ₪10.00" (`price_exact` "10/3", shown 3.33) against a usual 4.33 is a `deal` with `saving == D("1.00")`.
+  - `test_the_shades` (S5): savings 1.00 and 2.99 give `deal-1`, 3.00 and 4.99 give `deal-2`, 5.00 and 19.90 give `deal-3`. A `no_deal` has `shade is None`.
+  - `test_each_no_verdict_call`, parametrized (Review Focus 2), the call expected each time:
+    - `too_few`: a hole today, with a point and a wide valid struct;
+    - `not_sold`: no point today;
+    - `unread_today`: a promotion hole today, with a wide valid struct;
+    - `no_sale`: no running struct;
+    - `some_stores`: a running struct with a kind, not wide;
+    - `price_unread`: `on_promotion` True, wide, not valid;
+    - `new`: a counting struct and no point before today;
+    - `no_history`: points before today, none tracked;
+    - `mostly_unknown`: 14 unknown-price sale days of 27 tracked;
+    - with 13 of 27, a verdict (`deal` or `no_deal`, by its prices), judged on the 14 priced days.
+  - `test_a_zero_link_promotion_is_not_a_sale`: a running wide struct with `kind` None and `on_promotion` False gives `no_sale`.
+  - `test_last_this_low` (S6): the latest priced day at or below today's price, an equal price included. With none at or below, `last_low is None`. On a `no_sale`, today's price is the listed price. On `unread_today`, `today_price is None` and `last_low is None`.
+  - `test_how_often_and_the_last_sale_before_this_one` (S7):
+    - a run across an untracked day is one run;
+    - a sale running into today makes the run before it the last sale;
+    - with no sale today, the latest run is the last sale;
+    - a last day of unknown price gives `last_sale.price is None`;
+    - the on-sale count is `sum(d.on_sale for d in days)`.
+  - `test_the_bar_is_twenty_days_with_records_in_the_thirty`: 19 days fail and 20 pass; a promotion-hole day counts (it is a record).
+  - `test_the_front_list`: `front_list` sorts by saving (largest first), then by barcode as a number (`"9"` before `"10"`). `on_list` is false for a `no_deal`, and false for a deal failing the bar. `checked` is true for a `no_deal` with a counting promotion that passes the bar.
+  - `test_random_histories_keep_the_rules`: over the histories of `tests/shopper_random.py`, check:
+    - `usual` is one of the priced prices;
+    - `saving == usual - today_price`;
+    - every `Day` is a day `promotion_points` reads;
+    - the call is `deal` exactly when `saving >= DEAL_MIN`.
+- [ ] **Step 2: Extend the golden history** in `tests/shopper_golden.py`.
+  - `store_list` takes the day. From day 92 (2 April), Shufersal's list holds stores 81, 82 and 83 in sub-chain 8 (Shufersal Universe); before day 92 the list is unchanged.
+  - Those three stores publish price files and promotion files every day from 92 to 120, except day 110 (20 April), when they publish price files only. Day 110 is Universe's promotion hole, the design's "a hole".
+  - They list only the new products, U1 to U10. These are ten synthetic GS1 barcodes in ascending numeric order (so ties sort as listed here), with synthetic Hebrew names, at the same price in each of the three stores unless said:
+
+  | Product | Case | Listed | Promotion |
+  |---|---|---|---|
+  | U1 | always on | 12.90, days 92 to 120 | fixed 9.90, days 92 to 125 |
+  | U2 | a monthly sale | 8.90, days 92 to 120 | fixed 6.90, days 95 to 101 and days 117 to 123 (two ids) |
+  | U3 | exactly half | 9.90, days 93 to 120 | fixed 7.90, days 106 to 125 |
+  | U4 | a short history | 4.50, days 115 to 120 | fixed 3.20, days 120 to 126 |
+  | U5 | new today | 6.00, day 120 | fixed 5.00, days 120 to 126 |
+  | U6 | saves ₪0.99 | 5.00, days 92 to 120 | fixed 4.01, days 120 to 126 |
+  | U7 | saves ₪1.00 | 5.00, days 92 to 120 | fixed 4.00, days 120 to 126 |
+  | U8 | buy 2 | 6.00, days 92 to 120 | `RewardType` 1, `MinQty` 2, `DiscountedPrice` 9.00, days 120 to 126 |
+  | U9 | some stores only | 7.00, days 92 to 120 | fixed 5.00 at store 81 alone, days 120 to 126 |
+  | U10 | an unreadable price | 3.00, days 92 to 120 | fixed 6.50 (twice the listed price or more: not valid), days 120 to 126 |
+
+  Universe's 29 days of records (92 to 120) stay under the forecasts' 30th day (`FIRST_RECORD_DAY`), so the golden gains no forecast or score. Rewrite the docstring's paragraph on the stores, add the products, and work the values below by hand in the docstring.
+- [ ] **Step 3: Write the golden's failing test** in `tests/test_golden_90.py`. `test_the_golden_verdicts` loads the day's history (`load(golden.data / "tables", day_of(n), SLUGS)`), finds each pair, and asserts `verdict(...)`'s `call`, `usual`, `saving`, `shade`, `len(priced)`, `len(days)`, `last_low`, `sum(on_sale)` and `last_sale`. These values were worked by hand for this plan. The implementer works each one again in the golden's docstring; a disagreement is reported as a finding, never fixed quietly.
+  - G3 at Shufersal Sheli:
+    - day 75 (16 March): `deal`, usual 10.90 over 74 days, saving 3.00, `deal-2`, `last_low` None, 0 on sale;
+    - day 120 (30 April): `deal`, usual 10.90 over 90 days, 45 of them on sale. This is exactly half the days: the higher middle value holds the shelf price.
+  - G4 at Rami Levy, day 85: `deal`, usual 69.90 over 82 days (holes 40 and 41 skipped), saving 19.90, `deal-3`.
+  - G5 at Shufersal Deal, day 99: `deal`, usual 6.00 over 88 days, saving 1.50, `deal-1`, `last_low` day 44 (13 February) at 4.50. G5 at Shufersal Sheli, day 99: `no_sale`.
+  - G1:
+    - at Osher Ad, day 120: `no_sale`, today's price 5.00, `last_low` day 119 at 5.00, 31 of 90 on sale, `last_sale` day 116 (26 April) at 3.90;
+    - at Osher Ad, day 50: `deal`, usual 5.00 over 49 days, saving 1.10, 17 on sale, `last_sale` day 32 (1 February) at 3.90;
+    - at Shufersal Deal, day 50: `too_few`.
+  - Universe, day 120 (27 tracked days, day 110 left out):
+
+    | Product | Call | Values |
+    |---|---|---|
+    | U1 | `no_deal` | usual 9.90, saving 0.00, 27 of 27 on sale, `last_low` day 119 at 9.90, `last_sale` None |
+    | U2 | `deal` | usual 8.90, saving 2.00, `deal-1`, 10 of 27 on sale, `last_sale` day 101 (11 April) at 6.90 |
+    | U3 | `deal` | usual 9.90 over 26 days, saving 2.00, 13 of 26 on sale |
+    | U4 | `deal` | usual 4.50 over 5 days, saving 1.30, fails the bar |
+    | U5 | `new` | |
+    | U6 | `no_deal` | saving 0.99 |
+    | U7 | `deal` | saving 1.00, `deal-1` |
+    | U8 | `deal` | saving 1.50, `struct["buy"] == Decimal("2")` |
+    | U9 | `some_stores` | |
+    | U10 | `price_unread` | |
+
+  - The front list at Universe, day 120: `[row.code for row in front_list(...)]` is U2, U3, U8, U7. `checked` holds for U1, U2, U3, U6, U7 and U8: N = 4 and M = 6.
+- [ ] **Step 4: Run** `$PY -m pytest tests/test_verdict.py tests/test_golden_90.py -q`. Expected: the new tests fail, because `shopper.verdict` does not exist. Of the existing golden tests, only `test_the_golden_bytes_are_pinned` fails. Any other failure is a finding (the extension disturbed a worked value): report it before going on.
+- [ ] **Step 5: Implement** `src/shopper/verdict.py` to the interfaces and the order under "Where the design leaves room". Its module docstring states S0 to S8 and the front list in plain words, with the readings this plan takes.
+- [ ] **Step 6: Run** the full test command. Expected: everything passes except `test_the_golden_bytes_are_pinned`.
+- [ ] **Step 7: Repin the golden.** The moved names must all be among these:
+  - `day/2026-04-02` to `day/2026-04-30`;
+  - the final site's product pages, search pieces, browse pages, `index.html`, `method.html` and `record.html`;
+  - `site-days/` and `days/` files from 2026-04-02 (Shufersal's included stores).
+
+  None may be a `day/` line before 2026-04-02, nor a `forecasts/`, `scores/`, `ledger` or `tables/scored/` line. A name outside the list is a finding: stop and report it.
+- [ ] **Step 8: Mutations.** Group `(q33 verdict)`, target `SHOP_VERDICT`:
+  - "a promotion hole counted as tracked"
+  - "a price hole counted as tracked"
+  - "the day price the listed price alone"
+  - "a not-wide deal in the day price"
+  - "an invalid deal in the day price"
+  - "a sale day of unknown price given the listed price"
+  - "the usual price the lower middle"
+  - "the usual price the mean of the middle two"
+  - "₪1.00 not a deal"
+  - "the minimum compared on exact prices"
+  - "the shade bands an agora off"
+  - "a hole today judged"
+  - "a promotion hole today judged"
+  - "a not-wide promotion judged"
+  - "an unreadable price judged"
+  - "unknown days at exactly half called most days"
+  - "a zero link counted as a sale"
+  - "last this low strictly below"
+  - "the sale running into today taken as the last sale"
+  - "the front list smallest saving first"
+  - "a no deal on the front list"
+  - "the bar at 19 days"
+
+  Group `(q33 golden)`, target `VERDICT_FOR_SHOP_GOLDEN`: "the usual price the lower middle, in the golden". Run `$PY scripts/mutation_check.py "q33 verdict" "q33 golden"`, then the staleness check.
+- [ ] **Step 9: Commit:** `git add src/shopper/verdict.py tests/test_verdict.py tests/shopper_golden.py tests/test_golden_90.py tests/golden/golden-90.sha256 scripts/mutation_check.py && git commit -m "Store first: the verdict rules (days tracked, the usual price sales included, a deal from ₪1.00, last this low, how often) and the front list; the golden 90 days gain Shufersal Universe's three stores from 2 April and ten products (q33)"`, the commit body naming the repin's moved kinds.
+
+### Task 2: The price chart
+
+**Files:**
+- Create: `src/shopper/chart.py`, `tests/test_chart.py`
+- Modify: `src/shopper/words.py` (`CHART_KEY`, `chart_label`, `chart_summary`), `scripts/mutation_check.py`
+
+**Interfaces:**
+- Consumes: `Verdict`, `Day` (Task 1).
+- Produces:
+
+```python
+DAY_WIDTH = 4
+def render_chart(found: Verdict, day: date) -> str   # "" when found.days is empty
+# shopper.words
+CHART_KEY = ("shelf price", "on sale", "on sale, price not read")
+def chart_label(kind: str, price: Decimal) -> str     # kind: "usually" | "lowest" | "highest" | "today"
+def chart_summary(found: Verdict) -> str              # the <title> text
+```
+
+- The SVG: `<svg class="chart" role="img" aria-labelledby="chart-<column>" viewBox=...>` with `<title id="chart-<column>">` first. It contains:
+  - `<path class="listed">`: the shown listed price over the tracked days, broken at every untracked day;
+  - `<path class="sale">`: the day price on `on_sale` days with a price;
+  - `<path class="unread">`: marks at the foot for sale days of unknown price;
+  - when `today_price` is known, `<line class="today">` across the whole width at its height and `<circle class="today">` at today's x;
+  - `<text>` labels for the usual price (when there is one), the lowest and the highest shown prices, and today's.
+
+  After the SVG comes the key as text (`<p class="key">`), so colour is never the only signal. The style rules (`.chart .listed` grey, `.chart .sale` green, `.today` dashed) go in `PRODUCT_STYLE` (Task 3) and are tested there.
+
+- [ ] **Step 1: Write the failing tests** in `tests/test_chart.py`:
+  - `test_the_span_is_the_tracked_days_then_today`: the first tracked day is at x 0 and today at `(day - first).days * DAY_WIDTH`. A 5-day history's viewBox is narrower than a 27-day one's.
+  - `test_untracked_days_are_gaps`: a promotion-hole day between two tracked days makes the listed path start again (an `M`) after the gap, with no segment across it.
+  - `test_the_listed_price_grey_and_sale_days_green`: a sale day's stretch is drawn at its day price's height; a day not on sale has no sale stretch.
+  - `test_a_sale_day_of_unknown_price_is_marked_without_a_price`.
+  - `test_todays_price_is_a_dot_with_a_dashed_line_across`: the line runs from x 0 to the chart's right edge at today's height.
+  - `test_no_today_mark_without_todays_price`: covers `not_sold`, `too_few` and `unread_today`.
+  - `test_the_labels_name_the_usual_lowest_and_highest_prices` (`chart_label`'s words, in the SVG's text).
+  - `test_a_text_alternative_inside_the_svg`: `<title>` is the first child, its id is unique per column, and it holds `chart_summary`.
+  - `test_a_run_of_one_price_is_one_segment`: 27 days at one price give one horizontal segment.
+  - `test_heights_span_the_lowest_and_highest_prices_shown`: today's price is included.
+  - `test_no_chart_without_a_tracked_day`.
+  - `test_the_chart_is_the_same_bytes_twice`.
+  - `test_ninety_days_of_daily_changes_stay_small`: a price change every day plus weekly sale runs stays under 3,000 bytes.
+- [ ] **Step 2: Run** `$PY -m pytest tests/test_chart.py -q`. Expected: fail on import.
+- [ ] **Step 3: Implement** `render_chart` and the three words. The module docstring states the drawing rules above.
+- [ ] **Step 4: Run** the full test command. Expected: all pass.
+- [ ] **Step 5: Mutations**, `(q33 chart)`, target `SHOP_CHART`:
+  - "an untracked day drawn across"
+  - "a sale stretch on a day off sale"
+  - "the unknown-price mark at the listed price's height"
+  - "today's dot at the usual price"
+  - "the dashed line stopping at today"
+  - "the span a fixed 90 days"
+  - "the lowest label from the listed prices alone"
+  - "the text alternative left out"
+  - "a run of one price drawn day by day"
+
+  Run `$PY scripts/mutation_check.py "q33 chart"`, then the staleness check.
+- [ ] **Step 6: Commit:** `git add src/shopper/chart.py src/shopper/words.py tests/test_chart.py scripts/mutation_check.py && git commit -m "Store first: the price chart, a store type's tracked days then today, sales in green, today's price dashed across (q33)"`.
+
+### Task 3: The product page: the verdict, the chart, how often, the fold-out, "Elsewhere today"
+
+**Files:**
+- Modify: `src/shopper/product.py`, `src/shopper/words.py`, `src/shopper/build.py` (one verdict per pair in `_Pages`, passed to `render_product`)
+- Test: `tests/test_product.py`, `tests/test_shop_words.py`, `tests/test_shop_build.py`, `tests/test_golden_90.py`, `tests/golden/golden-90.sha256`
+- Modify: `scripts/mutation_check.py`, and this plan's "Deviations" (the page sizes)
+
+**Interfaces:**
+- Consumes: `verdict`, `Verdict`, `counts_today` (Task 1); `render_chart` (Task 2).
+- Produces:
+
+```python
+# shopper.product
+def render_product(covered: Covered, pairs: Mapping[str, Pair], verdicts: Mapping[str, Verdict],
+                   column_days: Mapping[tuple[str, date], ColumnDay], day: date, collected_by: str,
+                   gates: Mapping[str, Gate], promotions_errors: Mapping[str, str]) -> str
+BADGE_STYLE: str                                  # the shades, light and dark (Task 6 imports it)
+def badge_class(found: Verdict) -> str            # "deal-1" | "deal-2" | "deal-3" | "no-deal" | "none"
+# shopper.words
+def on_day(day: date) -> str                       # "12 October" (shopper text: no year)
+def badge(found: Verdict) -> str                   # "At Carrefour Market: DEAL · ₪1.90 off" / "At Carrefour Market: NO DEAL"
+def reason(found: Verdict) -> str | None           # the design's three forms; None without a verdict
+NO_VERDICT: dict[str, str]                         # the design's lines, verbatim, by call; "no_history" provisional
+def not_sold(column: str, last: date | None) -> str   # "Not sold at Carrefour Market today, last seen 3 November"
+def conditions(struct: Mapping) -> list[str]       # "Club members only", "When you buy 2", ...
+def last_low(found: Verdict) -> str | None         # "Last this low: 12 October, at ₪9.90." / "Lowest in the 10 days tracked."
+def how_often(found: Verdict) -> str | None        # "On sale on 12 of the 60 days tracked." + the last sale's sentence
+def coming_sale(start: date) -> str                # "A sale starts on 14 November"
+def short_badge(found: Verdict) -> str             # the badge row's text (Words this plan adds)
+ELSEWHERE = "Elsewhere today"
+WORKED_OUT = "How this is worked out"
+```
+
+- `build._Pages` computes `verdict(pair, key, column_days, day)` once per pair as it streams. For a covered product's column with no pair, it calls `verdict(None, key, ...)`. The front page's rows in this task are still the old rule's (`front_rows_of`).
+- The page, top to bottom:
+  - the title, names, barcode and size, as today;
+  - the badge row with its hidden heading;
+  - a `<section id="c-<key>" data-column data-chain>` per column that lists the product or has its history, in `COLUMNS` order, holding:
+    - P10's warning when the chain's promotions were not read;
+    - the verdict: the badge `<p class="badge <class>">`, then the reason; or the no-verdict line (`too_few` from `basket.words`, `not_sold` with `covered.last_wide`);
+    - the conditions;
+    - the coming sale (a record day and `next_start`);
+    - the chart;
+    - last this low;
+    - how often;
+    - `<details><summary>How this is worked out</summary>…</details>` (its contents under "Where the design leaves room");
+  - `ALWAYS_SENTENCE` once.
+
+  P7's sentences, `GAP_HEADING`, `HISTORY_HEADING`, P8's sentences, `price_history`, P9's table and the old chart go.
+
+- [ ] **Step 1: Write the failing tests.** In `tests/test_product.py`:
+  - `test_each_section_says_the_verdict_with_the_store_types_name`: "At Shufersal Deal: DEAL · ₪1.50 off" is in Deal's section (anti-goal 1).
+  - `test_a_no_deal_badge_is_grey_and_writes_its_words`: class `no-deal`, text "NO DEAL". The no-deal tokens in `BADGE_STYLE` are greys in both themes: each colour's red, green and blue channels differ by at most 0x10.
+  - `test_the_reason_line_names_its_days` (S8).
+  - `test_each_no_verdict_line`, parametrized over every no-verdict call: the line is `NO_VERDICT[call]` verbatim and the section has no badge.
+  - `test_a_not_sold_section_says_when_last_seen`: "Not sold at Shufersal Deal today, last seen 3 November".
+  - `test_the_condition_beside_the_verdict`: "Club members only" and "When you buy 2".
+  - `test_a_coming_sale_line`: "A sale starts on 14 November"; none on a hole morning.
+  - `test_the_fold_out_holds_the_range_the_definition_every_promotion_and_no_odds`: inside `<details>`: the range note; "Listed price ₪…, before promotions, as listed in the chain's price files"; each running promotion with `FINE_PRINT` and `MORNING`; `AT_SOME_STORES` on a not-wide one; `no_odds_yet(key)`.
+  - `test_elsewhere_today_has_a_badge_per_store_type_selling_it_by_saving`: badges in saving order; none for a store type not listing it today; each `href="#c-<key>"` names an existing id.
+  - `test_with_the_script_blocked_every_store_types_part_is_in_the_html` (the design's "Testing"): every section, in `COLUMNS` order, holds its verdict words, reason and chart.
+  - `test_nothing_is_hidden_without_the_script`: the only `hidden` is the Elsewhere heading, and every hiding rule in the style starts with `.js`.
+  - `test_a_product_sold_nowhere_today_has_no_badges_and_every_part` (Review Focus 4).
+  - `test_p7_p8_and_p9_are_gone`: none of `GAP_HEADING`, `HISTORY_HEADING`, "30-day median" or "Today at each column".
+  - `test_every_shade_reads_in_both_themes` (S5): the WCAG contrast ratio of each badge's text on its background is at least 4.5 in the light and dark sets of `BADGE_STYLE`, and the three greens differ.
+
+  Rewrite for the new page: `test_a_weighed_deal_is_per_kilogram` ("₪19.90 off a kilogram") and `test_the_largest_page_is_under_60_kb` (nine columns, each with 90 days of a daily price change, weekly sale runs, three promotions, 40-character names). Keep: always and never phrases, F10 per section, an open gate stops the page, names and programmes escaped in their spans, the promotions error in each of the chain's sections, the same bytes twice, the shell. Retire with their code: the P7, P8, P9, `price_history` and old-chart tests (`test_the_chart_is_the_same_with_each_prices_height_worked_once` included).
+
+  In `tests/test_shop_words.py`, pin every phrase above with the design's examples verbatim: the badge forms; the three reason forms; `NO_VERDICT`; `not_sold` with and without a day; `last_low`'s two forms; `how_often` with "before this one", with no sale today, and with no price; `coming_sale`; `on_day` giving "12 October"; one day said as "1 day". Assert that none holds a NEVER phrase, "we", "our" or "us".
+- [ ] **Step 2: Rewrite the golden's product-page assertions** in `test_the_golden_pages_windows_and_gaps` (the front page's assertions stay for Task 6).
+  - G3, day 75: Sheli says "At Shufersal Sheli: DEAL · ₪3.00 off", "Usually ₪10.90, sales included (74 days tracked).", "Lowest in the 74 days tracked." and "On sale on 0 of the 74 days tracked."; Deal says "No sale today".
+  - G1, day 120, at Osher Ad: "No sale today", "Last this low: 29 April, at ₪5.00." and "On sale on 31 of the 90 days tracked. The last sale ended 26 April, at ₪3.90.".
+  - G4, day 85: "At Rami Levy: DEAL · ₪19.90 off a kilogram".
+  - G5, day 99, at Deal: "At Shufersal Deal: DEAL · ₪1.50 off" and "Last this low: 13 February, at ₪4.50.".
+  - G1, day 50, at Deal: "too few files today: 0 of 2 stores".
+  - Universe, day 120:
+    - U1: "It's been ₪9.90 or less on 27 of the 27 days tracked.";
+    - U2: "On sale on 10 of the 27 days tracked. The last sale before this one ended 11 April, at ₪6.90.";
+    - U5: "New today: no price history yet.";
+    - U6: "Only ₪0.99 below its usual ₪5.00 (27 days tracked).";
+    - U7: "DEAL · ₪1.00 off";
+    - U8: "When you buy 2";
+    - U9: "On sale at some stores only";
+    - U10: "On sale, but the sale price could not be read".
+- [ ] **Step 3: Run** `$PY -m pytest tests/test_product.py tests/test_shop_words.py tests/test_golden_90.py -q`. Expected: the new tests fail.
+- [ ] **Step 4: Implement** the interfaces and the page. Rewrite `product.py`'s docstring to the new page. `words.py` gains the new words in its docstring's plain-words account; P7 and P8 stay there until Task 6.
+- [ ] **Step 5: Run** the full test command. Expected: all pass but the pin.
+- [ ] **Step 6: Repin the golden.** Expected moved names:
+  - every `day/` line from the first built day (2026-01-30);
+  - every final product page.
+
+  No `site-days/`, `days/`, `forecasts/`, `scores/` or `ledger` line moves, nor the front, method, record or basket page. The reason in the commit: the product pages' verdict, chart and fold-out replace P7, P8, the price-change text and P9.
+- [ ] **Step 7: Measure a real day.**
+  1. Run `PYTHONPATH=src $PY -m shopper.build --day <the real day> --collected-by 11:48 --data /Users/doronreiffman/Projects/il-grocery-prices/data --site site`. This writes into the worktree's own `site/`, which is gitignored. In the main checkout's `data/` it rewrites the day's covered registry (same rules, same bytes) and adds one basket record.
+  2. Run `PYTHONPATH=src $PY -m shopper.check site`. Expected: exit 0.
+  3. Run `find site/p -name '*.html' -exec stat -f '%z %N' {} + | sort -n | tail -3`, and take the median too.
+  4. Expected: the largest page is under 45,000 bytes. Write in "Deviations" the largest page, its barcode, the median, the days of records the day's history holds, and the golden's largest day-120 page.
+  5. If the largest page is over 45,000 bytes, the chart already draws a run of one price as one segment (the design's first simplification), so stop and ask the owner. Nothing is dropped without the owner's word.
+- [ ] **Step 8: Mutations.** `(q33 product)`, target `SHOP_PRODUCT`:
+  - "the store type's name left out of the verdict"
+  - "a no deal given a deal's shade"
+  - "the badge row in COLUMNS order"
+  - "a store type not listing it given a badge"
+  - "the fold-out without F10"
+  - "a section hidden in the HTML"
+  - "a coming sale on a hole morning"
+  - "a not-sold section without its last-seen day"
+  - "the reason line left out"
+
+  `(q33 words)`, target `SHOP_WORDS`:
+  - "a shopper date with its year"
+  - "the always-on form for a small saving"
+  - "'before this one' with no sale today"
+  - "the day count from every tracked day in the reason"
+
+  Re-point `(q22 product)` mutations whose code stayed. Retire those of the removed P7, P8 and P9 code, the old chart (including "every price drawn at the lowest's height (q22 speed)") and `price_history`; list each in the commit. Run `$PY scripts/mutation_check.py "q33 product" "q33 words" "q22 product" "q22 P9"`, then the staleness check.
+- [ ] **Step 9: Commit:** `git add src/shopper/product.py src/shopper/words.py src/shopper/build.py tests/test_product.py tests/test_shop_words.py tests/test_shop_build.py tests/test_golden_90.py tests/golden/golden-90.sha256 scripts/mutation_check.py docs/store-first-plan.md && git commit -m "Store first: product pages say Deal or No deal for each store type, with the reason, the price chart, last this low, how often, a fold-out and Elsewhere today; P7, P8 and P9 retired (q33)"`.
+
+### Task 4: The script: search plus the picker
+
+Built on Question 1's answer.
+
+**Files:**
+- Modify: `src/shopper/static/search.js`, `tests/search_harness.js` (an op `picker` and an op per pure function), `tests/test_search_js.py`, `scripts/mutation_check.py`
+
+**Interfaces:**
+- Consumes: the page markup Task 5 renders. Tests use the harness's fake pages until then:
+  - every page's header holds `<a id="pick-link" href="<up>index.html#pick">`;
+  - a store page's `<main data-store="<key>">`;
+  - the root's `<section id="pick" data-page="root">`;
+  - a product page's `section[data-column]` (id `c-<key>`), `nav.badges` with `a[data-column]`, and `h2.elsewhere[hidden]`.
+- Produces, exported when `module` exists:
+
+```js
+const NAMES = /*COLUMNS*/[["carrefour-city", "Carrefour City"], ...]/*COLUMNS*/;  // COLUMNS as JSON; a test reads it back
+const PICK_KEY = "store";
+readPick(storage)            // a key of NAMES, or null (missing, unknown, or storage throws)
+writePick(storage, key)      // never throws
+rootOf(href)                 // "../index.html#pick" -> "../"
+redirectFor(pick, hash)      // "store/<pick>.html", or null with no pick or hash "#pick"
+headerFor(pick, root)        // {name, href: root + "store/<pick>.html", change: root + "index.html#pick"} or null
+arrange(pick, parts, badges) // {open, notSold, elsewhere, heading} (below)
+notSoldLine(key)             // "Not sold at <name> today"
+onBadge(pick, key)           // {show: key, setPick: key or null}: per Question 1
+```
+
+- `arrange`:
+  - a pick among the parts: `open` is the pick, `elsewhere` the badges without it, `heading` true;
+  - a pick not among the parts: `notSold` is the pick, `elsewhere` all the badges, `heading` true;
+  - no pick: `open` is the first badge (else the first part, else null), `elsewhere` all the badges, `heading` false.
+- `start()`:
+  - adds `js` to `<html>`;
+  - finds the root from `#pick-link`;
+  - rewrites the header for a pick;
+  - on a store page, writes the pick;
+  - on the root, redirects (`location.replace`) unless the hash is `#pick`;
+  - on a product page, shows the `open` part, writes the not-sold line, moves the badge row after the open part and unhides its heading, and on a badge click acts as `onBadge` says;
+  - starts search where `#q` exists, asking for `<root>search/…` and `<root>p/<code>.html` and linking `<root>p/<code>.html`.
+
+- [ ] **Step 1: Write the failing tests** in `tests/test_search_js.py`:
+  - `test_the_scripts_store_names_are_the_columns`: the JSON between the `/*COLUMNS*/` markers equals `[[c.key, c.name] for c in COLUMNS]`.
+  - `test_the_scripts_not_sold_line_is_the_words`: `notSoldLine(key) == not_sold(key, None)` for every key.
+  - `test_read_pick`, parametrized: a valid key; an unknown key gives null; missing gives null; a `getItem` that throws gives null. Covers Review Focus 1.
+  - `test_write_pick_never_throws`.
+  - `test_root_of`: "index.html#pick" gives "" and "../index.html#pick" gives "../".
+  - `test_redirect_for`, parametrized.
+  - `test_arrange`, parametrized, with the cases above plus no parts and no badges. Covers Review Focus 4.
+  - `test_on_badge`: per Question 1.
+  - `test_a_store_page_remembers_its_store`.
+  - `test_the_root_sends_a_remembered_pick_to_its_store_page_and_change_does_not` (Review Focus 5).
+  - `test_the_header_names_the_pick_on_every_page`.
+  - `test_a_product_page_opens_the_picks_part_and_lists_the_rest_elsewhere`.
+  - `test_a_badge_tap_shows_its_part_and_keeps_the_pick` (call 6).
+  - `test_search_from_a_store_page_asks_from_the_root`: requests `../search/pieces.json` and `HEAD ../p/<code>.html`, and links `../p/<code>.html`.
+  - `test_blocked_storage_leaves_search_working` (Review Focus 1).
+
+  Every existing search test passes unchanged, since its fake page sits at the root.
+- [ ] **Step 2: Run** `$PY -m pytest tests/test_search_js.py -q`. Expected: the new tests fail.
+- [ ] **Step 3: Implement.** Rewrite the script's header comment: one script for the site, search and the picker; what it keeps (one key, never sent anywhere); and that no fact needs it.
+- [ ] **Step 4: Run** the full test command. Expected: all pass.
+- [ ] **Step 5: Mutations**, `(q33 script)`, target `SHOP_SEARCH_JS`:
+  - "an unknown stored key taken as the pick"
+  - "blocked storage throws"
+  - "the root redirect ignoring #pick"
+  - "a badge tap with a pick changing it"
+  - "the open part not the pick"
+  - "the picked store's badge kept in Elsewhere"
+  - "a store page not remembering"
+  - "search asking from the page's folder"
+  - "the names table a key short"
+  - "nothing marked js"
+
+  Run `$PY scripts/mutation_check.py "q33 script" "q22 search"`, then the staleness check.
+- [ ] **Step 6: Commit:** `git add src/shopper/static/search.js tests/search_harness.js tests/test_search_js.py scripts/mutation_check.py && git commit -m "Store first: search.js gains the store picker: one remembered store type, the header, the root's redirect, a product page arranged for the pick (q33)"`.
+
+### Task 5: The root picker, the nine store-type front pages, the header and the upload paths
+
+**Files:**
+- Modify: `src/shopper/shell.py` (the header's store link, the script tag on every page), `src/shopper/pages.py` (`render_root`, `render_store`, `store_path`, `PICK_GROUPS`; `render_front` replaced), `src/basket/page.py` (`Frame.script`, written into the head when given; the basket's own pages byte for byte), `src/shopper/build.py` (writes `index.html` and the nine `store/<key>.html`), `src/shopper/check.py`, `src/basket/site.py` (`PAGE_FOLDERS` gains `"store"`), `template.yaml` (`WriteSite` gains `store/*`), `site-template.yaml` (rule `old-store-pages`, prefix `store/`, 30 days)
+- Test: `tests/test_shop_pages.py`, `tests/test_product.py` (the shell), `tests/test_page.py`, `tests/test_shop_check.py`, `tests/test_shop_build.py`, `tests/test_site.py`, `tests/test_basket_template.py`, `tests/test_site_template.py`, `tests/test_golden_90.py`, `tests/golden/golden-90.sha256`
+- Modify: `scripts/mutation_check.py`
+
+**Interfaces:**
+- Consumes: the script's markup contract (Task 4).
+- Produces:
+
+```python
+# shopper.shell
+def page(title, main, day, collected_by, links, style="", up="../", store: str | None = None) -> str
+SCRIPT_TAG = '<script src="{up}search.js" defer></script>'   # in every page's <head>
+# shopper.pages
+PICK_TITLE = "Which store are you in?"
+PICK_GROUPS = (("shufersal", ("shufersal-deal", "shufersal-express", "shufersal-sheli", "shufersal-universe")),
+               ("carrefour", ("carrefour-city", "carrefour-market")), ("ramilevy", ("ramilevy",)),
+               ("osherad", ("osherad",)), ("yochananof", ("yochananof",)))     # the design's order, by chain
+def store_path(column: str) -> str            # "store/<key>.html"
+def render_root(day: date, collected_by: str) -> str
+def render_store(column: str, rows, counts, day, collected_by, marking_none, browse, *, ready: bool) -> str
+def column_ready(column_days, column: str, day: date) -> bool   # front_ready for one column
+```
+
+- The header (`band`) holds `<p class="store">`. With no store it holds `<a id="pick-link" href="{up}index.html#pick">Pick your store</a>`. On a store page it holds the store's name linking to its page, " · ", and `<a id="pick-link" …>change</a>`.
+- The root page, at `up=""`:
+  - `FRONT_TITLE`;
+  - `ROOT_LINE`;
+  - `<section id="pick" data-page="root">` with `PICK_TITLE` and, per chain, its name and a link per store type to `store_path(key)`;
+  - the hiring line kept from today's front page.
+- A store page, at `up="../"`, with `<main data-store="<key>">`, holds today's front content for that column alone, under the old rule: the column's rows, a lead line over them, the old fold-out, and no store radios. Task 6 replaces this content.
+- `check.py`:
+  - the one script is allowed as `<script src="<up>search.js" defer></script>` at the page's own depth (`"../" * name.count("/")`) and refused in any other form;
+  - every `store/*.html` and `p/*.html` carries the ALWAYS phrases;
+  - `index.html` is held to the rest;
+  - each `store_path(key)` must be in the build.
+- `basket.site.upload` puts `store/` with the pages. `scripts/publish.sh` syncs by suffix, so it needs no change; read it and confirm that `store/*.html` falls under `--include '*.html'`.
+
+- [ ] **Step 1: Write the failing tests.**
+  - `test_shop_pages.py`:
+    - `test_the_root_is_the_picker_grouped_by_chain`: nine links in `PICK_GROUPS` order; `PICK_TITLE`; `FRONT_TITLE`; `ROOT_LINE`; the hiring line; `id="pick"`; no deals table.
+    - `test_each_store_page_names_its_store_and_puts_search_first`.
+    - `test_a_store_page_lists_only_its_own_rows`.
+  - `test_product.py` / `test_shop_pages.py`:
+    - `test_every_page_carries_the_one_script_at_its_depth`: root, method and record pages use `search.js`; `p/`, `browse/` and `store/` pages use `../search.js`.
+    - `test_the_header_says_pick_your_store_before_a_pick`.
+  - `test_page.py`: `test_a_frame_with_a_script_writes_it_and_the_baskets_own_pages_keep_their_bytes`.
+  - `test_shop_check.py`:
+    - `test_a_script_at_the_wrong_depth_fails`;
+    - `test_the_one_script_passes_on_every_page`;
+    - `test_a_store_page_without_an_always_phrase_fails`;
+    - `test_index_html_needs_no_always_phrase`;
+    - `test_a_missing_store_page_fails`;
+    - the existing `test_a_second_script_fails`, still passing.
+  - `test_site.py`: `test_store_pages_go_up_with_the_pages`.
+  - Template tests:
+    - `test_role_grants_exactly_what_the_code_does`: `built` gains `store_path("osherad")`;
+    - `test_old_versions_of_rebuilt_pages_expire_after_30_days`: nine rules, `_rebuilt_prefixes` from `store_path`;
+    - `test_no_lifecycle_prefix_matches_a_record_key`, still passing.
+  - `test_shop_build.py`: `test_the_build_writes_the_root_and_nine_store_pages`.
+  - Golden: the front assertions read `store/<key>.html` in place of `index.html`, under the old rule, with the same rows per column. Add `test_the_golden_root_is_the_picker`.
+- [ ] **Step 2: Run** those test files. Expected: the new tests fail.
+- [ ] **Step 3: Implement**, with each touched module's docstring updated: shell, pages, check, site, and the templates' comments.
+- [ ] **Step 4: Run** the full test command, then `/Users/doronreiffman/Projects/il-grocery-prices/.venv/bin/cfn-lint --regions il-central-1 -- template.yaml site-template.yaml`. Expected: all pass, lint clean.
+- [ ] **Step 5: Repin the golden.** Expected: every `day/` line and every final page moves (the header and the script tag). Also the new `store/` pages. `site-days/`, `days/`, `forecasts/`, `scores/` and `ledger` do not move. Reason: the header and the one script on every page, the root as the picker, a front page per store type.
+- [ ] **Step 6: Mutations**, `(q33 picker)`:
+  - `SHOP_SHELL`: "the script at the root's depth on every page"; "the pick link without #pick";
+  - `SHOP_PAGES`: "a store page without data-store"; "the picker a store type short"; "the picker in COLUMNS order";
+  - `SHOP_CHECK`: "a script allowed at any depth"; "store pages not held to the always phrases"; "a missing store page passes";
+  - `SITE`: "store/ pages not uploaded";
+  - the role test's target: "the role without store/*";
+  - `SITE_TEMPLATE`: "no lifecycle rule for store/".
+
+  Re-point the `(q22 lifecycle)` and `(q22 check)` mutations the edits moved. Run `$PY scripts/mutation_check.py "q33 picker" "q22 lifecycle" "q22 check" "q22 front"`, then the staleness check.
+- [ ] **Step 7: Commit:** `git add src/shopper/shell.py src/shopper/pages.py src/shopper/build.py src/shopper/check.py src/basket/page.py src/basket/site.py template.yaml site-template.yaml tests scripts/mutation_check.py && git commit -m "Store first: the root page is the store picker, a front page per store type under store/, the header and the one script on every page; the role and the lifecycle rule name store/ (q33)"`.
+
+### Task 6: The front pages' rule and words
+
+**Files:**
+- Modify: `src/shopper/pages.py` (`render_store` to the new rule; `FrontRow`, `front_rows_of`, `ordered` and the store radios removed), `src/shopper/words.py` (the store page's words; P7 and P8 removed), `src/shopper/build.py` (per-column `DealRow`s and counts; "count line" out of names and docstrings), `src/shopper/siteday.py` (the per-column `front` block), `src/shopper/measures.py` (the removed functions, under "Where the design leaves room")
+- Test: `tests/test_shop_pages.py`, `tests/test_shop_build.py`, `tests/test_siteday.py`, `tests/test_measures.py`, `tests/test_shop_words.py`, `tests/test_golden_90.py`, `tests/golden/golden-90.sha256`
+- Modify: `scripts/mutation_check.py`
+
+**Interfaces:**
+- Consumes: `DealRow`, `front_list`, `on_list`, `checked`, `FRONT_LIMIT` (Task 1); `BADGE_STYLE`, `badge_class` (Task 3); `store_path`, `column_ready` (Task 5).
+- Produces:
+
+```python
+# shopper.pages
+@dataclass(frozen=True)
+class StoreFront:
+    column: str
+    ready: bool                 # column_ready
+    rows: tuple[DealRow, ...]   # front_list order, all N
+    checked: int                # M
+    promotions: int             # the column's wide promotions running today, distinct by id
+    products: int               # their products
+def render_store(front: StoreFront, column_days, day, collected_by, marking_none, browse) -> str   # replaces Task 5's signature
+# shopper.words
+SEARCH_LABEL = "Type a product name or the barcode"
+FOLD_INTRO = "Promotions checked against what the product usually costs, sales included, over up to 3 months."
+def headline(column: str, deals: int, checked: int) -> str   # "At Carrefour Market today: 1,130 of 4,210 promotions are actually deals."
+def store_lead(front: StoreFront, today: ColumnDay) -> str   # the "None yet" line, the hole's too_few, the promotion hole's line, or headline()
+STORE_RULES: tuple[str, ...]                                  # the fold-out's rules in shopper words (provisional)
+def store_promotions_line(column: str, promotions: int, products: int) -> str
+```
+
+- A store page, top to bottom (design, "What a visitor sees" 4):
+  - `FRONT_TITLE` and `FRONT_SUBTITLE`;
+  - the search box (`SEARCH_LABEL`);
+  - `store_lead`;
+  - the two filter checkboxes;
+  - the table of the first `FRONT_LIMIT` rows: the product's link and barcode; the deal badge, with its shade class and `conditions`; the price today; the usual price;
+  - the fold-out "How a deal passes", in the design's order, holding:
+    - `FOLD_INTRO`;
+    - `STORE_RULES`, with what the filters hide and `marked_none` for the store's chain;
+    - the one-deal story: the top row's badge, reason, last this low and how often, under "One of today's deals";
+    - `store_promotions_line`;
+    - a note carrying the four ALWAYS phrases;
+    - the method link.
+
+  The rows carry `data-club` and `data-spend` from the verdict's struct.
+- The site-day file: `columns[key]["front"] = {"ready", "deals", "checked", "promotions", "products", "rows": [...]}`. Each shown row records the barcode, today's price, the usual price, the saving, the days its reason rests on, `per`, `buy`, `restrictions`, `programmes` and `min_spend`. The top-level `counts` and `front_rows` go, and `_earlier` keeps each column's `deals` and `checked`.
+
+- [ ] **Step 1: Write the failing tests.**
+  - `test_shop_pages.py`:
+    - `test_a_store_types_list_is_its_deals_passing_the_bar_by_saving` (Goal 6).
+    - `test_the_list_shows_the_top_100`: 101 deals give 100 rows, and the headline says 101.
+    - `test_the_headline_counts_the_same_set`.
+    - `test_none_yet_until_the_store_type_has_20_days`.
+    - `test_a_store_type_not_read_today_says_so_and_lists_none` (Review Focus 2): a promotion hole gives "Sale prices could not be read today."; a hole gives the too-few line.
+    - `test_a_row_shows_the_badge_its_condition_todays_price_and_the_usual_price`.
+    - `test_the_filters_need_no_script`, rewritten: two checkboxes, no store radios.
+    - `test_the_fold_out_says_how_a_deal_passes_for_that_store_type`: `FOLD_INTRO` verbatim, the count line naming the store type, and the four ALWAYS phrases.
+    - `test_the_story_is_the_top_rows_verdict`.
+    - `test_the_store_page_is_the_same_bytes_whatever_the_rows_order`.
+
+    Retire the old front tests (depth order, P7's story, the radios, `front_rows_of`).
+  - `test_siteday.py`: `test_every_number_on_each_store_page_is_in_the_site_day_file`, replacing the "Every number on the front page" test; `test_a_revision_keeps_each_columns_deals_and_checked`.
+  - `test_shop_build.py`: `test_the_build_counts_each_store_types_deals_and_checked`, with the tests named for "count line" renamed. Afterwards, `grep -rn "count line" src tests` prints nothing.
+  - Golden, front assertions under the new rule:
+    - day 75: `store/shufersal-sheli.html` holds one row, G3's "DEAL · ₪3.00 off".
+    - day 99: `store/shufersal-deal.html` holds G5's row. The old rule listed none: ₪4.50 equals Deal's 90-day low, but the usual price is ₪6.00.
+    - day 50: City, Market, Osher Ad, Rami Levy, Sheli and Yochananof each list G1's "DEAL · ₪1.10 off"; `store/shufersal-deal.html` says "too few files today: 0 of 2 stores" and lists none.
+    - day 120: `store/shufersal-universe.html` lists U2, U3, U8 and U7 in that order, with "At Shufersal Universe today: 4 of 6 promotions are actually deals.".
+- [ ] **Step 2: Run** those test files. Expected: the new tests fail.
+- [ ] **Step 3: Implement.** Remove the dead code listed under "Where the design leaves room". Afterwards `grep -rn "gap_sentences\|history_sentences\|price_history\|on_front\|front_rows_of\|GAP_HEADING\|HISTORY_HEADING\|ACROSS_HEADING" src tests` prints nothing. Update the docstrings of `pages.py`, `build.py` and `siteday.py`.
+- [ ] **Step 4: Run** the full test command. Expected: all pass but the pin. Coverage stays at or above 95%, and `verdict.py` and `chart.py` stay at 100%.
+- [ ] **Step 5: Repin the golden.** Expected moved names: `day/` lines; every `site-days/` file (the per-column front block); the `store/` pages; `record.html` only if it moves. `forecasts/`, `scores/`, `ledger`, `days/` and the product pages do not move. Reason: the front pages' rule, Deal by the usual price, per store type.
+- [ ] **Step 6: Mutations.**
+  - `(q33 front)`, target `SHOP_PAGES`:
+    - "a store page listing another store type's rows"
+    - "the list cut at 10"
+    - "the rows smallest saving first"
+    - "a promotion-hole day listing deals"
+    - "the headline's N from the shown rows"
+    - "the fold-out without the ALWAYS note"
+  - `SHOP_BUILD`: "checked counted below the bar"; "a no deal counted in N".
+  - `(q33 siteday)`, target `SHOP_SITEDAY`: "the site-day rows not the page's"; "a revision dropping a column's numbers".
+  - `(q33 golden)`: "a deal from ₪0.99, in the golden".
+
+  Retire, listing each in the commit: "front page at or below the low, in the golden (q22 golden)", the `(q22 front)`, `(q22 P7)` and `(q22 P8)` mutations, `(q31 words)` on P7 and P8, and any `(q32 …)` mutation on the removed front words. Run `$PY scripts/mutation_check.py "q33 front" "q33 siteday" "q33 golden"`, then the staleness check.
+- [ ] **Step 7: Commit:** `git add src/shopper tests scripts/mutation_check.py && git commit -m "Store first: each store type's front page lists its deals by saving, the top 100, under a headline counting the same set; P7's front test and P7 and P8's words retired (q33)"`.
+
+### Task 7: The method page, README and the docs
+
+**Files:**
+- Modify: `src/shopper/pages.py` (`RULES`: P7, P8 and P9 replaced by S0 to S8 and the front list, in plain words, using `DEAL_MIN`, `SHADES`, `FRONT_LIMIT`, `READ_DAYS`, `MIN_FRONT_DAYS` and `RECENT_DAYS`), `tests/test_shop_pages.py` (`test_the_method_page_states_the_rules_with_the_codes_constants`), `README.md`, `docs/operations.md`, `docs/README.md`, `tests/golden/golden-90.sha256` (`method.html` and the `day/` lines), `scripts/mutation_check.py`
+
+- [ ] **Step 1: Write the failing test.** `test_the_method_page_states_the_rules_with_the_codes_constants` asserts:
+  - each of S0 to S8 is named;
+  - "₪1.00", the three bands, "the higher of the two middle values", "90 days" and "20 of the 30 days" appear, each from its constant;
+  - the store-type picker is explained: the pick is kept in the browser and sent nowhere;
+  - "listed price" has its definition.
+- [ ] **Step 2: Run** the test. Expected: fail.
+- [ ] **Step 3: Implement the method page.**
+- [ ] **Step 4: Update the docs.**
+  - `README.md`: the lines saying "a front page of deals below every price of the past 90 days", and the product-page summary (line 5 and the shopper site's state), rewritten to the new rule. Every fact is checked against the code.
+  - `docs/operations.md`: the site check's description ("every always-phrase on each store type's page and every product page"; "`search.js` the one script, on every page at its own depth"; "the nine store pages present"), and the hand build's list of pages (the root picker and `store/`).
+  - `docs/README.md`: `store-first.md` (the store picker, the verdict and the chart) and `store-first-plan.md` among the plans.
+- [ ] **Step 5: Run** the full test command, then repin the golden. Expected: `method.html` and the `day/` lines move.
+- [ ] **Step 6: Mutations**, `(q33 method)`, target `SHOP_PAGES`: "the method page's ₪1.00 not the code's"; "the lower middle stated". Run the group, then the staleness check.
+- [ ] **Step 7: Commit:** `git add src/shopper/pages.py tests/test_shop_pages.py tests/golden/golden-90.sha256 README.md docs/operations.md docs/README.md scripts/mutation_check.py && git commit -m "Store first: the method page states S0 to S8 and the front list; README and the operations notes follow (q33)"`.
+
+### Task 8: The whole-branch review
+
+- [ ] **Step 1:** Dispatch a reviewer that has not seen the build, on Fable (`fable`), or on the newest Opus while Fable is at its usage limit, with the report naming the swap. Give it `git diff main...q33-store-first`, `docs/store-first.md`, the sections of `docs/shopper-site.md` it changes, and this plan. Ask for findings by severity against:
+  - the design's anti-goals: a verdict for the wrong store read as if right; "Deal" on a price sold most days; a verdict hiding thin history; colour as the only signal; words saying a chain did wrong; a fact that needs the script;
+  - its calls;
+  - this plan's Review Focus and its readings under "Where the design leaves room";
+  - page size;
+  - the upload paths, role and lifecycle rule.
+
+  The reviewer reads only: no commits, no `gh`, no push, no AWS, no network.
+- [ ] **Step 2:** Check each finding against its source before acting on it, since a finding is a claim. Fix what holds, test-first, each fix with its mutation, and re-review the fixes in a scoped review (Opus). Log every change from this plan under "Deviations".
+
+### Task 9: The owner's read of a real day's build
+
+- [ ] **Step 1:** Build the real day into the worktree's `site/` and check it, as in Task 3 Step 7. Expected: `shopper.check` exits 0. Write in "Deviations" the largest product page and the history's days of records.
+- [ ] **Step 2:** Serve the folder locally: `$PY -m http.server --directory site 8000`, run in the background. Search pieces do not load from `file://`. Give the owner the address `http://localhost:8000/` and a reading list:
+  - the root picker, and "change" from a store page;
+  - each of the nine store pages;
+  - product pages chosen from the build:
+    - a Deal in each shade;
+    - a No deal of each form;
+    - each no-verdict line the day holds;
+    - a weighed product;
+    - a product sold at many store types;
+    - the largest page;
+    - a product not sold at a picked store type;
+  - each read with the script on and with it blocked in the browser, at phone width (390 px), in light and dark themes.
+
+  The owner navigates; this session never drives the browser.
+- [ ] **Step 3:** The owner's word changes are a fix round, test-first: the words pinned, the golden repinned with the reason. Log each under "Deviations", with the provisional words this plan proposed and the owner's final ones. Stop the server. Merging waits for the owner's go.
+
+### Task 10: Full test run, coverage, the q33 mutation groups, README's counts
+
+- [ ] **Step 1:** Run the full test command. Expected: every test passes, coverage is at or above 95%, and `verdict.py` and `chart.py` are at 100%.
+- [ ] **Step 2:** Run `$PY scripts/mutation_check.py "q33"` (every q33 group; it edits files in place, so nothing else runs until it prints that the files are restored), then the staleness check. Expected: every q33 mutation CAUGHT, `none stale`. The full check is CI's weekly run.
+- [ ] **Step 3:** Run `/Users/doronreiffman/Projects/il-grocery-prices/.venv/bin/cfn-lint --regions il-central-1 -- template.yaml site-template.yaml`. Expected: clean.
+- [ ] **Step 4:** Write the counts Steps 1 and 2 printed (the test count, the coverage, the mutation count from the staleness check), with the date, in README.md's "Tests" row and "Tests that are themselves tested", and in "Deviations". Commit `git add README.md docs/store-first-plan.md && git commit -m "README: test and mutation counts after store first (q33)"`. Stop: the merge, push and deploy are the owner's go.
+
+## Deploying this branch (the owner's go; not a task)
+
+What the deploy needs to know, after the merge:
+
+- **Both stacks change.**
+  - The collector stack (`template.yaml`): `BasketFunction`'s `WriteSite` gains `store/*`. The function's code ships in the same deploy, so the code never writes `store/` without the permission. Deploy after a morning's 12:33 site run has published and before the next one.
+  - The site stack (`site-template.yaml`): one lifecycle rule, `old-store-pages`. It can go any time; until it does, old versions of the nine store pages are kept, at cents.
+  - Read each change set as the operations notes say. Expected:
+    - the collector stack: `BasketFunction` and `CollectorFunction` modified (their zips); the role SAM builds from `BasketFunction`'s `Policies` modified (`WriteSite` gains `store/*`); and the DuckDB layer churn seen on every deploy;
+    - the site stack: `SiteBucket` modified.
+
+    Nothing else should be replaced or removed.
+- **The first morning after the deploy rewrites every page.** Every product, browse and fixed page changes bytes: the header, the script tag, the verdict sections. This is no change in cost, since every page goes up every morning anyway (Q2). The new pages are the nine `store/<key>.html`, about 270 writes a month. `index.html` becomes the picker, so a link to the old front table now opens the picker. `search.js` is the same key with new content. Browsers keep it five minutes after the invalidation, so search on a `store/` page can fail for those minutes.
+- **The site-day file changes shape** from the first day the new code builds: a front block per store type, and no top-level `counts` or `front_rows`. Earlier days' files keep their shape. A hand rebuild of a day the old code published would differ and need `--revise` with a reason (B12), so leave old days alone.
+- **Page size.** The measurement (Task 3, Task 9) rests on the real day's history, about ten days of records. Charts grow with sale runs over the 90 days. Re-measure the largest product page against 45,000 bytes as the history fills (late January). The site check refuses a page over 60,000 bytes, and the site run then uploads nothing (`SiteCheckFailed`).
+- `scripts/publish.sh` needs no change: it syncs by suffix, and `store/*.html` goes up with `*.html`. The first upload after the deploy follows "Deploying step one" in `docs/operations.md` as before.
+- No new schedule, alarm or dependency. Monthly cost: under $0.10 more, the design's estimate. The site stays `noindex`.
+
+## Deviations
+
+(Append here when reality forces a change from this plan: what changed, why, and when.)
