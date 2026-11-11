@@ -176,3 +176,10 @@ From the hand build of 2026-11-10 (`site/p`, 24,730 product pages), each promoti
 - 32,894 promotions with a stated saving: the middle saves ₪2.90 (half between ₪1.40 and ₪4.90; one in ten ₪7.90 or more), the middle 17% off.
 - Under ₪1: about 17%; ₪1 to ₪2.99: about 38%; ₪3 to ₪4.99: about 22%; ₪5 or more: about 22%.
 - Of 42,659 store-type sections with a promotion and some history, about 70% were on promotion on more than half their recorded days, and 36% on every one. With 9 or 10 days of records, a month-long promotion that began before 1 November counts as always on; the share should fall as the history grows.
+
+## Changed after the build
+
+The design above stays the record as approved; this note keeps it true. The owner answered two questions on 2026-11-11, after the build; [the plan's Deviations](store-first-plan.md#deviations) ("Fix wave after the whole-branch review") hold the rest.
+
+- **Each store page's subtitle** is the fold-out's sentence, "Promotions checked against what the product usually costs, sales included, over up to 3 months.", in place of "the title and subtitle as today" in "What a visitor sees" 4. The sentence therefore shows twice on a store page: as the subtitle and as the fold-out's first line.
+- **A product on sale whose sale price could not be read has no today's price** (S6's today's price, for that case, in place of the listed price): the chart draws no dot, dashed line or label for today's price, and the page says no "Last this low".
