@@ -434,8 +434,11 @@ RULES = (
      "Who a promotion is for comes from its ClubID field, every code in it: 1 club members only, 2 the chain's card "
      "holders only, 3 some customers only, and a programme named under code 0 some customers only; every programme's "
      "name is shown as the chain publishes it. A minimum spend is the largest MinPurchaseAmount above zero on any of "
-     "the promotion's groups. Each condition names its source, \"from the chain's fields\". The fine print is not read "
-     f"yet, so every promotion says \"{FINE_PRINT}\"."),
+     "the promotion's groups. The fine print is not read yet. On a product page, the fold-out lists every promotion "
+     "running today with each of these conditions and its source, \"from the chain's fields\", and "
+     f"\"{FINE_PRINT}\"; beside the verdict, the conditions of the promotion it judges are in shopper words. A "
+     "store page names its deals' conditions in shopper words and says once, in its fold-out: "
+     f"\"{CONDITIONS_NOTE}\""),
     ("P6 Windows.",
      f"The past {RECENT_DAYS} and {READ_DAYS} days are the calendar days before the page's day, counting only the days "
      "on which the column has a record and the product a listed price; holes are skipped, never filled. The front "
@@ -553,13 +556,13 @@ def store_rules() -> tuple[tuple[str, str], ...]:
          "buy-N promotions count, their conditions from the chain's fields (P5) named beside the verdict (\"Club "
          "members only\", \"When you buy 2\"). With none counting, today's price is the listed price (S6)."),
         ("S4 Verdict.",
-         "When none of the lines below applies: Deal when the saving, the usual price less today's price, "
+         "Deal when the saving, the usual price less today's price, "
          f"is ₪{DEAL_MIN} or more, worked on the figures as shown (\"3 for ₪10.00\" is ₪3.33 a unit, P4); No deal "
          "otherwise. The badge names the store type (\"At Carrefour Market: DEAL · ₪1.90 off\"). A No deal's reason "
          "says on how many days it was at today's price or less when that is at or above the usual price (\"It's been "
          "₪10.90 or less on 9 of the 9 days tracked.\"), else how little it is below it (\"Only ₪0.40 below its "
-         "usual ₪3.20 (12 days tracked).\"). Otherwise there is no verdict but a "
-         "plain line, the first that applies: too few files today (P2); not sold there today, with the last day it "
+         "usual ₪3.20 (12 days tracked).\"). There is no verdict, only a plain line, when one of these applies, the "
+         "first that applies: too few files today (P2); not sold there today, with the last day it "
          f"was listed across the column; \"{NO_VERDICT['unread_today']}\" (P10, or promotion files from fewer than "
          "half its counted stores); with no promotion counting today, "
          f"\"{NO_VERDICT['price_unread']}\" when one listed across the column runs with its price not read, "
@@ -569,8 +572,9 @@ def store_rules() -> tuple[tuple[str, str], ...]:
          f"half the days tracked; \"{NO_VERDICT['no_history']}\" when no day tracked has a day price."),
         ("S5 Shade.",
          f"A Deal's badge is a shade of green by its saving, one for each band: {_bands()}; a No deal's badge is a "
-         "neutral grey. Every badge writes its verdict and the shekels, so colour is never the only signal, and each "
-         "badge's text contrasts at least 4.5:1 with its background, in the light and the dark theme."),
+         "neutral grey. Every badge writes its verdict in words, a Deal's with the shekels off (\"NO DEAL\" has "
+         "none), so colour is never the only signal, and each badge's text contrasts at least 4.5:1 with its "
+         "background, in the light and the dark theme."),
         ("S6 Last this low.",
          "Today's price here is S3's when a promotion counts, else the listed price. The latest day tracked whose day "
          "price is at or below it, with that price (\"Last this low: 12 October, at ₪9.90.\"), or, when none is, "
@@ -925,7 +929,7 @@ def _days_read(column_days: Mapping[tuple[str, date], ColumnDay]) -> str:
     if days:
         said = (f"The site's build reads the {len(days)} days from {_day(days[0])} to {_day(days[-1])}. A day short "
                 "of price files is a hole (P2); a day whose promotions were short of files or not read is counted as "
-                "neither on nor off promotion (P8); a day with no table is one its chain's extraction did not write.")
+                "neither on nor off promotion (S0); a day with no table is one its chain's extraction did not write.")
     table = f'<table class="days"><thead><tr>{head}</tr></thead><tbody>{"".join(rows)}</tbody></table>'
     return f"<p>{text(said)}</p>{_scroller('The days read', table)}"
 

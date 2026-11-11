@@ -586,6 +586,18 @@ def test_the_method_page_states_the_rules_with_the_codes_constants(monkeypatch):
     assert "the lower of the two middle values" not in rules
     assert f"is ₪{DEAL_MIN} or more, worked on the figures as shown" in s4
     assert all(NO_VERDICT[call] in s4 for call in NO_VERDICT)
+    # the review's findings 5 and 1: the no-verdict lines their own case; a No deal badge shows no shekels
+    assert "There is no verdict, only a plain line, when one of these applies, the first that applies:" in s4
+    assert 'Every badge writes its verdict in words, a Deal\'s with the shekels off ("NO DEAL" has none),' in s5
+    assert "its verdict and the shekels" not in s5
+    # the review's finding 3: P5 true of the product and the store pages (Task 6's fix: CONDITIONS_NOTE)
+    p5 = _rule(rules, "P5 ")
+    assert ("On a product page, the fold-out lists every promotion running today with each of these conditions and "
+            f'its source, "from the chain\'s fields", and "{FINE_PRINT}"; beside the verdict, the conditions of the '
+            "promotion it judges are in shopper words.") in p5
+    assert ("A store page names its deals' conditions in shopper words and says once, in its fold-out: "
+            f'"{CONDITIONS_NOTE}"') in p5
+    assert "every promotion says" not in rules
     assert f"one for each band: {joined(_bands(SHADES))};" in s5 and "₪1.00 to ₪2.99" in s5
     front = _rule(rules, "The front page's list.")
     assert f"on at least {MIN_FRONT_DAYS} of the {RECENT_DAYS} days before the page's day" in front
@@ -626,6 +638,21 @@ def test_the_method_page_states_the_rules_with_the_codes_constants(monkeypatch):
     front = _rule(changed, "The front page's list.")
     assert "on at least 15 of the 21 days" in front and "the top 40 are shown" in front
     assert "20 of the 30" not in front
+
+
+def test_every_rule_a_page_cites_is_one_the_method_page_names():
+    """Task 7's review, finding 2: P7, P8 and P9 are gone from the method page, so no page cites them, and every rule
+    a page names ("(S0)", "P2's", "S3's"), the method page's own included, is one the method page lists. The record
+    page's days-read sentence cites S0."""
+    named = set(re.findall(r"<li><b>([PSF]\d+) ", _rules_of(_method())))
+    cited = {}
+    for page, _ in _every_page():
+        title = re.search(r"<title>(.*?)</title>", page).group(1)
+        for rule in re.findall(r"\b([PSF]\d{1,2})\b", strip_tags(SPAN.sub(" ", page))):
+            cited.setdefault(rule, set()).add(title)
+    assert set(cited) <= named, {rule: pages for rule, pages in cited.items() if rule not in named}
+    assert not {"P7", "P8", "P9"} & set(cited)
+    assert "Track record - Deal or No Deal" in cited["S0"]
 
 
 def test_the_method_page_carries_the_baskets_method_as_its_own_section():
@@ -857,8 +884,9 @@ def test_the_record_page_says_the_days_read_and_the_column_days_short_of_files()
     page = _record(column_days=days)
     section = re.search(r'<section id="days">(.*?)</section>', page, re.DOTALL).group(1)
     assert "The site's build reads the 91 days from 2 October 2026 to 31 December 2026." in section
-    # deploy prep: such a day is in P8's count of days with records and named beside it, so it is not left out of it
-    assert ("a day whose promotions were short of files or not read is counted as neither on nor off promotion (P8);"
+    # deploy prep: such a day is named beside the rule that leaves it out; since store first, S0 (a day whose
+    # promotions were not read is no day tracked), P8 being gone (Task 7's review, finding 2)
+    assert ("a day whose promotions were short of files or not read is counted as neither on nor off promotion (S0);"
             in section)
     assert "This page reads" not in section                                                    # the review, finding 5
     deal = re.search(r"<tr><th scope=\"row\">Shufersal Deal</th>(.*?)</tr>", section).group(1)

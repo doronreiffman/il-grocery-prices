@@ -3018,6 +3018,11 @@ MUTATIONS = {
     "the method page's pick under another key (q33 method)": (SHOP_PAGES, 'PICK_KEY = "store"', 'PICK_KEY = "pick"'),
     'the listed price without its definition on the method page (q33 method)': (SHOP_PAGES, 'is its price as listed in the chain\'s price files, before "\n     "promotions: the median', 'is the median'),
     'the store rules left off the method page (q33 method)': (SHOP_PAGES, 'for name, said in (*RULES, *store_rules(), *FORECAST_RULES))', 'for name, said in (*RULES, *FORECAST_RULES))'),
+    "the method page's No deal badge said to show shekels (q33 method)": (SHOP_PAGES, 'Every badge writes its verdict in words, a Deal\'s with the shekels off (\\"NO DEAL\\" has "', 'Every badge writes its verdict and the shekels (\\"NO DEAL\\" has "'),
+    "the no-verdict lines read as a No deal's reason (q33 method)": (SHOP_PAGES, 'There is no verdict, only a plain line, when one of these applies, the "', 'Otherwise there is no verdict but a plain line, the "'),
+    "P5 saying every page lists each promotion's conditions with their source (q33 method)": (SHOP_PAGES, 'On a product page, the fold-out lists every promotion "', 'On every page, the fold-out lists every promotion "'),
+    "P5 quoting the fine print label as the store pages' note (q33 method)": (SHOP_PAGES, 'f"\\"{CONDITIONS_NOTE}\\""),', 'f"\\"{FINE_PRINT}\\""),'),
+    'the record page citing a rule the method page lacks (q33 method)': (SHOP_PAGES, 'neither on nor off promotion (S0); a day', 'neither on nor off promotion (P8); a day'),
     # store first (q33): the product page's verdict, chart, fold-out and badge row (shopper.product, shopper.build)
     "the store type's name left out of the verdict (q33 product)": (SHOP_PRODUCT, 'text(badge(found))', 'text(badge(found).split(": ", 1)[1])'),
     "a no deal given a deal's shade (q33 product)": (SHOP_PRODUCT, '        return "no-deal"\n', '        return "deal-1"\n'),
