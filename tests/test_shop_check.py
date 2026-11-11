@@ -124,7 +124,7 @@ def test_a_clean_site_passes(site):
     assert not any(column["gate"]["open"] for column in found["columns"].values())
     milk = (site / MILK_PAGE).read_text(encoding="utf-8")
     for column in (CITY, MARKET):
-        start = milk.index(f'<section data-column="{column}" data-chain="carrefour">')
+        start = milk.index(f'<section data-column="{column}" id="c-{column}" data-chain="carrefour">')
         assert unreadable("carrefour") in milk[start:milk.index("</section>", start)]
     assert CHAIN_SPAN.split("{}")[0] in milk and SEARCH_SCRIPT in (site / "index.html").read_text(encoding="utf-8")
     assert check_site(site) == []
@@ -390,8 +390,8 @@ def test_p10_is_read_from_the_column_not_the_sections_chain_attribute(site, chai
     `data-chain` is missing or names another chain: the rule takes the chain from the column, so a markup slip cannot
     skip it."""
     in_section(site, MILK_PAGE, CITY, f'<p class="warn">{unreadable("carrefour")}</p>', "")
-    replace(site, MILK_PAGE, f'<section data-column="{CITY}" data-chain="carrefour">',
-            f'<section data-column="{CITY}"{chain}>')
+    replace(site, MILK_PAGE, f'<section data-column="{CITY}" id="c-{CITY}" data-chain="carrefour">',
+            f'<section data-column="{CITY}" id="c-{CITY}"{chain}>')
     assert check_site(site) == [f"{MILK_PAGE}: no P10 sentence in the section of {CITY}: carrefour's promotions "
                                 "were not read"]
 
@@ -448,7 +448,7 @@ def test_a_page_that_is_not_utf8_is_named_not_a_crash(site):
 def test_a_link_with_a_fragment_resolves_to_the_id(site):
     """Task 18's carry: basket.html's method link holds a fragment; the file must exist and hold that id."""
     assert 'href="method.html#headline-basket"' in (site / "basket.html").read_text(encoding="utf-8")
-    add(site, MILK_PAGE, '<a href="#across">x</a> <a href="../method.html?x=1#headline-basket">y</a>')
+    add(site, MILK_PAGE, f'<a href="#c-{OSHER}">x</a> <a href="../method.html?x=1#headline-basket">y</a>')
     assert check_site(site) == []
     replace(site, "method.html", '<section id="headline-basket">', '<section id="basket-method">')
     assert check_site(site) == ["basket.html: a link to 'method.html#headline-basket': method.html holds no id "

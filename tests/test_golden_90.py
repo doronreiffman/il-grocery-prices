@@ -110,20 +110,19 @@ def _summaries(golden) -> list:
             for path in sorted((golden.data / "tables" / "scored").glob("date=*/summary.json"))]
 
 
-# ---- the pages: P7 and the front page, P8's runs, the windows and the holes ----
+# ---- the pages: the front page (the old rule's until the plan's Task 6), the product pages' verdicts, the holes ----
 
 G3_STORY = ("Deal price ₪7.90: ₪3.50, 31%, below the 30-day median listed price of ₪11.40 (of the 30 days with records "
             "before today).",
             "The lowest listed price was ₪10.90 in the 30 days before today and ₪10.90 over the 74 days with records "
             "of the 90 before today; listed at ₪7.90 or less on 0 of those 74.",
             "The listed price rose from ₪10.90 to ₪11.90 on 1 March 2026.")
-RUNS = ("from 30 January 2026 or earlier to 1 February 2026; 16 to 22 February 2026; 9 to 15 March 2026; 30 March to "
-        "5 April 2026; 20 to 26 April 2026.")
 
 
 def test_the_golden_pages_windows_and_gaps(golden):
-    # G3 on 16 March (day 75), its 7.90 promotion's first day: Sheli's P7 against Sheli's own 30-day median, and the
-    # front page's one row, Sheli's; Deal lists G3 at 9.90 with no promotion and has no row
+    # G3 on 16 March (day 75), its 7.90 promotion's first day: the front page's one row, Sheli's, with P7 against
+    # Sheli's own 30-day median; on G3's page Sheli's verdict against its own usual price, sales included, over its 74
+    # days tracked; Deal lists G3 at 9.90 with no promotion and has no row
     index = golden.page(75, "index.html")
     assert [column for column, _ in _front_rows(index)] == ["shufersal-sheli"]
     (_, row), = _front_rows(index)
@@ -134,22 +133,16 @@ def test_the_golden_pages_windows_and_gaps(golden):
             "product.") in _text(index)
     page = golden.page(75, f"p/{G3}.html")
     sheli, deal = _text(_section(page, "shufersal-sheli")), _text(_section(page, "shufersal-deal"))
-    assert " ".join(G3_STORY[:2]) in sheli and G3_STORY[2] in sheli
-    assert "Listed price ₪9.90, before promotions" in deal and "Deal price" not in deal
-    # G1's runs, gaps and days since on the last day (30 April): at Osher Ad, a whole chain with a record every day; at
-    # Deal, whose holes of 19 and 20 February sit inside a run and break none; at Rami Levy, whose holes of 9 and 10
-    # February sit between two runs, where a one-day run could hide
-    page = golden.page(DAYS, f"p/{G1}.html")
-    assert (f"On a promotion listed across Osher Ad on 31 of the 90 days with records before today, as listed in the "
-            f"morning's files. Runs before today: {RUNS} Days between runs: 14; 14; 14; 14. The last run ended on 26 "
-            "April 2026, 4 days ago.") in _text(_section(page, "osherad"))
-    assert (f"On a promotion listed across Shufersal Deal on 29 of the 88 days with records before today, as listed in "
-            f"the morning's files. Runs before today: {RUNS} Days between runs: 14; 14; 14; 14. The last run ended on "
-            "26 April 2026, 4 days ago.") in _text(_section(page, "shufersal-deal"))
-    rami = _text(_section(page, "ramilevy"))
-    assert (f"On a promotion listed across Rami Levy on 31 of the 88 days with records before today, as listed in the "
-            f"morning's files. Runs seen before today: {RUNS} Days between runs: at most 14; 14; 14; 14.") in rami
-    assert "The listed price did not change on the 88 days with records of the 90 before today." in rami
+    for said in ("At Shufersal Sheli: DEAL · ₪3.00 off", "Usually ₪10.90, sales included (74 days tracked).",
+                 "Lowest in the 74 days tracked.", "On sale on 0 of the 74 days tracked."):
+        assert said in sheli, said
+    assert "No sale today" in deal and "Listed price ₪9.90, before promotions" in deal and "Deal price" not in deal
+    # G1 on the last day (30 April) at Osher Ad, a whole chain with a record every day: no sale today, last this low the
+    # day before, and its sale days counted, the last sale's end and price said
+    osher = _text(_section(golden.page(DAYS, f"p/{G1}.html"), "osherad"))
+    for said in ("No sale today", "Last this low: 29 April, at ₪5.00.",
+                 "On sale on 31 of the 90 days tracked. The last sale ended 26 April, at ₪3.90."):
+        assert said in osher, said
     # G4 at Rami Levy alone, weighed: "2 for ₪100" stored as 1.5 for ₪75.00, ₪50.00 a kilogram; its chain's holes of 9
     # and 10 February skipped in every window
     index = golden.page(85, "index.html")
@@ -157,22 +150,15 @@ def test_the_golden_pages_windows_and_gaps(golden):
     rami = dict(_front_rows(index))["ramilevy"]
     assert "Deal price ₪50.00 per kilogram, buy 1.5" in rami and "₪69.90" in rami and "28%" in rami
     section = _text(_section(golden.page(85, f"p/{G4}.html"), "ramilevy"))
-    assert ("Deal price ₪50.00: ₪19.90, 28%, below the 30-day median listed price of ₪69.90 (of the 30 days with "
-            "records before today). The lowest listed price was ₪69.90 in the 30 days before today and ₪69.90 over "
-            "the 82 days with records of the 90 before today; listed at ₪50.00 or less on 0 of those 82.") in section
-    section = _text(_section(golden.page(DAYS, f"p/{G4}.html"), "ramilevy"))
-    assert ("On a promotion listed across Rami Levy on 14 of the 88 days with records before today, as listed in the "
-            "morning's files. Run seen before today: 26 March to 8 April 2026. The last run ended on 8 April 2026, 22 "
-            "days ago.") in section
+    assert "At Rami Levy: DEAL · ₪19.90 off a kilogram" in section
+    assert "Usually ₪69.90 a kilogram, sales included (82 days tracked)." in section
     # G5 on 9 April (day 99): on promotion at Deal alone, carried by store 21 alone that day, half Deal's two counted
     # stores, so listed across Deal; at ₪4.50, Deal's 90-day low, it is not below every listed price and has no front row
     page = golden.page(99, f"p/{G5}.html")
     deal, sheli = _text(_section(page, "shufersal-deal")), _text(_section(page, "shufersal-sheli"))
     assert "Deal price ₪4.50 per unit" in deal and "at some stores" not in deal
-    assert ("Deal price ₪4.50: ₪1.50, 25%, below the 30-day median listed price of ₪6.00 (of the 30 days with records "
-            "before today). The lowest listed price was ₪6.00 in the 30 days before today and ₪4.50 over the 88 days "
-            "with records of the 90 before today; listed at ₪4.50 or less on 15 of those 88.") in deal
-    assert "Deal price" not in sheli and "No promotion listed across Shufersal Sheli" in sheli
+    assert "At Shufersal Deal: DEAL · ₪1.50 off" in deal and "Last this low: 13 February, at ₪4.50." in deal
+    assert "Deal price" not in sheli and "No sale today" in sheli
     assert [column for column, _ in _front_rows(golden.page(99, "index.html"))] == ["shufersal-sheli"]   # G3's alone
     # Deal's holes of 19 and 20 February (days 50 and 51): Deal's files missing, Sheli's and Yesh Chesed's there. On 19
     # February every column with a record has its G1 row, Deal none; G1's Deal section has too few files and no price
@@ -196,6 +182,14 @@ def test_the_golden_pages_windows_and_gaps(golden):
     assert shown["Rami Levy"] == ["89", "9 to 10 February 2026", "none", "none"]
     assert shown["Shufersal Sheli"] == ["91", "none", "none", "none"]
     assert shown["Shufersal Express"] == ["0", "30 January to 30 April 2026", "none", "none"]   # no store: a hole
+    # Shufersal Universe on the last day, 27 days tracked from 2 April: each verdict's or no-verdict's words
+    universe = {U1: "It's been ₪9.90 or less on 27 of the 27 days tracked.",
+                U2: "On sale on 10 of the 27 days tracked. The last sale before this one ended 11 April, at ₪6.90.",
+                U5: "New today: no price history yet.", U6: "Only ₪0.99 below its usual ₪5.00 (27 days tracked).",
+                U7: "DEAL · ₪1.00 off", U8: "When you buy 2", U9: "On sale at some stores only",
+                U10: "On sale, but the sale price could not be read"}
+    for code, said in universe.items():
+        assert said in _text(_section(golden.page(DAYS, f"p/{code}.html"), "shufersal-universe")), (code, said)
 
 
 # ---- the verdicts (S0 to S8) and the front list, by hand ----

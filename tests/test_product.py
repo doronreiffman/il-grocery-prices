@@ -1,9 +1,11 @@
-"""The product pages (`shopper.product`; the plan's Task 16): a section per column and P9's row across the nine, on the
-shared shell (`shopper.shell`) with the base style (`basket.page.BASE_STYLE`, split from the basket's block, the first
-pre-flight's S11). Pairs, points and column-days are built by hand, as tests/test_measures.py builds them; names,
-barcodes and programmes are synthetic."""
+"""The product pages (`shopper.product`; the plan's Task 16, then store first, q33: docs/store-first.md, "What a visitor
+sees" 5 to 8, "The chart", "Words" and "Testing"; the store-first plan's Task 3): the badge row, a section per store type
+(a column) with its verdict, reason, conditions, coming sale, chart, last this low, how often and the fold-out "How this
+is worked out", on the shared shell (`shopper.shell`) with the base style (`basket.page.BASE_STYLE`, split from the
+basket's block, the first pre-flight's S11). Pairs, points and column-days are built by hand, as tests/test_measures.py
+builds them; names, barcodes and programmes are synthetic. Each page's verdicts are worked by `shopper.verdict`, as the
+build works them."""
 import hashlib
-import random
 import re
 from dataclasses import replace
 from datetime import date, timedelta
@@ -15,28 +17,28 @@ import pytest
 from basket.check import PRONOUNS, flatten, strip_tags
 from basket.page import BASE_STYLE, BASKET_STYLE, STYLE
 from basket.words import too_few
+from shopper import product, words
 from shopper.columns import BY_KEY, COLUMNS
 from shopper.deals import to_agora
-from shopper import product
-from shopper.history import READ_DAYS, ColumnDay, Covered, Pair, Point, counted
-from shopper.measures import gap, promotion_points, whole
-from shopper.product import BOTTOM, CHAIN_SPAN, DAY_WIDTH, MARK, MAX_PAGE, TOP, page_path, render_product
-from shopper.shell import text
+from shopper.history import ColumnDay, Covered, Pair, Point
+from shopper.product import CHAIN_SPAN, MAX_PAGE, page_path, render_product
 from shopper.record import Gate
 from shopper.search import browse_pages, browse_path
-from shopper.words import (ACROSS_HEADING, ALWAYS, ALWAYS_SENTENCE, AT_SOME_STORES, CHAINS_LINE, FINE_PRINT,
-                           FROM_FIELDS, GAP_HEADING, HISTORY_HEADING, MORNING, NEVER, NOT_LISTED, ODDS_WORDS,
-                           PRICE_NOT_READ, SITE_NAME, chart_key, credit, date_line, gap_sentences, last_across,
-                           no_odds_yet, price_history, starts_on, unreadable)
-import shopper_random
+from shopper.verdict import verdict
+from shopper.words import (ALWAYS, ALWAYS_SENTENCE, AT_SOME_STORES, CHAINS_LINE, FINE_PRINT, FROM_FIELDS, GAP_HEADING,
+                           MORNING, NEVER, ODDS_WORDS, PRICE_NOT_READ, SITE_NAME, credit, date_line, last_across,
+                           no_odds_yet, unreadable)
 
 DAY = date(2026, 11, 20)
 CODE = "2000000000046"
 DEAL, SHELI, CITY, MARKET, RAMI = "shufersal-deal", "shufersal-sheli", "carrefour-city", "carrefour-market", "ramilevy"
+OSHER, YOCHANANOF = "osherad", "yochananof"
 STORES = 20
 SPAN = re.compile(r'<span class="as-listed" lang="he" dir="rtl">.*?</span>', re.DOTALL)
-SECTION = re.compile(r'<section data-column="([^"]+)" data-chain="([^"]+)">(.*?)</section>', re.DOTALL)
-CELL = re.compile(r'<td data-column="([^"]+)">(.*?)</td>', re.DOTALL)
+SECTION = re.compile(r'<section data-column="([^"]+)" id="c-([^"]+)" data-chain="([^"]+)">(.*?)</section>', re.DOTALL)
+FOLD = re.compile(r"<details><summary>([^<]*)</summary>(.*?)</details>", re.DOTALL)
+NAV = re.compile(r'<nav class="badges">(.*?)</nav>', re.DOTALL)
+BADGE = re.compile(r'<a data-column="([^"]+)" href="#c-([^"]+)" class="badge ([^"]+)">([^<]*)</a>')
 
 
 def back(days: int) -> date:
@@ -70,19 +72,27 @@ def _struct(price="7.90", *, kind="fixed_price", per="unit", buy="1", low=None, 
             "min_spend": None if min_spend is None else Decimal(min_spend), "stores": stores, "wide": wide}
 
 
+def _sale(price: str, day: date, promotion_id="90") -> dict:
+    """A promotion that counts on `day` alone (a day of a past sale with its price read)."""
+    return _struct(price, start=day, end=day, promotion_id=promotion_id)
+
+
 def _listed(price="10.00", first=0, last=90) -> dict[date, str]:
     """`price` on each day from `first` to `last` days back, inclusive (0 is the page's day)."""
     return {back(n): price for n in range(first, last + 1)}
 
 
-def _pair(column: str, listed: dict[date, str], *, on=(), promotions=(), next_start=None, wide=True) -> Pair:
-    """A pair listing `listed`; on promotion on the `on` days; today's promotions `promotions`."""
+def _pair(column: str, listed: dict[date, str], *, on=(), promotions=(), next_start=None, wide=True,
+          sales=None) -> Pair:
+    """A pair listing `listed`; on promotion on the `on` days; today's promotions `promotions`, and each earlier day's
+    those `sales` gives it."""
     points = {}
     for day, price in listed.items():
         today = day == DAY
         points[day] = Point(day=day, listed=Decimal(price), low=Decimal(price), high=Decimal(price) + 1,
                             listing=STORES - 2, wide=wide or not today, on_promotion=day in on,
-                            next_start=next_start if today else None, promotions=tuple(promotions) if today else ())
+                            next_start=next_start if today else None,
+                            promotions=tuple(promotions) if today else tuple((sales or {}).get(day, ())))
     return Pair(column=column, code=CODE, points=points)
 
 
@@ -92,22 +102,29 @@ def _covered(names: dict[str, str], size=None, last_wide=None, code=CODE) -> Cov
                    last_wide={column: DAY for column in names} if last_wide is None else last_wide)
 
 
+def _verdicts(pairs, column_days) -> dict:
+    """Every column's verdict on the page's day, as the build works each section's."""
+    return {column.key: verdict(pairs.get(column.key), column.key, column_days, DAY) for column in COLUMNS}
+
+
 def _render(covered, pairs, column_days=None, gates=None, errors=None) -> str:
-    return render_product(covered, pairs, _days() if column_days is None else column_days, DAY, "12:03",
-                          gates or {}, errors or {})
+    days = _days() if column_days is None else column_days
+    return render_product(covered, pairs, _verdicts(pairs, days), days, DAY, "12:03", gates or {}, errors or {})
 
 
 def _sections(page: str) -> dict[str, str]:
-    return {column: body for column, _, body in SECTION.findall(page)}
+    found = {}
+    for column, key, _, body in SECTION.findall(page):
+        assert key == column
+        found[column] = body
+    return found
 
 
-def _typical() -> tuple[Covered, dict[str, Pair]]:
-    """Two columns listing it, one promotion (at Deal, 7.90 a unit, for club members)."""
-    deal = _struct("7.90", restrictions=["club"])
-    listed = {**_listed("10.90", 31, 90), **_listed("11.90", 0, 30)}
-    pairs = {DEAL: _pair(DEAL, listed, on=[back(n) for n in range(40, 46)], promotions=[deal]),
-             RAMI: _pair(RAMI, _listed("11.50"))}
-    return _covered({DEAL: "גבינה צהובה 200 גרם", RAMI: "גבינה צהובה פרוסה 200 גרם"}, size=(Decimal(200), "gml")), pairs
+def _fold(body: str) -> str:
+    """A section's fold-out: what its <details> holds after its summary."""
+    (summary, inside), = FOLD.findall(body)
+    assert summary == words.WORKED_OUT
+    return inside
 
 
 def _visible(page: str) -> str:
@@ -115,10 +132,29 @@ def _visible(page: str) -> str:
     return flatten(strip_tags(SPAN.sub(" ", page)))
 
 
+def _paragraphs(body: str) -> list[str]:
+    return re.findall(r"<p(?: class=\"[^\"]*\")?>(.*?)</p>", body)
+
+
+def _typical() -> tuple[Covered, dict[str, Pair]]:
+    """Two columns listing it, one promotion (at Deal, 7.90 a unit, for club members): Deal on sale 40 to 45 days back
+    with its sale price not read, so 84 of its 90 tracked days have a day price; Rami Levy with no sale."""
+    deal = _struct("7.90", restrictions=["club"])
+    listed = {**_listed("10.90", 31, 90), **_listed("11.90", 0, 30)}
+    pairs = {DEAL: _pair(DEAL, listed, on=[back(n) for n in range(40, 46)], promotions=[deal]),
+             RAMI: _pair(RAMI, _listed("11.50"))}
+    return _covered({DEAL: "גבינה צהובה 200 גרם", RAMI: "גבינה צהובה פרוסה 200 גרם"}, size=(Decimal(200), "gml")), pairs
+
+
+def _one(price="6.00", *structs, column=DEAL, **more) -> tuple[Covered, dict[str, Pair]]:
+    """One column listing it at `price` every day of the 91, today's promotions `structs`."""
+    return _covered({column: "שם"}), {column: _pair(column, _listed(price), promotions=structs, **more)}
+
+
 def _largest() -> tuple[Covered, dict[str, Pair]]:
-    """The plan's case: nine columns, three promotions each, a daily price change for 90 days, 40-character names; each
-    deal with one realistic set of conditions, a club programme and a minimum spend (round 2's ruling), and three
-    week-long runs on promotion in the history."""
+    """The plan's case: nine columns, each with 90 days of a daily price change, a sale of three days every week with
+    its price read, three promotions today, 40-character names; each deal with one realistic set of conditions, a club
+    programme and a minimum spend (round 2's ruling)."""
     names = {column.key: (f"שם מוצר ארוך {index} " + "א" * 40)[:40] for index, column in enumerate(COLUMNS)}
     club = ["מועדון הלקוחות של הרשת"]
     deals = [_struct("7.90", restrictions=["club"], programmes=club, min_spend="150", promotion_id="100"),
@@ -127,9 +163,10 @@ def _largest() -> tuple[Covered, dict[str, Pair]]:
              _struct(Fraction("10.01") / 3, kind="n_for_m", buy="3", restrictions=["club"], programmes=club,
                      min_spend="300", promotion_id="102")]
     listed = {back(n): ("10.90" if n % 2 else "11.90") for n in range(91)}
-    on = [back(n) for first in (5, 30, 60) for n in range(first, first + 7)]
-    pairs = {column.key: _pair(column.key, listed, on=on, promotions=deals, next_start=DAY + timedelta(days=9))
-             for column in COLUMNS}
+    on = [back(n) for n in range(1, 91) if n % 7 < 3]
+    sales = {day: (_sale("7.90", day),) for day in on}
+    pairs = {column.key: _pair(column.key, listed, on=[*on, DAY], promotions=deals, sales=sales,
+                               next_start=DAY + timedelta(days=9)) for column in COLUMNS}
     return _covered(names, size=(Decimal(1000), "gml")), pairs
 
 
@@ -141,45 +178,31 @@ def test_page_path():
 
 
 def test_every_always_phrase_and_no_never_phrase():
-    page = _render(*_typical())
-    text = _visible(page)
-    for phrase in ALWAYS:
-        assert flatten(phrase) in text, phrase
-    assert flatten(ALWAYS_SENTENCE) in text
-    for version in (text, flatten(SPAN.sub(" ", page))):
-        assert not [phrase for phrase in NEVER if flatten(phrase) in version]
-        assert not PRONOUNS.search(version)
-
-
-def test_a_page_of_a_product_listed_nowhere_today_carries_every_always_phrase():
-    """The second pre-flight's S7: a covered product no column lists today still carries the four phrases."""
-    covered, pairs = _typical()
-    gone = {column: _pair(column, {day: price for day, price in
-                                   {back(n): "10.00" for n in range(10, 60)}.items()}) for column in pairs}
-    page = _render(covered, gone)
-    text = _visible(page)
-    for phrase in ALWAYS:
-        assert flatten(phrase) in text, phrase
-    assert "Listed price ₪" not in page and "Deal price" not in page       # nothing listed today, nothing priced
-    for body in _sections(page).values():
-        assert NOT_LISTED in body
+    for page in (_render(*_typical()), _render(*_largest())):
+        text = _visible(page)
+        for phrase in ALWAYS:
+            assert flatten(phrase) in text, phrase
+        assert flatten(ALWAYS_SENTENCE) in text
+        assert page.count(ALWAYS_SENTENCE) == 1                         # once, after the sections
+        assert page.index(ALWAYS_SENTENCE) > page.rindex("</section>")
+        for version in (text, flatten(SPAN.sub(" ", page))):
+            assert not [phrase for phrase in NEVER if flatten(phrase) in version]
+            assert not PRONOUNS.search(version)
 
 
 def test_each_column_section_carries_f10_naming_the_column_and_no_probability():
-    """F10 in every section, naming the column (the amendment's "Words"), and, cut out, no odds word and no
-    percentage beside P7's own (the spec's check: no probability while the gate is closed; N9: at render time)."""
+    """F10 in every section's fold-out, naming the column (the amendment's "Words"), and, cut out, no odds word and no
+    percentage (the spec's check: no probability while the gate is closed; N9: at render time)."""
     covered, pairs = _largest()
     page = _render(covered, pairs)
     sections = _sections(page)
     assert list(sections) == [column.key for column in COLUMNS]
     for column, body in sections.items():
         f10 = no_odds_yet(column)
-        assert body.count(f10) == 1, column
+        assert body.count(f10) == 1 and f10 in _fold(body), column
         others = [no_odds_yet(other.key) for other in COLUMNS if other.key != column]
         assert not [sentence for sentence in others if sentence in body]
-        rest = body.replace(f10, " ")
-        rest = re.sub(r"Deal price ₪[\d.]+: [^<]*?\(of the [^)]*\)\.", " ", rest)       # P7's first sentence
-        cut = flatten(strip_tags(SPAN.sub(" ", rest)))
+        cut = flatten(strip_tags(SPAN.sub(" ", body.replace(f10, " "))))
         for word in (*ODDS_WORDS, "probab", "likel", "expect"):
             assert flatten(word) not in cut, (column, word)
         assert "%" not in cut, column
@@ -208,63 +231,29 @@ def test_a_chains_name_is_escaped_in_its_own_span():
 
 
 def test_a_programmes_name_is_escaped_in_the_chains_span():
-    """S3: every programme's name beside `targets()`, as published, in the chain's span."""
+    """S3: every programme's name beside `targets()`, as published, in the chain's span, in the fold-out only."""
     deal = _struct(restrictions=["other"], programmes=['<i>תו "זהב"</i>', "FAKE & co"])
-    page = _render(_covered({DEAL: "שם"}), {DEAL: _pair(DEAL, _listed(), promotions=[deal])})
+    page = _render(*_one("10.00", deal))
     assert CHAIN_SPAN.format('&lt;i&gt;תו "זהב"&lt;/i&gt;') in page
     assert CHAIN_SPAN.format("FAKE &amp; co") in page
     assert "<i>" not in page
-    deals = re.search(r'<ul class="deals">(.*?)</ul>', page, re.DOTALL).group(1)
+    deals = re.search(r'<ul class="deals">(.*?)</ul>', _fold(_sections(page)[DEAL]), re.DOTALL).group(1)
     assert (f"some customers only ({CHAIN_SPAN.format('&lt;i&gt;תו \"זהב\"&lt;/i&gt;')}, "
             f"{CHAIN_SPAN.format('FAKE &amp; co')}), {FROM_FIELDS}") in deals
-
-
-def test_p9_has_nine_cells_in_name_order_without_rank_words():
-    """P9: one row, a cell per column in name order whether it lists the product or not, no ranking word."""
-    covered, pairs = _typical()
-    page = _render(covered, pairs)
-    across = re.search(r'<section class="across">(.*?)</section>', page, re.DOTALL).group(1)
-    assert f">{ACROSS_HEADING}</h2>" in across
-    cells = CELL.findall(across)
-    assert [column for column, _ in cells] == [column.key for column in COLUMNS]
-    heads = re.findall(r'<th scope="col">([^<]+)</th>', across)
-    assert heads == [column.name for column in COLUMNS]
-    found = dict(cells)
-    assert "Listed price ₪11.90" in found[DEAL] and "Deal price ₪7.90 per unit" in found[DEAL]
-    assert f"club members only, {FROM_FIELDS}; {FINE_PRINT}" in found[DEAL] and MORNING in found[DEAL]
-    assert "Listed price ₪11.50" in found[RAMI] and "Deal price" not in found[RAMI]
-    for column in (SHELI, CITY, MARKET):
-        assert found[column] == NOT_LISTED
-    text = flatten(strip_tags(across))
-    for word in ("cheap", "lowest", "highest", "best", "rank", "save", "more than", "less than", "better", "worse"):
-        assert word not in text, word
-
-
-def test_p9_marks_a_cells_conditions_in_the_sections_words():
-    """The controller's ruling 3: the cell's conditions are `targets()` and the minimum spend, the programmes' names
-    left to the section; an unread deal is "price not read"; a deal at some stores is not P9's."""
-    deals = [_struct("7.90", restrictions=["club", "other"], programmes=["תוכנית"], min_spend="150"),
-             _struct(None, valid=False, why="no price in the fields", promotion_id="2"),
-             _struct("5.00", wide=False, promotion_id="3")]
-    page = _render(_covered({DEAL: "שם"}), {DEAL: _pair(DEAL, _listed(), promotions=deals)})
-    cell = dict(CELL.findall(re.search(r'<section class="across">(.*?)</section>', page, re.DOTALL).group(1)))[DEAL]
-    # fix round 1: each condition with its source and each deal with the fine print, in the section's own words
-    # (the design's "Always": the source of every condition; step one: "fine print not read" beside every promotion)
-    assert (f"<small>Deal price ₪7.90 per unit; club members only, and some customers only, {FROM_FIELDS}; minimum "
-            f"spend ₪150.00, {FROM_FIELDS}; {FINE_PRINT}</small>") in cell
-    assert f"<small>{PRICE_NOT_READ}; {FINE_PRINT}</small>" in cell
-    assert cell.count(FINE_PRINT) == 2                                  # one for each wide deal
-    assert "₪5.00" not in cell and "תוכנית" not in cell                # the programmes' names are the section's
-    assert cell.count(MORNING) == 1
+    assert page.count("FAKE &amp; co") == 1                            # beside the verdict, the condition alone
 
 
 def test_a_weighed_deal_is_per_kilogram():
-    """P4: a weighed link's deal price is a kilogram's, shown per kilogram, in its section and in P9."""
-    deal = _struct("49.90", per="kg", kind="n_for_m", buy="1.5")
-    page = _render(_covered({DEAL: "בשר"}), {DEAL: _pair(DEAL, _listed("59.90"), promotions=[deal])})
-    assert page.count("Deal price ₪49.90 per kilogram") == 2
-    assert "per unit" not in page
-    assert page.count("buy 1.5") == 2                               # the section's and P9's
+    """P4: a weighed link's deal price is a kilogram's: the saving and the usual price beside the verdict say so, the
+    condition is in kilograms, and the fold-out lists the deal per kilogram."""
+    deal = _struct("50.00", per="kg", kind="n_for_m", buy="1.5")
+    body = _sections(_render(*_one("69.90", deal)))[DEAL]
+    assert '<p class="badge deal-3">At Shufersal Deal: DEAL · ₪19.90 off a kilogram</p>' in body
+    assert "<p class=\"reason\">Usually ₪69.90 a kilogram, sales included (90 days tracked).</p>" in body
+    assert "When you buy 1.5 kilograms" in body
+    fold = _fold(body)
+    assert fold.count("Deal price ₪50.00 per kilogram") == 1 and "buy 1.5" in fold
+    assert "per unit" not in body
 
 
 def test_a_promotions_error_says_so_in_each_of_the_chains_sections():
@@ -275,24 +264,25 @@ def test_a_promotions_error_says_so_in_each_of_the_chains_sections():
     sections = _sections(page)
     for column in (CITY, MARKET):
         assert sections[column].count(unreadable("carrefour")) == 1, column
+        assert sections[column].index(unreadable("carrefour")) < sections[column].index("No sale today")
     assert "could not be read" not in sections[RAMI]
     assert "RewardType" not in page                     # the error's own text is the owner's email, not the page's
 
 
-def test_a_product_beyond_the_read_says_when_last_listed_across_each_column():
-    """Call 10, question G: a product whose pairs lie beyond the 90 days read keeps its page, and each column's
-    section says when it was last listed across it; with no history, P8 and the history say nothing."""
+def test_a_product_beyond_the_read_says_when_last_seen_at_each_column():
+    """Call 10, question G: a product whose pairs lie beyond the 90 days read keeps its page, and each column's section
+    says it is not sold there today and when it was last seen listed across it; with no history, no chart."""
     names = {DEAL: "שם", SHELI: "שם אחר", RAMI: "שם"}
     last = {DEAL: date(2026, 6, 1), SHELI: date(2026, 7, 15)}
     page = _render(_covered(names, last_wide=last), {})
     sections = _sections(page)
     assert list(sections) == [RAMI, DEAL, SHELI]                   # name order
-    assert last_across(DEAL, date(2026, 6, 1)) in sections[DEAL]
-    assert last_across(SHELI, date(2026, 7, 15)) in sections[SHELI]
-    assert "last seen listed across" not in sections[RAMI]         # never wide there: no such day to give
+    assert "Not sold at Shufersal Deal today, last seen 1 June" in sections[DEAL]
+    assert "Not sold at Shufersal Sheli today, last seen 15 July" in sections[SHELI]
+    assert "<p class=\"not-sold\">Not sold at Rami Levy today</p>" in sections[RAMI]   # never wide there
     for column, body in sections.items():
-        assert NOT_LISTED in body and no_odds_yet(column) in body
-        assert "<svg" not in body and "The listed price" not in body
+        assert no_odds_yet(column) in _fold(body)
+        assert "<svg" not in body and "days tracked" not in body and 'class="badge' not in body
 
 
 def test_a_column_not_wide_today_says_when_last_listed_across():
@@ -301,11 +291,13 @@ def test_a_column_not_wide_today_says_when_last_listed_across():
     covered = Covered(code=CODE, title=covered.title, names=covered.names, size=covered.size,
                       first_covered=covered.first_covered, last_wide={DEAL: DAY, RAMI: back(4)})
     sections = _sections(_render(covered, narrow))
-    assert last_across(RAMI, back(4)) in sections[RAMI]
+    assert last_across(RAMI, back(4)) in _fold(sections[RAMI])
     assert "last seen listed across" not in sections[DEAL]
 
 
 def test_the_largest_page_is_under_60_kb():
+    """Nine columns, each with 90 days of a daily price change, weekly sale runs, three promotions, 40-character
+    names (the plan's Step 1)."""
     page = _render(*_largest())
     assert len(page.encode("utf-8")) <= MAX_PAGE, len(page.encode("utf-8"))
 
@@ -317,8 +309,9 @@ def test_the_page_is_the_same_bytes_twice():
     names = {column: covered.names[column] for column in reversed(list(covered.names))}
     again = Covered(code=CODE, title=covered.title, names=names, size=covered.size,
                     first_covered=covered.first_covered, last_wide=covered.last_wide)
-    days = _days()
-    assert first == _render(covered, pairs) == _render(again, reordered, dict(reversed(list(days.items()))))
+    days = dict(reversed(list(_days().items())))
+    verdicts = dict(reversed(list(_verdicts(pairs, days).items())))
+    assert first == _render(covered, pairs) == render_product(again, reordered, verdicts, days, DAY, "12:03", {}, {})
 
 
 # The sections
@@ -326,42 +319,104 @@ def test_the_page_is_the_same_bytes_twice():
 def test_a_section_per_column_listing_it_or_with_its_history_in_name_order():
     covered, pairs = _typical()
     sections = SECTION.findall(_render(covered, pairs))
-    assert [(column, slug) for column, slug, _ in sections] == [(RAMI, "ramilevy"), (DEAL, "shufersal")]
-    for column, _, body in sections:
-        assert f"<h2>{BY_KEY[column].name}</h2>" in body
+    assert [(column, slug) for column, _, slug, _ in sections] == [(RAMI, "ramilevy"), (DEAL, "shufersal")]
+    for column, _, _, body in sections:
+        assert body.startswith(f"<h2>{BY_KEY[column].name}</h2>")
     # a column with history in the read has its section, whatever names the registry gives
     history = {**pairs, SHELI: _pair(SHELI, _listed("9.00", 10, 40))}
     assert list(_sections(_render(covered, history))) == [RAMI, DEAL, SHELI]
+    assert product.section_keys(covered, history) == [RAMI, DEAL, SHELI]
 
 
-def test_todays_listed_price_and_its_stores_range():
-    """P2: today's listed price with the design's phrases beside it, and the stores' range labelled as the stores'
-    (never a "listed price", so ALWAYS_SENTENCE stays true)."""
+def test_each_section_says_the_verdict_with_the_store_types_name():
+    """Anti-goal 1: the store type's name is inside every verdict, so a pick left over from last week shows itself."""
+    body = _sections(_render(*_one("6.00", _struct("4.50"), on=[DAY])))[DEAL]
+    assert '<p class="badge deal-1">At Shufersal Deal: DEAL · ₪1.50 off</p>' in body
+    market = _sections(_render(*_one("6.00", _struct("4.50"), column=MARKET)))[MARKET]
+    assert "At Carrefour Market: DEAL · ₪1.50 off" in market
+
+
+def test_a_no_deal_badge_is_grey_and_writes_its_words():
+    """S5 and anti-goal 5: a no deal is said in words, "NO DEAL", in a neutral grey in both themes, never red."""
+    body = _sections(_render(*_one("5.00", _struct("4.50"))))[DEAL]
+    assert '<p class="badge no-deal">At Shufersal Deal: NO DEAL</p>' in body
+    assert '<p class="reason">Only ₪0.50 below its usual ₪5.00 (90 days tracked).</p>' in body
+    for shades in _themes():
+        for token in ("--no-deal-bg", "--no-deal-text"):
+            red, green, blue = _rgb(shades[token])
+            assert max(red, green, blue) - min(red, green, blue) <= 0x10, (token, shades[token])
+
+
+def test_the_reason_line_names_its_days():
+    """S8: every reason names the days it rests on, the days with a day price (6 of Deal's 90 tracked days were on
+    sale at a price not read), right after the badge."""
     body = _sections(_render(*_typical()))[DEAL]
-    assert ("Listed price ₪11.90, before promotions, as listed in the chain's price files<small>stores ₪11.90 to "
-            "₪12.90, 18 of 20 list it</small>") in body
+    paragraphs = _paragraphs(body)
+    assert paragraphs[:2] == ["At Shufersal Deal: DEAL · ₪3.00 off", "Usually ₪10.90, sales included (84 days tracked)."]
+    assert "At Shufersal Deal: DEAL · ₪3.00 off" in body and '<p class="badge deal-2">' in body
+    # a short history says how short; an always-on sale says how often it has been at today's price
+    short = _render(_covered({DEAL: "שם"}), {DEAL: _pair(DEAL, _listed("6.00", 0, 5), promotions=[_struct("4.50")])})
+    assert "Usually ₪6.00, sales included (5 days tracked)." in short
+    always = {day: (_sale("7.90", day),) for day in _listed("9.90", 1, 90)}
+    page = _render(_covered({DEAL: "שם"}), {DEAL: _pair(DEAL, _listed("9.90"), on=list(_listed("9.90")),
+                                                        promotions=[_struct("7.90")], sales=always)})
+    assert '<p class="badge no-deal">At Shufersal Deal: NO DEAL</p>' in page
+    assert "It's been ₪7.90 or less on 90 of the 90 days tracked." in page
+
+
+def _no_verdict_case(call: str):
+    """A page whose Deal section gets `call`, and its column-days."""
+    days = _days()
+    listed = _listed("10.00")
+    if call == "unread_today":
+        return _one("10.00", _struct("7.90")), _days(promo_holes={(DEAL, DAY)})
+    if call == "no_sale":
+        return _one("10.00"), days
+    if call == "some_stores":
+        return _one("10.00", _struct("7.90", wide=False)), days
+    if call == "price_unread":
+        return _one("10.00", _struct(None, valid=False, why="no price in the fields"), on=[DAY]), days
+    if call == "new":
+        return (_covered({DEAL: "שם"}), {DEAL: _pair(DEAL, {DAY: "10.00"}, promotions=[_struct("7.90")])}), days
+    if call == "mostly_unknown":
+        return _one("10.00", _struct("7.90"), on=[back(n) for n in range(0, 61)]), days
+    assert call == "no_history"          # seen before today only on days whose promotions were not read
+    unread = _days(promo_holes={(DEAL, back(n)) for n in range(1, 91)})
+    return (_covered({DEAL: "שם"}), {DEAL: _pair(DEAL, listed, promotions=[_struct("7.90")])}), unread
+
+
+@pytest.mark.parametrize("call", ["unread_today", "no_sale", "some_stores", "price_unread", "new", "mostly_unknown",
+                                  "no_history"])
+def test_each_no_verdict_line(call):
+    """S4: no verdict, a plain line instead, verbatim, and no badge (the plan's order of the calls)."""
+    (covered, pairs), days = _no_verdict_case(call)
+    found = _verdicts(pairs, days)[DEAL]
+    assert found.call == call
+    body = _sections(_render(covered, pairs, column_days=days))[DEAL]
+    assert f"<p>{words.NO_VERDICT[call]}</p>" in body
+    assert 'class="badge' not in body and "DEAL ·" not in body and "NO DEAL" not in body
+    assert "Usually ₪" not in body and "It's been" not in body and "Only ₪" not in body
 
 
 def test_a_hole_day_shows_too_few_files_and_no_listed_price_claim():
-    """The second pre-flight's S1: a column-day with files from fewer than half its stores shows `too_few`, its
-    prices marked as from too few files, and no listed-price claim; a product it does not list is not said unlisted."""
+    """The second pre-flight's S1: a column-day with files from fewer than half its stores shows `too_few` in place of
+    a verdict, its price in the fold-out as from too few files, and no listed-price claim; a product it does not list is
+    never said not sold."""
     covered, pairs = _typical()
     page = _render(covered, pairs, column_days=_days(holes=[(DEAL, DAY), (SHELI, DAY)]))
     sections = _sections(page)
     body = sections[DEAL]
-    assert too_few(5, STORES) in body and "₪11.90" in body
-    assert "Listed price" not in body
-    cells = dict(CELL.findall(re.search(r'<section class="across">(.*?)</section>', page, re.DOTALL).group(1)))
-    assert too_few(5, STORES) in cells[DEAL] and "Listed price" not in cells[DEAL]
-    assert cells[SHELI] == f"<small>{too_few(5, STORES)}</small>"        # few files: not "not listed today"
+    assert f'<p class="few">{too_few(5, STORES)}</p>' in body
+    assert "₪11.90" in _fold(body) and too_few(5, STORES) in _fold(body)
+    assert "Listed price" not in body and 'class="badge' not in body and "Not sold" not in body
     assert "Listed price ₪11.50" in sections[RAMI]
-    # a section on a hole whose few files do not list the product says so, never that it is not listed
+    # a section on a hole whose few files do not list the product says so, never that it is not sold there
     named = Covered(code=CODE, title=covered.title, names={**covered.names, SHELI: "שם"}, size=None,
-                    first_covered=back(80), last_wide={})
+                    first_covered=back(80), last_wide={SHELI: back(9)})
     sheli = _sections(_render(named, {**pairs, SHELI: _pair(SHELI, _listed("9.00", 1, 40))},
                               column_days=_days(holes=[(SHELI, DAY)])))[SHELI]
-    assert re.search(r'<p class="today">(.*?)</p>', sheli).group(1) == f'<span class="few">{too_few(5, STORES)}</span>'
-    assert NOT_LISTED not in sheli
+    assert f'<p class="few">{too_few(5, STORES)}</p>' in sheli
+    assert "Not sold" not in sheli and "last seen" not in sheli and '<p class="today">' not in sheli
 
 
 def test_a_hole_day_says_no_last_listed_across():
@@ -372,25 +427,28 @@ def test_a_hole_day_says_no_last_listed_across():
                        first_covered=covered.first_covered, last_wide={DEAL: back(1), RAMI: back(1)})
     listed = {day: point for day, point in pairs[DEAL].points.items()}
     listed[DAY] = Point(day=DAY, listed=Decimal("11.90"), low=Decimal("11.90"), high=Decimal("12.90"), listing=5,
-                        wide=True, on_promotion=False, next_start=None, promotions=())   # all 5 stores with a file
+                        wide=False, on_promotion=False, next_start=None, promotions=())   # all 5 stores with a file
     holed = _days(holes=[(DEAL, DAY), (RAMI, DAY)])
     gone = {day: point for day, point in pairs[RAMI].points.items() if day != DAY}
     sections = _sections(_render(registry, {DEAL: Pair(column=DEAL, code=CODE, points=listed),
                                             RAMI: Pair(column=RAMI, code=CODE, points=gone)}, column_days=holed))
     for column in (DEAL, RAMI):
         assert too_few(5, STORES) in sections[column]
-        assert "last seen listed across" not in sections[column], column
+        assert "last seen" not in sections[column], column
     assert "stores ₪11.90 to ₪12.90, 5 of 5 list it" in sections[DEAL]
-    # on a day with records it is said as before
-    assert last_across(RAMI, back(1)) in _sections(_render(registry, {DEAL: pairs[DEAL], RAMI: Pair(
-        column=RAMI, code=CODE, points=gone)}))[RAMI]
+    # on a day with records it is said as before: in the fold-out when listed but not across, beside "Not sold" when
+    # not listed at all
+    sections = _sections(_render(registry, {DEAL: Pair(column=DEAL, code=CODE, points=listed),
+                                            RAMI: Pair(column=RAMI, code=CODE, points=gone)}))
+    assert last_across(DEAL, back(1)) in _fold(sections[DEAL])
+    assert "Not sold at Rami Levy today, last seen 19 November" in sections[RAMI]
+
 
 def test_a_hole_morning_lists_no_promotion_across_the_column():
     """Deploy prep (the owner, 2026-11-10): on a morning that is a hole for a column (files from 5 of its 20 stores),
-    whether a promotion is listed across the column is judged over those few files, so every promotion in its section
-    shows "at some stores", none gets P7's sentences and P9's cell lists none; nor is a promotion said to be listed to
-    start (the items row's `next_start`, judged wide over the same few files); the section's too-few-files line stays,
-    and another column's day with records is as before."""
+    whether a promotion is listed across the column is judged over those few files, so every promotion in its fold-out
+    shows "at some stores", and no coming sale is said (the items row's `next_start`, judged wide over the same few
+    files); the section's too-few-files line stays, and another column's day with records is as before."""
     covered, typical = _typical()
     start = DAY + timedelta(days=9)                     # each column's items row lists a wide promotion to start
     pairs = {key: replace(pair, points={**pair.points, DAY: replace(pair.points[DAY], next_start=start)})
@@ -398,22 +456,73 @@ def test_a_hole_morning_lists_no_promotion_across_the_column():
     page = _render(covered, pairs, column_days=_days(holes=[(DEAL, DAY)]))
     body = _sections(page)[DEAL]
     assert too_few(5, STORES) in body
-    assert "Listed to start" not in body
+    assert "A sale starts" not in body
     items = re.findall(r"<li>(.*?)</li>", re.search(r'<ul class="deals">(.*?)</ul>', body, re.DOTALL).group(1))
     assert items == ["<b>Deal price ₪7.90 per unit</b><small>club members only, from the chain's fields; "
                      f"{FINE_PRINT}</small><small>{MORNING}; {AT_SOME_STORES}</small>"]
-    assert GAP_HEADING not in body and "Deal price ₪7.90:" not in body
-    cell = dict(CELL.findall(re.search(r'<section class="across">(.*?)</section>', page, re.DOTALL).group(1)))[DEAL]
-    assert cell == f"₪11.90<small>{too_few(5, STORES)}</small>"
-    assert _sections(page)[RAMI].count(starts_on(start)) == 1                    # another column's day with records
-    # the same day with records: listed across, P7's sentences, the start date, and the deal in P9's cell
-    page = _render(covered, pairs)
-    body = _sections(page)[DEAL]
+    assert _sections(page)[RAMI].count(words.coming_sale(start)) == 1               # another column's day with records
+    # the same day with records: listed across, and the coming sale
+    body = _sections(_render(covered, pairs))[DEAL]
     assert f"<small>{MORNING}</small>" in body and AT_SOME_STORES not in body
-    assert body.count(starts_on(start)) == 1
-    assert GAP_HEADING in body and "Deal price ₪7.90: ₪4.00, 34%, below" in body
-    cell = dict(CELL.findall(re.search(r'<section class="across">(.*?)</section>', page, re.DOTALL).group(1)))[DEAL]
-    assert "Deal price ₪7.90 per unit" in cell
+    assert body.count(words.coming_sale(start)) == 1
+
+
+def test_a_not_sold_section_says_when_last_seen():
+    """Store first, "What a visitor sees" 7: a store type that sold it before and not today says so, with the last day
+    it was seen listed across it (Call 10's line), its history still shown; with no such day, the line alone."""
+    pair = _pair(DEAL, _listed("10.00", 10, 60))
+    page = _render(_covered({DEAL: "שם"}, last_wide={DEAL: date(2026, 11, 3)}), {DEAL: pair})
+    body = _sections(page)[DEAL]
+    assert '<p class="not-sold">Not sold at Shufersal Deal today, last seen 3 November</p>' in body
+    assert '<svg class="chart"' in body and "On sale on 0 of the 51 days tracked." in body
+    assert 'class="badge' not in body and "Listed price" not in body
+    bare = _sections(_render(_covered({DEAL: "שם"}, last_wide={}), {DEAL: pair}))[DEAL]
+    assert '<p class="not-sold">Not sold at Shufersal Deal today</p>' in bare
+
+
+def test_the_condition_beside_the_verdict():
+    """S3: the promotion the verdict judges names its conditions beside it, in shopper words."""
+    deal = _struct("3.00", kind="n_for_m", buy="2", restrictions=["club"])
+    body = _sections(_render(*_one("6.00", deal)))[DEAL]
+    paragraphs = _paragraphs(body)
+    assert paragraphs[:3] == ["At Shufersal Deal: DEAL · ₪3.00 off", "Usually ₪6.00, sales included (90 days tracked).",
+                              "Club members only; When you buy 2"]
+    assert "Club members only" not in _sections(_render(*_one("6.00", _struct("3.00"))))[DEAL]
+
+
+def test_a_coming_sale_line():
+    """F2 in shopper words: an item listing a wide promotion to start within 14 days; none on a hole morning."""
+    start = DAY + timedelta(days=9)
+    body = _sections(_render(*_one("10.00", next_start=start)))[DEAL]
+    assert "<p>A sale starts on 29 November</p>" in body
+    assert "A sale starts" not in _render(*_one("10.00"))
+    holed = _render(*_one("10.00", next_start=start), column_days=_days(holes=[(DEAL, DAY)]))
+    assert "A sale starts" not in holed
+
+
+def test_the_fold_out_holds_the_range_the_definition_every_promotion_and_no_odds():
+    """"How this is worked out": today's listed price, defined, with the stores' range and how many list it; every
+    promotion running today with its source labels and the fine print, "at some stores" on one not listed across the
+    column; then F10's sentence."""
+    deals = [_struct("7.90", restrictions=["club"]), _struct("8.50", wide=False, promotion_id="2")]
+    covered, pairs = _typical()
+    pairs = {**pairs, DEAL: _pair(DEAL, {**_listed("10.90", 31, 90), **_listed("11.90", 0, 30)}, promotions=deals)}
+    fold = _fold(_sections(_render(covered, pairs))[DEAL])
+    assert ("<p class=\"today\">Listed price ₪11.90, before promotions, as listed in the chain's price files<small>stores "
+            "₪11.90 to ₪12.90, 18 of 20 list it</small></p>") in fold
+    items = re.findall(r"<li>(.*?)</li>", fold)
+    assert len(items) == 2 and all(FINE_PRINT in item and MORNING in item for item in items)
+    assert AT_SOME_STORES not in items[0] and AT_SOME_STORES in items[1]
+    assert fold.endswith(f"<p>{no_odds_yet(DEAL)}</p>")
+    assert fold.index("Listed price") < fold.index("<ul") < fold.index(no_odds_yet(DEAL))
+
+
+def test_todays_listed_price_and_its_stores_range():
+    """P2: today's listed price with the design's phrases beside it, and the stores' range labelled as the stores'
+    (never a "listed price", so ALWAYS_SENTENCE stays true)."""
+    fold = _fold(_sections(_render(*_typical()))[DEAL])
+    assert ("Listed price ₪11.90, before promotions, as listed in the chain's price files<small>stores ₪11.90 to "
+            "₪12.90, 18 of 20 list it</small>") in fold
 
 
 def test_each_promotion_today_with_its_conditions_from_the_fields():
@@ -424,7 +533,7 @@ def test_each_promotion_today_with_its_conditions_from_the_fields():
              _struct("4.40", kind="percent_off", low="4.35", high="4.60", wide=False, promotion_id="2"),
              _struct("1.00", start=DAY + timedelta(days=2), promotion_id="3"),
              _struct("1.50", end=back(1), promotion_id="4")]
-    page = _render(_covered({DEAL: "שם"}), {DEAL: _pair(DEAL, _listed(), promotions=deals)})
+    page = _render(*_one("10.00", *deals))
     items = re.findall(r"<li>(.*?)</li>", re.search(r'<ul class="deals">(.*?)</ul>', page, re.DOTALL).group(1))
     assert items == [
         "<b>Deal price ₪3.33 per unit</b>, buy 3<small>club members only, and the chain's card holders only, "
@@ -432,13 +541,15 @@ def test_each_promotion_today_with_its_conditions_from_the_fields():
         f"<b>Deal price ₪4.40 per unit</b>, stores' deal prices ₪4.35 to ₪4.60<small>{FINE_PRINT}</small>"
         f"<small>{MORNING}; {AT_SOME_STORES}</small>"]
     assert "PLACEHOLDER-DESCRIPTION" not in page            # the chain's text is not shown
+    # beside the verdict, the judged promotion's conditions in shopper words
+    assert "Club members only; The chain's card holders only; When you buy 3; Minimum spend ₪150.00" in page
 
 
 def test_a_promotion_starting_or_ending_today_runs_today():
     """P3: a promotion runs on its start day and on its end day."""
     deals = [_struct("7.00", start=DAY, promotion_id="1"), _struct("8.00", end=DAY, promotion_id="2"),
              _struct("9.00", start=DAY + timedelta(days=1), promotion_id="3")]
-    body = _sections(_render(_covered({DEAL: "שם"}), {DEAL: _pair(DEAL, _listed(), promotions=deals)}))[DEAL]
+    body = _sections(_render(*_one("10.00", *deals)))[DEAL]
     assert "Deal price ₪7.00 per unit" in body and "Deal price ₪8.00 per unit" in body
     assert "₪9.00" not in body
 
@@ -447,7 +558,7 @@ def test_every_promotion_says_fine_print_not_read():
     """S12 (b): P5's fine print label beside every promotion, read or not (step one reads no fine print)."""
     deals = [_struct("7.90"), _struct(None, valid=False, why="no kind link", kind=None, promotion_id="2"),
              _struct("5.00", wide=False, promotion_id="3")]
-    page = _render(_covered({DEAL: "שם"}), {DEAL: _pair(DEAL, _listed(), promotions=deals)})
+    page = _render(*_one("10.00", *deals))
     items = re.findall(r"<li>(.*?)</li>", re.search(r'<ul class="deals">(.*?)</ul>', page, re.DOTALL).group(1))
     assert len(items) == 3
     for item in items:
@@ -455,86 +566,16 @@ def test_every_promotion_says_fine_print_not_read():
 
 
 def test_an_invalid_deal_shows_price_not_read_only():
-    """P4: a deal whose fields do not validate is listed with "price not read", no price beside it, never its why."""
+    """P4: a deal whose fields do not validate is listed with "price not read", no price beside it, never its why; with
+    no other promotion, the section says its sale price could not be read."""
     deal = _struct("25.00", valid=False, why="not below twice the listed price", kind="percent_off", low="24.00",
                    high="26.00")
-    page = _render(_covered({DEAL: "שם"}), {DEAL: _pair(DEAL, _listed(), promotions=[deal])})
+    page = _render(*_one("10.00", deal, on=[DAY]))
     body = _sections(page)[DEAL]
-    assert f"<b>{PRICE_NOT_READ}</b><small>" in body
+    assert f"<b>{PRICE_NOT_READ}</b><small>" in _fold(body)
     assert "₪25.00" not in page and "₪24.00" not in page and "twice" not in page
-    assert GAP_HEADING not in body                           # no P7 for a deal not valid
+    assert f"<p>{words.NO_VERDICT['price_unread']}</p>" in body
 
-
-def test_p7_for_each_valid_wide_deal():
-    """P7's three sentences for each valid deal of a wide promotion today, none for one at some stores."""
-    deals = [_struct("7.90"), _struct("8.50", promotion_id="2"), _struct("6.00", wide=False, promotion_id="3")]
-    listed = {**_listed("10.90", 31, 90), **_listed("11.90", 0, 30)}
-    pair = _pair(DEAL, listed, promotions=deals)
-    body = _sections(_render(_covered({DEAL: "שם"}), {DEAL: pair}))[DEAL]
-    assert body.count(GAP_HEADING) == 1
-    p7 = body[body.index(GAP_HEADING):body.index(HISTORY_HEADING)]
-    said = [gap_sentences(gap(Fraction(price), pair, _days(), DAY)) for price in ("7.90", "8.50")]
-    # round 2's ruling: each deal's first two sentences, then the pair's 30-day changes once, after them
-    assert re.findall(r"<p>(.*?)</p>", p7) == [" ".join(said[0][:2]), " ".join(said[1][:2]), said[0][2]]
-    assert said[0][2] == said[1][2] and p7.count(said[0][2]) == 1
-    assert "Deal price ₪6.00:" not in body
-
-
-def test_one_day_of_records_shows_no_change_sentence():
-    """q31: with one day of records in the 30 and no change, each deal shows its two sentences and no change paragraph
-    follows, and the history shows no listed-price text: one day has nothing to compare (`gap_sentences`,
-    `price_history`)."""
-    deals = [_struct("7.90"), _struct("8.50", promotion_id="2")]
-    pair = _pair(DEAL, {back(1): "10.00", DAY: "10.00"}, promotions=deals)
-    body = _sections(_render(_covered({DEAL: "שם"}), {DEAL: pair}))[DEAL]
-    p7 = body[body.index(GAP_HEADING):body.index(HISTORY_HEADING)]
-    said = [gap_sentences(gap(Fraction(price), pair, _days(), DAY)) for price in ("7.90", "8.50")]
-    assert [len(each) for each in said] == [2, 2]
-    assert re.findall(r"<p>(.*?)</p>", p7) == [" ".join(said[0]), " ".join(said[1])]
-    assert price_history(pair, _days(), DAY) is None
-    assert "did not change" not in body and "<p></p>" not in body
-    assert "on the one day of records before today (19 November 2026)" in body[body.index(HISTORY_HEADING):]
-
-
-def test_a_promotion_listed_to_start_soon_says_so():
-    """F2, Call 22: an item with a wide promotion listed to start within 14 days (the items row's `next_start`)."""
-    start = DAY + timedelta(days=9)
-    page = _render(_covered({DEAL: "שם"}), {DEAL: _pair(DEAL, _listed(), next_start=start)})
-    assert _sections(page)[DEAL].count(starts_on(start)) == 1
-    assert "Listed to start" not in _render(_covered({DEAL: "שם"}), {DEAL: _pair(DEAL, _listed())})
-
-
-def test_the_history_heading_p8_and_the_listed_price_history_as_text():
-    covered, pairs = _typical()
-    body = _sections(_render(covered, pairs))[DEAL]
-    history = body[body.index(HISTORY_HEADING):]
-    assert "On a promotion listed across Shufersal Deal on 6 of the 90 days with records before today" in history
-    assert price_history(pairs[DEAL], _days(), DAY) in history
-    assert "The listed price rose from ₪10.90 to ₪11.90 on 21 October 2026." in history
-
-
-def test_the_chart_marks_promotion_days():
-    """S12 (b): the window's daily listed prices, holes left as gaps, the days on a wide promotion marked; hidden from
-    screen readers, with its two-item key of the site's phrases (the controller's ruling 2)."""
-    listed = {**_listed("10.00", 1, 90), DAY: "10.00"}
-    del listed[back(50)]                                           # a day not listed: a gap in the line
-    pair = _pair(DEAL, listed, on=[back(n) for n in (40, 39, 38, 10)])
-    page = _render(_covered({DEAL: "שם"}), {DEAL: pair}, column_days=_days(holes=[(DEAL, back(20))]))
-    svg = re.search(r'<svg class="chart"[^>]*>(.*?)</svg>', page, re.DOTALL)
-    assert 'aria-hidden="true"' in svg.group(0)
-    marks = re.search(r'<path class="on" d="([^"]+)"', svg.group(1)).group(1)
-    assert re.findall(r"M(\d+) 56h(\d+)v6h-\d+z", marks) == [("200", "12"), ("320", "4")]   # 40 to 38 back, 10 back
-    line = re.search(r'<path d="([^"]+)"', svg.group(1)).group(1)
-    assert line.count("M") == 3                                    # broken at the day not listed and at the hole
-    key = re.search(r'<p class="key">(.*?)</p>', page, re.DOTALL).group(1)
-    assert flatten(strip_tags(key)).strip() == flatten(" ".join(chart_key(DEAL)))
-
-
-def test_a_product_first_listed_today_has_no_history_to_show():
-    """With no day of records before today, no listed-price history and no chart: nothing is drawn from nothing."""
-    body = _sections(_render(_covered({DEAL: "שם"}), {DEAL: _pair(DEAL, {DAY: "10.00"})}))[DEAL]
-    assert "Listed price ₪10.00" in body and no_odds_yet(DEAL) in body
-    assert "<svg" not in body and "The listed price" not in body
 
 def test_names_each_with_the_columns_listing_it():
     """Call 4: the title is the longest name, and each distinct name is shown once with the columns that list it."""
@@ -553,6 +594,198 @@ def test_the_barcode_and_the_size_the_chains_state():
     assert f"<p>Barcode {CODE}</p>" in _render(bare, {DEAL: _pair(DEAL, _listed())})
 
 
+# The badge row, "Elsewhere today"
+
+def _shops() -> tuple[Covered, dict[str, Pair]]:
+    """Seven columns: deals of ₪3.00 at Deal and at Yochananof, ₪1.00 at Rami Levy; no deals of ₪0.50 at Sheli and
+    ₪0.50 above its usual at Osher Ad; no sale at Carrefour Market; Carrefour City sold before, not today."""
+    def at(column, price, *structs):
+        return _pair(column, _listed(price), promotions=structs)
+    pairs = {DEAL: at(DEAL, "10.00", _struct("7.00")), YOCHANANOF: at(YOCHANANOF, "10.00", _struct("7.00")),
+             RAMI: at(RAMI, "8.00", _struct("7.00")), SHELI: at(SHELI, "7.50", _struct("7.00")),
+             OSHER: at(OSHER, "6.50", _struct("7.00")), MARKET: at(MARKET, "9.00"),
+             CITY: _pair(CITY, _listed("9.00", 5, 40))}
+    return _covered({column: "שם" for column in pairs}), pairs
+
+
+def test_elsewhere_today_has_a_badge_per_store_type_selling_it_by_saving():
+    """The plan's "The badge row": one badge per store type with a point today, deals and no deals by saving as shown,
+    largest first (a tie in COLUMNS order), the rest after them in COLUMNS order; none for a store type not listing it
+    today; each links to its section."""
+    covered, pairs = _shops()
+    page = _render(covered, pairs)
+    (row,) = NAV.findall(page)
+    badges = BADGE.findall(row)
+    assert [key for key, _, _, _ in badges] == [DEAL, YOCHANANOF, RAMI, SHELI, OSHER, MARKET]
+    assert [(shade, said) for _, _, shade, said in badges] == [
+        ("deal-2", "Shufersal Deal · DEAL · ₪3.00 off"), ("deal-2", "Yochananof · DEAL · ₪3.00 off"),
+        ("deal-1", "Rami Levy · DEAL · ₪1.00 off"), ("no-deal", "Shufersal Sheli · NO DEAL"),
+        ("no-deal", "Osher Ad · NO DEAL"), ("none", "Carrefour Market · no sale today")]
+    ids = set(re.findall(r'\sid="([^"]+)"', page))
+    assert all(key == target and f"c-{target}" in ids for key, target, _, _ in badges)
+    assert len(badges) == row.count("<a ")
+    assert CITY in _sections(page) and f'data-column="{CITY}" href' not in row
+
+
+def test_the_markup_search_js_reads():
+    """search.js's header: a product page has nav.badges (empty when nothing sells it today), its badges
+    a[data-column] linking to #c-<key>, a section[data-column] with id c-<key> per part, and the row's heading
+    h2.elsewhere, hidden in the HTML, before the row; one of each."""
+    for covered, pairs in (_typical(), _shops(), (_covered({DEAL: "שם"}), {DEAL: _pair(DEAL, _listed("1.00", 3, 9))})):
+        page = _render(covered, pairs)
+        assert page.count('<nav class="badges">') == 1 and page.count("<nav") == 1
+        assert page.count('<h2 class="elsewhere" hidden>Elsewhere today</h2>\n<nav class="badges">') == 1
+        for key in _sections(page):
+            assert page.count(f'<section data-column="{key}" id="c-{key}" ') == 1
+        row = NAV.findall(page)[0]
+        assert all(key in _sections(page) for key in re.findall(r'<a data-column="([^"]+)" href="#c-\1"', row))
+    nowhere = _render(_covered({DEAL: "שם"}), {DEAL: _pair(DEAL, _listed("1.00", 3, 9))})
+    assert '<nav class="badges"></nav>' in nowhere
+
+
+def test_with_the_script_blocked_every_store_types_part_is_in_the_html():
+    """The design's "Testing": with the script blocked, every store type's part is in the page, in COLUMNS order, with
+    its verdict words, its reason, its chart, last this low and how often."""
+    covered, pairs = _largest()
+    days = _days()
+    verdicts = _verdicts(pairs, days)
+    page = _render(covered, pairs)
+    sections = _sections(page)
+    assert list(sections) == [column.key for column in COLUMNS]
+    for key, body in sections.items():
+        found = verdicts[key]
+        assert found.call == "deal"
+        for said in (words.badge(found), words.reason(found), words.last_low(found), words.how_often(found)):
+            assert said and f">{said}</p>" in body, (key, said)
+        assert f'aria-labelledby="chart-{key}"' in body
+        assert body.index(words.reason(found)) < body.index("<svg") < body.index(words.last_low(found)) < body.index(
+            words.how_often(found)) < body.index("<details>")
+
+
+def test_nothing_is_hidden_without_the_script():
+    """"Nothing is hidden without the script" (the plan), as the script hides parts with its own `hidden` attribute
+    (Task 4): the only `hidden` in the HTML is the Elsewhere heading's; the style's only hiding rule is
+    `[hidden]{display:none!important}`, so no display rule of the page's shows a part the script hid; and no rule sets
+    `display` on a part, a badge or the heading (the controller's ruling, in place of the brief's ".js" rules)."""
+    for covered, pairs in (_typical(), _largest(), _shops()):
+        page = _render(covered, pairs)
+        assert re.findall(r"<[^>]*\shidden(?=[\s>=])[^>]*>", page) == ['<h2 class="elsewhere" hidden>']
+        (style,) = re.findall(r"<style>(.*?)</style>", page, re.DOTALL)
+        rules = [(selector.strip(), body) for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", style)]
+        hiding = [(selector, body) for selector, body in rules
+                  if re.search(r"display\s*:\s*none|visibility\s*:\s*hidden", body)]
+        assert hiding == [("[hidden]", "display:none!important")]
+        for selector, body in rules:
+            if re.search(r"(^|;|\s)display\s*:", body):
+                for each in selector.split(","):
+                    assert not re.search(r"(section|h2|\.elsewhere|\.badge|nav\.badges\s+a)$", each.strip()), each
+    assert "[hidden]{display:none!important}" in product.BADGE_STYLE
+
+
+def test_a_product_sold_nowhere_today_has_no_badges_and_every_part():
+    """Review Focus 4 and the second pre-flight's S7: a covered product no column lists today has an empty badge row,
+    every part, each saying where it is not sold and when it was last seen, with its history, and still carries the
+    four ALWAYS phrases."""
+    names = {DEAL: "שם", SHELI: "שם", RAMI: "שם"}
+    pairs = {column: _pair(column, _listed("10.00", 10, 60)) for column in names}
+    page = _render(_covered(names, last_wide={column: back(10) for column in names}), pairs)
+    assert NAV.findall(page) == [""]
+    sections = _sections(page)
+    assert list(sections) == [RAMI, DEAL, SHELI]
+    for key, body in sections.items():
+        assert f"Not sold at {BY_KEY[key].name} today, last seen 10 November" in body
+        assert '<svg class="chart"' in body and "On sale on 0 of the 51 days tracked." in body
+        assert no_odds_yet(key) in _fold(body)
+    text = _visible(page)
+    assert all(flatten(phrase) in text for phrase in ALWAYS)
+    assert "Listed price ₪" not in page and "Deal price" not in page       # nothing listed today, nothing priced
+
+
+def test_p7_p8_and_p9_are_gone():
+    """Store first's "Changes to the shopper-site design": P7's sentences, P8's, the price-change text and P9's table
+    give way to the verdict, the chart, "Last this low", "How often on sale" and "Elsewhere today"."""
+    for page in (_render(*_largest()), _render(*_typical())):
+        text = _visible(page)
+        for gone in (GAP_HEADING, "How often it goes on promotion", "30-day median", "Today at each column",
+                     "Run before today", "Runs before today", "The listed price did not change", "rose from",
+                     "On a promotion listed across", "<table", "Listed to start"):
+            assert flatten(gone) not in text and gone not in page, gone
+
+
+# The shades and the chart's style
+
+def _rgb(colour: str) -> tuple[int, int, int]:
+    return int(colour[1:3], 16), int(colour[3:5], 16), int(colour[5:7], 16)
+
+
+def _themes() -> list[dict[str, str]]:
+    """BADGE_STYLE's tokens: the light set, then the dark set (the one under prefers-color-scheme: dark)."""
+    light, dark = re.findall(r":root \{([^{}]*)\}", product.BADGE_STYLE)
+    assert product.BADGE_STYLE.index("@media (prefers-color-scheme: dark)") < product.BADGE_STYLE.index(dark)
+    return [dict(re.findall(r"(--[a-z0-9-]+):\s*(#[0-9a-f]{6})", found)) for found in (light, dark)]
+
+
+def _luminance(colour: str) -> float:
+    linear = [part / 12.92 if part <= 0.04045 else ((part + 0.055) / 1.055) ** 2.4
+              for part in (value / 255 for value in _rgb(colour))]
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+
+def _contrast(one: str, other: str) -> float:
+    high, low = sorted((_luminance(one), _luminance(other)), reverse=True)
+    return (high + 0.05) / (low + 0.05)
+
+
+def test_every_shade_reads_in_both_themes():
+    """S5: each badge's text contrasts at least 4.5:1 with its background (WCAG AA for normal text) in the light and
+    the dark set; the three deal greens differ; each class's rule draws its own two tokens."""
+    classes = ("deal-1", "deal-2", "deal-3", "no-deal", "none")
+    for shades in _themes():
+        for name in classes:
+            assert _contrast(shades[f"--{name}-bg"], shades[f"--{name}-text"]) >= 4.5, (name, shades)
+        assert len({shades[f"--deal-{n}-bg"] for n in (1, 2, 3)}) == 3
+        for n in (1, 2, 3):
+            red, green, blue = _rgb(shades[f"--deal-{n}-bg"])
+            assert green > red and green > blue, n                       # a green
+    assert set(_themes()[0]) == set(_themes()[1])
+    for name in classes:
+        assert re.search(rf"\.badge\.{name} \{{[^}}]*background: var\(--{name}-bg\); color: var\(--{name}-text\)",
+                         product.BADGE_STYLE), name
+
+
+def test_the_badge_class():
+    """S5's shade of a deal, no deal's grey, and none for every call without a verdict."""
+    days = _days()
+    shades = {}
+    for usual, price in (("5.00", "4.00"), ("5.00", "2.01"), ("5.00", "2.00"), ("10.00", "5.00"), ("5.00", "4.01")):
+        found = _verdicts({DEAL: _pair(DEAL, _listed(usual), promotions=[_struct(price)])}, days)[DEAL]
+        shades[(usual, price)] = product.badge_class(found)
+    assert shades == {("5.00", "4.00"): "deal-1", ("5.00", "2.01"): "deal-1", ("5.00", "2.00"): "deal-2",
+                      ("10.00", "5.00"): "deal-3", ("5.00", "4.01"): "no-deal"}
+    for call in ("unread_today", "no_sale", "new"):
+        (covered, pairs), column_days = _no_verdict_case(call)
+        assert product.badge_class(_verdicts(pairs, column_days)[DEAL]) == "none"
+
+
+def test_the_charts_style():
+    """Task 2's SVG draws no fill or stroke of its own and states its size: the page's style keeps a short history
+    short (a maximum width, never a full width), sets no font size on its text, draws no path filled, the shelf price
+    grey, the sale days green and today's line dashed, in tokens the base style sets in both themes."""
+    style = product.PRODUCT_STYLE
+    rules = {selector.strip(): body for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", style)}
+    assert "max-width: 100%" in rules[".chart"] and "height: auto" in rules[".chart"]
+    assert not re.search(r"(^|[^-])width: 100%", rules[".chart"])
+    assert not [selector for selector, body in rules.items() if ".chart" in selector and "font-size" in body]
+    assert "fill: none" in rules[".chart path"]
+    assert "stroke: var(--bar)" in rules[".chart .listed"] and "stroke: var(--accent)" in rules[".chart .sale"]
+    assert "stroke: var(--accent)" in rules[".chart .unread"]
+    assert "stroke-dasharray" in rules[".chart line.today"] and "fill:" in rules[".chart circle.today"]
+    assert "background: var(--bar)" in rules[".key .listed"] and "background: var(--accent)" in rules[".key .sale"]
+    light, dark = re.findall(r":root \{([^{}]*)\}", BASE_STYLE)
+    for token in ("--bar", "--accent", "--text-2", "--text-3"):
+        assert f"{token}:" in light and f"{token}:" in dark, token
+
+
 # The shell and the style
 
 def test_the_shell_band_and_footer():
@@ -569,7 +802,7 @@ def test_the_shell_band_and_footer():
 
 
 def test_no_script_on_a_product_page():
-    """S12 (b), Q2: `search.js` is the site's one script, and product pages carry none."""
+    """S12 (b), Q2: `search.js` is the site's one script, and product pages carry none yet."""
     for page in (_render(*_typical()), _render(*_largest())):
         assert "<script" not in page.lower() and "javascript:" not in page.lower()
         assert not re.search(r"\son\w+=", page)                                  # no inline handler either
@@ -579,16 +812,18 @@ def test_no_script_on_a_product_page():
 def test_the_product_page_and_the_browse_pages_share_one_shell():
     """Task 17's carry: one shell for browse, product and the root pages: the same head, band and footer frame."""
     covered, pairs = _typical()
-    product = _render(covered, pairs)
+    product_page = _render(covered, pairs)
     browse = browse_pages({CODE: covered}, DAY, "12:03")[browse_path(covered.title)]
 
     def frame(page: str) -> tuple[str, str]:
         """The head and band with the title and style taken out, and the footer up to its first link."""
         head = re.sub(r"<title>.*?</title>|<style>.*?</style>", "", page[:page.index("<main>")], flags=re.DOTALL)
         return head, page[page.index("</main>"):page.index("<a ", page.index("<footer>"))]
-    assert frame(product) == frame(browse)
-    for page in (product, browse):
+    assert frame(product_page) == frame(browse)
+    for page in (product_page, browse):
         assert f"<style>{BASE_STYLE}" in page and BASKET_STYLE not in page
+    assert f"<style>{BASE_STYLE}{product.PRODUCT_STYLE}</style>" in product_page
+    assert product.PRODUCT_STYLE.startswith(product.BADGE_STYLE)
 
 
 def test_the_style_split_keeps_the_baskets_block_byte_for_byte():
@@ -603,59 +838,3 @@ def test_the_style_split_keeps_the_baskets_block_byte_for_byte():
         assert rule in BASE_STYLE and rule not in BASKET_STYLE, rule
     for rule in (".tiles {", "ol.bars li {", "table.prices {", "table.basket {", "ol.rules li {", "details {"):
         assert rule in BASKET_STYLE and rule not in BASE_STYLE, rule
-
-
-# The speedups (the plan's Task 25a): the code as it stood before each, kept here, against the code as it is
-
-def _chart_before(pair, column_days, day, key):
-    """`shopper.product._chart` as it stood before Task 25a, a height worked out for every day drawn."""
-    points = counted(pair, column_days, day, READ_DAYS)
-    if not points:
-        return ""
-    first = day - timedelta(days=READ_DAYS)
-    shown = {point.day: Decimal(product.money(point.listed)) for point in points}
-    low, high = min(shown.values()), max(shown.values())
-
-    def height(price):
-        if high == low:
-            return (TOP + BOTTOM) // 2
-        return TOP + whole(Fraction(high - price) / Fraction(high - low) * (BOTTOM - TOP))
-
-    line = []
-    for start, end in product._runs([point.day for point in points]):
-        level = height(shown[start])
-        line.append(f"M{product._x(start, first)} {level}")
-        for each in (start + timedelta(days=n) for n in range(1, (end - start).days + 1)):
-            if height(shown[each]) != level:
-                level = height(shown[each])
-                line.append(f"H{product._x(each, first)}V{level}")
-        line.append(f"H{product._x(end, first) + DAY_WIDTH}")
-    on = [point.day for point in promotion_points(pair, column_days, day) if point.on_promotion]
-    widths = [(product._x(start, first), product._x(end, first) - product._x(start, first) + DAY_WIDTH)
-              for start, end in product._runs(on)]
-    marks = "".join(f"M{x} {MARK}h{width}v6h-{width}z" for x, width in widths)
-    marked = f'<path class="on" d="{marks}"/>' if marks else ""
-    right = READ_DAYS * DAY_WIDTH + 4
-    labels = [(height(high), high)] if high == low else [(TOP, high), (BOTTOM, low)]
-    prices = "".join(f'<text x="{right}" y="{y + 3}">₪{price}</text>' for y, price in labels)
-    line_key, on_key = chart_key(key)
-    return (f'<svg class="chart" viewBox="0 0 {right + 40} 64" aria-hidden="true" focusable="false">'
-            f'<path d="{"".join(line)}"/>{marked}{prices}</svg>'
-            f'<p class="key"><i class="line"></i>{text(line_key)} <i class="on"></i>{text(on_key)}</p>')
-
-
-def test_the_chart_is_the_same_with_each_prices_height_worked_once():
-    """Task 25a: the chart works each shown price's height once, not once a day; its markup is the same as before,
-    over random pairs (holes, gaps, days with no listed price, price changes, promotion runs) and pairs of one price."""
-    rng = random.Random(16)
-    drawn = 0
-    for n in range(400):
-        column = COLUMNS[n % len(COLUMNS)]
-        days = shopper_random.column_days(rng, column.key, column.slug, back(READ_DAYS + 1), DAY)
-        pair = shopper_random.pair(rng, column.key, shopper_random.code(n), back(READ_DAYS + 1), DAY)
-        if n % 10 == 0:          # one price throughout: the line at mid-height
-            pair = Pair(column.key, pair.code, {seen: replace(point, listed=Decimal("7.30"))
-                                                for seen, point in pair.points.items()})
-        assert product._chart(pair, days, DAY, column.key) == _chart_before(pair, days, DAY, column.key)
-        drawn += product._chart(pair, days, DAY, column.key) != ""
-    assert drawn > 350

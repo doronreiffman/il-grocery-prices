@@ -20,6 +20,7 @@ import pytest
 
 from shopper.columns import COLUMNS
 from shopper.search import normalize
+from shopper.words import not_sold
 
 ROOT = Path(__file__).parent.parent
 NO_PAGE = "This site has no page for that barcode."
@@ -250,9 +251,9 @@ def test_the_scripts_store_names_are_the_columns():
 
 
 def test_the_scripts_not_sold_line_is_the_words():
-    # The design's Words table without the last-seen part: the script writes the line only for a store type the page has
-    # no part for. Task 3 adds shopper.words.not_sold and re-points this to not_sold(key, None).
-    assert _run("notSoldLine", KEYS) == [f"Not sold at {column.name} today" for column in COLUMNS]
+    # shopper.words.not_sold without the last-seen day: the script writes the line only for a store type the page has
+    # no part for, so it knows no day the product was last seen there.
+    assert _run("notSoldLine", KEYS) == [not_sold(key, None) for key in KEYS]
 
 
 # the pick (Review Focus 1: a pick that no longer fits is no pick, and storage never stops the script)

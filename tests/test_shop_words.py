@@ -1,13 +1,13 @@
-"""The site's words (`shopper.words`; the plan's Task 15): the design's "Words", "What a visitor sees", P6 to P8, P10,
+"""The site's words (`shopper.words`; the plan's Task 15): the design's "Words", "What a visitor sees", P6, P7, P10,
 F10 and the amendment's "Words"; the plan's questions J, K, M (f) and O; the first pre-flight's S10, the second's S7,
-N4, N7 and N23; Task 9's review rulings on P8's count, a change's dates and the runs at the window's ends; and Task
-15's review rulings (fix round 1) on the shown figures, the bounds beside a gap in the records, the column in P8 and
-"before today".
+N4, N7 and N23; Task 9's review rulings on a change's dates; Task 15's review rulings (fix round 1) on the shown figures,
+the bounds beside a gap in the records and "before today"; and store first's verdict words (docs/store-first.md,
+"Words"; the store-first plan's Task 3). P8's sentences, the listed-price history and P9's words went with their page
+parts (store first, q33).
 
 The design's quoted sentences are read from docs/shopper-site.md (and the plan's answers from
 docs/shopper-site-plan.md), so a change on either side shows. The pairs and column-days are built as
 tests/test_measures.py builds them."""
-import random
 import re
 from datetime import date, timedelta
 from decimal import Decimal
@@ -21,17 +21,15 @@ from basket.words import CHAIN_NAMES, NEVER as BASKET_NEVER
 from shopper import words
 from shopper.columns import BY_KEY, COLUMNS
 from shopper.history import READ_DAYS, Window, window
-from shopper.measures import Run, days_since, gap, gaps, promoted_today, promotion_days, promotion_points, runs
+from shopper.measures import gap
 from shopper.promotions import RESTRICTIONS
 from shopper.words import (ALWAYS, ALWAYS_SENTENCE, AT_SOME_STORES, CHAINS_LINE, CREDIT_START, FINE_PRINT, FROM_FIELDS,
-                           FROM_TEXT, FRONT_SUBTITLE, FRONT_TITLE, GAP_HEADING, HIRING, HISTORY_HEADING, METHOD_TITLE,
-                           NEVER, ODDS_WORDS, PRICE_NOT_READ, RECORD_TITLE, SITE_NAME, TARGET_PHRASES, across, as_listed,
-                           columns_tested, credit, date_line, date_range, formats_note, gap_sentences,
-                           history_sentences, last_across, lead_line, marked_none, no_odds_yet, price_history,
-                           promotions_line, starts_on, targets, unreadable, window_note)
-from shopper.words import (ACROSS_HEADING, BARCODE, BROWSE_LINK, CHANGES_SHOWN, NOT_LISTED, PER, buy, chart_key,
-                           deal_price, listed_price, minimum_spend, percent_text, shown_below, stores_range)
-import shopper_random
+                           FROM_TEXT, FRONT_SUBTITLE, FRONT_TITLE, GAP_HEADING, HIRING, METHOD_TITLE,
+                           NEVER, ODDS_WORDS, PRICE_NOT_READ, RECORD_TITLE, SITE_NAME, TARGET_PHRASES, as_listed,
+                           columns_tested, credit, date_line, date_range, formats_note, gap_sentences, last_across,
+                           lead_line, marked_none, no_odds_yet, promotions_line, targets, unreadable, window_note)
+from shopper.words import (BARCODE, BROWSE_LINK, CHANGES_SHOWN, PER, buy, deal_price, listed_price, minimum_spend,
+                           percent_text, shown_below, stores_range)
 from test_measures import DAY, DEAL, _days, _pair, back, listed_from
 
 ROOT = Path(__file__).parent.parent
@@ -69,27 +67,6 @@ def _gap(deal, listed, holes=()):
     return gap(Fraction(deal), _pair(DEAL, listed), _days(DEAL, listed, holes=holes), DAY)
 
 
-def _history(listed, promoted=(), unread=(), holes=(), today=None, page_day=DAY, extra_days=()):
-    """P8's sentences for a Deal pair listing `listed` (day -> price). `today`: None leaves the page's day without a
-    column-day (nothing read of it); True or False lists the product that day, on or off promotion; "unread" makes the
-    day's promotions unread; "hole" makes it a hole."""
-    listed = dict(listed)
-    days = [*listed, *extra_days]
-    promo_holes = list(unread)
-    promoted = list(promoted)
-    if today is not None:
-        listed[page_day] = "10.00"
-        days.append(page_day)
-        if today is True:
-            promoted.append(page_day)
-        if today == "unread":
-            promo_holes.append(page_day)
-        if today == "hole":
-            holes = [*holes, page_day]
-    pair = _pair(DEAL, listed, promoted=promoted, unread=unread)
-    return history_sentences(pair, _days(DEAL, days, holes=holes, promo_holes=promo_holes), page_day)
-
-
 # The lists
 
 def test_the_lists_are_the_designs_verbatim():
@@ -111,7 +88,7 @@ def test_the_lists_are_the_designs_verbatim():
     assert set(basket_part) <= set(BASKET_NEVER)                        # the basket's list, whole, first
     assert NEVER == BASKET_NEVER + tuple(never[len(basket_part):])      # then the design's own, in its order (N23)
     assert ODDS_WORDS == tuple(_quoted(_found(r"no other odds word (\([^)]*\))")))
-    assert (FRONT_TITLE, GAP_HEADING, HISTORY_HEADING) == tuple(_quoted(_line(DESIGN, "The public names (Q4)"))[:3])
+    assert (FRONT_TITLE, GAP_HEADING) == tuple(_quoted(_line(DESIGN, "The public names (Q4)"))[:2])
     assert f'**"{METHOD_TITLE}"** (`method.html`)' in DESIGN and f'**"{RECORD_TITLE}"** (`record.html`)' in DESIGN
     assert f'"{PRICE_NOT_READ}"' in DESIGN and f'"{AT_SOME_STORES}"' in DESIGN
     # question K: the phrases by code, in the order the field reads its codes (club, card, other: N2)
@@ -227,8 +204,6 @@ def test_column_words():
         "(as Shufersal Deal, Shufersal Express and Shufersal Sheli list it)")
     with pytest.raises(ValueError):
         as_listed([])
-    assert across("shufersal-deal") == "listed across Shufersal Deal"   # the design's "listed chain-wide", by column
-    assert across("ramilevy") == "listed across Rami Levy"
     # deploy prep: "seen", since the registry knows record days only, and a hole day after it could have been across
     assert last_across("carrefour-city", date(2026, 11, 3)) == (
         "last seen listed across Carrefour City on 3 November 2026")
@@ -241,7 +216,6 @@ def test_the_short_sentences():
     assert window_note(Window(1, date(2026, 11, 19), (), True)) == "one day of records since 19 November 2026"
     assert window_note(Window(2, date(2026, 11, 18), (), True)) == "2 days of records since 18 November 2026"
     assert window_note(Window(0, None, (), True)) == "no days of records"
-    assert starts_on(date(2026, 11, 9)) == "Listed to start on 9 November 2026."
     # deploy prep: B5's median is over the stores whose file lists the item, not over all the included stores
     assert formats_note() == ("The product pages show Shufersal's and Carrefour's store formats apart; the basket "
                               "takes each chain's median over its included stores whose file lists the item.")
@@ -260,7 +234,6 @@ def test_the_short_sentences():
 # P7
 
 BEFORE = "before today"
-ACROSS = "a promotion listed across Shufersal Deal"
 
 
 def test_p7_sentences_for_the_designs_example():
@@ -288,8 +261,8 @@ def test_p7_sentences_for_the_designs_example():
         "Deal price ₪1.00: ₪0.45, 31%, below the 30-day median listed price of ₪1.45 ")
 
 
-def test_p7_and_p8_with_a_short_window():
-    """P6: a window of fewer than 20 of 30 or 60 of 90 days of records says so, and P8 counts the same days P7 does."""
+def test_p7_with_a_short_window():
+    """P6: a window of fewer than 20 of 30 or 60 of 90 days of records says so."""
     listed = listed_from(1, 5, "10.00")                                   # 15 to 19 November
     assert gap_sentences(_gap("7.90", listed)) == (
         "Deal price ₪7.90: ₪2.10, 21%, below the 30-day median listed price of ₪10.00 (of the 5 days of records since "
@@ -297,10 +270,6 @@ def test_p7_and_p8_with_a_short_window():
         "The lowest listed price over the 5 days of records before today (the first on 15 November 2026) was ₪10.00; "
         "listed at ₪7.90 or less on 0 of them.",
         "The listed price did not change on the 5 days of records since 15 November 2026 before today.")
-    assert _history(listed, promoted=[back(2), back(1)], today=False) == (
-        f"On {ACROSS} on 2 of the 5 days of records since 15 November 2026 before today, {MORNING}.",
-        "Run seen before today: 18 to 19 November 2026.",
-        "The last run ended on 19 November 2026, 1 day ago.")
     one = gap_sentences(_gap("7.90", {back(1): "10.00"}))
     assert one[0].endswith("(of the one day of records before today, 19 November 2026).")       # q31
     assert len(one) == 2                                  # q31: one day of records has nothing to compare
@@ -371,9 +340,6 @@ def test_one_day_of_records_in_the_30_beside_more_in_the_90():
     assert found[0] == ("Deal price ₪7.90: ₪2.10, 21%, below the 30-day median listed price of ₪10.00 (of the one day "
                         "of records before today, 19 November 2026).")                        # q31
     assert found[2] == "The listed price rose from ₪9.00 (20 October 2026) to ₪10.00 (19 November 2026)."
-    # and P8's count over a 90-day window of one day (q31: said as that day, never "1 of the one day")
-    assert _history({back(1): "10.00"}, promoted=[back(1)], today=False)[0] == (
-        f"On {ACROSS} on the one day of records before today (19 November 2026), {MORNING}.")
     assert found[1] == ("The lowest listed price was ₪10.00 on the one day of records before today (19 November 2026) "
                         "and ₪9.00 over the 41 days of records before today (the first on 11 September 2026); listed at "
                         "₪7.90 or less on 0 of those 41.")
@@ -383,20 +349,9 @@ def test_one_day_of_records_is_said_as_that_day():
     """q31 (the owner, 2026-11-10): a window of one day of records is said as that day, its date in brackets after
     "before today", never "since 19 November 2026 … before today" nor "1 of the one day"; inside P7's first sentence's
     own brackets the date follows a comma, so no brackets nest. The lows' "at" form names the deal. With one day of
-    records there is nothing to compare, so no sentence says the listed price did not change on it, in P7 or in the
-    history over the 90; a change from a record before the 30 is still said (the test above). Two days keep their
-    words."""
+    records there is nothing to compare, so no sentence says the listed price did not change on it; a change from a
+    record before the 30 is still said (the test above). Two days keep their words."""
     one = {back(1): "10.00"}
-    # P8: on promotion, not on promotion, and its promotions not read, on the one day
-    assert _history(one, promoted=[back(1)], today=False)[0] == (
-        f"On {ACROSS} on the one day of records before today (19 November 2026), {MORNING}.")
-    assert _history(one, today=False) == (
-        "No promotion listed across Shufersal Deal on the one day of records before today (19 November 2026).",)
-    assert _history(one, unread=[back(1)], today=False) == (
-        "Promotions could not be read on the one day of records before today (19 November 2026).",)
-    assert _history(one, today=True) == (
-        f"On {ACROSS} today, {MORNING}.",
-        "No promotion listed across Shufersal Deal on the one day of records before today (19 November 2026).")
     # P7: the median's one day inside its brackets, the lows, and no change sentence
     assert gap_sentences(_gap("7.90", one)) == (
         "Deal price ₪7.90: ₪2.10, 21%, below the 30-day median listed price of ₪10.00 (of the one day of records "
@@ -408,10 +363,7 @@ def test_one_day_of_records_is_said_as_that_day():
     # the 30's one day beside more in the 90 at the same price: no change, and nothing said of it
     older = gap_sentences(_gap("7.90", {**one, **listed_from(31, 70, "10.00")}))
     assert len(older) == 2 and older[0].endswith("(of the one day of records before today, 19 November 2026).")
-    # the history over a 90-day window of one day says nothing: there is nothing to compare
-    assert _price_history(one) is None
-    said = [*gap_sentences(_gap("7.90", one)), *older, *_history(one, promoted=[back(1)], today=False),
-            *_history(one, today=False), *_history(one, unread=[back(1)], today=False)]
+    said = [*gap_sentences(_gap("7.90", one)), *older]
     assert not [line for line in said if "since" in line or " of the one day" in line or "did not change" in line]
     # two days of records keep their words
     two = {back(2): "10.00", back(1): "10.00"}
@@ -421,15 +373,6 @@ def test_one_day_of_records_is_said_as_that_day():
         "The lowest listed price over the 2 days of records before today (the first on 18 November 2026) was ₪10.00; "
         "listed at ₪7.90 or less on 0 of them.",
         "The listed price did not change on the 2 days of records since 18 November 2026 before today.")
-    assert _price_history(two) == (
-        "The listed price did not change on the 2 days of records since 18 November 2026 before today.")
-    assert _history(two, promoted=[back(1)], today=False)[0] == (
-        f"On {ACROSS} on 1 of the 2 days of records since 18 November 2026 before today, {MORNING}.")
-    assert _history(two, today=False) == (
-        "No promotion listed across Shufersal Deal in the 2 days of records since 18 November 2026 before today.",)
-    assert _history(two, unread=[back(1)], today=False) == (
-        f"On {ACROSS} on 0 of the 2 days of records since 18 November 2026 before today (promotions could not be read "
-        f"on 1), {MORNING}.",)
 
 
 def test_p7_changes_in_order_and_across_a_hole():
@@ -496,50 +439,6 @@ def test_a_gap_that_rounds_to_zero_percent_is_under_one_percent():
         "Deal price ₪100.00: not below the 30-day median")
 
 
-def _price_history(listed, holes=()):
-    """The product page's listed-price history for a Deal pair listing `listed` (day -> price), on the page's day."""
-    return price_history(_pair(DEAL, listed), _days(DEAL, listed, holes=holes), DAY)
-
-
-def test_the_listed_price_history_over_the_90_days():
-    """The product page's history as text (Task 16; the controller's ruling 1): P7's change sentence over the 90-day
-    window, on Task 15's rules: the shown figures, a date only between consecutive days with records, before today."""
-    assert _price_history(_example()) == "The listed price rose from ₪10.90 to ₪11.90 on 28 October 2026."
-    listed = {**listed_from(46, 90, "10.00"), **listed_from(32, 45, "10.50"), back(31): "11.00",
-              **listed_from(16, 30, "12.00"), **listed_from(1, 15, "9.50")}
-    assert _price_history(listed) == (
-        "The listed price rose from ₪10.00 to ₪10.50 on 6 October 2026, then rose from ₪10.50 to ₪11.00 on 20 "
-        "October 2026, then rose from ₪11.00 to ₪12.00 on 21 October 2026, then fell from ₪12.00 to ₪9.50 on 5 "
-        "November 2026.")
-    # P7 says the 30 days' changes only, the history the 90's
-    assert gap_sentences(_gap("7.90", listed))[2] == (
-        "The listed price rose from ₪11.00 to ₪12.00 on 21 October 2026, then fell from ₪12.00 to ₪9.50 on 5 November "
-        "2026.")
-    # across a gap in the records, both days
-    across_hole = {back(5): "10.90", back(4): "99.00", back(3): "11.90", back(2): "11.90"}
-    assert _price_history(across_hole, holes=[back(4)]) == (
-        "The listed price rose from ₪10.90 (15 November 2026) to ₪11.90 (17 November 2026).")
-    # a change the shown figures do not show is none
-    assert _price_history({back(3): "1.445", back(2): "1.45", back(1): "1.45"}) == (
-        "The listed price did not change on the 3 days of records since 17 November 2026 before today.")
-
-
-def test_the_listed_price_history_unchanged_says_its_days():
-    """With no change, the days the files say it of: all 90, those with records of the 90, or a short window's."""
-    assert _price_history(listed_from(1, 90, "10.00")) == "The listed price did not change in the 90 days before today."
-    assert _price_history(listed_from(1, 90, "10.00"), holes=[back(n) for n in range(1, 6)]) == (
-        "The listed price did not change on the 85 days with records of the 90 before today.")
-    assert _price_history(listed_from(1, 59, "10.00")) == (
-        "The listed price did not change on the 59 days of records since 22 September 2026 before today.")
-    assert _price_history(listed_from(1, 5, "10.00")) == (
-        "The listed price did not change on the 5 days of records since 15 November 2026 before today.")
-    # today's own price is no day of the window; with no day of records in the 90, nothing is said
-    assert _price_history({**listed_from(1, 5, "10.00"), DAY: "11.00"}) == _price_history(listed_from(1, 5, "10.00"))
-    assert _price_history({DAY: "11.00"}) is None
-    assert _price_history(listed_from(1, 5, "10.00"), holes=[back(n) for n in range(1, 6)]) is None
-
-
-
 def _changing(count: int, start: int = 1) -> dict:
     """A listed price that changes `count` times over the days before today, a change every other day, newest first
     seen `start` days back: ₪10.00, then ₪11.00, ₪10.00, … ."""
@@ -547,13 +446,12 @@ def _changing(count: int, start: int = 1) -> dict:
 
 
 def test_a_change_list_holds_the_newest_five():
-    """Task 16, round 2 (the 60 KB cap): both change lists, P7's 30 days and the history's 90, show at most
-    CHANGES_SHOWN (5) changes, the newest, in day order; past five, a tail says how many were seen, in the very
-    window phrase the sentence uses when nothing changed."""
+    """Task 16, round 2: P7's change list shows at most CHANGES_SHOWN (5) changes, the newest, in day order; past five,
+    a tail says how many were seen, in the very window phrase the sentence uses when nothing changed."""
     assert CHANGES_SHOWN == 5
     five = _changing(5)
     assert len(gap_sentences(_gap("7.90", five))[2].split(", then ")) == 5
-    assert "(the last" not in gap_sentences(_gap("7.90", five))[2] and "(the last" not in _price_history(five)
+    assert "(the last" not in gap_sentences(_gap("7.90", five))[2]
     six = _changing(6)
     days = sorted(six)
     assert gap_sentences(_gap("7.90", six))[2] == (
@@ -563,13 +461,12 @@ def test_a_change_list_holds_the_newest_five():
         "changes seen on the 13 days of records since 7 November 2026 before today).")
     assert days[3] - days[1] == timedelta(days=2) and "rose from ₪10.00 to ₪11.00 on" not in gap_sentences(
         _gap("7.90", six))[2].split(", then ")[0]                       # the oldest change is the one left out
-    # the window phrase is the unchanged sentence's own: every day with a record, or those with records of the 90
+    # the window phrase is the unchanged sentence's own: every day with a record, or those with records of the 30
     daily = {back(n): ("10.00" if n % 2 else "11.00") for n in range(1, 91)}
-    assert _price_history(daily).endswith(" (the last 5 of 89 changes seen in the 90 days before today).")
-    assert _price_history(daily, holes=[back(2)]).endswith(
-        " (the last 5 of 87 changes seen on the 89 days with records of the 90 before today).")
     assert gap_sentences(_gap("7.90", daily))[2].endswith(
         " (the last 5 of 30 changes seen in the 30 days before today).")   # one on the window's first day
+    assert gap_sentences(_gap("7.90", daily, holes=[back(2)]))[2].endswith(
+        " (the last 5 of 28 changes seen on the 29 days with records of the 30 before today).")
 
 
 def test_a_change_across_a_gap_keeps_its_bounds_in_the_capped_list():
@@ -578,7 +475,7 @@ def test_a_change_across_a_gap_keeps_its_bounds_in_the_capped_list():
     days = sorted(listed)
     hole = days[-2]                                                       # between the last two changes' days
     listed[hole] = "99.00"
-    said = _price_history(listed, holes=[hole])
+    said = gap_sentences(_gap("7.90", listed, holes=[hole]))[2]
     shown = said.split(", then ")
     assert len(shown) == 5 and "(the last 5 of 6 changes seen" in said
     assert shown[-1].startswith(f"fell from ₪11.00 ({days[-3]:%-d %B %Y}) to ₪10.00 ({days[-1]:%-d %B %Y})")
@@ -587,7 +484,7 @@ def test_a_change_across_a_gap_keeps_its_bounds_in_the_capped_list():
 def test_the_product_pages_labels():
     """Task 16's labels (the controller's rulings): the design's and the brief's phrases put together. Today's listed
     price carries the three ALWAYS phrases a listed price takes; a deal's price is a unit's or a kilogram's (P4), to the
-    agora half up; the stores' range is labelled as the stores'; P9's heading and the chart's key."""
+    agora half up; the stores' range is labelled as the stores'."""
     assert listed_price(Decimal("11.895")) == (
         "Listed price ₪11.90, before promotions, as listed in the chain's price files")
     assert all(phrase in listed_price(Decimal(1)).lower() for phrase in ALWAYS[:3])
@@ -598,161 +495,7 @@ def test_the_product_pages_labels():
     # deploy prep: never the listed price's own "stores ₪X to ₪Y" beside it in the same section
     assert stores_range(Decimal("4.355"), Decimal("4.6")) == "stores' deal prices ₪4.36 to ₪4.60"
     assert minimum_spend(Decimal("150")) == "minimum spend ₪150.00"
-    assert (NOT_LISTED, ACROSS_HEADING, BROWSE_LINK, BARCODE) == (
-        "not listed today", "Today at each column, in name order", "Browse by first letter", "Barcode")
-    assert chart_key("shufersal-deal") == ("listed price", "a promotion listed across Shufersal Deal")
-    assert chart_key("ramilevy")[1] == f"a promotion {across('ramilevy')}"
-
-
-# P8
-
-def test_p8_sentences_in_the_designs_forms():
-    """Page day 6 December 2026; 87 days with records (three days of the 90 the product is not listed); on promotion
-    from 3 to 9 and from 24 to 30 November, 12 days listed of them; off promotion today. P8 names the column, as the
-    amendment's "Words" do (fix round 1, ruling 3)."""
-    page_day = date(2026, 12, 6)
-    window = [page_day - timedelta(days=n) for n in range(90, 0, -1)]
-    not_listed = {date(2026, 10, 15), date(2026, 11, 5), date(2026, 11, 26)}
-    listed = {day: "10.00" for day in window if day not in not_listed}
-    promoted = [day for day in listed if date(2026, 11, 3) <= day <= date(2026, 11, 9)
-                or date(2026, 11, 24) <= day <= date(2026, 11, 30)]
-    assert _history(listed, promoted, today=False, page_day=page_day, extra_days=not_listed) == (
-        f"On {ACROSS} on 12 of the 87 days with records before today, {MORNING}.",
-        "Runs seen before today: 3 to 9 November 2026; 24 to 30 November 2026.",
-        "Days between runs: 14.",
-        "The last run ended on 30 November 2026, 6 days ago.")
-
-
-def test_p8_never_denies_a_promotion_at_some_stores():
-    """The review's Important 4: a promotion carried by fewer than half the column's stores is no run, so P8 says no
-    promotion was listed across the column, never that none was listed."""
-    assert _history(listed_from(1, 90, "10.00"), today=False) == (
-        "No promotion listed across Shufersal Deal in the 90 days with records before today.",)
-    sheli = history_sentences(_pair("shufersal-sheli", listed_from(1, 90, "10.00")),
-                              _days("shufersal-sheli", listed_from(1, 90, "10.00")), DAY)
-    assert sheli == ("No promotion listed across Shufersal Sheli in the 90 days with records before today.",)
-
-
-def test_p8_runs_and_the_days_between_them():
-    listed = listed_from(1, 90, "10.00")
-    promoted = [back(n) for n in (30, 29, 28, 20, 19, 18, 5, 4)]
-    assert _history(listed, promoted, today=False) == (
-        f"On {ACROSS} on 8 of the 90 days with records before today, {MORNING}.",
-        "Runs before today: 21 to 23 October 2026; 31 October to 2 November 2026; 15 to 16 November 2026.",
-        "Days between runs: 7; 12.",
-        "The last run ended on 16 November 2026, 4 days ago.")
-
-
-def test_p8_counts_the_days_with_records_p7_counts():
-    """Task 9's review, ruling 1: one N for "days with records" in a section; the days whose promotions could not be
-    read are said, not dropped from N."""
-    listed = listed_from(1, 6, "10.00")                                   # 14 to 19 November
-    promoted = [back(n) for n in range(1, 6)]
-    found = _history(listed, promoted, unread=[back(3)], today=False)
-    assert found == (
-        f"On {ACROSS} on 4 of the 6 days of records since 14 November 2026 before today (promotions could not be read "
-        f"on 1), {MORNING}.",
-        "Run seen before today: 15 to 19 November 2026.",
-        "The last run ended on 19 November 2026, 1 day ago.")
-    same = "of the 6 days of records since 14 November 2026 before today"
-    assert same in gap_sentences(_gap("7.90", listed))[0] and same in found[0]
-    # none on promotion, some days not read: the count, not "no promotion listed"
-    assert _history(listed_from(1, 5, "10.00"), unread=[back(2), back(1)]) == (
-        f"On {ACROSS} on 0 of the 5 days of records since 15 November 2026 before today (promotions could not be read "
-        f"on 2), {MORNING}.",)
-
-
-def test_p8_on_promotion_today():
-    """Ruling 3 (a): the window ends yesterday, so a run reaching it is not over when today's files list the product
-    on promotion: today is said, and the history is worded as before today."""
-    listed = listed_from(1, 90, "10.00")
-    assert _history(listed, [back(n) for n in range(1, 11)], today=True) == (
-        f"On {ACROSS} today, {MORNING}.",
-        f"On {ACROSS} on 10 of the 90 days with records before today, {MORNING}.",
-        "Run before today: 10 to 19 November 2026.")
-    assert _history(listed, today=True) == (
-        f"On {ACROSS} today, {MORNING}.",
-        "No promotion listed across Shufersal Deal in the 90 days with records before today.")
-    # the run seen to 17 November, the two days after it holes: before today it may have gone on
-    found = _history(listed, [back(n) for n in range(3, 11)], holes=[back(2), back(1)], today=True)
-    assert found[1:] == (f"On {ACROSS} on 8 of the 88 days with records before today, {MORNING}.",
-                         "Run seen before today: from 10 November 2026 to 17 November 2026 or later.")
-    # a run that ended before the days off promotion that led to today's: still no end said beside today's promotion
-    assert _history(listed, [back(n) for n in range(5, 11)], today=True) == (
-        f"On {ACROSS} today, {MORNING}.",
-        f"On {ACROSS} on 6 of the 90 days with records before today, {MORNING}.",
-        "Run before today: 10 to 15 November 2026.")
-    assert _history({}, today=True) == (f"On {ACROSS} today, {MORNING}.",)
-    assert _history({}) == ()
-
-
-def test_p8_runs_at_the_windows_ends():
-    """Ruling 3 (b): a run seen from the window's first day read may have started earlier; and its mirror, a run seen
-    to the last day read when today's state is not known, may go on, and then no end is said."""
-    listed = listed_from(1, 90, "10.00")
-    first = [back(n) for n in range(85, 91)]                              # 22 to 27 August, the window's first days
-    assert _history(listed, first, today=False) == (
-        f"On {ACROSS} on 6 of the 90 days with records before today, {MORNING}.",
-        "Run before today: from 22 August 2026 or earlier to 27 August 2026.",
-        "The last run ended on 27 August 2026, 85 days ago.")
-    # the window's first day a hole: the run seen from the first day read
-    assert _history(listed, first, holes=[back(90)], today=False)[1] == (
-        "Run seen before today: from 23 August 2026 or earlier to 27 August 2026.")
-    last = [back(n) for n in range(1, 6)]                                 # 15 to 19 November
-    for today in (None, "unread", "hole"):
-        assert _history(listed, last, today=today) == (
-            f"On {ACROSS} on 5 of the 90 days with records before today, {MORNING}.",
-            "Run before today: from 15 November 2026 to 19 November 2026 or later.")
-    assert _history(listed, last, today=False)[1:] == ("Run before today: 15 to 19 November 2026.",
-                                                       "The last run ended on 19 November 2026, 1 day ago.")
-    # an open run beside a pinned one: only the end the files cannot pin is said open
-    assert _history(listed, [*first, back(5), back(4)], today=False)[1:3] == (
-        "Runs before today: from 22 August 2026 or earlier to 27 August 2026; 15 to 16 November 2026.",
-        "Days between runs: 79.")
-    assert _history(listed, [*first, back(2), back(1)])[1:] == (
-        "Runs before today: from 22 August 2026 or earlier to 27 August 2026; from 18 November 2026 to 19 November "
-        "2026 or later.",
-        "Days between runs: 82.")
-    whole = [back(n) for n in range(1, 91)]
-    assert _history(listed, whole)[1] == (
-        "Run before today: from 22 August 2026 or earlier to 19 November 2026 or later.")
-
-
-def test_an_end_beside_a_gap_in_the_records_is_a_bound():
-    """Fix round 1, ruling 1 (the review's Important 1): off promotion today, but the two days before it holes, so the
-    run seen to 17 November may have run to 19 November: its end is "or later", its days ago "at most"."""
-    listed = listed_from(1, 90, "10.00")
-    promoted = [back(n) for n in range(3, 11)]
-    assert _history(listed, promoted, holes=[back(2), back(1)], today=False) == (
-        f"On {ACROSS} on 8 of the 88 days with records before today, {MORNING}.",
-        "Run seen before today: from 10 November 2026 to 17 November 2026 or later.",
-        "The last run seen ended on 17 November 2026 or later, at most 3 days ago.")
-    # an unread day beside the end is a bound too, and a day read after it says the run did end
-    assert _history(listed, promoted, unread=[back(2)])[1:] == (
-        "Run seen before today: from 10 November 2026 to 17 November 2026 or later.",
-        "The last run seen ended on 17 November 2026 or later, at most 3 days ago.")
-    # a day the product is not listed is no reading of it either
-    unlisted = {day: price for day, price in listed.items() if day != back(2)}
-    assert _history(unlisted, promoted, today=False, extra_days=[back(2)])[2] == (
-        "The last run seen ended on 17 November 2026 or later, at most 3 days ago.")
-
-
-def test_run_edges_and_the_days_between_runs_beside_a_gap_are_bounds():
-    """Fix round 1, ruling 1 (the review's Important 2): mid-window, a hole after one run's end and an unread day before
-    the next one's start leave both edges and the days between them unpinned."""
-    listed = listed_from(1, 90, "10.00")
-    promoted = [back(n) for n in (30, 29, 28, 20, 19, 18)]
-    assert _history(listed, promoted, unread=[back(21)], holes=[back(27)], today=False) == (
-        f"On {ACROSS} on 6 of the 89 days with records before today (promotions could not be read on 1), {MORNING}.",
-        "Runs seen before today: from 21 October 2026 to 23 October 2026 or later; from 31 October 2026 or earlier "
-        "to 2 November 2026.",
-        "Days between runs: at most 7.",
-        "The last run ended on 2 November 2026, 18 days ago.")
-    # one edge unpinned is enough: here only the next run's start, the day before it not read
-    assert _history(listed, promoted, unread=[back(21)], today=False)[2] == "Days between runs: at most 7."
-    # each gap is said alone: a pinned one beside a bound one
-    three = [*promoted, back(5), back(4)]
-    assert _history(listed, three, holes=[back(27)], today=False)[2] == "Days between runs: at most 7; 12."
+    assert (BROWSE_LINK, BARCODE) == ("Browse by first letter", "Barcode")
 
 
 # Every sentence
@@ -765,32 +508,22 @@ def _every_sentence() -> list[str]:
             _gap("7.90", {back(3): "11.90", back(1): "10.90"}), _gap("1.445", listed_from(1, 30, "1.50")),
             _gap(Fraction("10.01") / 3, listed_from(1, 30, "3.335")),
             _gap(Fraction(10, 3), listed_from(1, 30, "3.335"))]
-    histories = [_history(listed, [back(n) for n in (30, 29, 20, 5)], today=False),
-                 _history(listed, [back(n) for n in range(1, 11)], today=True), _history(listed, today=True),
-                 _history(listed, [back(n) for n in range(85, 91)], unread=[back(40)], today=None),
-                 _history(listed_from(1, 5, "10.00"), unread=[back(1)]),
-                 _history(listed, [back(n) for n in (30, 29, 28, 20, 19, 18)], unread=[back(21)], holes=[back(27)],
-                          today=False)]
     slugs = list(CHAIN_NAMES)
-    return [SITE_NAME, CHAINS_LINE, FRONT_TITLE, FRONT_SUBTITLE, GAP_HEADING, HISTORY_HEADING, METHOD_TITLE, RECORD_TITLE,
+    return [SITE_NAME, CHAINS_LINE, FRONT_TITLE, FRONT_SUBTITLE, GAP_HEADING, METHOD_TITLE, RECORD_TITLE,
             ALWAYS_SENTENCE, FROM_FIELDS, FROM_TEXT, FINE_PRINT, PRICE_NOT_READ, AT_SOME_STORES,
             *TARGET_PHRASES.values(), *(name for name, _ in HIRING), formats_note(), columns_tested(9),
             columns_tested(1), credit(FRIDAY, "12:03"), date_line(FRIDAY), lead_line(410, True), lead_line(1, True),
             lead_line(0, False), lead_line(0, True), promotions_line(1840, 6210),
             promotions_line(1, 1), marked_none(slugs), marked_none(["shufersal"]),
-            targets(list(TARGET_PHRASES)), targets(["club", "other"]), starts_on(FRIDAY),
+            targets(list(TARGET_PHRASES)), targets(["club", "other"]),
             window_note(Window(23, FRIDAY, (), True)),
-            *(text for column in COLUMNS for text in (no_odds_yet(column.key), across(column.key),
-                                                      last_across(column.key, FRIDAY), as_listed([column.key]))),
+            *(text for column in COLUMNS for text in (no_odds_yet(column.key), last_across(column.key, FRIDAY),
+                                                      as_listed([column.key]))),
             as_listed([column.key for column in COLUMNS]), *(unreadable(slug) for slug in slugs),
             *(text for found in gaps for text in gap_sentences(found)),
-            *(text for found in histories for text in found),
             listed_price(Decimal("11.90")), deal_price(Fraction(1), "unit"), deal_price(Fraction(1), "kg"),
-            buy(Decimal(3)), stores_range(Decimal(1), Decimal(2)), minimum_spend(Decimal(150)), NOT_LISTED,
-            ACROSS_HEADING, BROWSE_LINK, BARCODE, *(text for column in COLUMNS for text in chart_key(column.key)),
-            *(_price_history(listed) for listed in (_example(), listed_from(1, 90, "10.00"), listed_from(1, 5, "10.00"),
-                                                    {back(3): "11.90", back(1): "10.90"},
-                                                    {back(n): ("10.90" if n % 2 else "11.90") for n in range(1, 91)}))]
+            buy(Decimal(3)), stores_range(Decimal(1), Decimal(2)), minimum_spend(Decimal(150)), BROWSE_LINK,
+            BARCODE]
 
 
 def test_no_sentence_says_a_never_phrase_or_we():
@@ -813,143 +546,216 @@ def test_no_sentence_but_f10s_says_an_odds_word():
                 assert flatten(word) not in flatten(text), (word, text)
 
 
-def test_a_run_may_hide_in_a_day_the_files_say_nothing_of():
-    """Fix round 2, ruling 2: a hole or an unread day could hold a one-day run nobody saw. After the last run it makes
-    that run "the last run seen"; inside the days between two runs it makes them "at most"; anywhere outside the runs
-    it makes the list the runs seen. A day the files say nothing of inside a run hides none."""
-    listed = listed_from(1, 90, "10.00")
-    pinned = [back(n) for n in range(5, 11)]                              # 10 to 15 November, both edges read
-    assert _history(listed, pinned, unread=[back(2)], today=False)[1:] == (
-        "Run seen before today: 10 to 15 November 2026.",
-        "The last run seen ended on 15 November 2026, 5 days ago.")
-    assert _history(listed, pinned, holes=[back(2)], today=False)[2] == (
-        "The last run seen ended on 15 November 2026, 5 days ago.")
-    assert _history(listed, pinned, unread=[back(7)], today=False)[1:] == (
-        "Run before today: 10 to 15 November 2026.", "The last run ended on 15 November 2026, 5 days ago.")
-    # a hole inside the days between two runs, beside neither run
-    two = [back(n) for n in (30, 29, 28, 20, 19, 18)]
-    assert _history(listed, two, holes=[back(24)], today=False)[1:] == (
-        "Runs seen before today: 21 to 23 October 2026; 31 October to 2 November 2026.",
-        "Days between runs: at most 7.",
-        "The last run ended on 2 November 2026, 18 days ago.")
-    # before the first run only: the list is of the runs seen, the days between and the last end stand
-    assert _history(listed, two, holes=[back(60)], today=False)[1:] == (
-        "Runs seen before today: 21 to 23 October 2026; 31 October to 2 November 2026.",
-        "Days between runs: 7.",
-        "The last run ended on 2 November 2026, 18 days ago.")
+# Store first (q33): the verdict's words (docs/store-first.md, "Words", verbatim; the plan's "Words this plan adds")
+
+STORE_FIRST = (ROOT / "docs" / "store-first.md").read_text(encoding="utf-8")
+OCT = date(2026, 10, 1)
 
 
-def test_the_last_run_is_the_last_seen_when_today_is_not_known():
-    """Fix round 3: every day before today read and the run's end pinned, but today's files say nothing of the product
-    (no column-day, its promotions unread, a hole), so today could hold a later run: "the last run seen". The list of
-    runs is of the days before today, all read, and keeps "Run before today"."""
-    listed = listed_from(1, 90, "10.00")
-    pinned = [back(n) for n in range(5, 11)]                              # 10 to 15 November, both edges read
-    for today in (None, "unread", "hole"):
-        assert _history(listed, pinned, today=today)[1:] == (
-            "Run before today: 10 to 15 November 2026.",
-            "The last run seen ended on 15 November 2026, 5 days ago.")
-    assert _history(listed, pinned, today=False)[2] == "The last run ended on 15 November 2026, 5 days ago."
+def _table(where: str) -> list[str]:
+    """The quoted words of the design's Words table row `where`."""
+    return _quoted(_line(STORE_FIRST, f"| {where} |"))
 
 
-# Task 25a's speedup of `history_sentences`: the code as it stood before, kept here, against the code as it is
-
-def _promoted_today_before(pair, column_days, day):
-    """`shopper.measures.promoted_today` as it stood before Task 25a: the 90-day window ending on the day read."""
-    seen = promotion_points(pair, column_days, day + timedelta(days=1))
-    return seen[-1].on_promotion if seen and seen[-1].day == day else None
-
-
-def _runs_before(pair, column_days, day):
-    """`shopper.measures.runs` as it stood before Task 25a."""
-    found = []
-    start = end = None
-    for point in promotion_points(pair, column_days, day):
-        if not point.on_promotion:
-            if start is not None:
-                found.append(Run(start, end))
-                start = None
-            continue
-        if start is None:
-            start = point.day
-        end = point.day
-    if start is not None:
-        found.append(Run(start, end))
-    return found
+def _days_of(*prices, on=()):
+    """Tracked days from 1 October, one a day: each price (None for a sale day of unknown price), on sale on the `on`
+    indexes (an unknown price is always on sale)."""
+    from shopper.verdict import Day
+    return tuple(Day(OCT + timedelta(days=n), Decimal("12.90"), None if price is None else Decimal(price),
+                     price is None or n in on) for n, price in enumerate(prices))
 
 
-def _history_sentences_before(pair, column_days, day):
-    """`history_sentences` as it stood before Task 25a: the window's promotion days read four times."""
-    name = BY_KEY[pair.column].name
-    across = f"a promotion listed across {name}"
-    records = window(pair, column_days, day, READ_DAYS)
-    today = _promoted_today_before(pair, column_days, day)
-    now = (f"On {across} today, {words.MORNING}.",) if today else ()
-    if not records.days:
-        return now
-    on, read = promotion_days(pair, column_days, day)
-    unread = records.days - read
-    found = _runs_before(pair, column_days, day)
-    if found or unread:
-        note = f" (promotions could not be read on {unread})" if unread else ""
-        count = f"On {across} on {on} of {words._count(records)}{note}, {words.MORNING}."
-    else:
-        count = f"No promotion listed across {name} in {words._count(records)}."
-    sentences = [*now, count]
-    if not found:
-        return tuple(sentences)
-    read_days = {point.day for point in promotion_points(pair, column_days, day)}
-    one = timedelta(days=1)
-
-    def pinned_start(run):
-        return run.start - one in read_days
-
-    def pinned_end(run):
-        return run.end + one in read_days or (run.end + one == day and today is not None)
-
-    first = day - timedelta(days=READ_DAYS)
-    unseen = [first + timedelta(days=n) for n in range(READ_DAYS) if first + timedelta(days=n) not in read_days]
-
-    def hidden(after, before):
-        return any(after < each < before for each in unseen)
-
-    last = found[-1]
-    outside = (hidden(first - one, found[0].start) or hidden(last.end, day)
-               or any(hidden(earlier.end, later.start) for earlier, later in zip(found, found[1:])))
-    shown = [words._run(run.start, run.end, not pinned_start(run), not pinned_end(run)) for run in found]
-    sentences.append(f"{words._plural(len(found), 'Run', 'Runs')}{' seen' if outside else ''} before today: "
-                     f"{'; '.join(shown)}.")
-    if len(found) > 1:
-        between = [f"{'at most ' if hidden(earlier.end, later.start) else ''}{days}"
-                   for earlier, later, days in zip(found, found[1:], gaps(found))]
-        sentences.append(f"Days between runs: {'; '.join(between)}.")
-    ended = today is False or any(seen > last.end for seen in read_days)
-    if not today and ended:
-        ago = days_since(found, day)
-        ago_text = f"{ago} {words._plural(ago, 'day', 'days')} ago"
-        seen = hidden(last.end, day) or today is None
-        the_last = f"The last run{' seen' if seen else ''} ended on {words._day(last.end)}"
-        if pinned_end(last):
-            sentences.append(f"{the_last}, {ago_text}.")
-        else:
-            sentences.append(f"{the_last} or later, at most {ago_text}.")
-    return tuple(sentences)
+def _verdict(call="deal", column="carrefour-market", days=(), today=None, usual=None, saving=None, struct=None,
+             low=None, sale=None, on_sale=False):
+    from shopper.verdict import Verdict
+    return Verdict(column=column, call=call, days=days, today_price=None if today is None else Decimal(today),
+                   struct=struct, usual=None if usual is None else Decimal(usual),
+                   saving=None if saving is None else Decimal(saving), last_low=low, last_sale=sale,
+                   on_sale_today=on_sale)
 
 
-def test_the_promotion_history_reads_its_days_once_and_says_the_same():
-    """Task 25a: `history_sentences` reads the window's days whose promotions were read once, not four times, and
-    `promoted_today` reads its one day through the same rule; `runs` and `promotion_days` read through `runs_of` and
-    `promotion_days_of`. Over random pairs (holes, promotion holes, unread promotions, days not listed, runs at both
-    ends of the window, today on, off or unknown) every sentence and answer is the same as before."""
-    rng = random.Random(9)
-    said = set()
-    for n in range(400):
-        column = COLUMNS[n % len(COLUMNS)]
-        column_days = shopper_random.column_days(rng, column.key, column.slug, back(READ_DAYS + 1), DAY)
-        pair = shopper_random.pair(rng, column.key, shopper_random.code(n), back(READ_DAYS + 1), DAY)
-        assert promoted_today(pair, column_days, DAY) == _promoted_today_before(pair, column_days, DAY)
-        assert runs(pair, column_days, DAY) == _runs_before(pair, column_days, DAY)
-        found = words.history_sentences(pair, column_days, DAY)
-        assert found == _history_sentences_before(pair, column_days, DAY)
-        said |= {sentence.split(" ")[0] for sentence in found}
-    assert {"On", "Runs", "Days", "The"} <= said
+def _condition_struct(**more) -> dict:
+    found = {"restrictions": [], "programmes": [], "min_spend": None, "buy": Decimal("1"), "per": "unit"}
+    return found | more
+
+
+def test_on_day_is_a_shopper_date():
+    """Shopper text says the day and month, no year: "12 October"."""
+    assert words.on_day(date(2026, 10, 12)) == "12 October"
+    assert words.on_day(date(2027, 1, 3)) == "3 January"
+
+
+def test_the_verdicts_words_are_the_designs_verbatim():
+    """The design's Words table, each row's examples: the badges, the three reasons, the condition, last this low,
+    how often, the no-verdict lines, the coming sale and "Elsewhere today"."""
+    nine = _days_of(*["10.90"] * 9)
+    deal = _verdict(days=_days_of(*["11.90"] * 9), today="10.00", usual="11.90", saving="1.90", struct={"per": "unit"})
+    assert [words.badge(deal)] == _table("Deal badge")
+    assert words.reason(deal) == "Usually ₪11.90, sales included (9 days tracked)." == _table("Deal reason")[0]
+    no_deal = _verdict("no_deal", days=nine, today="10.90", usual="10.90", saving="0.00", struct={"per": "unit"})
+    assert [words.badge(no_deal)] == _table("No deal badge")
+    assert [words.reason(no_deal)] == _table("No deal reason, always on")
+    small = _verdict("no_deal", days=_days_of(*["3.20"] * 12), today="2.80", usual="3.20", saving="0.40",
+                     struct={"per": "unit"})
+    assert [words.reason(small)] == _table("No deal reason, small")
+    assert [*words.conditions(_condition_struct(restrictions=["club"])),
+            *words.conditions(_condition_struct(buy=Decimal("2")))] == _table("Condition")
+    low = _verdict(days=_days_of(*["12.90"] * 3), today="9.90")
+    found = _days_of(*["12.90"] * 9, "9.90")
+    lowered = _verdict(days=found, today="9.90", low=found[-1])
+    assert words.last_low(lowered) == "Last this low: 10 October, at ₪9.90."
+    from shopper.verdict import Day
+    on_12 = Day(date(2026, 10, 12), Decimal("12.90"), Decimal("9.90"), False)
+    assert [words.last_low(_verdict(days=(*_days_of(*["12.90"] * 9), on_12), today="9.90", low=on_12)),
+            words.last_low(_verdict(days=_days_of(*["12.90"] * 10), today="9.90"))] == _table("Last this low")
+    assert words.last_low(low) == "Lowest in the 3 days tracked."
+    assert [words.how_often(_verdict(days=_days_of(*["9.90"] * 9, on=range(9))))] == _table("How often")
+    lines = _table("No verdict")
+    assert [words.NO_VERDICT[call] for call in ("no_sale", "new", "some_stores", "price_unread", "unread_today",
+                                                "mostly_unknown")] == lines[:6]
+    assert words.not_sold("carrefour-market", date(2026, 11, 3)) == lines[6]
+    assert [words.coming_sale(date(2026, 11, 14))] == _table("Coming sale")
+    assert [words.ELSEWHERE] == _table("Other store types")
+    assert f'the fold-out "{words.WORKED_OUT}"' in STORE_FIRST
+    # S7's example in the design's rules
+    sale = Day(date(2026, 10, 12), Decimal("12.90"), Decimal("9.90"), True)
+    sixty = _verdict(days=_days_of(*["12.90"] * 48, *[None] * 12), sale=sale, on_sale=True)
+    assert f'"{words.how_often(sixty)}"' in STORE_FIRST
+
+
+def test_the_no_verdict_lines_and_the_plans_words():
+    """The design's six lines, the plan's provisional one for no day price, and the not-sold line with and without
+    its last-seen day; `reason` is None for every call without a verdict."""
+    assert words.NO_VERDICT == {
+        "no_sale": "No sale today", "new": "New today: no price history yet.",
+        "some_stores": "On sale at some stores only", "price_unread": "On sale, but the sale price could not be read",
+        "unread_today": "Sale prices could not be read today",
+        "mostly_unknown": "On sale most days; earlier sale prices could not be read",
+        "no_history": "No price history yet."}
+    assert words.not_sold("ramilevy", date(2026, 11, 3)) == "Not sold at Rami Levy today, last seen 3 November"
+    assert words.not_sold("ramilevy", None) == "Not sold at Rami Levy today"
+    for call in ("too_few", "not_sold", *words.NO_VERDICT):
+        assert words.reason(_verdict(call, days=_days_of("9.90"), today="9.90")) is None, call
+        with pytest.raises(ValueError, match=call):                    # a badge only for a deal or a no deal
+            words.badge(_verdict(call))
+
+
+def test_the_reason_counts_the_days_with_a_price():
+    """S8: the reason names the days it rests on, those with a day price, never the tracked days whose sale price was
+    not read; one day is "1 day"."""
+    days = _days_of("11.90", None, "11.90", "11.90", on=())
+    deal = _verdict(days=days, today="9.90", usual="11.90", saving="2.00", struct={"per": "unit"})
+    assert words.reason(deal) == "Usually ₪11.90, sales included (3 days tracked)."
+    always = _verdict("no_deal", days=_days_of("9.90", None, "9.90", "10.90"), today="9.90", usual="9.90",
+                      saving="0.00", struct={"per": "unit"})
+    assert words.reason(always) == "It's been ₪9.90 or less on 2 of the 3 days tracked."
+    small = _verdict("no_deal", days=_days_of("5.00", None, "5.00"), today="4.10", usual="5.00", saving="0.90",
+                     struct={"per": "unit"})
+    assert words.reason(small) == "Only ₪0.90 below its usual ₪5.00 (2 days tracked)."
+    one = _verdict(days=_days_of("6.00"), today="4.50", usual="6.00", saving="1.50", struct={"per": "unit"})
+    assert words.reason(one) == "Usually ₪6.00, sales included (1 day tracked)."
+    assert words.last_low(one) == "Lowest in the 1 day tracked."
+    assert words.how_often(_verdict(days=_days_of("6.00", on=[0]))) == "On sale on 1 of the 1 day tracked."
+    # a saving above ₪0.00 and below ₪1.00 is the small form; at ₪0.00 or below, the always-on form
+    above = _verdict("no_deal", days=_days_of("5.00", "5.00"), today="5.40", usual="5.00", saving="-0.40",
+                     struct={"per": "unit"})
+    assert words.reason(above) == "It's been ₪5.40 or less on 2 of the 2 days tracked."
+    tiny = _verdict("no_deal", days=_days_of("5.00", "5.00"), today="4.99", usual="5.00", saving="0.01",
+                    struct={"per": "unit"})
+    assert words.reason(tiny) == "Only ₪0.01 below its usual ₪5.00 (2 days tracked)."
+
+
+def test_how_often_and_the_last_sale():
+    """S7: every tracked day counts, unknown prices too; the last sale before this one when today is on sale, the
+    last sale when it is not; its price left out when it was not read; nothing with no tracked day."""
+    from shopper.verdict import Day
+    days = _days_of("9.90", None, "12.90", "12.90", on=[0])
+    ended = Day(date(2026, 10, 12), Decimal("12.90"), Decimal("9.90"), True)
+    unread = Day(date(2026, 10, 12), Decimal("12.90"), None, True)
+    assert words.how_often(_verdict(days=days, sale=ended, on_sale=True)) == (
+        "On sale on 2 of the 4 days tracked. The last sale before this one ended 12 October, at ₪9.90.")
+    assert words.how_often(_verdict(days=days, sale=ended, on_sale=False)) == (
+        "On sale on 2 of the 4 days tracked. The last sale ended 12 October, at ₪9.90.")
+    assert words.how_often(_verdict(days=days, sale=unread, on_sale=True)) == (
+        "On sale on 2 of the 4 days tracked. The last sale before this one ended 12 October.")
+    assert words.how_often(_verdict(days=days, sale=unread)) == (
+        "On sale on 2 of the 4 days tracked. The last sale ended 12 October.")
+    assert words.how_often(_verdict(days=days)) == "On sale on 2 of the 4 days tracked."
+    assert words.how_often(_verdict(days=())) is None                          # never "0 days tracked"
+
+
+def test_last_this_low_needs_todays_price_and_a_day_price():
+    """S6 shows only when today's price is known and a day before today has a day price; never "0 days tracked"."""
+    assert words.last_low(_verdict(days=_days_of("9.90"))) is None                        # today unknown
+    assert words.last_low(_verdict(days=(), today="9.90")) is None                        # nothing before today
+    assert words.last_low(_verdict(days=_days_of(None, None), today="9.90")) is None      # no day price
+    assert words.last_low(_verdict(days=_days_of(None, "12.00"), today="9.90")) == "Lowest in the 1 day tracked."
+
+
+def test_the_badge_rows_words():
+    """The plan's "Words this plan adds": each badge under "Elsewhere today" names its store type, then the verdict,
+    or the no-verdict line in lower case without its full stop."""
+    deal = _verdict(column="ramilevy", today="7.00", usual="8.90", saving="1.90", struct={"per": "unit"})
+    assert words.short_badge(deal) == "Rami Levy · DEAL · ₪1.90 off"
+    assert words.short_badge(_verdict("no_deal", column="ramilevy", today="8.90", usual="8.90", saving="0.00",
+                                      struct={"per": "unit"})) == "Rami Levy · NO DEAL"
+    said = {call: words.short_badge(_verdict(call, column="ramilevy")) for call in ("too_few", "not_sold",
+                                                                                   *words.NO_VERDICT)}
+    assert said == {"too_few": "Rami Levy · too few files today", "not_sold": "Rami Levy · not sold today",
+                    "no_sale": "Rami Levy · no sale today", "new": "Rami Levy · new today: no price history yet",
+                    "some_stores": "Rami Levy · on sale at some stores only",
+                    "price_unread": "Rami Levy · on sale, but the sale price could not be read",
+                    "unread_today": "Rami Levy · sale prices could not be read today",
+                    "mostly_unknown": "Rami Levy · on sale most days; earlier sale prices could not be read",
+                    "no_history": "Rami Levy · no price history yet"}
+
+
+def test_a_weighed_verdict_is_a_kilograms():
+    """The plan's words for weighed products: the saving and the usual price a kilogram's, the condition in
+    kilograms."""
+    kg = {"per": "kg"}
+    deal = _verdict(column="ramilevy", days=_days_of(*["69.90"] * 82), today="50.00", usual="69.90", saving="19.90",
+                    struct=kg)
+    assert words.badge(deal) == "At Rami Levy: DEAL · ₪19.90 off a kilogram"
+    assert words.short_badge(deal) == "Rami Levy · DEAL · ₪19.90 off a kilogram"
+    assert words.reason(deal) == "Usually ₪69.90 a kilogram, sales included (82 days tracked)."
+    assert words.reason(_verdict("no_deal", days=_days_of("9.90"), today="9.90", usual="9.90", saving="0.00",
+                                 struct=kg)) == "It's been ₪9.90 a kilogram or less on 1 of the 1 day tracked."
+    assert words.reason(_verdict("no_deal", days=_days_of("9.90"), today="9.50", usual="9.90", saving="0.40",
+                                 struct=kg)) == "Only ₪0.40 below its usual ₪9.90 a kilogram (1 day tracked)."
+    assert words.conditions(_condition_struct(buy=Decimal("1.500"), per="kg")) == ["When you buy 1.5 kilograms"]
+
+
+def test_the_conditions_in_shopper_words():
+    """Question K's phrases with a capital letter, then the quantity, then the minimum spend; none for a plain
+    promotion; never a programme's name (the fold-out's, in the chain's span)."""
+    assert words.conditions(_condition_struct()) == []
+    assert words.conditions(_condition_struct(restrictions=["other", "chain_card", "club"], programmes=["תו זהב"],
+                                              buy=Decimal("3"), min_spend=Decimal("150"))) == [
+        "Club members only", "The chain's card holders only", "Some customers only", "When you buy 3",
+        "Minimum spend ₪150.00"]
+
+
+def test_the_store_first_words_say_no_never_phrase_or_we():
+    """Every new word, over the calls and forms above: no NEVER phrase, no "we", "our" or "us", no odds word."""
+    from shopper.verdict import Day
+    sale = Day(date(2026, 10, 12), Decimal("12.90"), Decimal("9.90"), True)
+    verdicts = [_verdict(days=_days_of("11.90", None), today="9.90", usual="11.90", saving="2.00",
+                         struct={"per": per}, low=sale, sale=sale, on_sale=on_sale)
+                for per in ("unit", "kg") for on_sale in (True, False)]
+    verdicts += [_verdict("no_deal", days=_days_of("9.90"), today=today, usual="9.90", saving=saving,
+                          struct={"per": "unit"}) for today, saving in (("9.90", "0.00"), ("9.50", "0.40"))]
+    verdicts += [_verdict(call, days=_days_of("9.90"), today="9.90") for call in ("too_few", "not_sold",
+                                                                                   *words.NO_VERDICT)]
+    said = [words.ELSEWHERE, words.WORKED_OUT, *words.NO_VERDICT.values(), words.on_day(FRIDAY),
+            words.not_sold("osherad", FRIDAY), words.not_sold("osherad", None), words.coming_sale(FRIDAY),
+            *words.conditions(_condition_struct(restrictions=list(TARGET_PHRASES), buy=Decimal("2"),
+                                                min_spend=Decimal("150")))]
+    for found in verdicts:
+        said += [words.short_badge(found), *([words.badge(found)] if found.call in ("deal", "no_deal") else [])]
+        said += [line for line in (words.reason(found), words.last_low(found), words.how_often(found)) if line]
+    for text in said:
+        for version in (flatten(text), flatten(strip_tags(text))):
+            assert not [phrase for phrase in NEVER if flatten(phrase) in version], text
+            assert not PRONOUNS.search(version), text
+            assert not [word for word in ODDS_WORDS if flatten(word) in version], text

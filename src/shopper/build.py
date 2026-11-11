@@ -45,9 +45,11 @@ In order:
 4. The scorecard (`shopper.record.scorecard`) over the summaries of the days the build's day can know of, t + 14 at most
    the day, so an earlier day's rebuild gives the scorecard it had (F3); each column's gate is read from it.
 5. One pass over the pairs (`History.pairs`, the build's longest step) serves the forecasts (`shopper.forecast.forecasts`)
-   and, beside them, every covered product's page (`render_product`), the front page's rows (`front_rows_of`), the
-   count line's numbers and the chains whose files mark a restricted promotion. A covered product the read no longer
-   holds gets its page after the pass, with no pair (Call 10: once covered, always a page, rebuilt daily). The pages are
+   and, beside them, every covered product's page (`render_product`) with a verdict (`shopper.verdict.verdict`) worked
+   once for each column the page has a section for (`section_keys`; no pair, None, at a column the read holds none
+   of), the front page's rows (`front_rows_of`, the old rule's until the store-first plan's Task 6), the count line's
+   numbers and the chains whose files mark a restricted promotion. A covered product the read no longer holds gets its
+   page after the pass, with no pair (Call 10: once covered, always a page, rebuilt daily). The pages are
    drawn into a folder apart and move into the site folder only once the day is published (9), so a refused build
    leaves every page as it was. That folder, `shopper-pages-` and a random suffix, is made beside the site folder: in
    Lambda inside the run's work folder, which the next run's start removes when a kill left it (the final review's
@@ -120,12 +122,13 @@ from shopper.history import Covered, History, Pair, covered, covered_path, load
 from shopper.items import HORIZON, items_path
 from shopper.pages import (ColumnsToday, Counts, FrontRow, front_ready, front_rows_of, render_basket, render_front,
                            render_method, render_record)
-from shopper.product import page_path, render_product, running_today
+from shopper.product import page_path, render_product, running_today, section_keys
 from shopper.record import Gate, scorecard
 from shopper.score import (DaySummary, due, out_of_reach, read_summary, scores_csv, summarize, summary_json,
                            summary_path, window_history)
 from shopper.search import SCRIPT, browse_pages, pieces
 from shopper.siteday import Inputs, publish_site_day, site_day, site_day_path, write_site_day
+from shopper.verdict import verdict
 
 __all__ = ["LEDGER", "MARKER", "ForecastsDiffer", "NotFrozenYet", "NotSynced", "SiteOutcome", "build_site", "main",
            "read_ledger"]
@@ -187,8 +190,8 @@ class _Watched(History):
 
 class _Pages:
     """What the one pass gathers beside the forecasts, a product (its pairs, by code) at a time: each covered product's
-    page, drawn into `out`; the front page's rows; the count line's promotions and products; the chains marking a
-    restricted promotion today (the module's docstring)."""
+    page, drawn into `out` with its verdicts; the front page's rows; the count line's promotions and products; the
+    chains marking a restricted promotion today (the module's docstring)."""
 
     def __init__(self, covered_now: Mapping[str, Covered], history: History, collected_by: str,
                  gates: Mapping[str, Gate], errors: Mapping[str, str], out: Path):
@@ -238,9 +241,11 @@ class _Pages:
         self.rows += front_rows_of(self.code, found.title, self.pairs, self.column_days, self.day)
 
     def _page(self, found: Covered, pairs: Mapping[str, Pair]) -> None:
+        """The product's page, a verdict worked once for each of its sections' columns."""
         path = page_path(found.code)
-        (self.out / path).write_text(render_product(found, pairs, self.column_days, self.day, self.collected_by,
-                                                    self.gates, self.errors), encoding="utf-8")
+        verdicts = {key: verdict(pairs.get(key), key, self.column_days, self.day) for key in section_keys(found, pairs)}
+        (self.out / path).write_text(render_product(found, pairs, verdicts, self.column_days, self.day,
+                                                    self.collected_by, self.gates, self.errors), encoding="utf-8")
         self.written.append(path)
 
     def finish(self) -> None:

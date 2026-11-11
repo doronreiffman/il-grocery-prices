@@ -41,6 +41,7 @@ from shopper.product import page_path
 from shopper.score import DaySummary, read_summary, summary_json, summary_path
 from shopper.search import SCRIPT
 from shopper.siteday import site_day_path
+from shopper import words
 from test_build import BASKET, DAY, EGGS, MILK, PASTA, golden_tree
 import test_product as product
 from test_history import _row, _table
@@ -616,6 +617,32 @@ def test_the_count_line_counts_promotions_listed_across_a_column_today(tmp_path)
     unread = product._days(promo_holes={(column.key, product.DAY) for column in COLUMNS if column.slug == "osherad"})
     assert shop_build._Pages({}, History(product.DAY, unread, {}), "12:03", {}, {}, tmp_path / "x").marking_none() == [
         "shufersal", "ramilevy", "carrefour", "yochananof"]           # never said of a chain not read today
+
+
+def test_the_one_pass_works_each_sections_verdict_once_and_the_page_says_it(tmp_path, monkeypatch):
+    """Store first (q33, the plan's Task 3): the one pass works the verdict of each covered product at each column its
+    page has a section for, once (`shopper.verdict.verdict`; no pair, None, for a column the read holds none of), and
+    hands it to the page: milk's ₪3.00 at Osher Ad against its usual ₪6.15 over its 40 days; A, beyond the read, not
+    sold at Osher Ad today, last seen 200 days back."""
+    real, calls = shop_build.verdict, []
+
+    def counted(pair, column, column_days, day):
+        calls.append((column, None if pair is None else pair.code, pair))
+        return real(pair, column, column_days, day)
+    monkeypatch.setattr(shop_build, "verdict", counted)
+    data, site = tree(tmp_path), tmp_path / "site"
+    _build(data, site)
+    sections = {path.stem: re.findall(r'<section data-column="([^"]+)"', path.read_text(encoding="utf-8"))
+                for path in (site / "p").glob("*.html")}
+    assert len(calls) == sum(len(keys) for keys in sections.values()) > len(sections)
+    paired = [(column, code) for column, code, pair in calls if pair is not None]
+    assert len(paired) == len(set(paired))                                   # each pair once
+    assert all(column in sections[code] for column, code in paired)
+    assert any(pair is None for _, _, pair in calls)                       # A's, beyond the read
+    milk = _text(site / page_path(MILK))
+    assert "At Osher Ad: DEAL · ₪3.15 off" in milk and "Usually ₪6.15, sales included (40 days tracked)." in milk
+    beyond = _text(site / page_path(A))
+    assert f"Not sold at Osher Ad today, last seen {words.on_day(DAY - timedelta(days=200))}" in beyond
 
 
 def test_the_command_says_what_the_hand_build_left_to_the_site_run(tmp_path, capsys):
