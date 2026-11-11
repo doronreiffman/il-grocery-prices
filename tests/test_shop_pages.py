@@ -21,9 +21,10 @@ from basket.check import PRONOUNS, flatten, strip_tags
 from basket.chains import CARREFOUR_COLUMNS
 from basket.page import Frame, method_parts, render_day, render_index, render_method as basket_method
 from basket.stores import Store
-from basket.words import ALWAYS as BASKET_ALWAYS, CHAIN_NAMES, METHOD_INTRO, TITLE as BASKET_TITLE
+from basket.words import ALWAYS as BASKET_ALWAYS, CHAIN_NAMES, METHOD_INTRO, TITLE as BASKET_TITLE, joined
 from shopper.columns import BY_KEY, COLUMNS, FLOOR
-from shopper.history import ColumnDay
+import shopper.pages as pages_module
+from shopper.history import READ_DAYS, ColumnDay
 from shopper.pages import (BASKET_PAGE, BASKET_SECTION, CONDITIONS, NO_DEALS, PICK_GROUPS, PICK_TITLE, ROOT_LINE,
                            SCORED_SO_FAR, ColumnsToday, StoreFront, column_ready, render_basket, render_method,
                            render_record, render_root, render_store, scorecard_section, shown_rows, store_path)
@@ -32,9 +33,10 @@ from shopper.search import browse_pages
 from shopper.shell import SCRIPT_TAG
 from shopper.items import HORIZON
 from shopper.record import scorecard
-from shopper.verdict import FRONT_LIMIT, DealRow, checked, front_list, on_list, verdict
+from shopper.measures import MIN_FRONT_DAYS, RECENT_DAYS
+from shopper.verdict import DEAL_MIN, FRONT_LIMIT, SHADES, DealRow, checked, front_list, on_list, verdict
 from shopper.words import (ALWAYS, ALWAYS_SENTENCE, CHAINS_LINE, CREDIT_START, FOLD_INTRO, FRONT_SUBTITLE, FRONT_TITLE,
-                           HIRING, NEVER, NONE_YET, SEARCH_LABEL, SITE_NAME, STORE_RULES, columns_tested,
+                           HIRING, NEVER, NO_VERDICT, NONE_YET, SEARCH_LABEL, SITE_NAME, STORE_RULES, columns_tested,
                            date_line, formats_note, headline, how_often, last_low, no_odds_yet, reason, unreadable)
 from test_build import NOW, LATER, PAST, build_at, day_file, golden_tree
 from test_page import BASKET, EXCLUSIONS, a_public
@@ -48,6 +50,7 @@ BASKET_DAY = date(2026, 11, 2)
 SCRIPT = '<script src="search.js" defer></script>'
 NEVER_LIST = re.compile(r'<ul id="never-words">(.*?)</ul>', re.DOTALL)
 STORE_FIRST = (Path(__file__).parent.parent / "docs" / "store-first.md").read_text(encoding="utf-8")
+SEARCH_JS = (Path(__file__).parent.parent / "src" / "shopper" / "static" / "search.js").read_text(encoding="utf-8")
 
 
 def _visible(page: str) -> str:
@@ -524,30 +527,71 @@ def test_the_method_pages_store_counts_are_the_store_lists():
             "though none of its files counts.") in columns
 
 
-def test_the_method_page_states_the_rules_with_the_codes_constants():
-    """P1 to P10 and F1 to F11 in plain words, with the constants the code fixes (n0, the seed, the block, the
-    draws)."""
+def _rules_of(page: str) -> str:
+    return re.search(r'<section id="rules">(.*?)</section>', page, re.DOTALL).group(1)
+
+
+def _rule(rules: str, name: str) -> str:
+    """One rule's words on the method page, found by the start of its name ("S4 ")."""
+    return re.search(rf"<li><b>{re.escape(name)}[^<]*</b> <span>(.*?)</span></li>", rules, re.DOTALL).group(1)
+
+
+def _bands(shades) -> list[str]:
+    """S5's bands as the method page states them, from SHADES' floors: "₪1.00 to ₪2.99", …, "₪5.00 or more"."""
+    floors = sorted(floor for floor, _ in shades)
+    return ([f"₪{low} to ₪{high - Decimal('0.01')}" for low, high in zip(floors, floors[1:])]
+            + [f"₪{floors[-1]} or more"])
+
+
+def test_the_method_page_states_the_rules_with_the_codes_constants(monkeypatch):
+    """P1 to P6, P10, S0 to S8, the front page's list, the pick and F1 to F11 in plain words, with the constants the
+    code fixes (n0, the seed, the block, the draws). Store first (q33): S0 to S8 and the front page's list replace P7,
+    P8 and P9, each figure from the code's own constant, so a changed constant changes the page (DEAL_MIN, SHADES,
+    READ_DAYS, MIN_FRONT_DAYS, RECENT_DAYS, FRONT_LIMIT); S2's even count the higher middle; "listed price" with its
+    definition; the pick kept in the browser under search.js's one key and sent nowhere."""
     page = _method()
-    rules = re.search(r'<section id="rules">(.*?)</section>', page, re.DOTALL).group(1)
-    for name in [f"P{n} " for n in range(1, 11)] + [f"F{n} " for n in range(1, 12)]:
-        assert f"<b>{name}" in rules, name
+    rules = _rules_of(page)
+    names = [f"P{n}" for n in (1, 2, 3, 4, 5, 6, 10)] + [f"S{n}" for n in range(9)] + [f"F{n}" for n in range(1, 12)]
+    assert re.findall(r"<b>([PSF]\d+) ", rules) == names                    # in this order: P7, P8 and P9 are gone
+    assert not [gone for gone in ("P7", "P8", "P9") if gone in page]       # nor named anywhere on the page
+    assert "<b>The front page's list.</b>" in rules and "<b>The store you pick.</b>" in rules
     for figure in ("n0 = 30", "blocks of 14 consecutive scored days", "10,000 draws", "seed 20261107",
                    "at least 90 scored days", "at most 0.03", "more than 4 holes", "d + 1 to d + 14"):
         assert figure in rules, figure
     assert unreadable("carrefour") in rules and no_odds_yet(DEAL).split(".")[0] in rules
-    assert 'as money and a whole percent ("under 1%" when a gap above ₪0 rounds to 0%);' in rules      # deploy prep
-    assert ('no listed price is claimed, every promotion that day is shown "at some stores", without P7\'s facts, no '
-            "promotion is said to be listed to start, and the day counts in no window") in rules        # deploy prep
-    assert "Its rows are sorted by the depth they show, deepest first, then by the exact depth;" in rules
-    # P6 true of every count form P7 and P8 print ("of the 87 days with records", "of them", "of those 85"), deploy prep
-    assert ('days of records since 1 November 2026"), and every count over a window\'s days is out of its days with '
-            "records.") in rules
-    assert "of the N days" not in rules
+    # "listed price" with its definition (store-first.md, "Words"), and the chart's name for it
+    assert _rule(rules, "P2 ").startswith("A column's listed price for a product on a day is its price as listed in "
+                                          "the chain's price files, before promotions: the median of the product's "
+                                          "price across the column's included stores")
+    assert "The price chart calls it the shelf price." in _rule(rules, "P2 ")
+    assert ('no listed price is claimed, every promotion that day is shown "at some stores", with no verdict (S4), no '
+            "promotion is said to be listed to start, and the day counts in no window, front page or "
+            "forecast.") in rules                                                                   # deploy prep
+    # P6 as built: the windows' days, and every count a page gives over them out of its days (S8)
+    assert ("The front page's list counts such days in the past 30; the verdict counts its days tracked (S0) in the "
+            "past 90, and every count a page gives over them says how many days it is out of (S8).") in rules
+    assert "of the N days" not in rules and "days of records since" not in rules
     assert "{" not in rules and "}" not in rules                    # every constant written in, none left as a name
-    # P7's front test as built (deploy prep): 20 days of records in the past 30, the low over the past 90
-    assert ("the item has at least 20 days of records in the past 30, with the deal price as shown below every listed "
-            "price of the past 90 days as shown.") in rules
     assert "rebuilt every morning, which says when it was last seen listed across each column" in rules   # deploy prep
+    # the rules as built (`shopper.verdict`'s docstring), each figure from its constant
+    s2, s4, s5 = (_rule(rules, f"S{n} ") for n in (2, 4, 5))
+    assert "with an even number of days, the higher of the two middle values," in s2 and f"{READ_DAYS} days" in s2
+    assert "the lower of the two middle values" not in rules
+    assert f"is ₪{DEAL_MIN} or more, worked on the figures as shown" in s4
+    assert all(NO_VERDICT[call] in s4 for call in NO_VERDICT)
+    assert f"one for each band: {joined(_bands(SHADES))};" in s5 and "₪1.00 to ₪2.99" in s5
+    front = _rule(rules, "The front page's list.")
+    assert f"on at least {MIN_FRONT_DAYS} of the {RECENT_DAYS} days before the page's day" in front
+    assert "20 of the 30 days" in front and f"the top {FRONT_LIMIT} are shown" in front
+    assert "sorted by the saving as shown, largest first, then by barcode as a number;" in front
+    assert NONE_YET in front
+    assert "(S7)" in _rule(rules, "F4 ") and "the verdict and the measured history (S4 to S8)" in _rule(rules, "F10 ")
+    # the pick: kept in the browser under search.js's one key, sent nowhere
+    pick = _rule(rules, "The store you pick.")
+    key = re.search(r'const PICK_KEY = "([^"]+)";', SEARCH_JS).group(1)
+    assert f'kept in this browser\'s local storage, under the one key "{key}", and sent nowhere' in pick
+    assert f'"{PICK_TITLE}"' in pick and "nine" in pick
+    _no_never_phrase_and_no_pronoun(page)
     assert "0123456789ab" in page and 'href="site-days/2026-11-02.json"' in page
     reproduce = re.search(r'<section id="reproduce">(.*?)</section>', page, re.DOTALL).group(1)
     assert "the same numbers on every page, the record's intervals to rounding (F8)." in reproduce    # review, 4
@@ -562,6 +606,19 @@ def test_the_method_page_states_the_rules_with_the_codes_constants():
             "sizes, and when each was last seen listed across a column come from a record carried from day to day "
             "since the site's first. The day's inputs are named in") in reproduce
     assert "built by the code" not in reproduce
+    # a changed constant changes the page
+    for name, value in (("DEAL_MIN", Decimal("2.50")), ("READ_DAYS", 60), ("MIN_FRONT_DAYS", 15), ("RECENT_DAYS", 21),
+                        ("FRONT_LIMIT", 40), ("SHADES", ((Decimal("8.00"), "deal-3"), (Decimal("4.50"), "deal-2"),
+                                                         (Decimal("2.50"), "deal-1")))):
+        monkeypatch.setattr(pages_module, name, value)
+    changed = _rules_of(_method())
+    s2, s4, s5 = (_rule(changed, f"S{n} ") for n in (2, 4, 5))
+    assert "60 days" in s2 and "90 days" not in s2
+    assert "is ₪2.50 or more" in s4 and "₪1.00" not in s4
+    assert "₪2.50 to ₪4.49, ₪4.50 to ₪7.99 and ₪8.00 or more" in s5 and "₪1.00" not in s5
+    front = _rule(changed, "The front page's list.")
+    assert "on at least 15 of the 21 days" in front and "the top 40 are shown" in front
+    assert "20 of the 30" not in front
 
 
 def test_the_method_page_carries_the_baskets_method_as_its_own_section():

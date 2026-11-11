@@ -1,7 +1,7 @@
 """The root, the store types' front pages, and the method, record and basket pages (docs/shopper-site.md, "What a
 visitor sees" 1, 4, 5 and 6, P1 to P10, F1 to F11, "Words" and Q1 to Q4, with "Changed after the survey", S1 and "The
 column"; the plan's Task 18, its questions A, K, M (c), (d) and (f) and O, and the second pre-flight's S1, S6 and S13;
-docs/store-first.md, "What a visitor sees" 1, 3 and 4, and the store-first plan's Tasks 5 and 6). Every page is on the
+docs/store-first.md, "What a visitor sees" 1, 3 and 4, and the store-first plan's Tasks 5 to 7). Every page is on the
 site's shared shell (`shopper.shell`: the band with the site's name, the pick link and the date line, `noindex`, the
 base style, the one script, the credit line); every chain-supplied text (a product's name, a programme's, a store's) is
 escaped inside `CHAIN_SPAN`.
@@ -46,10 +46,13 @@ The method page: what a column is and the nine, with how each one's stores are c
 includes; the stores left out by rule, which of them sit in a column's part of the store list, and store 779 (Task 15's
 carry: ALWAYS_SENTENCE says this page gives the rules); Carrefour's table, store by store, and how it was drawn; the
 included stores in no column, chain by chain, each by id and its listed name (with its sub-chain where the columns go by
-sub-chain); any column under the floor that day; P1 to P10 and F1 to F11 in plain words with the code's own constants;
-the NEVER list as `<ul id="never-words">`, the only place its phrases appear; what is measured and what is inferred; the
-law; how to reproduce a page; and the headline basket's method, `basket.page.method_parts` byte for byte, in a section
-whose id (`BASKET_SECTION`) is not its inner heading's (S6).
+sub-chain); any column under the floor that day; the rules in plain words with the code's own constants: P1 to P6 and
+P10 (RULES), then store first's S0 to S8, the front page's list and the pick (`store_rules`, in place of P7, P8 and P9:
+built with the page, from the constants as they stand, so a changed constant changes the page; the pick's key is
+search.js's, PICK_KEY), then F1 to F11 (FORECAST_RULES); the NEVER list as `<ul id="never-words">`, the only place its
+phrases appear; what is measured and what is inferred; the law; how to reproduce a page; and the headline basket's
+method, `basket.page.method_parts` byte for byte, in a section whose id (`BASKET_SECTION`) is not its inner heading's
+(S6).
 
 The record page: `scorecard_section`, a function of the scorecard alone, so the guard can render it again from the
 site-day file (Task 21): how many columns are tested at once, the model versions scored so far (the scorecard's
@@ -90,18 +93,18 @@ from basket.words import CHAIN_NAMES, TITLE as BASKET_TITLE, joined
 from shopper.columns import BY_KEY, COLUMNS, FIXED_ON, FLOOR, FORMATS_ON_FIXED_DAY, column_of, columns_of
 from shopper.forecast import A_MIN_DAYS, DAYS_SINCE_CAP, FIRST_RECORD_DAY, MAX_HOLES, MODEL_VERSION, N0, TARGET_VERSION
 from shopper.freeze import on_time
-from shopper.history import ENOUGH, READ_DAYS, ColumnDay
+from shopper.history import READ_DAYS, ColumnDay
 from shopper.items import HORIZON, by_number
 from shopper.measures import MIN_FRONT_DAYS, RECENT_DAYS, whole
 from shopper.product import BADGE_STYLE, CHAIN_SPAN, badge_class, page_path
 from shopper.record import BIN_OFF, BIN_SHARE, BLOCK, CAL_MAX, DRAWS, GATE_DAYS, LEVEL, MIN_DAYS, SEED, holds_share
 from shopper.shell import SCRIPT_TAG, band, page, text
-from shopper.verdict import FRONT_LIMIT, DealRow
-from shopper.words import (ALWAYS_SENTENCE, BROWSE_LINK, FINE_PRINT, FOLD_INTRO, FRONT_SUBTITLE, FRONT_TITLE, HIRING,
-                           METHOD_TITLE, NEVER, NUMBER_WORDS, RECORD_TITLE, SEARCH_LABEL, SITE_NAME, STORE_RULES,
-                           STORY_HEADING, badge, columns_tested, conditions, credit, date_range, formats_note, how_often,
-                           last_low, marked_none, no_odds_yet, price_text, reason, store_lead, store_promotions_line,
-                           unreadable)
+from shopper.verdict import DEAL_MIN, FRONT_LIMIT, SHADES, DealRow
+from shopper.words import (ALWAYS_SENTENCE, BROWSE_LINK, ELSEWHERE, FINE_PRINT, FOLD_INTRO, FRONT_SUBTITLE, FRONT_TITLE,
+                           HIRING, METHOD_TITLE, NEVER, NO_VERDICT, NONE_YET, NUMBER_WORDS, RECORD_TITLE, SEARCH_LABEL,
+                           SITE_NAME, STORE_RULES, STORY_HEADING, badge, columns_tested, conditions, credit, date_range,
+                           formats_note, how_often, last_low, marked_none, no_odds_yet, price_text, reason, store_lead,
+                           store_promotions_line, unreadable)
 
 BASKET_SECTION = "headline-basket"     # the basket's method on the method page: not its inner heading's id, "basket"
 BASKET_PAGE = "the basket page"        # what the basket's method section speaks of on the method page
@@ -383,10 +386,11 @@ METHOD_LEDE = ("How these pages are made from the chains' own files: the columns
 NEVER_INTRO = ("This site does not use these words and phrases anywhere but in this list, nor any sentence that gives "
                "a chain a motive:")
 MEASURED = ("Measured, from the files by rule: listed prices and their ranges, promotions and their dates, deal prices "
-            "where the fields check out, the conditions the fields give, and the facts and counts of P7 and P8. "
-            "Computed by rule and named as such: a column's median, whether a promotion is listed across a column, "
-            "depth. Inferred, and labelled: the forecast, which no product page shows before its column's gate opens. "
-            "Nothing here is read from a promotion's fine print yet.")
+            "where the fields check out, the conditions the fields give, the days tracked, the last day this low, the "
+            "days on sale and the last sale (S0, S6 to S8). Computed by rule and named as such: a column's median, "
+            "whether a promotion is listed across a column, a product's day prices and usual price, the saving and the "
+            "verdict, Deal or No deal (S1 to S5). Inferred, and labelled: the forecast, which no product page shows "
+            "before its column's gate opens. Nothing here is read from a promotion's fine print yet.")
 LAW = ("The five chains publish these price and promotion files under section 30 of the Food and Pharma Competition "
        "Promotion Law, 2014. Every number here is derived from those files; product and store names are shown as the "
        "chains publish them, and no file and no store's price list is republished.")
@@ -398,12 +402,13 @@ RULES = (
      "a column's stores with a price file list it; from then on it keeps its page, rebuilt every morning, which says "
      "when it was last seen listed across each column."),
     ("P2 Listed price.",
-     "A column's listed price for a product on a day is the median of the product's price across the column's included "
-     "stores whose latest full price file that day lists it (with an even count, the mean of the two middle prices), "
-     "prices of ₪0.01 or less dropped as placeholders; the lowest and highest store prices are shown beside it. A "
-     "column whose files that day come from fewer than half its included stores is a hole: its prices are shown as "
-     "from too few files, no listed price is claimed, every promotion that day is shown \"at some stores\", without "
-     "P7's facts, no promotion is said to be listed to start, and the day counts in no window, front page or "
+     "A column's listed price for a product on a day is its price as listed in the chain's price files, before "
+     "promotions: the median of the product's price across the column's included stores whose latest full price file "
+     "that day lists it (with an even count, the mean of the two middle prices), prices of ₪0.01 or less dropped as "
+     "placeholders; the lowest and highest store prices are shown beside it. The price chart calls it the shelf price. "
+     "A column whose files that day come from fewer than half its included stores is a hole: its prices are shown as "
+     "from too few files, no listed price is claimed, every promotion that day is shown \"at some stores\", with no "
+     "verdict (S4), no promotion is said to be listed to start, and the day counts in no window, front page or "
      "forecast."),
     ("P3 A promotion.",
      "A promotion in a chain's full promotion files of the day (each counted store's latest), linked to the product's "
@@ -430,36 +435,17 @@ RULES = (
      f"yet, so every promotion says \"{FINE_PRINT}\"."),
     ("P6 Windows.",
      f"The past {RECENT_DAYS} and {READ_DAYS} days are the calendar days before the page's day, counting only the days "
-     "on which the column has a record and the product a listed price; holes are skipped, never filled. A window with "
-     f"fewer than {ENOUGH[RECENT_DAYS]} of {RECENT_DAYS} or {ENOUGH[READ_DAYS]} of {READ_DAYS} such days says so (\"23 "
-     "days of records since 1 November 2026\"), and every count over a window's days is out of its days with "
-     "records."),
-    ("P7 The gap.",
-     f"Three measured facts about a deal listed across its column: its price against the {RECENT_DAYS}-day median "
-     "listed price, as money and a whole percent (\"under 1%\" when a gap above ₪0 rounds to 0%); the lowest listed "
-     f"price of the past {RECENT_DAYS} and {READ_DAYS} days, and on how many of the {READ_DAYS} days with records the "
-     "item was listed at or below the deal; and each "
-     f"change in the listed price in the past {RECENT_DAYS} days, dated where two consecutive days with records pin "
-     f"it, else given with both days. Depth is ({RECENT_DAYS}-day median − deal price) ÷ that median. The front page "
-     "lists a deal when it is listed across its column, its price is read (P4), the column has a record today, and the "
-     f"item has at least {MIN_FRONT_DAYS} days of records in the past {RECENT_DAYS}, with the deal price as shown "
-     f"below every listed price of the past {READ_DAYS} days as shown. Its rows are sorted by the depth they show, "
-     "deepest first, then by the exact depth; a product listed across several columns can have a row at each."),
-    ("P8 Promotion history.",
-     f"Over the {READ_DAYS} days before today, at the column: the days on a promotion listed across it, of the days "
-     "with records; each run of consecutive days on promotion (a day the files say nothing of, a hole, a day the "
-     "product is not listed or whose promotions were not read, neither ends nor extends a run); the days between runs; "
-     "the last run's end and the days since. An end beside such a day is given as a bound (\"or earlier\", \"or "
-     "later\", \"at most\")."),
-    ("P9 Across the columns.",
-     "One row on each product page: each column's listed price today and its deal price today, if any, with the "
-     "conditions marked; in name order, never by price, with no ranking word."),
+     "on which the column has a record and the product a listed price; holes are skipped, never filled. The front "
+     f"page's list counts such days in the past {RECENT_DAYS}; the verdict counts its days tracked (S0) in the past "
+     f"{READ_DAYS}, and every count a page gives over them says how many days it is out of (S8)."),
     ("P10 A format change.",
      "A promotion file whose fields differ from what the chain's files were seen to carry, or a RewardType, ClubID or "
      "DiscountType value not seen, or an IsGiftItem of another form, stops that chain's promotions for the day with an "
      "error naming the field. Its prices still build, every section of its columns says so (\""
-     f"{unreadable('carrefour')}\" for Carrefour), and the day is a hole for its columns' promotion history and "
-     "forecasts."),
+     f"{unreadable('carrefour')}\" for Carrefour), and the day is none of its columns' days tracked (S0) and a hole "
+     "for their forecasts."),
+)
+FORECAST_RULES = (
     (f"F1 Target, version {TARGET_VERSION}.",
      "For a product at a column on day d: 1 if a promotion carried by at least half the column's counted stores, with "
      "a price effect on the item (a link of RewardType 1, 2, 3 or 10; club-only and \"price not read\" included), is "
@@ -476,7 +462,7 @@ RULES = (
      f"{MAX_HOLES} holes in their window."),
     (f"F4 Model, version {MODEL_VERSION}.",
      "For each column, the share of outcome 1 over its closed days among the products with the same days since their "
-     f"last run ended (0 to {DAYS_SINCE_CAP}, more counted as {DAYS_SINCE_CAP}, or no run seen), blended with the "
+     f"last run (S7) ended (0 to {DAYS_SINCE_CAP}, more counted as {DAYS_SINCE_CAP}, or no run seen), blended with the "
      "product's own share (baseline A) by weight n ÷ (n + n0): n the product's closed days, n0 = "
      f"{N0}, fixed before the version's first frozen day."),
     ("F5 Two baselines.",
@@ -513,15 +499,112 @@ RULES = (
      f"{BIN_OFF}. A new version (new constants or a new target) starts its count from zero, and every version's days "
      "stay on the record page. In this version of the site no gate opens."),
     ("F10 Before the gate.",
-     "While a column's gate is closed, its sections on a product page show the measured history (P8) and the fixed "
-     f"sentence that begins \"{no_odds_yet('shufersal-deal').split('. ')[0]}.\", with no other odds word; the record "
-     "page shows the scorecard, the gate's conditions and which hold, and the files, as test records, not advice."),
+     "While a column's gate is closed, its sections on a product page show the verdict and the measured history "
+     "(S4 to S8) and, in the fold-out, the fixed sentence that begins "
+     f"\"{no_odds_yet('shufersal-deal').split('. ')[0]}.\", with no other odds word; the record page shows the "
+     "scorecard, the gate's conditions and which hold, and the files, as test records, not advice."),
     ("F11 How the record is shown.",
      "Per column, per month and in all, per model version: the days frozen on time and late, and the days scored; the "
      "forecasts scored and unscored; the share of outcome 1; the Brier scores of the model and both baselines, their "
      "differences and the skills, with intervals; the calibration table and chart, and a sentence for each bin holding "
      f"{_BIN_SHARE}% or more of the scored forecasts."),
 )
+PICK_KEY = "store"          # search.js's PICK_KEY, the one key the pick is kept under (a test reads both)
+AGORA = Decimal("0.01")
+
+
+def _bands() -> str:
+    """S5's bands, from SHADES' floors as they stand: "₪1.00 to ₪2.99, ₪3.00 to ₪4.99 and ₪5.00 or more"."""
+    floors = sorted(floor for floor, _ in SHADES)
+    return joined([f"₪{low} to ₪{high - AGORA}" for low, high in zip(floors, floors[1:])] + [f"₪{floors[-1]} or more"])
+
+
+def store_rules() -> tuple[tuple[str, str], ...]:
+    """S0 to S8, the front page's list and the pick (docs/store-first.md, "The rules", "The front page's list" and
+    "Q2's one script"; as built: `shopper.verdict`'s docstring, the store pages' and search.js's), in plain words. Built
+    when the page is, from the code's constants as they stand (DEAL_MIN, SHADES, READ_DAYS, MIN_FRONT_DAYS, RECENT_DAYS,
+    FRONT_LIMIT) and the words the pages say (NO_VERDICT, NONE_YET), so a changed constant or word changes the page."""
+    return (
+        ("S0 Days tracked.",
+         f"A product's days tracked at a column are the days, of the {READ_DAYS} before the page's day, on which the "
+         "column has a record (P2), its promotions were read (the chain's files read, P10, and promotion files from at "
+         "least half its counted stores) and the product has a listed price there. A day not tracked is left out of "
+         "the usual price, \"Last this low\", \"How often on sale\" and every count of days tracked, and is a gap in "
+         "the price chart, never filled in."),
+        ("S1 Day price.",
+         "On a day tracked, the lower of the listed price and the lowest price among the promotions that count that "
+         "day (S3), each as shown, to the agora. A day on a promotion listed across the column (P3) of which none "
+         "counts, its price not read (P4), is a sale day of unknown price: it has no day price, and it counts as on "
+         "sale (S7)."),
+        ("S2 Usual price.",
+         "What the product usually costs at the column: the middle of the day prices over the days tracked in the "
+         f"{READ_DAYS} days before the page's day, the page's day left out; with an even number of days, the higher of "
+         "the two middle values, so a product at one listed price and on sale on exactly half its days keeps that "
+         "listed price as its usual price. A sale day of unknown price has no day price, so it is left out. Since a "
+         "day price takes the day's sale price, the usual price includes sales (\"Usually ₪11.90, sales "
+         "included\")."),
+        ("S3 Today's price.",
+         "The lowest price per unit, or per kilogram when the item is weighed (P4), among today's promotions that "
+         "count: listed across the column (P3), their price read (P4), with a price effect (RewardType 1, 2, 3 or 10, "
+         "as in F1) and running today. Today's price is that promotion's price as shown, to the agora. Club-only and "
+         "buy-N promotions count, their conditions from the chain's fields (P5) named beside the verdict (\"Club "
+         "members only\", \"When you buy 2\"). With none counting, today's price is the listed price (S6)."),
+        ("S4 Verdict.",
+         "When none of the lines below applies: Deal when the saving, the usual price less today's price, "
+         f"is ₪{DEAL_MIN} or more, worked on the figures as shown (\"3 for ₪10.00\" is ₪3.33 a unit, P4); No deal "
+         "otherwise. The badge names the store type (\"At Carrefour Market: DEAL · ₪1.90 off\"). A No deal's reason "
+         "says on how many days it was at today's price or less when that is at or above the usual price (\"It's been "
+         "₪10.90 or less on 9 of the 9 days tracked.\"), else how little it is below it (\"Only ₪0.40 below its "
+         "usual ₪3.20 (12 days tracked).\"). Otherwise there is no verdict but a "
+         "plain line, the first that applies: too few files today (P2); not sold there today, with the last day it "
+         f"was listed across the column; \"{NO_VERDICT['unread_today']}\" (P10, or promotion files from fewer than "
+         "half its counted stores); with no promotion counting today, "
+         f"\"{NO_VERDICT['price_unread']}\" when one listed across the column runs with its price not read, "
+         f"\"{NO_VERDICT['some_stores']}\" when one runs at fewer than half the stores, else "
+         f"\"{NO_VERDICT['no_sale']}\"; \"{NO_VERDICT['new']}\" when the column's files list the product on no "
+         f"earlier day read; \"{NO_VERDICT['mostly_unknown']}\" when the sale days of unknown price are more than "
+         f"half the days tracked; \"{NO_VERDICT['no_history']}\" when no day tracked has a day price."),
+        ("S5 Shade.",
+         f"A Deal's badge is a shade of green by its saving, one for each band: {_bands()}; a No deal's badge is a "
+         "neutral grey. Every badge writes its verdict and the shekels, so colour is never the only signal, and each "
+         "badge's text contrasts at least 4.5:1 with its background, in the light and the dark theme."),
+        ("S6 Last this low.",
+         "Today's price here is S3's when a promotion counts, else the listed price. The latest day tracked whose day "
+         "price is at or below it, with that price (\"Last this low: 12 October, at ₪9.90.\"), or, when none is, "
+         "\"Lowest in the 10 days tracked.\", counting the days tracked with a day price. Said only when today's price "
+         "is known and some day tracked has a day price."),
+        ("S7 How often on sale.",
+         "Of the days tracked, on how many the product was on a promotion listed across the column (P3), its price "
+         "read or not (\"On sale on 12 of the 60 days tracked.\"). A run is the days tracked on sale in a row; a day "
+         "not tracked neither ends nor extends one. When today is on sale and the latest run reaches the last day "
+         "tracked, that run is this sale, not the last one. The last sale's last day is given, with its day price "
+         "when it was read: \"The last sale before this one ended 12 October, at ₪9.90.\" (\"The last sale "
+         "ended …\" when today is not on sale). On a day with too few files, not sold, "
+         "or with its promotions not read, only the count is given. The forecast's runs (F4, F5) are these runs."),
+        ("S8 Days tracked.",
+         "Every reason beside a verdict names the days it rests on, the days tracked with a day price (\"Usually "
+         "₪11.90, sales included (9 days tracked).\"), and \"How often on sale\" counts out of every day tracked, so a "
+         "short history shows on the page itself."),
+        ("The front page's list.",
+         "Each store type has a front page of its own, store/<key>.html. A product is listed there when its verdict "
+         f"there is Deal (S4) and it has a listed price there on at least {MIN_FRONT_DAYS} of the {RECENT_DAYS} days "
+         "before the page's day, counting the days the column has a record (P6). The list is sorted by the saving as "
+         f"shown, largest first, then by barcode as a number; the top {FRONT_LIMIT} are shown, and every other "
+         "product is a search away. The headline counts the same set: in \"At Carrefour Market today: N of M "
+         "promotions are actually deals.\", N is every product listed, shown or not, and M every product with a "
+         "promotion counting today (S3) that passes the same bar. On a day with too few files (P2) or its "
+         "promotions not read, the page lists no deal and says why; until the column has a record on "
+         f"{MIN_FRONT_DAYS} of the {RECENT_DAYS} days before the page's day, it says \"{NONE_YET}\""),
+        ("The store you pick.",
+         f"The root page asks \"{PICK_TITLE}\" and lists the {_NINE} columns, the shopper pages' store types, by "
+         "chain, each a link to its front page. Opening a store type's front page picks it, and so does tapping a "
+         "store type's badge on a product page while nothing is picked. The pick is kept in this browser's local "
+         f"storage, under the one key \"{PICK_KEY}\", and sent nowhere: the site's one script, search.js, reads it "
+         "only to open the picked front page from the root, to name it in the header beside a \"change\" link back "
+         "to the picker, and to arrange a product page, the picked store type's part with the others as badges "
+         f"under \"{ELSEWHERE}\". Where storage is blocked the site forgets the pick; with the script blocked, a "
+         "product page shows every one of its parts, and the root's links still reach each front page."),
+    )
 
 def _section(id_: str, heading: str, *parts: str) -> str:
     return f'<section id="{id_}"><h2>{text(heading)}</h2>{"".join(parts)}</section>'
@@ -611,7 +694,8 @@ def _floor_section(columns: ColumnsToday) -> str:
 
 
 def _rules_section() -> str:
-    rules = "".join(f"<li><b>{text(name)}</b> <span>{text(said)}</span></li>" for name, said in RULES)
+    rules = "".join(f"<li><b>{text(name)}</b> <span>{text(said)}</span></li>"
+                    for name, said in (*RULES, *store_rules(), *FORECAST_RULES))
     return _section("rules", "The rules", f'<ol class="rules">{rules}</ol>')
 
 
