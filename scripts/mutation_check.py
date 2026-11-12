@@ -116,7 +116,7 @@ EXTRACT_AFTER_CHECK = ("template.yaml", [_B + "test_extraction_starts_after_the_
 COLLECTED_BY_PINNED = ("template.yaml", [_B + "test_collected_by_is_the_extractions_start"])
 NO_DELETE_BASKET = ("template.yaml", [_B + "test_role_cannot_delete_bypass_the_lock_or_change_either_bucket"])
 READ_RECORDS_FOR_RETRY = ("template.yaml", [_B + "test_role_grants_exactly_what_the_code_does"])
-TMP_SIZE = ("template.yaml", [_B + "test_function_has_two_gb_ten_gb_of_tmp_and_lambdas_longest_run"])
+TMP_SIZE = ("template.yaml", [_B + "test_function_has_3008_mb_ten_gb_of_tmp_and_lambdas_longest_run"])
 LAYER_ATTACHED = ("template.yaml", [_B + "test_function_runs_the_basket_handler_on_python_313_arm64_with_the_layer"])
 BARCODE = ("src/basket/barcode.py", ["tests/test_barcode.py"])
 PRICEFILE = ("src/basket/pricefile.py", ["tests/test_pricefile.py"])
@@ -2781,7 +2781,7 @@ MUTATIONS = {
     "basket function on an older Python": (BASKET_TEMPLATE, "Handler: basket.handler.handler\n      Runtime: python3.13", "Handler: basket.handler.handler\n      Runtime: python3.12"),
     "basket handler pointed elsewhere": (BASKET_TEMPLATE, "Handler: basket.handler.handler", "Handler: basket.handler.run"),
     "basket code from the repo root": (BASKET_TEMPLATE, "CodeUri: src/\n      Handler: basket.handler.handler", "CodeUri: ./\n      Handler: basket.handler.handler"),
-    "basket function memory halved": (BASKET_TEMPLATE, "MemorySize: 2048", "MemorySize: 1024"),
+    "basket function memory halved": (BASKET_TEMPLATE, "MemorySize: 3008", "MemorySize: 1504"),
     "basket function timeout cut to five minutes": (BASKET_TEMPLATE, "spaced by it.\n      Timeout: 900\n", "spaced by it.\n      Timeout: 300\n"),
     "basket Lambda retries a failed run": (BASKET_TEMPLATE, "rerun is by hand.\n      EventInvokeConfig:\n        MaximumRetryAttempts: 0", "rerun is by hand.\n      EventInvokeConfig:\n        MaximumRetryAttempts: 2"),
     "basket logs to Lambda's default group": (BASKET_TEMPLATE, "      LoggingConfig:\n        LogGroup: !Ref BasketLogs\n", ""),

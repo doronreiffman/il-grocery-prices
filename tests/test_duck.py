@@ -1,7 +1,7 @@
 """The DuckDB connection (`basket.duck`): the temp folder and the memory ceiling come from the environment.
 
-In Lambda the working directory is read-only and the function has 2 GB; on the Mac both variables stay unset
-and DuckDB's defaults stand (`.tmp` under the working directory, 80% of the machine's RAM).
+In Lambda the working directory is read-only and the function has its own memory size; on the Mac both variables
+stay unset and DuckDB's defaults stand (`.tmp` under the working directory, 80% of the machine's RAM).
 """
 from datetime import date
 from decimal import Decimal

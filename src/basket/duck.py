@@ -1,7 +1,7 @@
 """The DuckDB connection the basket code opens: its temp folder and memory ceiling come from the environment.
 
 In Lambda the working directory is read-only and DuckDB's default temp folder is `.tmp` under it, and its
-default memory limit is 80% of what it reads as the machine's RAM, which is not the function's 2 GB. The
+default memory limit is 80% of what it reads as the machine's RAM, which is not the function's memory. The
 Lambda sets `DUCKDB_TEMP_DIRECTORY` (a folder under `/tmp`) and `DUCKDB_MEMORY_LIMIT` (e.g. `1200MB`); on the
 Mac both stay unset and DuckDB's defaults stand. A variable that is unset, empty or only spaces is unset; a temp folder
 is read without the spaces around it, as `basket.handler.Config` reads the folder it sweeps.
