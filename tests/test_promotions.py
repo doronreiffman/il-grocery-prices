@@ -180,14 +180,17 @@ def test_keep_checks_a_coupons_codes_too(club_id, gift, message):
         keep("ramilevy")(_promotion(club=club_id, gift=gift, coupon="1"))
 
 
-@pytest.mark.parametrize("rewards, found", [
-    (["12", "1"], "basket_reward"),  # its "N for ₪M" links are the reward's own terms
-    (["6"], "gift"),
-    (["0", "1", "2", "3", "10"], None),
-    (["1", "3", "12"], "basket_reward"),  # on the record's last link
+@pytest.mark.parametrize("slug, rewards, found", [
+    ("shufersal", ["12", "1"], "basket_reward"),  # its "N for ₪M" links are the reward's own terms
+    ("shufersal", ["6"], "gift"),
+    ("shufersal", ["0", "1", "2", "3", "10"], None),
+    ("shufersal", ["1", "3", "12"], "basket_reward"),  # on the record's last link
+    ("osherad", ["6", "6", "6"], "gift"),  # store 001's bag promotion from 13 November 2026
 ])
-def test_a_promotion_with_a_reward_type_6_or_12_link_is_not_a_shelf_deal(rewards, found):
-    assert not_shelf("shufersal", _links(*rewards)) == found
+def test_a_promotion_with_a_reward_type_6_or_12_link_is_not_a_shelf_deal(slug, rewards, found):
+    record = _links(*rewards)
+    check_codes(slug, record)
+    assert not_shelf(slug, record) == found
 
 
 @pytest.mark.parametrize("code, found", [("1", "n_for_m"), ("10", "n_for_m"), ("2", "percent_off"),

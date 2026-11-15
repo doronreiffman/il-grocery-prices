@@ -1443,6 +1443,7 @@ MUTATIONS = {
     "an unknown club form read as none (q22 P10)": (SHOP_PROMOTIONS, "    if terms is None:\n        raise PromotionFormatChanged(", "    if terms is None:\n        return Target((), ())\n        raise PromotionFormatChanged("),
     "an unknown club code read as none (q22 P10)": (SHOP_PROMOTIONS, "        else:\n            raise PromotionFormatChanged(f\"{slug}: ClubID form", "        else:\n            continue\n            raise PromotionFormatChanged(f\"{slug}: ClubID form"),
     "an unknown reward type read as none (q22 P10)": (SHOP_PROMOTIONS, "    if code not in REWARD_TYPES[slug]:", "    if False:"),
+    "Osher Ad's reward type 6 unknown again (osherad 6)": (SHOP_PROMOTIONS, '"osherad": frozenset({"1", "3", "6", "10"}),', '"osherad": frozenset({"1", "3", "10"}),'),
     "reward types pooled over the chains (q22 P10)": (SHOP_PROMOTIONS, "    if code not in REWARD_TYPES[slug]:", "    if code not in set().union(*REWARD_TYPES.values()):"),
     "an unknown discount type passed (q22 P10)": (SHOP_PROMOTIONS, '        if group["DiscountType"] not in DISCOUNT_TYPES[slug]:', "        if False:"),
     "a gift value of another form passed (q22 P10)": (SHOP_PROMOTIONS, "    if amount is None or amount <= 0:", "    if False:"),

@@ -2,7 +2,8 @@
 field half, P10; docs/shopper-site.md, with its "Changed after the survey", S2, S3 and S5, and the plan's question N).
 
 Every value here was read from the files: the survey of every included store's full promotion file of 5 and 7
-November 2026 (`shopper.survey`; the figures in docs/operations.md, "Measured for the shopper site"). Each chain's
+November 2026 (`shopper.survey`; the figures in docs/operations.md, "Measured for the shopper site"), and Osher Ad's
+`RewardType` 6 from its files of 13 November (the same section, "RewardType"). Each chain's
 promotion fixtures hold its field sets, no more and no fewer (tests/test_promotions.py).
 
 P3, which promotions count. A promotion is in a day when the date part of its start is on or before the day and the
@@ -71,7 +72,7 @@ KNOWN_FIELDS: dict[str, FieldSets] = {
 REWARD_TYPES: dict[str, frozenset[str]] = {
     "shufersal": frozenset({"0", "1", "2", "3", "6", "10", "12"}),
     "ramilevy": frozenset({"0", "1", "2", "3", "10"}),
-    "osherad": frozenset({"1", "3", "10"}),
+    "osherad": frozenset({"1", "3", "6", "10"}),   # 6 from 13 November 2026 (docs/operations.md, "RewardType")
     "carrefour": frozenset({"0", "1", "2", "3", "10", "12"}),
     "yochananof": frozenset({"0", "1", "2", "3", "10"}),
 }
