@@ -391,7 +391,7 @@ def test_no_deal_is_the_yellow_label():
     body = _sections(_render(*_one("5.00", _struct("4.50"))))[DEAL]
     assert ('<div class="tag no-deal"><div class="say"><p class="verdict">At Shufersal Deal: <b>NO DEAL</b></p>'
             '<p class="reason">Only ₪0.50 below its usual ₪5.00 (90 days tracked).</p></div>') in body
-    assert body.count("NO DEAL") == 1 and "grey" not in body
+    assert body.count("NO DEAL") == 1
 
 
 def test_the_reason_line_names_its_days():

@@ -224,9 +224,9 @@ def _price(found: Verdict) -> str:
 def _label(key: str, found: Verdict, today: ColumnDay, point: Point | None, covered: Covered) -> str:
     """The verdict as a shelf label, its saying part and its price part; or, for NO_LABEL's calls, their line alone
     (the module's docstring)."""
-    if found.call == "too_few":
-        return f'<p class="few">{text(too_few(today.with_file, today.included))}</p>'
-    if found.call == "not_sold":
+    if found.call in NO_LABEL:          # the drawing's rule reads the same set (`render_product`)
+        if found.call == "too_few":
+            return f'<p class="few">{text(too_few(today.with_file, today.included))}</p>'
         return f'<p class="not-sold">{text(not_sold(key, covered.last_wide.get(key)))}</p>'
     if found.call in ("deal", "no_deal"):
         said = verdict_words(found)
