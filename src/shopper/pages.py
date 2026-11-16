@@ -11,17 +11,18 @@ The root page, `index.html`, also the portfolio's landing page, its tab titled w
 (`shopper.words.SITE_NAME`): the hero, the headline "Deal or No Deal?" (`shopper.words.ROOT_TITLE`, set in capitals by
 the stylesheet) with "Deal" on the green label (`class="yes"`) and "No Deal" on the yellow one (`class="no"`), "or" and
 the question mark plain, and under it, after a line break, the owner's line on what the site does
-(`shopper.words.ROOT_LINE`); the picker; then the hiring line (question M (f)), its four links side by side with
-nothing between them. The picker is `<section id="pick" data-page="root">`, the pick link's target and search.js's
-mark for the root (it sends a remembered pick on to its store type's front page unless the hash is #pick, which is how
-the header's "change" reaches the picker instead): "Which store are you in?" (PICK_TITLE), then each chain as
-`<div class="chain">`, its name as a heading the stylesheet hides from sight alone (every label carries its chain's
-name), over a label linking to each of its store types' front pages (`store_path`), in the design's order by chain
-(PICK_GROUPS), never COLUMNS' order by name. A label is the store type's name and its count of promotions today, the
-figure in bold ("1,347 promotions today", one "promotion today": `shopper.words.promotions_today`), the number its
-store page's promotions line states (`promotions_shown`, read by both); on a hole or a promotion hole, whose
-promotions the build does not count, the name alone, never "0". The root shows no price, so it carries no ALWAYS
-phrase, and `shopper.check` holds it to none.
+(`shopper.words.ROOT_LINE`); the picker; then the hiring line (question M (f)), its four links side by side, a single
+space between them, which the stylesheet's flex row does not draw (it draws no text of white space alone), so without
+the stylesheet the four do not run together. The picker is `<section id="pick" data-page="root">`, the pick link's
+target and search.js's mark for the root (it sends a remembered pick on to its store type's front page unless the hash
+is #pick, which is how the header's "change" reaches the picker instead): "Which store are you in?" (PICK_TITLE), then
+each chain as `<div class="chain">`, its name as a heading the stylesheet hides from sight alone (every label carries
+its chain's name), over a label linking to each of its store types' front pages (`store_path`), in the design's order by
+chain (PICK_GROUPS), never COLUMNS' order by name. A label is the store type's name and its count of promotions today,
+the figure in bold ("1,347 promotions today", one "promotion today": `shopper.words.promotions_today`), the number its
+store page's promotions line states (`promotions_shown`, read by both); on a hole or a promotion hole, whose promotions
+the build does not count, the name alone, never "0". The root shows no price, so it carries no ALWAYS phrase, and
+`shopper.check` holds it to none.
 
 A store type's front page, `store/<key>.html` (`store_path`), one folder down (UP), with its main part marked
 `data-store` (`shopper.shell.page`), from which search.js sets the pick (docs/store-first.md, "What a visitor sees" 4
@@ -56,17 +57,20 @@ promotions the build does not count, one note carrying the four ALWAYS phrases (
 page carries them on any morning, and the method page. Every link leads up to the site's root. The badges' shades, like
 every rule of the look, are the site's one stylesheet's (docs/site-look.md).
 
-The method page: what a column is and the nine, with how each one's stores are chosen and how many the day's store list
-includes; the stores left out by rule, which of them sit in a column's part of the store list, and store 779 (Task 15's
-carry: ALWAYS_SENTENCE says this page gives the rules); Carrefour's table, store by store, and how it was drawn; the
-included stores in no column, chain by chain, each by id and its listed name (with its sub-chain where the columns go by
-sub-chain); any column under the floor that day; the rules in plain words with the code's own constants: P1 to P6 and
-P10 (RULES), then store first's S0 to S8, the front page's list and the pick (`store_rules`, in place of P7, P8 and P9:
-built with the page, from the constants as they stand, so a changed constant changes the page; the pick's key is
-search.js's, PICK_KEY), then F1 to F11 (FORECAST_RULES); the NEVER list as `<ul id="never-words">`, the only place its
-phrases appear; what is measured and what is inferred; the law; how to reproduce a page; and the headline basket's
-method, `basket.page.method_parts` byte for byte, in a section whose id (`BASKET_SECTION`) is not its inner heading's
-(S6).
+The method page: after its lead, the row of links to its own sections (docs/site-look.md, "Page by page"; the site-look
+plan's Task 10), `<nav class="toc" aria-label="On this page">` (ON_THIS_PAGE, which screen readers speak and the page
+does not show) over a list with a link to each of the page's top-level sections, in order, its words the section's
+heading as the section writes it (`_section_links`); then what a column is and the nine, with how each one's stores are
+chosen and how many the day's store list includes; the stores left out by rule, which of them sit in a column's part of
+the store list, and store 779 (Task 15's carry: ALWAYS_SENTENCE says this page gives the rules); Carrefour's table,
+store by store, and how it was drawn; the included stores in no column, chain by chain, each by id and its listed name
+(with its sub-chain where the columns go by sub-chain); any column under the floor that day; the rules in plain words
+with the code's own constants: P1 to P6 and P10 (RULES), then store first's S0 to S8, the front page's list and the pick
+(`store_rules`, in place of P7, P8 and P9: built with the page, from the constants as they stand, so a changed constant
+changes the page; the pick's key is search.js's, PICK_KEY), then F1 to F11 (FORECAST_RULES); the NEVER list as
+`<ul id="never-words">`, the only place its phrases appear; what is measured and what is inferred; the law; how to reproduce
+a page; and the headline basket's method, `basket.page.method_parts` byte for byte, in a section whose id
+(`BASKET_SECTION`) is not its inner heading's (S6).
 
 The record page: `scorecard_section`, a function of the scorecard alone, so the guard can render it again from the
 site-day file (Task 21): how many columns are tested at once, the model versions scored so far (the scorecard's
@@ -92,6 +96,7 @@ Words. The sentences are `shopper.words`' and `basket.words`', and the method an
 no more than the figures shown and the records support. Every page is a pure function of its inputs: the same bytes
 whatever order the rows, mappings or files come in.
 """
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -124,6 +129,7 @@ from shopper.words import (ALWAYS_SENTENCE, BROWSE_LINK, ELSEWHERE, FINE_PRINT, 
 
 BASKET_SECTION = "headline-basket"     # the basket's method on the method page: not its inner heading's id, "basket"
 BASKET_PAGE = "the basket page"        # what the basket's method section speaks of on the method page
+ON_THIS_PAGE = "On this page"          # the method page's row of links to its sections, spoken, not shown (site look)
 GITHUB = HIRING[-1][1]
 # The root's own words (store first, q33; provisional until the owner's read): the picker's title is the design's
 PICK_TITLE = "Which store are you in?"
@@ -300,8 +306,9 @@ def _rules(front: StoreFront, today: ColumnDay, shown: Sequence[DealRow], markin
 
 
 def _hiring() -> str:
-    """The hiring line: its four links side by side, nothing between them (the stylesheet spaces them)."""
-    links = "".join(f'<a href="{escape(href)}">{text(label)}</a>' for label, href in HIRING)
+    """The hiring line: its four links side by side, a space between them (the module's docstring; the stylesheet
+    spaces them)."""
+    links = " ".join(f'<a href="{escape(href)}">{text(label)}</a>' for label, href in HIRING)
     return f'<p class="hiring">{links}</p>'
 
 
@@ -586,16 +593,17 @@ def store_rules() -> tuple[tuple[str, str], ...]:
          f"earlier day read; \"{NO_VERDICT['mostly_unknown']}\" when the sale days of unknown price are more than "
          f"half the days tracked; \"{NO_VERDICT['no_history']}\" when no day tracked has a day price."),
         ("S5 Shade.",
-         f"A Deal's badge is a shade of green by its saving, one for each band: {_bands()}; a No deal's badge is a "
-         "neutral grey. Every Deal and No deal badge writes its verdict in words, a Deal's with the shekels off "
+         f"A Deal's badge is a shade of green by its saving, one for each band: {_bands()}; a No deal's badge is "
+         "yellow. Every Deal and No deal badge writes its verdict in words, a Deal's with the shekels off "
          "(\"NO DEAL\" has none), so colour is never the only signal, and each badge's text contrasts at least 4.5:1 "
          "with its background, in the light and the dark theme."),
         ("S6 Last this low.",
          "Today's price here is S3's when a promotion counts, else the listed price, and none when one listed across "
          "the column runs with its price not read (S3). The latest day tracked whose day price is at or below it, "
          "with that price (\"Last this low: 12 October, at ₪9.90.\"), or, when none is, "
-         "\"Lowest in the 10 days tracked.\", counting the days tracked with a day price. Said only when today's price "
-         "is known and some day tracked has a day price."),
+         "\"Lowest in the 10 days tracked.\", counting the days tracked with a day price, named as days with a known "
+         "price when some have none (\"Lowest in the 83 days with a known price.\"). Said only when today's price is "
+         "known and some day tracked has a day price."),
         ("S7 How often on sale.",
          "Of the days tracked, on how many the product was on a promotion listed across the column (P3), its price "
          "read or not (\"On sale on 12 of the 60 days tracked.\"). A run is the days tracked on sale in a row; a day "
@@ -605,9 +613,11 @@ def store_rules() -> tuple[tuple[str, str], ...]:
          "ended …\" when today is not on sale). On a day with too few files, not sold, "
          "or with its promotions not read, only the count is given. The forecast's runs (F4, F5) are these runs."),
         ("S8 Days tracked.",
-         "Every reason beside a verdict names the days it rests on, the days tracked with a day price (\"Usually "
-         "₪11.90, sales included (9 days tracked).\"), and \"How often on sale\" counts out of every day tracked, so a "
-         "short history shows on the page itself."),
+         "Every reason beside a verdict names the days it rests on, the days tracked with a day price: \"days "
+         "tracked\" when every day tracked has one (\"Usually ₪11.90, sales included (9 days tracked).\"), else their "
+         "own count, since a sale day of unknown price (S1) has none (\"Usually ₪22.90, sales included (83 days with "
+         "a known price).\"), so a page never shows two different numbers both called days tracked. \"How often on "
+         "sale\" counts out of every day tracked, so a short history shows on the page itself."),
         ("The front page's list.",
          "Each store type has a front page of its own, store/<key>.html. A product is listed there when its verdict "
          f"there is Deal (S4) and it has a listed price there on at least {MIN_FRONT_DAYS} of the {RECENT_DAYS} days "
@@ -631,6 +641,17 @@ def store_rules() -> tuple[tuple[str, str], ...]:
 
 def _section(id_: str, heading: str, *parts: str) -> str:
     return f'<section id="{id_}"><h2>{text(heading)}</h2>{"".join(parts)}</section>'
+
+
+SECTION_HEAD = re.compile(r'<section id="([^"]+)"><h2>(.*?)</h2>')     # a method section's id and heading, as written
+
+
+def _section_links(sections: Sequence[str]) -> str:
+    """The method page's row of links to its own sections (the module's docstring): each section's id and heading read
+    from the section as written, in order, so a link's words are its section's heading whatever it says."""
+    links = "".join(f'<li><a href="#{found[1]}">{found[2]}</a></li>'
+                    for found in (SECTION_HEAD.match(section) for section in sections))
+    return f'<nav class="toc" aria-label="{escape(ON_THIS_PAGE)}"><ol>{links}</ol></nav>'
 
 
 def _stores_of(column) -> str:
@@ -751,13 +772,14 @@ def render_method(basket: Basket, exclusions: Mapping[str, Sequence[Store]], col
                   collected_by: str, code_sha: str, public: dict) -> str:
     """`method.html` (the module's docstring): `exclusions` each chain's stores left out by rule, by slug; `code_sha`
     the site's code fingerprint; `public` the basket's day as its pages show it, for its method's parts."""
-    parts = [f"<h1>{text(METHOD_TITLE)}</h1>", f'<p class="lede">{text(METHOD_LEDE)}</p>',
-             _columns_section(columns, exclusions), _carrefour_section(columns.carrefour), _outside_section(columns),
-             _floor_section(columns), _rules_section(), _never_section(),
-             _section("measured", "Measured and inferred", f"<p>{text(MEASURED)}</p>"),
-             _section("law", "The law", f"<p>{text(LAW)}</p>"), _reproduce_section(day, code_sha),
-             f'<section id="{BASKET_SECTION}"><h2>{text(BASKET_TITLE)}</h2>'
-             f'{"".join(method_parts(basket, exclusions, public, BASKET_PAGE))}</section>']
+    sections = [_columns_section(columns, exclusions), _carrefour_section(columns.carrefour), _outside_section(columns),
+                _floor_section(columns), _rules_section(), _never_section(),
+                _section("measured", "Measured and inferred", f"<p>{text(MEASURED)}</p>"),
+                _section("law", "The law", f"<p>{text(LAW)}</p>"), _reproduce_section(day, code_sha),
+                f'<section id="{BASKET_SECTION}"><h2>{text(BASKET_TITLE)}</h2>'
+                f'{"".join(method_parts(basket, exclusions, public, BASKET_PAGE))}</section>']
+    parts = [f"<h1>{text(METHOD_TITLE)}</h1>", f'<p class="lede">{text(METHOD_LEDE)}</p>', _section_links(sections),
+             *sections]
     links = ((RECORD_TITLE, "record.html"), (BASKET_TITLE, "basket.html"))
     return page(f"{METHOD_TITLE} - {SITE_NAME}", "\n".join(parts), day, collected_by, links, "method", up="")
 

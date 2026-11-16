@@ -36,8 +36,8 @@ Four SVGs in a row, and only one of them scales, so no word ever shrinks:
   span of ALTERNATE_WEEKS days or more, every name an odd number of weeks before today (7, 21, 35 days back). With
   NEAR alone, on a 320-pixel screen, the week names would come within 5 pixels of each other from 28 days, and the
   one a week before today would run out of the plot below about a 400-pixel screen (into "today" at 320). Hiding the
-  odd weeks keeps the names a phone shows 46 pixels or more apart at 320, each ending inside the plot (but a month's
-  name at 84%, up to half a pixel past it).
+  odd weeks keeps the week names a phone shows 46 pixels or more apart at 320, each ending inside the plot (but a
+  month's name at 84%, up to half a pixel past it).
 - `<svg class="now">`, today's column: a dot at today's shelf price and at today's sale price, top to bottom, each with
   its price beside it in its line's colour, the labels LABEL_GAP pixels apart at least and none below the date line;
   the lower price (what the shopper pays; both when equal) in bold (`now`). Then "today" (TODAY_WORD) under them.
@@ -82,7 +82,8 @@ NEAR = (Fraction(22, 100), Fraction(84, 100))    # a date outside this share of 
 # wide, as is the widest name (the months' at most 23.9); a name starts 5 pixels after its mark. So on any plot of
 # 516.7 pixels or more (a screen of 48rem or more, where every name shows) a name from 8% clears the first date by 5.5
 # pixels or more, and one up to 91% ends inside the plot, short of the today column. A phone hides more (NEAR and
-# ALTERNATE_WEEKS), so the names it shows stay inside the plot down to a 320-pixel screen.
+# ALTERNATE_WEEKS), so the names it shows stay inside the plot down to a 320-pixel screen, but for a month's name at
+# exactly 84%, which ends up to half a pixel past it.
 NAMED = (Fraction(8, 100), Fraction(91, 100))
 # From this many days, a weekly span's names an odd number of weeks before today are hidden on a phone too. A week is
 # 7/span x 178 pixels on a 320-pixel screen; a 40.8-pixel name with 5 pixels before the next one needs 45.8, which

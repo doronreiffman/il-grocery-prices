@@ -156,8 +156,9 @@ NUMBER_WORDS = ("Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "
 BARCODE = "Barcode"
 PER = {"unit": "per unit", "kg": "per kilogram"}             # P4: a weighed deal's price is a kilogram's
 BROWSE_LINK = "Browse by first letter"                       # search.js's own "browse by first letter"
-# The price chart (store first, q33; the module's docstring)
-CHART_KEY = ("shelf price", "on sale", "on sale, price not read")    # the grey line, the green stretches, the foot marks
+# The price chart (store first, q33; the module's docstring). The key's words for its marks (the site's look, q36): the
+# shelf price's ink step line, the sale price's green step line, the green ticks on the date line
+CHART_KEY = ("shelf price", "on sale", "on sale, price not read")
 CHART_KINDS = ("usually", "lowest", "highest", "today")               # the labels, in the text alternative's order
 # The site's look (q36; the module's docstring)
 PRICE_TODAY = "Price today:"                                          # before today's price, under the verdict

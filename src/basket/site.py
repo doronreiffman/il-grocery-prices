@@ -1,7 +1,7 @@
 """The site bucket's side of the scheduled build: the published files read back, the latest day on the site, the
 build's files put up, and one CloudFront invalidation. It does in the Lambda what `scripts/publish.sh` does on the
 Mac, with the same settings. A file's content type is set by its last suffix, never guessed (the site's response
-headers send nosniff: a browser uses no stylesheet or font sent as another type), so a forecasts file `.csv.gz` goes
+headers send nosniff: a browser uses no stylesheet sent as another type), so a forecasts file `.csv.gz` goes
 up as gzip, not as text; and browsers keep a file five minutes, so an upload shows within minutes of the invalidation:
 
     .html   text/html; charset=utf-8          .csv    text/csv; charset=utf-8

@@ -267,7 +267,8 @@ def test_every_number_on_each_store_page_is_in_the_site_day_file():
 def test_every_number_on_the_front_page_is_in_the_site_day_file():
     """The site's look (q36): each store type's label on the root carries its count of promotions today, its column's
     `front.promotions` in the site-day file; where that is null (Express, a hole; Carrefour Market, a promotion hole)
-    the label has no figure. No other number is on the root."""
+    the label has no figure, and the picker holds no other number. It counts the picker's numbers, not every number
+    on the root."""
     days = _days(holes={(EXPRESS, DAY)}, promo_holes={("carrefour-market", DAY)})
     fronts = _fronts()
     found = _site_day(fronts=fronts, column_days=days)["columns"]

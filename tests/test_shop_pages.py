@@ -14,6 +14,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from fractions import Fraction
 from html import unescape
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -25,11 +26,13 @@ from basket.stores import Store
 from basket.words import ALWAYS as BASKET_ALWAYS, CHAIN_NAMES, METHOD_INTRO, TITLE as BASKET_TITLE, joined
 from shopper.columns import BY_KEY, COLUMNS, FLOOR
 import shopper.pages as pages_module
+import shopper.words as words_module
 from shopper.history import READ_DAYS, ColumnDay
-from shopper.pages import (BASKET_PAGE, BASKET_SECTION, CONDITIONS, CONDITIONS_NOTE, NO_DEALS, PICK_GROUPS, PICK_TITLE,
-                           SCORED_SO_FAR, ColumnsToday, StoreFront, column_ready, promotions_shown, render_basket,
-                           render_method, render_record, render_root, render_store, scorecard_section, shown_rows,
-                           store_path)
+from shopper.check import _link_problem, _tags
+from shopper.pages import (BASKET_PAGE, BASKET_SECTION, CONDITIONS, CONDITIONS_NOTE, NO_DEALS, ON_THIS_PAGE,
+                           PICK_GROUPS, PICK_TITLE, SCORED_SO_FAR, ColumnsToday, StoreFront, column_ready,
+                           promotions_shown, render_basket, render_method, render_record, render_root, render_store,
+                           scorecard_section, shown_rows, store_path)
 from shopper.assets import STYLESHEET, asset_files
 from shopper.product import CHAIN_SPAN, page_path
 from shopper.search import browse_pages
@@ -204,10 +207,14 @@ def test_the_chains_headings_stay_for_screen_readers():
 
 def test_the_hiring_links_stand_alone():
     """The design's front page: the four links ("Built by ...", "How this is made", "Track record", "Code on GitHub")
-    side by side, nothing between them; the stylesheet spaces them."""
+    side by side, no dot between them; the stylesheet spaces them. A single space parts them (Task 10's ruling): the
+    line is a flex row, which draws no text of white space alone, so the look is the same, and without the stylesheet
+    (reader mode, copied text) the four do not run together."""
     hiring = re.search(r'<p class="hiring">(.*?)</p>', _root()).group(1)
-    assert hiring == "".join(f'<a href="{href}">{label}</a>' for label, href in HIRING)
+    assert hiring == " ".join(f'<a href="{href}">{label}</a>' for label, href in HIRING)
     assert len(HIRING) == 4 and "·" not in hiring
+    assert _read(hiring) == " ".join(label for label, _ in HIRING)
+    assert ".hiring{display:flex;" in asset_files()[STYLESHEET].decode("utf-8")
 
 
 # ---- a store type's front page: its deals by saving, the top 100, under a headline (store first, q33) ----
@@ -618,14 +625,19 @@ def test_the_chains_line_is_on_the_front_page_only():
 def test_the_header_says_pick_your_store_before_a_pick():
     """The design's header before a pick, on every page, store pages included (the controller's ruling: search.js
     names the remembered pick); its pick link leads up to the picker, `#pick` on the root, whose section is the
-    script's (`data-page="root"`); no page but a product page has the badge row, which the script arranges."""
+    script's (`data-page="root"`); no page but a product page has the badge row, which the script arranges, and the only
+    other row of links, the method page's to its own sections (Task 10), is a `nav` of another class, which the script
+    does not read (`nav.badges`)."""
     for page, up in _every_page():
         header = _header(page)
         assert PICK_LINK.format(up=up) in header and header.count("<a ") == 2, up
         assert "store/" not in header and "change" not in header
     assert '<section id="pick" data-page="root">' in _root()
     for page, _ in _every_page()[:5]:
-        assert '<nav class="badges">' not in page and "<nav" not in page
+        assert '<nav class="badges">' not in page
+        assert re.findall(r"<nav\b[^>]*>", page) == ([f'<nav class="toc" aria-label="{ON_THIS_PAGE}">']
+                                                      if page == _method() else [])
+    assert 'document.querySelector("nav.badges")' in SEARCH_JS
 
 
 # ---- the method page ----
@@ -649,6 +661,80 @@ def _columns(**more) -> ColumnsToday:
 
 def _method(columns: ColumnsToday | None = None, exclusions=METHOD_EXCLUSIONS) -> str:
     return render_method(BASKET, exclusions, columns or _columns(), BASKET_DAY, "12:03", "0123456789ab", a_public())
+
+
+class _TopSections(HTMLParser):
+    """The ids of a page's top-level sections, in order: a section inside another (the basket's method parts) is not
+    one."""
+
+    def __init__(self):
+        super().__init__()
+        self.depth, self.ids = 0, []
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "section":
+            self.depth += 1
+            if self.depth == 1:
+                self.ids.append(dict(attrs).get("id"))
+
+    def handle_endtag(self, tag):
+        if tag == "section":
+            self.depth -= 1
+
+
+def test_the_method_page_lists_its_own_sections():
+    """The site's look (q36, Task 10; docs/site-look.md, "Page by page" and "What the owner has decided"): right after
+    the lead, a row of links to the page's own sections, spoken as ON_THIS_PAGE ("On this page", for screen readers,
+    not shown), its links the page's top-level sections in order, each once, each link's words that section's heading
+    as it stands; and every link's fragment resolves, as the site check's rule holds it, to an id on the page."""
+    page = _method()
+    assert ON_THIS_PAGE == "On this page"
+    row = re.search(r'<nav class="toc" aria-label="([^"]*)"><ol>(.*?)</ol></nav>', page)
+    assert row.group(1) == ON_THIS_PAGE and page.count('<nav class="toc"') == 1
+    lede = re.search(r'<p class="lede">.*?</p>\n', page)
+    assert lede.end() == row.start()                                      # right after the lead
+    links = re.findall(r'<li><a href="#([^"]+)">(.*?)</a></li>', row.group(2))
+    assert "".join(f'<li><a href="#{id_}">{words}</a></li>' for id_, words in links) == row.group(2)
+    top = _TopSections()
+    top.feed(page)
+    assert top.ids == ["columns", "carrefour", "outside", "floor", "rules", "never", "measured", "law", "reproduce",
+                       BASKET_SECTION]
+    assert [id_ for id_, _ in links] == top.ids                           # every section, in order, each once
+    for id_, words in links:
+        assert re.search(rf'<section id="{id_}"><h2>(.*?)</h2>', page).group(1) == words
+    assert dict(links)["headline-basket"] == BASKET_TITLE and dict(links)["rules"] == "The rules"
+    ids = {found["id"] for _, found in _tags(page) if "id" in found}
+    for id_, _ in links:
+        assert _link_problem("method.html", f"#{id_}", {"method.html"}, set(), {"method.html": ids}) is None
+    assert _link_problem("method.html", "#nowhere", {"method.html"}, set(), {"method.html": ids})   # the rule bites
+    assert ".toc ol{display:flex;" in asset_files()[STYLESHEET].decode("utf-8")
+
+
+def test_the_method_page_says_a_no_deal_is_yellow():
+    """Task 10's ruling 1 (the owner's choice, docs/site-look.md, "NO DEAL: the yellow label"): S5 says a No deal's
+    badge is yellow, the rest of the sentence as before; no grey on the method page's rules."""
+    rules = _rules_of(_method())
+    s5 = _rule(rules, "S5 ")
+    assert f"one for each band: {joined(_bands(SHADES))}; a No deal's badge is yellow. Every Deal and No deal" in s5
+    assert "grey" not in rules and "neutral" not in rules
+    assert "--nd:#ffd60a;" in asset_files()[STYLESHEET].decode("utf-8")   # the stylesheet's yellow
+
+
+def test_the_method_page_names_the_reasons_other_count():
+    """Task 10's ruling 2 (the owner, 2026-11-15: docs/site-look.md, "Word changes" 3): S8 says a reason names "days
+    tracked" when every day tracked has a day price, and its own count, "days with a known price", when a sale day of
+    unknown price has none, so a page never shows two different numbers both called days tracked; S6 says the same of
+    "Lowest in the ...". The examples are the code's own words (`shopper.words._counted`)."""
+    rules = _rules_of(_method())
+    s6, s8 = _rule(rules, "S6 "), _rule(rules, "S8 ")
+    assert words_module._counted(9, 9) == "9 days tracked" and words_module._counted(83, 86) == (
+        "83 days with a known price")
+    assert ('names the days it rests on, the days tracked with a day price: "days tracked" when every day tracked has '
+            'one ("Usually ₪11.90, sales included (9 days tracked)."), else their own count, since a sale day of '
+            'unknown price (S1) has none ("Usually ₪22.90, sales included (83 days with a known price)."), so a page '
+            "never shows two different numbers both called days tracked.") in s8
+    assert ('"Lowest in the 10 days tracked.", counting the days tracked with a day price, named as days with a known '
+            'price when some have none ("Lowest in the 83 days with a known price.").') in s6
 
 
 def test_the_method_pages_never_list_is_the_words_list():

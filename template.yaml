@@ -687,8 +687,10 @@ Resources:
                 - !Sub "arn:aws:s3:::${SiteBucketName}/site-days/*"
                 - !Sub "arn:aws:s3:::${SiteBucketName}/forecasts/*"
                 - !Sub "arn:aws:s3:::${SiteBucketName}/scores/*"
-            # Finds the site's latest day; without it, S3 answers a day not yet published with 403
-            # instead of 404.
+            # The site run lists the site's keys under days/ and site-days/ (the site's latest day,
+            # and the site-day file before the run's day), p/ (the product pages the publish guard
+            # holds the build to) and assets/ (an asset the bucket holds is not put again); without
+            # it, S3 answers a day not yet published with 403 instead of 404.
             - Sid: ListSite
               Effect: Allow
               Action: s3:ListBucket

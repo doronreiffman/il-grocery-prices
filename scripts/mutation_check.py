@@ -43,7 +43,8 @@ ROOT = Path(__file__).resolve().parent.parent
 # Seconds a mutation's pytest run may take (q25), and the same tests' run unmutated after a time-out. The slowest target
 # tests are tests/test_golden_90.py: 417 to 552 s run alone on the Mac (docs/shopper-site-plan.md, Task 25 and its
 # speed-ups; 448 s on 2026-11-11) and about 689 s for its two big tests inside a full run beside another copy's (the
-# same doc). The other 87 target sets took at most 57 s each unmutated (tests/test_basket_handler.py, 2026-11-11). CI's
+# same doc). The other 91 target sets (each distinct list of target tests in MUTATIONS) took at most 57 s each unmutated
+# (tests/test_basket_handler.py, 2026-11-11; the five added since, at most 3 s each, 2026-11-16). CI's
 # runner is about as fast: the whole suite in 914 s (CI run 42925889780's pytest step) against 750 to 933 s on the Mac
 # (749.7 s in this change's own full run on 2026-11-11; 933 s in the same doc, at Task 25).
 # 1,400 s is twice the loaded run; the clean run has the same limit, so a clean golden run under load reads as passing.
@@ -3071,7 +3072,7 @@ MUTATIONS = {
     "the root's tab title the question (q36 front)": (SHOP_PAGES, '    return page(SITE_NAME, ', '    return page(f"{FRONT_TITLE} - {SITE_NAME}", '),
     'a count on a store type not read (q36 front)': (SHOP_PAGES, '    return front.promotions if read else None\n', '    return front.promotions\n'),
     "the picker without the chains' headings (q36 front)": (SHOP_PAGES, '<div class="chain"><h3>{text(CHAIN_NAMES[slug])}</h3><ul>', '<div class="chain"><ul>'),
-    'the hiring links with dots (q36 front)': (SHOP_PAGES, '    links = "".join(f\'<a href="{escape(href)}">{text(label)}</a>\' for label, href in HIRING)\n', '    links = " · ".join(f\'<a href="{escape(href)}">{text(label)}</a>\' for label, href in HIRING)\n'),
+    'the hiring links with dots (q36 front)': (SHOP_PAGES, '    links = " ".join(f\'<a href="{escape(href)}">{text(label)}</a>\' for label, href in HIRING)\n', '    links = " · ".join(f\'<a href="{escape(href)}">{text(label)}</a>\' for label, href in HIRING)\n'),
     "the store title's last word off the label (q36 front)": (SHOP_PAGES, '{text(asked)} <span class="yes">{text(last)}</span></h1>', '{text(asked)} {text(last)}</h1>'),
     "the headline's numbers not bold (q36 front)": (SHOP_PAGES, '        said = said.replace(numbers, f"<b>{numbers}</b>", 1)\n', ''),
     "a hole's figures set in bold as the headline's (q36 front)": (SHOP_PAGES, '    if said == text(headline(front.column, len(front.rows), front.checked)):\n', '    if True:\n'),
@@ -3266,6 +3267,15 @@ MUTATIONS = {
     "basket.html with the basket's own style (q36 shell)": (PAGE, '    style = head or f"<style>{STYLE}</style>"', '    style = f"<style>{STYLE}</style>"'),
     "the basket's own pages with a body class (q36 shell)": (PAGE, 'f\'<body class="t-{kind}">\' if kind else "<body>"', 'f\'<body class="t-{kind}">\''),
     'the shared files not written (q36 shell)': (SHOP_BUILD, '        **asset_files(),\n', ''),
+    # the site's look (q36, Task 10): the method page's row of links to its own sections, named On this page for screen
+    # readers; S5's yellow No deal; S6's and S8's other count of days; the front page's hiring links parted by a space
+    'a section left out of the row (q36 method)': (SHOP_PAGES, '                    for found in (SECTION_HEAD.match(section) for section in sections))\n', '                    for found in (SECTION_HEAD.match(section) for section in sections[:-1]))\n'),
+    'the row without its spoken label (q36 method)': (SHOP_PAGES, '<nav class="toc" aria-label="{escape(ON_THIS_PAGE)}">', '<nav class="toc">'),
+    "a link's words not its section's heading (q36 method)": (SHOP_PAGES, """{found[2]}</a></li>'""", """{found[1]}</a></li>'"""),
+    'S5 saying a No deal is grey (q36 method)': (SHOP_PAGES, '"yellow. Every Deal and No deal badge', '"a neutral grey. Every Deal and No deal badge'),
+    'S8 calling every count days tracked (q36 method)': (SHOP_PAGES, ', else their "\n         "own count, since a sale day of unknown price (S1) has none (\\"Usually ₪22.90, sales included (83 days with "\n         "a known price).\\"), so a page never shows two different numbers both called days tracked.', '.'),
+    'S6 calling every count days tracked (q36 method)': (SHOP_PAGES, ', named as days with a known "\n         "price when some have none (\\"Lowest in the 83 days with a known price.\\")', ''),
+    'the hiring links run together (q36 front)': (SHOP_PAGES, '    links = " ".join(f\'<a href="{escape(href)}">', '    links = "".join(f\'<a href="{escape(href)}">'),
 }
 
 

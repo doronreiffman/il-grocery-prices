@@ -665,13 +665,15 @@ def test_a_page_that_is_not_utf8_is_named_not_a_crash(site):
 
 
 def test_a_link_with_a_fragment_resolves_to_the_id(site):
-    """Task 18's carry: basket.html's method link holds a fragment; the file must exist and hold that id."""
+    """Task 18's carry: basket.html's method link holds a fragment; the file must exist and hold that id. So does each
+    link of the method page's row to its own sections (the site look's Task 10), held to the ids on its own page."""
     assert 'href="method.html#headline-basket"' in (site / "basket.html").read_text(encoding="utf-8")
     add(site, MILK_PAGE, f'<a href="#c-{OSHER}">x</a> <a href="../method.html?x=1#headline-basket">y</a>')
     assert check_site(site) == []
     replace(site, "method.html", '<section id="headline-basket">', '<section id="basket-method">')
     assert check_site(site) == ["basket.html: a link to 'method.html#headline-basket': method.html holds no id "
                                 "'headline-basket'",
+                                "method.html: a link to '#headline-basket': method.html holds no id 'headline-basket'",
                                 f"{MILK_PAGE}: a link to '../method.html?x=1#headline-basket': method.html holds no id "
                                 "'headline-basket'"]
 

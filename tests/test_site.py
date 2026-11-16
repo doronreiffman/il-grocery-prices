@@ -375,8 +375,8 @@ def test_assets_go_up_only_with_the_pages(site, tmp_path):
 
 
 def test_each_asset_goes_up_with_its_content_type(site, tmp_path):
-    """The site sends nosniff, so a stylesheet or a font of another type would not be used: the stylesheet goes up as
-    CSS, the fonts as fonts and the licences as plain text, each with max-age=300, as every file."""
+    """The site sends nosniff, so a stylesheet of another type would not be used: the stylesheet goes up as CSS, the
+    fonts as fonts and the licences as plain text, each with max-age=300, as every file."""
     site.upload(built(tmp_path), [], with_pages=True)
     assert {key: held(site)[key] for key in ASSETS} == {
         "assets/OFL-archivo.txt": (b"assets/OFL-archivo.txt", "text/plain; charset=utf-8", "max-age=300"),
