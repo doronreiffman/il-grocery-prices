@@ -144,12 +144,15 @@ def _width(svg: ElementTree.Element) -> int:
 
 
 def _names_the_labels(svg: ElementTree.Element, found: Verdict) -> None:
-    """The title is chart_summary and names exactly the labels drawn: the label rule's two copies, the chart's and
-    the words', agree for this verdict."""
+    """The title is chart_summary and names exactly the labels drawn but the lowest and the highest: the label rule's
+    two copies, the chart's and the words', agree for this verdict. The summary's lowest and highest count today's
+    price (the site look's call 3, q36) and these side labels do not, until the chart is rewritten."""
     summary = chart_summary(found)
     assert svg[0].tag == "title" and svg[0].text == summary
     named = [] if summary == "Price chart." else summary.removeprefix("Price chart: ").removesuffix(".").split(", ")
-    assert sorted(named) == sorted(label.text for label in svg.iter("text")), summary
+    drawn = [label.text for label in svg.iter("text")]
+    assert sorted(said for said in named if not said.startswith(("lowest ", "highest "))) == sorted(
+        said for said in drawn if not said.startswith(("lowest ", "highest "))), summary
 
 
 # ---- the tests ----
@@ -297,6 +300,7 @@ def test_the_labels_name_the_usual_lowest_and_highest_prices():
     svg, _ = _read(render_chart(found, DAY))
     assert set(_labels(svg)) == {"today ₪4.00"}
     _names_the_labels(svg, found)
+    assert chart_summary(found) == "Price chart: lowest ₪4.00, highest ₪4.00, today ₪4.00."     # today's alone (q36)
     # nothing known at all: the summary and the chart both name no label
     found = _verdict(days, today=None, usual=None, call="too_few")
     svg, _ = _read(render_chart(found, DAY))
@@ -332,7 +336,8 @@ def test_a_text_alternative_inside_the_svg():
     other = _read(render_chart(_verdict(days, column="ramilevy"), DAY))[0][0]
     assert other.get("id") == "chart-ramilevy" != title.get("id")
     # fewer labels, fewer words; none, none
-    assert chart_summary(_verdict([_unknown(1)], today="4.00", usual=None)) == "Price chart: today ₪4.00."
+    assert chart_summary(_verdict([_unknown(1)], today="4.00", usual=None)) == (
+        "Price chart: lowest ₪4.00, highest ₪4.00, today ₪4.00.")
     assert chart_summary(_verdict([_unknown(1)], today=None, usual=None, call="too_few")) == "Price chart."
 
 

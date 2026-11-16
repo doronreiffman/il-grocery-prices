@@ -2,10 +2,11 @@
 F10 and the amendment's "Words"; the plan's questions J, K, M (f) and O; the first pre-flight's S10, the second's S7,
 N4, N7 and N23; Task 9's review rulings on a change's dates; Task 15's review rulings (fix round 1) on the shown figures,
 the bounds beside a gap in the records and "before today"; and store first's verdict words (docs/store-first.md,
-"Words"; the store-first plan's Task 3). P8's sentences, the listed-price history and P9's words went with their page
-parts (store first, q33).
+"Words"; the store-first plan's Task 3); and the site look's decided words (q36: docs/site-look.md, "Word changes";
+the site-look plan's Task 3). P8's sentences, the listed-price history and P9's words went with their page parts (store
+first, q33).
 
-The design's quoted sentences are read from docs/shopper-site.md (and the plan's answers from
+The design's quoted sentences are read from docs/shopper-site.md and docs/site-look.md (and the plan's answers from
 docs/shopper-site-plan.md), so a change on either side shows. The pairs and column-days are built as
 tests/test_measures.py builds them."""
 import re
@@ -226,7 +227,8 @@ def _every_sentence() -> list[str]:
             as_listed([column.key for column in COLUMNS]), *(unreadable(slug) for slug in slugs),
             listed_price(Decimal("11.90")), deal_price(Fraction(1), "unit"), deal_price(Fraction(1), "kg"),
             buy(Decimal(3)), stores_range(Decimal(1), Decimal(2)), minimum_spend(Decimal(150)), BROWSE_LINK,
-            BARCODE, SEARCH_LABEL, FOLD_INTRO, NONE_YET, NOT_READ_TODAY, STORY_HEADING, *STORE_RULES]
+            BARCODE, SEARCH_LABEL, FOLD_INTRO, NONE_YET, NOT_READ_TODAY, STORY_HEADING, *STORE_RULES,
+            *_site_look_words()]
 
 
 def test_no_sentence_says_a_never_phrase_or_we():
@@ -343,18 +345,28 @@ def test_the_no_verdict_lines_and_the_plans_words():
             words.badge(_verdict(call))
 
 
-def test_the_reason_counts_the_days_with_a_price():
-    """S8: the reason names the days it rests on, those with a day price, never the tracked days whose sale price was
-    not read; one day is "1 day"."""
-    days = _days_of("11.90", None, "11.90", "11.90", on=())
+def test_the_reason_names_its_own_count_when_it_differs():
+    """S8 and site-look.md's "Word changes" 3: the reason and "Lowest in the ..." rest on the days with a day price and
+    say "days tracked" when every tracked day has one, as before; when a sale day's price was not read, the counts
+    differ and they name their own, "days with a known price", so "days tracked" is only ever every tracked day
+    (`how_often`'s); one day is "1 day"."""
+    days = _days_of("11.90", None, "11.90", "11.90", on=[0])
     deal = _verdict(days=days, today="9.90", usual="11.90", saving="2.00", struct={"per": "unit"})
-    assert words.reason(deal) == "Usually ₪11.90, sales included (3 days tracked)."
+    assert words.reason(deal) == "Usually ₪11.90, sales included (3 days with a known price)."
+    assert words.last_low(deal) == "Lowest in the 3 days with a known price."
+    assert words.how_often(deal) == "On sale on 2 of the 4 days tracked."
     always = _verdict("no_deal", days=_days_of("9.90", None, "9.90", "10.90"), today="9.90", usual="9.90",
                       saving="0.00", struct={"per": "unit"})
-    assert words.reason(always) == "It's been ₪9.90 or less on 2 of the 3 days tracked."
+    assert words.reason(always) == "It's been ₪9.90 or less on 2 of the 3 days with a known price."
     small = _verdict("no_deal", days=_days_of("5.00", None, "5.00"), today="4.10", usual="5.00", saving="0.90",
                      struct={"per": "unit"})
-    assert words.reason(small) == "Only ₪0.90 below its usual ₪5.00 (2 days tracked)."
+    assert words.reason(small) == "Only ₪0.90 below its usual ₪5.00 (2 days with a known price)."
+    # every day priced: the two counts are one, said "days tracked" as before
+    equal = _verdict(days=_days_of("11.90", "11.90", "11.90"), today="9.90", usual="11.90", saving="2.00",
+                     struct={"per": "unit"})
+    assert words.reason(equal) == "Usually ₪11.90, sales included (3 days tracked)."
+    assert words.reason(_verdict(days=_days_of("6.00", None), today="4.50", usual="6.00", saving="1.50",
+                                 struct={"per": "unit"})) == "Usually ₪6.00, sales included (1 day with a known price)."
     one = _verdict(days=_days_of("6.00"), today="4.50", usual="6.00", saving="1.50", struct={"per": "unit"})
     assert words.reason(one) == "Usually ₪6.00, sales included (1 day tracked)."
     assert words.last_low(one) == "Lowest in the 1 day tracked."
@@ -392,7 +404,8 @@ def test_last_this_low_needs_todays_price_and_a_day_price():
     assert words.last_low(_verdict(days=_days_of("9.90"))) is None                        # today unknown
     assert words.last_low(_verdict(days=(), today="9.90")) is None                        # nothing before today
     assert words.last_low(_verdict(days=_days_of(None, None), today="9.90")) is None      # no day price
-    assert words.last_low(_verdict(days=_days_of(None, "12.00"), today="9.90")) == "Lowest in the 1 day tracked."
+    assert words.last_low(_verdict(days=_days_of(None, "12.00"), today="9.90")) == (
+        "Lowest in the 1 day with a known price.")                                       # 2 tracked, 1 with a price
 
 
 def test_an_unread_sale_price_says_no_last_this_low():
@@ -533,3 +546,121 @@ def test_the_store_pages_lead_line():
     unready = StoreFront("shufersal-sheli", False, (), 3, 1840, 6210)
     assert store_lead(unready, _column_day()) == NONE_YET
     assert store_lead(unready, _column_day(promo_hole=True)) == NOT_READ_TODAY
+
+
+# The site's look (q36): the decided words (docs/site-look.md, "Word changes"; the site-look plan's "Words")
+
+SITE_LOOK = (ROOT / "docs" / "site-look.md").read_text(encoding="utf-8")
+
+
+def _site_look_words() -> list[str]:
+    """The site look's new words over their forms, for the NEVER, pronoun and odds checks above."""
+    deal = _verdict(days=_days_of("11.90", None, "11.90"), today="9.90", usual="11.90", saving="2.00",
+                    struct={"per": "kg"})
+    no_deal = _verdict("no_deal", days=_days_of("9.90", None, "9.90"), today="9.90", usual="9.90", saving="0.00",
+                       struct={"per": "unit"})
+    small = _verdict("no_deal", days=_days_of("9.90", None, "9.90"), today="9.50", usual="9.90", saving="0.40",
+                     struct={"per": "unit"})
+    return [words.ROOT_TITLE, words.ROOT_LINE, words.PRICE_TODAY, *words.STATS_HEADS, words.TODAY_WORD,
+            words.short_day(FRIDAY), words.month_name(FRIDAY), words.price_line(deal), words.price_line(no_deal),
+            words.verdict_words(deal), words.verdict_words(no_deal), words.short_verdict(deal),
+            *(words.short_verdict(_verdict(call)) for call in ("too_few", "not_sold", *words.NO_VERDICT)),
+            words.reason(deal), words.reason(no_deal), words.reason(small), words.last_low(deal),
+            " ".join(words.promotions_today(1347)), " ".join(words.promotions_today(1)), words.chart_summary(deal)]
+
+
+def test_a_page_never_shows_two_numbers_called_days_tracked():
+    """The owner's rule (site-look.md, "Word changes" 3): over tests/shopper_random.py's histories, today a record
+    with its promotions read, the numbers before "days tracked" (or "day tracked") in the reason, "Lowest in the ..."
+    and "How often on sale" are one number; and the histories hold verdicts whose two counts differ, so the rule is
+    tried."""
+    import random
+
+    import shopper_random
+    from shopper.history import READ_DAYS
+    from shopper.verdict import verdict
+    from test_verdict import COLUMN, DAY, _column_days, back
+    rng = random.Random(36)
+    differing = 0
+    for n in range(400):
+        column_days = shopper_random.column_days(rng, COLUMN, "shufersal", back(READ_DAYS + 5), back(1))
+        column_days[(COLUMN, DAY)] = _column_days()[(COLUMN, DAY)]
+        pair = shopper_random.pair(rng, COLUMN, shopper_random.code(n), back(READ_DAYS + 5), DAY)
+        found = verdict(pair, COLUMN, column_days, DAY)
+        said = [line for line in (words.reason(found), words.last_low(found), words.how_often(found)) if line]
+        assert len({count for line in said for count in re.findall(r"(\d+) days? tracked", line)}) <= 1, said
+        differing += words.reason(found) is not None and len(found.priced) != len(found.days)
+    assert differing > 10, differing
+
+
+def test_the_front_pages_words():
+    """The front page's headline and the line under it, the owner's (site-look.md, "Word changes" 1 and 2): "Deal"
+    and "No Deal" each set on its label."""
+    assert words.ROOT_TITLE == "Deal or No Deal?" and f'(written "{words.ROOT_TITLE}"' in SITE_LOOK
+    assert words.ROOT_LINE == ("Find out if a sale is actually a deal: pick the store you're in, then look up the "
+                               "product. Each sale is checked against what it usually costs there.")
+    assert f'"{words.ROOT_LINE}"' in SITE_LOOK
+    assert words.ROOT_TITLE.removesuffix("?").split(" or ") == ["Deal", "No Deal"]
+
+
+def test_the_price_line():
+    """"Price today: ₪14.00" under the verdict (site-look.md, "Word changes" 8), a weighed deal's a kilogram's (P4);
+    none without today's price: on a hole, not sold, sale prices not read today, or a sale whose price was not
+    read."""
+    from test_verdict import _cases, _judge
+    assert words.PRICE_TODAY == "Price today:"
+    assert words.price_line(_verdict("no_sale", today="14.00")) == "Price today: ₪14.00"
+    deal = _verdict(column="ramilevy", today="50.00", usual="69.90", saving="19.90", struct={"per": "kg"})
+    assert words.price_line(deal) == "Price today: ₪50.00 a kilogram"
+    for call in ("unread_today", "price_unread", "not_sold", "too_few"):
+        points, days = _cases()[call]
+        found = _judge(points, **days)
+        assert (found.call, words.price_line(found)) == (call, None)
+
+
+def test_the_charts_words():
+    """The chart's short dates, month names and table heads (site-look.md, "Word changes" 5 and 6); "today" as the
+    last date and the date of a lowest or highest that is today's."""
+    assert words.short_day(date(2026, 8, 16)) == "16 Aug"
+    assert words.short_day(date(2026, 11, 7)) == "7 Nov"
+    assert words.month_name(date(2026, 9, 1)) == "Sep"
+    assert words.STATS_HEADS == ("Lowest", "Highest", "Usual", "Today")
+    assert words.TODAY_WORD == "today"
+
+
+def test_the_verdict_alone_and_the_badge_rows_words():
+    """A store row's badge is the verdict alone, without "At <store>:" (site-look.md, "Word changes" 8); a badge under
+    "Elsewhere today" is the store type's name, then what follows it (`short_verdict`)."""
+    from shopper.columns import BY_KEY
+    deal = _verdict(column="ramilevy", today="7.00", usual="8.90", saving="1.90", struct={"per": "unit"})
+    no_deal = _verdict("no_deal", column="ramilevy", today="8.90", usual="8.90", saving="0.00", struct={"per": "unit"})
+    assert (words.verdict_words(deal), words.verdict_words(no_deal)) == ("DEAL · ₪1.90 off", "NO DEAL")
+    with pytest.raises(ValueError, match="no_sale"):
+        words.verdict_words(_verdict("no_sale"))
+    assert words.short_verdict(deal) == "DEAL · ₪1.90 off"
+    assert [words.short_verdict(_verdict(call)) for call in ("no_sale", "too_few", "not_sold")] == [
+        "no sale today", "too few files today", "not sold today"]
+    for found in (deal, no_deal, *(_verdict(call, column="ramilevy") for call in ("too_few", "not_sold",
+                                                                                   *words.NO_VERDICT))):
+        assert words.short_badge(found) == f"{BY_KEY[found.column].name} · {words.short_verdict(found)}"
+
+
+def test_promotions_today():
+    """A store's label on the front page: its count, then the words (site-look.md, "Word changes" 4); one is
+    "promotion", by the rule every count on the site follows."""
+    assert words.promotions_today(1347) == ("1,347", "promotions today")
+    assert words.promotions_today(1) == ("1", "promotion today")
+
+
+def test_the_summary_counts_today():
+    """The chart's spoken summary takes its lowest and highest over the tracked days' day prices and today's price
+    (site-look.md, "Calls made in this design" 3), so a deal at a new low says it: the design's example. One day
+    was listed at ₪26.90 and on sale at ₪19.90, so the summary's figures are day prices, never listed ones."""
+    from shopper.verdict import Day
+    days = (Day(date(2026, 11, 10), Decimal("22.90"), Decimal("22.90"), False),
+            Day(date(2026, 11, 11), Decimal("26.90"), Decimal("19.90"), True),
+            Day(date(2026, 11, 12), Decimal("22.90"), Decimal("22.90"), False),
+            Day(date(2026, 11, 13), Decimal("24.90"), Decimal("24.90"), False))
+    deal = _verdict(days=days, today="17.90", usual="22.90", saving="5.00", struct={"per": "unit"})
+    assert words.chart_summary(deal) == "Price chart: usually ₪22.90, lowest ₪17.90, highest ₪24.90, today ₪17.90."
+    assert f'aria-label="{words.chart_summary(deal)}"' in SITE_LOOK

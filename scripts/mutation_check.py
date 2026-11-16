@@ -160,8 +160,8 @@ SHOP_VERDICT = ("src/shopper/verdict.py", ["tests/test_verdict.py"])
 SHOP_CHART = ("src/shopper/chart.py", ["tests/test_chart.py"])
 # The product label's barcode, EAN-13, UPC-A and EAN-8 (the site look, q36).
 SHOP_BARS = ("src/shopper/bars.py", ["tests/test_bars.py"])
-# The chart's words: chart_summary's own copy of the labels' choice, which tests/test_shop_words.py never tests.
-WORDS_FOR_SHOP_CHART = ("src/shopper/words.py", ["tests/test_chart.py"])
+# The site's words, the chart's spoken summary among them: tests/test_shop_words.py pins the summary's whole sentence
+# (q36), so its mutations run there.
 SHOP_WORDS = ("src/shopper/words.py", ["tests/test_shop_words.py"])
 # Search and browse (Task 17): shopper/search.py with its Python tests, and the one script with its Node tests (Node is a CI
 # tool for this file; a machine without it errs every SHOP_SEARCH_JS mutation to exit 1, a vacuous catch: the first
@@ -3101,15 +3101,29 @@ MUTATIONS = {
     "a shopper date with its year (q33 words)": (SHOP_WORDS, '    return f"{day:%-d %B}"\n', '    return f"{day:%-d %B %Y}"\n'),
     "the always-on form for a small saving (q33 words)": (SHOP_WORDS, '    if found.saving <= 0:\n', '    if found.saving < 1:\n'),
     "'before this one' with no sale today (q33 words)": (SHOP_WORDS, 'before = " before this one" if found.on_sale_today else ""', 'before = " before this one"'),
-    "the day count from every tracked day in the reason (q33 words)": (SHOP_WORDS, '    days = _tracked(len(found.priced))\n', '    days = _tracked(len(found.days))\n'),
-    "the badge without the store type's name (q33 words)": (SHOP_WORDS, 'return f"At {BY_KEY[found.column].name}: {_verdict(found)}"', 'return _verdict(found)'),
+    "the day count from every tracked day in the reason (q33 words)": (SHOP_WORDS, '    days = _counted(len(found.priced), len(found.days))\n', '    days = _counted(len(found.days), len(found.days))\n'),
+    "the badge without the store type's name (q33 words)": (SHOP_WORDS, 'return f"At {BY_KEY[found.column].name}: {verdict_words(found)}"', 'return verdict_words(found)'),
     "a weighed saving without its kilogram (q33 words)": (SHOP_WORDS, 'return " a kilogram" if found.struct is not None and found.struct["per"] == "kg" else ""', 'return ""'),
-    "the badge row's line not in lower case (q33 words)": (SHOP_WORDS, 'said = (line[0].lower() + line[1:]).removesuffix(".")', 'said = line.removesuffix(".")'),
+    "the badge row's line not in lower case (q33 words)": (SHOP_WORDS, 'return (line[0].lower() + line[1:]).removesuffix(".")', 'return line.removesuffix(".")'),
     "the not-sold line without its last-seen day (q33 words)": (SHOP_WORDS, 'seen = "" if last is None else f", last seen {on_day(last)}"', 'seen = ""'),
     "the conditions without their capital (q33 words)": (SHOP_WORDS, 'found = [phrase[0].upper() + phrase[1:] for code', 'found = [phrase for code'),
     "how often counting only the days with a price (q33 words)": (SHOP_WORDS, 'sum(day.on_sale for day in found.days)', 'sum(day.on_sale for day in found.priced)'),
     "last this low with no day price before today (q33 words)": (SHOP_WORDS, '    if found.today_price is None or not found.priced:\n', '    if found.today_price is None:\n'),
     "how often said with no tracked day (q33 words)": (SHOP_WORDS, '    if not found.days:\n        return None\n    said = f"On sale on', '    said = f"On sale on'),
+    # the site's look (q36): the decided words (shopper.words) and lowest and highest counting today (shopper.verdict)
+    "the reason saying days tracked when the counts differ (q36 words)": (SHOP_WORDS, '    days = _counted(len(found.priced), len(found.days))\n', '    days = _tracked(len(found.priced))\n'),
+    "the reason naming the known-price count when the counts are equal (q36 words)": (SHOP_WORDS, '    days = _counted(len(found.priced), len(found.days))\n', '    days = _known(len(found.priced))\n'),
+    "last this low saying days tracked when the counts differ (q36 words)": (SHOP_WORDS, 'return f"Lowest in the {_counted(len(found.priced), len(found.days))}."', 'return f"Lowest in the {_tracked(len(found.priced))}."'),
+    "one day with a known price said as days (q36 words)": (SHOP_WORDS, "{_plural(count, 'day', 'days')} with a known price", "days with a known price"),
+    "a short date with its year (q36 words)": (SHOP_WORDS, '    return f"{day:%-d %b}"\n', '    return f"{day:%-d %b %Y}"\n'),
+    "a month's full name (q36 words)": (SHOP_WORDS, '    return f"{day:%b}"\n', '    return f"{day:%B}"\n'),
+    "the price line without a kilogram (q36 words)": (SHOP_WORDS, 'return f"{PRICE_TODAY} {price_text(found, found.today_price)}"', 'return f"{PRICE_TODAY} ₪{found.today_price}"'),
+    "one promotion said as promotions (q36 words)": (SHOP_WORDS, '_plural(count, "promotion today", "promotions today")', '"promotions today"'),
+    "the badge row's name and verdict run together (q36 words)": (SHOP_WORDS, 'return f"{BY_KEY[found.column].name} · {short_verdict(found)}"', 'return f"{BY_KEY[found.column].name} {short_verdict(found)}"'),
+    "the lowest leaving today out (q36 words)": (SHOP_VERDICT, '    lowest = min(prices)\n', '    lowest = min(day.price for day in found.priced)\n'),
+    "the highest leaving today out (q36 words)": (SHOP_VERDICT, '    highest = max(prices)\n', '    highest = max(day.price for day in found.priced)\n'),
+    "a lowest of today dated by an earlier day (q36 words)": (SHOP_VERDICT, '(lowest, _latest(found, lowest))', '(lowest, max((day.day for day in found.priced if day.price == lowest), default=None))'),
+    "a tie dated by its earlier day (q36 words)": (SHOP_VERDICT, '    return max(day.day for day in found.priced if day.price == price)\n', '    return min(day.day for day in found.priced if day.price == price)\n'),
     # store first (q33): the price chart (shopper.chart)
     'an untracked day drawn across (q33 chart)': (SHOP_CHART, '        if found and found[-1][-1][0] + timedelta(days=1) == seen:\n', '        if found:\n'),
     'a sale stretch on a day off sale (q33 chart)': (SHOP_CHART, 'for each in days if each.on_sale and each.price is not None]', 'for each in days if each.price is not None]'),
@@ -3127,10 +3141,10 @@ MUTATIONS = {
     'the days drawn in the order given (q33 chart)': (SHOP_CHART, '    days = sorted(found.days, key=lambda each: each.day)\n', '    days = list(found.days)\n'),
     'the key naming every mark, drawn or not (q33 chart)': (SHOP_CHART, '*([("sale", CHART_KEY[1])] if sale else []),\n             *([("unread", CHART_KEY[2])] if unread else [])]', '("sale", CHART_KEY[1]), ("unread", CHART_KEY[2])]'),
     "the key's entries run together (q33 chart)": (SHOP_CHART, 'key = " · ".join(', 'key = " ".join('),
-    "the summary without the usual price (q33 chart)": (WORDS_FOR_SHOP_CHART, 'prices = {"usually": found.usual, "lowest"', 'prices = {"usually": None, "lowest"'),
-    "the summary's lowest from the listed prices alone (q33 chart)": (WORDS_FOR_SHOP_CHART, '"lowest": min(priced, default=None)', '"lowest": min((day.listed for day in found.days), default=None)'),
-    "the summary's highest the listed maximum (q33 chart)": (WORDS_FOR_SHOP_CHART, '"highest": max(priced, default=None)', '"highest": max((day.listed for day in found.days), default=None)'),
-    "the summary without today's price (q33 chart)": (WORDS_FOR_SHOP_CHART, '              "today": found.today_price}\n', '              "today": None}\n'),
+    "the summary without the usual price (q33 chart)": (SHOP_WORDS, 'prices = {"usually": found.usual, "lowest"', 'prices = {"usually": None, "lowest"'),
+    "the summary's lowest from the listed prices alone (q33 chart)": (SHOP_WORDS, '"lowest": low,', '"lowest": min((day.listed for day in found.days), default=None),'),
+    "the summary's highest the listed maximum (q33 chart)": (SHOP_WORDS, '"highest": high,', '"highest": max((day.listed for day in found.days), default=None),'),
+    "the summary without today's price (q33 chart)": (SHOP_WORDS, '              "today": found.today_price}\n', '              "today": None}\n'),
     "the script at the root's depth on every page (q33 picker)": (SHOP_SHELL, '{SCRIPT_TAG.format(up=up)}\n</head>', '{SCRIPT_TAG.format(up="")}\n</head>'),
     'the pick link without #pick (q33 picker)': (SHOP_SHELL, '<a id="pick-link" href="{up}index.html#pick">', '<a id="pick-link" href="{up}index.html">'),
     'a store page without data-store (q33 picker)': (SHOP_PAGES, 'up=UP, store=column)', 'up=UP)'),
