@@ -158,6 +158,8 @@ SHOP_MEASURES = ("src/shopper/measures.py", ["tests/test_measures.py"])
 SHOP_VERDICT = ("src/shopper/verdict.py", ["tests/test_verdict.py"])
 # The price chart drawn from a verdict (store first, q33).
 SHOP_CHART = ("src/shopper/chart.py", ["tests/test_chart.py"])
+# The product label's barcode, EAN-13, UPC-A and EAN-8 (the site look, q36).
+SHOP_BARS = ("src/shopper/bars.py", ["tests/test_bars.py"])
 # The chart's words: chart_summary's own copy of the labels' choice, which tests/test_shop_words.py never tests.
 WORDS_FOR_SHOP_CHART = ("src/shopper/words.py", ["tests/test_chart.py"])
 SHOP_WORDS = ("src/shopper/words.py", ["tests/test_shop_words.py"])
@@ -2986,6 +2988,14 @@ MUTATIONS = {
     'a no deal on the front list (q33 verdict)': (SHOP_VERDICT, 'return found.call == "deal" and passes_bar(', 'return found.call in ("deal", "no_deal") and passes_bar('),
     'the bar at 19 days (q33 verdict)': (SHOP_VERDICT, '.days >= MIN_FRONT_DAYS\n', '.days >= MIN_FRONT_DAYS - 1\n'),
     "an unread sale price given the listed price as today's (q33 verdict)": (SHOP_VERDICT, 'listed = None if call == "price_unread" else Decimal(money(point.listed))', 'listed = Decimal(money(point.listed))'),
+    'the check digit not checked (q36 bars)': (SHOP_BARS, 'code.isascii() and code.isdigit() and is_gs1(code)', 'code.isascii() and code.isdigit()'),
+    'a UPC-A drawn without its leading zero (q36 bars)': (SHOP_BARS, 'code.zfill(13)', 'code.ljust(13, "0")'),
+    'the left half all in L codes (q36 bars)': (SHOP_BARS, '(_L, _G)[parity == "G"][each]', '_L[each]'),
+    'the right half in L codes (q36 bars)': (SHOP_BARS, '"".join(_R[each] for each in digits[7:])', '"".join(_L[each] for each in digits[7:])'),
+    'the centre guard left out (q36 bars)': (SHOP_BARS, '    return _EDGE + left + _CENTRE + "".join(', '    return _EDGE + left + "".join('),
+    'a 14-digit code drawn (q36 bars)': (SHOP_BARS, 'if len(code) not in (12, 13):', 'if len(code) not in (12, 13, 14):'),
+    'the digits under the bars read aloud (q36 bars)': (SHOP_BARS, '<div class="code" aria-hidden="true">', '<div class="code">'),
+    "the drawing's dashes from the bars alone (q36 bars)": (SHOP_BARS, 'dashes = " ".join(str(len(list(run))) for _, run in groupby(bars))', 'dashes = " ".join(str(len(list(run))) for bar, run in groupby(bars) if bar == "1")'),
     # the golden 90 days: the usual price's higher middle, the golden alone to catch it
     'the usual price the lower middle, in the golden (q33 golden)': (VERDICT_FOR_SHOP_GOLDEN, '    return ordered[len(ordered) // 2]\n', '    return ordered[(len(ordered) - 1) // 2]\n'),
     "a store page listing another store type's rows (q33 front)": (SHOP_BUILD, 'if row.column == column.key)),', 'if row.column.split("-")[0] == column.key.split("-")[0])),'),
