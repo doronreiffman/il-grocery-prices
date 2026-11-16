@@ -40,34 +40,40 @@ what the club-only filter hides.
 The price chart (store first, q33: docs/store-first.md, "The chart"; the plan's "Words this plan adds", provisional
 until the owner's read). Its labels are a kind and a price as shown, "usually ₪8.90", "lowest ₪6.90", "highest
 ₪8.90", "today ₪6.90" (`chart_label`); its key, after the SVG, is CHART_KEY's three marks, the shelf price in
-shopper text; its text alternative, the SVG's title, names the labels in CHART_KINDS' order: "Price chart: usually
-₪8.90, lowest ₪6.90, highest ₪8.90, today ₪6.90." (`chart_summary`), each when the chart draws it (`shopper.chart`:
-the usual price with a verdict of deal or no deal, the lowest and highest day prices of the tracked days when one has
-a price, today's price when it is known), and "Price chart." with none.
+shopper text; its text alternative names its figures in CHART_KINDS' order: "Price chart: usually ₪22.90, lowest
+₪17.90, highest ₪24.90, today ₪17.90." (`chart_summary`), each when known: the usual price with a verdict of deal or no
+deal, the lowest and the highest over the tracked days' day prices and today's price (the site look's call 3,
+`shopper.verdict.extremes`), so a deal at a new low says so, and today's price; "Price chart." with none.
 
 The verdict (store first, q33: docs/store-first.md, "Words", verbatim; the plan's "Words this plan adds", provisional
 until the owner's read), from a `shopper.verdict.Verdict`. Shopper text says a day as its day and month, no year
 (`on_day`: "12 October"), and "shelf price", never "listed price", which the fold-out defines. The badge names the store
-type, so a pick left over from last week shows itself: "At Carrefour Market: DEAL · ₪1.90 off" or "At Carrefour
-Market: NO DEAL" (`badge`); the badge row's own, under "Elsewhere today" (ELSEWHERE), puts the name first: "Rami Levy ·
-DEAL · ₪1.90 off", "Rami Levy · NO DEAL", or a call without a verdict as its line in lower case without its full stop,
-"Rami Levy · no sale today" ("too few files today" on a hole, "not sold today"; `short_badge`). The reason (`reason`,
-S8) names the days it rests on, those with a day price: a deal "Usually ₪11.90, sales included (9 days tracked)."; a no
-deal with no saving or a negative one, the always-on form, "It's been ₪10.90 or less on 9 of the 9 days tracked."
-(today's price, and the days at or below it); a saving above ₪0.00 and below ₪1.00, the small form, "Only ₪0.40 below
-its usual ₪3.20 (12 days tracked)."; one day is "1 day". A weighed product's saving and usual price are a kilogram's
-("DEAL · ₪19.90 off a kilogram", "Usually ₪69.90 a kilogram, …"), as its deal price is (P4); so are a store page's
-price cells (`price_text`: "₪50.00 a kilogram"). The conditions of the promotion judged (`conditions`): question K's
-phrases with a capital letter, "Club members only", "The chain's card holders only", "Some customers only", then "When
-you buy 2" ("When you buy 1.5 kilograms"), then "Minimum spend ₪150.00"; a programme's name is the fold-out's, in the
-chain's span. Without a verdict, NO_VERDICT's line by call (the design's six, and the plan's "No price history yet."),
-`basket.words.too_few` on a hole, or `not_sold`: "Not sold at Carrefour Market today, last seen 3 November" ("today"
-alone with no such day). Last this low (S6, `last_low`): "Last this low: 12 October, at ₪9.90." or "Lowest in the 10
-days tracked.", only when today's price is known and a day before today has a day price. How often (S7, `how_often`),
-over every tracked day: "On sale on 12 of the 60 days tracked.", then "The last sale before this one ended 12 October,
-at ₪9.90." when today is on sale, "The last sale ended …" when it is not, the price left out when it was not read;
-nothing with no tracked day. A coming sale (F2, `coming_sale`): "A sale starts on 14 November". The fold-out's name:
-"How this is worked out" (WORKED_OUT).
+type, so a pick left over from last week shows itself: "At Carrefour Market: DEAL · ₪1.90 off" or "At Carrefour Market:
+NO DEAL" (`badge`), and a store row's badge the verdict alone, "DEAL · ₪1.90 off" (`verdict_words`; the site look's
+"Word changes" 8); the badge row's own, under "Elsewhere today" (ELSEWHERE), puts the name first: "Rami Levy · DEAL ·
+₪1.90 off", "Rami Levy · NO DEAL", or a call without a verdict as its line in lower case without its full stop, "Rami
+Levy · no sale today" ("too few files today" on a hole, "not sold today"; `short_badge`, the name, then
+`short_verdict`). The reason (`reason`, S8) names the days it rests on, those with a day price: a deal "Usually ₪11.90,
+sales included (9 days tracked)."; a no deal with no saving or a negative one, the always-on form, "It's been ₪10.90 or
+less on 9 of the 9 days tracked." (today's price, and the days at or below it); a saving above ₪0.00 and below ₪1.00,
+the small form, "Only ₪0.40 below its usual ₪3.20 (12 days tracked)."; one day is "1 day". The two counts (the owner,
+2026-11-15: site-look.md, "Word changes" 3): "days tracked" is always every tracked day, as "How often" counts them, so
+the reason and "Lowest in the ..." say "days tracked" only when every tracked day has a day price, and name their own
+count when a sale day's price was not read: "Usually ₪22.90, sales included (83 days with a known price).", one day "1
+day with a known price" (`_counted`); a page never shows two different numbers both called "days tracked". A weighed
+product's saving and usual price are a kilogram's ("DEAL · ₪19.90 off a kilogram", "Usually ₪69.90 a kilogram, …"), as
+its deal price is (P4); so are a store page's price cells (`price_text`: "₪50.00 a kilogram"). The conditions of the
+promotion judged (`conditions`): question K's phrases with a capital letter, "Club members only", "The chain's card
+holders only", "Some customers only", then "When you buy 2" ("When you buy 1.5 kilograms"), then "Minimum spend
+₪150.00"; a programme's name is the fold-out's, in the chain's span. Without a verdict, NO_VERDICT's line by call (the
+design's six, and the plan's "No price history yet."), `basket.words.too_few` on a hole, or `not_sold`: "Not sold at
+Carrefour Market today, last seen 3 November" ("today" alone with no such day). Last this low (S6, `last_low`): "Last
+this low: 12 October, at ₪9.90." or "Lowest in the 10 days tracked." ("Lowest in the 83 days with a known price." when
+the counts differ), only when today's price is known and a day before today has a day price. How often (S7,
+`how_often`), over every tracked day: "On sale on 12 of the 60 days tracked.", then "The last sale before this one ended
+12 October, at ₪9.90." when today is on sale, "The last sale ended …" when it is not, the price left out when it was not
+read; nothing with no tracked day. A coming sale (F2, `coming_sale`): "A sale starts on 14 November". The fold-out's
+name: "How this is worked out" (WORKED_OUT).
 
 A store type's front page (store first, q33: docs/store-first.md, "What a visitor sees" 4 and "Words", verbatim where
 the design gives them; the plan's "Words this plan adds", provisional until the owner's read). The title asks the
@@ -83,6 +89,15 @@ to check" when M is none. The fold-out, "How a deal passes", opens with FOLD_INT
 shopper words (STORE_RULES, with the code's own constants), one deal's story under STORY_HEADING, and the store type's
 promotions line (`store_promotions_line`): the promotions listed across it today, carried by at least half its stores
 (the final review's finding 4), never every promotion in the chain's files.
+
+The site's look (q36: docs/site-look.md, "Word changes", the owner's of 2026-11-15; the site-look plan's "Words"). The
+front page's headline, ROOT_TITLE, "Deal or No Deal?", set in capitals, and the line under it, ROOT_LINE; the nine
+store pages keep FRONT_TITLE. Under a product's verdict, "Price today: ₪14.00" (`price_line`, from `price_text`), none
+without today's price. The chart's table heads (STATS_HEADS), its short dates ("16 Aug", `short_day`) and month names
+("Sep", `month_name`), and "today" (TODAY_WORD) as its last date and as the date of a lowest or highest that is
+today's; sentences keep `on_day`'s long form ("ended 11 November"). A store's label on the front page carries its
+count of promotions today ("1,347" and "promotions today", one "promotion today": `promotions_today`), the number its
+store page states.
 """
 from collections.abc import Mapping, Sequence
 from datetime import date
@@ -98,11 +113,15 @@ from shopper.deals import to_agora
 from shopper.forecast import FIRST_RECORD_DAY
 from shopper.history import READ_DAYS, ColumnDay
 from shopper.measures import MIN_FRONT_DAYS, RECENT_DAYS
-from shopper.verdict import DEAL_MIN, FRONT_LIMIT, Verdict
+from shopper.verdict import DEAL_MIN, FRONT_LIMIT, Verdict, extremes
 
 SITE_NAME = "Deal or No Deal"                       # question J, as the owner changed it on 2026-11-10
 CHAINS_LINE = " · ".join(CHAIN_NAMES[slug] for slug in SLUGS)              # every page's header, under the name
-FRONT_TITLE = "Is it actually a deal?"           # Q4, the owner's final framing of 2026-11-10
+FRONT_TITLE = "Is it actually a deal?"           # Q4, the owner's final framing of 2026-11-10; the store pages' (q36)
+# the front page's headline and the line under it (the owner, 2026-11-15: site-look.md, "Word changes" 1 and 2)
+ROOT_TITLE = "Deal or No Deal?"
+ROOT_LINE = ("Find out if a sale is actually a deal: pick the store you're in, then look up the product. Each sale is "
+             "checked against what it usually costs there.")
 # under the title on every store page, the fold-out's first line (FOLD_INTRO; the owner, 2026-11-11): READ_DAYS (90)
 # as 3 months, "up to" while the records hold fewer (they start on 1 November 2026)
 FRONT_SUBTITLE = ("Promotions checked against what the product usually costs, sales included, over up to "
@@ -140,6 +159,10 @@ BROWSE_LINK = "Browse by first letter"                       # search.js's own "
 # The price chart (store first, q33; the module's docstring)
 CHART_KEY = ("shelf price", "on sale", "on sale, price not read")    # the grey line, the green stretches, the foot marks
 CHART_KINDS = ("usually", "lowest", "highest", "today")               # the labels, in the text alternative's order
+# The site's look (q36; the module's docstring)
+PRICE_TODAY = "Price today:"                                          # before today's price, under the verdict
+STATS_HEADS = ("Lowest", "Highest", "Usual", "Today")                 # the chart's table
+TODAY_WORD = "today"                     # the chart's last date, and the date of a lowest or highest that is today's
 # The verdict (store first, q33; the module's docstring)
 ELSEWHERE = "Elsewhere today"                    # the badge row's heading
 WORKED_OUT = "How this is worked out"            # the fold-out
@@ -249,10 +272,11 @@ def chart_label(kind: str, price: Decimal) -> str:
 
 
 def chart_summary(found: Verdict) -> str:
-    """The price chart's text alternative: its labels in CHART_KINDS' order, each when the chart draws it (the module's
-    docstring); "Price chart." with none."""
-    priced = [day.price for day in found.priced]
-    prices = {"usually": found.usual, "lowest": min(priced, default=None), "highest": max(priced, default=None),
+    """The price chart's text alternative: its figures in CHART_KINDS' order, each when known, the lowest and the
+    highest counting today's price (`shopper.verdict.extremes`; the module's docstring); "Price chart." with none."""
+    ends = extremes(found)
+    low, high = (None, None) if ends is None else (ends[0][0], ends[1][0])
+    prices = {"usually": found.usual, "lowest": low, "highest": high,
               "today": found.today_price}
     said = [chart_label(kind, prices[kind]) for kind in CHART_KINDS if prices[kind] is not None]
     return f"Price chart: {', '.join(said)}." if said else "Price chart."
@@ -319,8 +343,28 @@ def on_day(day: date) -> str:
     return f"{day:%-d %B}"
 
 
+def short_day(day: date) -> str:
+    """A day in the chart and its table: its day and short month, no year ("16 Aug"); sentences keep `on_day`."""
+    return f"{day:%-d %b}"
+
+
+def month_name(day: date) -> str:
+    """A month's name under the chart: its short name ("Sep")."""
+    return f"{day:%b}"
+
+
 def _tracked(count: int) -> str:
     return f"{count} {_plural(count, 'day', 'days')} tracked"
+
+
+def _known(count: int) -> str:
+    return f"{count} {_plural(count, 'day', 'days')} with a known price"
+
+
+def _counted(priced: int, tracked: int) -> str:
+    """The days a line resting on the day prices names (the module's docstring): "days tracked" when every tracked day
+    has a day price, its own count, "days with a known price", when not."""
+    return _tracked(priced) if priced == tracked else _known(priced)
 
 
 def _per(found: Verdict) -> str:
@@ -328,8 +372,8 @@ def _per(found: Verdict) -> str:
     return " a kilogram" if found.struct is not None and found.struct["per"] == "kg" else ""
 
 
-def _verdict(found: Verdict) -> str:
-    """The verdict's words: "DEAL · ₪1.90 off" or "NO DEAL"."""
+def verdict_words(found: Verdict) -> str:
+    """The verdict's words: "DEAL · ₪1.90 off" or "NO DEAL"; a store row's badge, without the store's name."""
     if found.call == "deal":
         return f"DEAL · ₪{found.saving} off{_per(found)}"
     if found.call == "no_deal":
@@ -339,26 +383,30 @@ def _verdict(found: Verdict) -> str:
 
 def badge(found: Verdict) -> str:
     """A deal's or a no deal's badge, naming the store type: "At Carrefour Market: DEAL · ₪1.90 off"."""
-    return f"At {BY_KEY[found.column].name}: {_verdict(found)}"
+    return f"At {BY_KEY[found.column].name}: {verdict_words(found)}"
+
+
+def short_verdict(found: Verdict) -> str:
+    """What follows the store type's name in a badge of the row under "Elsewhere today": the verdict, or the line of a
+    call without one in lower case, without its full stop ("no sale today")."""
+    if found.call in ("deal", "no_deal"):
+        return verdict_words(found)
+    line = SHORT.get(found.call) or NO_VERDICT[found.call]
+    return (line[0].lower() + line[1:]).removesuffix(".")
 
 
 def short_badge(found: Verdict) -> str:
-    """A badge of the row under "Elsewhere today": the store type's name, then the verdict, or the line of a call
-    without one in lower case, without its full stop ("Rami Levy · no sale today")."""
-    if found.call in ("deal", "no_deal"):
-        said = _verdict(found)
-    else:
-        line = SHORT.get(found.call) or NO_VERDICT[found.call]
-        said = (line[0].lower() + line[1:]).removesuffix(".")
-    return f"{BY_KEY[found.column].name} · {said}"
+    """A badge of the row under "Elsewhere today": the store type's name, then `short_verdict` ("Rami Levy · no sale
+    today")."""
+    return f"{BY_KEY[found.column].name} · {short_verdict(found)}"
 
 
 def reason(found: Verdict) -> str | None:
-    """The reason beside a verdict (S8: the days with a day price it rests on): the deal's, the always-on form when the
-    saving is ₪0.00 or less, else the small form; None without a verdict."""
+    """The reason beside a verdict (S8: the days with a day price it rests on, `_counted`): the deal's, the always-on
+    form when the saving is ₪0.00 or less, else the small form; None without a verdict."""
     if found.call not in ("deal", "no_deal"):
         return None
-    days = _tracked(len(found.priced))
+    days = _counted(len(found.priced), len(found.days))
     if found.call == "deal":
         return f"Usually ₪{found.usual}{_per(found)}, sales included ({days})."
     if found.saving <= 0:
@@ -386,12 +434,12 @@ def conditions(struct: Mapping) -> list[str]:
 
 
 def last_low(found: Verdict) -> str | None:
-    """S6: the latest day at or below today's price, or that none was; None unless today's price is known and a day
-    before today has a day price."""
+    """S6: the latest day at or below today's price, or that none was, over the days with a day price (`_counted`);
+    None unless today's price is known and a day before today has a day price."""
     if found.today_price is None or not found.priced:
         return None
     if found.last_low is None:
-        return f"Lowest in the {_tracked(len(found.priced))}."
+        return f"Lowest in the {_counted(len(found.priced), len(found.days))}."
     return f"Last this low: {on_day(found.last_low.day)}, at ₪{found.last_low.price}."
 
 
@@ -412,6 +460,14 @@ def how_often(found: Verdict) -> str | None:
 def price_text(found: Verdict, price: Decimal) -> str:
     """A price of the verdict's as a store page's cell shows it: "₪6.90", or a weighed product's "₪50.00 a kilogram"."""
     return f"₪{price}{_per(found)}"
+
+
+def price_line(found: Verdict) -> str | None:
+    """The line under the verdict: "Price today: ₪14.00", a weighed deal's "Price today: ₪50.00 a kilogram"; None
+    without today's price (a hole, not sold, sale prices not read today, a sale whose price was not read)."""
+    if found.today_price is None:
+        return None
+    return f"{PRICE_TODAY} {price_text(found, found.today_price)}"
 
 
 # A store type's front page (store first, q33)
@@ -436,6 +492,12 @@ def store_lead(front: "StoreFront", today: ColumnDay) -> str:
     if not front.ready:
         return NONE_YET
     return headline(front.column, len(front.rows), front.checked)
+
+
+def promotions_today(count: int) -> tuple[str, str]:
+    """A store's label on the front page: its count of promotions today and the words after it, "1,347" and
+    "promotions today", one "promotion today"; the store page's own count (`store_promotions_line`)."""
+    return f"{count:,}", _plural(count, "promotion today", "promotions today")
 
 
 def store_promotions_line(column: str, promotions: int, products: int) -> str:

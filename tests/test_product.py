@@ -352,7 +352,8 @@ def test_the_reason_line_names_its_days():
     sale at a price not read), right after the badge."""
     body = _sections(_render(*_typical()))[DEAL]
     paragraphs = _paragraphs(body)
-    assert paragraphs[:2] == ["At Shufersal Deal: DEAL · ₪3.00 off", "Usually ₪10.90, sales included (84 days tracked)."]
+    assert paragraphs[:2] == ["At Shufersal Deal: DEAL · ₪3.00 off",
+                             "Usually ₪10.90, sales included (84 days with a known price)."]
     assert "At Shufersal Deal: DEAL · ₪3.00 off" in body and '<p class="badge deal-2">' in body
     # a short history says how short; an always-on sale says how often it has been at today's price
     short = _render(_covered({DEAL: "שם"}), {DEAL: _pair(DEAL, _listed("6.00", 0, 5), promotions=[_struct("4.50")])})

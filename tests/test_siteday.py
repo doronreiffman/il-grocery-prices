@@ -286,7 +286,7 @@ def test_a_rows_days_are_the_days_its_reason_rests_on():
     assert (row.verdict.call, len(row.verdict.days), len(row.verdict.priced)) == ("deal", 90, 88)
     fronts = _fronts() | {SHELI: _front(SHELI, rows=[row])}
     shown, = _site_day(fronts=fronts, column_days=_days())["columns"][SHELI]["front"]["rows"]
-    assert shown["days"] == 88 and "(88 days tracked)" in reason(row.verdict)
+    assert shown["days"] == 88 and "(88 days with a known price)" in reason(row.verdict)
 
 
 def test_the_forecasts_block_names_the_frozen_file():
