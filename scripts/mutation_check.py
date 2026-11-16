@@ -3165,6 +3165,11 @@ MUTATIONS = {
     "the lines' SVG keeping its aspect (q36 chart)": (SHOP_CHART, ' preserveAspectRatio="none">{lines}', '>{lines}'),
     "the usual price's words always above its line (q36 chart)": (SHOP_CHART, '        y = level - 6 if above or not below else level + 15\n', '        y = level - 6\n'),
     "no tick under today on price_unread (q36 chart)": (SHOP_CHART, '    if found.call == "price_unread":', '    if False:'),
+    "a date's name written into the first date (q36 chart)": (SHOP_CHART, 'share < NAMED[0] or share > NAMED[1]', 'share > NAMED[1]'),
+    "a date's name written out of the plot (q36 chart)": (SHOP_CHART, 'share < NAMED[0] or share > NAMED[1]', 'share < NAMED[0]'),
+    "the usual label watching the whole span (q36 chart)": (SHOP_CHART, ' if 10 * (at + 1) > 7 * span]', ']'),
+    "a single price given half-shekel steps (q36 chart)": (SHOP_CHART, 'if 0 < high - low < 1 else []', 'if high - low < 1 else []'),
+    "a date at NEAR's edge hidden on a phone (q36 chart)": (SHOP_CHART, 'NEAR[0] <= share <= NEAR[1]', 'NEAR[0] < share < NEAR[1]'),
     # store first (q33): the price chart (shopper.chart)
     'an untracked day drawn across (q33 chart)': (SHOP_CHART, '        if runs and runs[-1][-1][0] + 1 == x:\n', '        if runs:\n'),
     'a sale stretch on a day off sale (q33 chart)': (SHOP_CHART, 'sold = [each for each in days if each.on_sale and each.price is not None]', 'sold = [each for each in days if each.price is not None]'),

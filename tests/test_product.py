@@ -402,7 +402,8 @@ def test_each_no_verdict_line(call):
     # stores take the listed price as today's
     if call in ("unread_today", "price_unread", "no_sale", "some_stores"):
         known = call in ("no_sale", "some_stores")
-        assert ('<th scope="col">Today</th>' in body, "today ₪" in body, "Last this low" in body) == (known,) * 3, call
+        said = ('<th scope="col">Today</th>' in body, "today ₪" in body, "Last this low" in body)
+        assert said == (known,) * 3, call
         assert known or "<circle" not in body, call
 
 
@@ -416,7 +417,7 @@ def test_an_unread_sale_price_counts_today_as_on_sale():
     body = _sections(page)[DEAL]
     assert f"<p>{words.NO_VERDICT['price_unread']}</p>" in body
     assert "The last sale before this one ended 10 November, at ₪7.90." in body
-    assert '<circle class="today"' not in body and "Last this low" not in body and "Lowest in the" not in body
+    assert "<circle" not in body and "Last this low" not in body and "Lowest in the" not in body
 
 
 def test_a_hole_day_shows_too_few_files_and_no_listed_price_claim():

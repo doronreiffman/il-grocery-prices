@@ -29,8 +29,9 @@ Four SVGs in a row, and only one of them scales, so no word ever shrinks:
   of the span: the last ceil(0.3 x span)) runs within 21 pixels above it or the line is under 20 pixels from the top,
   then below; above again when below is as busy, or the line is under 20 pixels from the date line. Then the first
   tracked day's date at the left, and between it and today a mark and a name at each month's first day when the span
-  is WEEKLY_UNDER days or more, else a mark and a date every seventh day back from today; a name whose day's share of
-  the span is outside NEAR is hidden on a phone (`class="near"`), its mark kept.
+  is WEEKLY_UNDER days or more, else a mark and a date every seventh day back from today. A name whose day's share of
+  the span is outside NAMED is never written, at any width, so it never runs into the first date's words nor out of
+  the plot into the today column; one outside NEAR is hidden on a phone (`class="near"`). Either way its mark stays.
 - `<svg class="now">`, today's column: a dot at today's shelf price and at today's sale price, top to bottom, each with
   its price beside it in its line's colour, the labels LABEL_GAP pixels apart at least and none below the date line;
   the lower price (what the shopper pays; both when equal) in bold (`now`). Then "today" (TODAY_WORD) under them.
@@ -69,7 +70,13 @@ PLOT = 200                       # the plot's height in pixels; the SVGs beside 
 AXIS_X, NOW_X = 40, 12           # the axis column's anchor (46 wide, less 6), the today column's text start (64 wide)
 LABEL_GAP = 17                   # today's two labels' least distance, centre to centre
 NEAR = (Fraction(22, 100), Fraction(84, 100))    # a date outside this share of the span is hidden on a phone
-WEEKLY_UNDER = 46                # days in the span below which the dates are a week apart, else the months
+# A date's name outside this share of the span is not written at all, its mark kept. Measured in headless Chrome under
+# look.css and its fonts (2026-11-16): the narrowest plot that shows every name is 516.7 pixels (a 1,024-pixel window,
+# where the script's two columns start; 594 at 768, 602 at 1,280); the widest first date, "28 May", is 40.8 pixels
+# wide, as is the widest name (the months' at most 23.9); a name starts 5 pixels after its mark. So from 8% a name
+# clears the first date by 5.5 pixels or more, and up to 91% it ends inside the plot, short of the today column.
+NAMED = (Fraction(8, 100), Fraction(91, 100))
+WEEKLY_UNDER = 46               # days in the span below which the dates are a week apart, else the months
 TICK = Decimal("196.5")          # the unread ticks' line: 7 pixels standing on the date line
 DATES_Y = 217                    # the dates' baseline, under the date line; a date's mark runs from PLOT 6 down
 
@@ -199,11 +206,13 @@ def render_chart(found: Verdict, day: date, listed_today: Decimal | None = None)
         seen = first + timedelta(days=at)
         if (seen.day == 1) if monthly else (last - at) % 7 == 0:
             share = Fraction(at, span)
-            near = "" if NEAR[0] <= share <= NEAR[1] else ' class="near"'
             p = _percent(share)
+            over.append(f'<line x1="{p}%" x2="{p}%" y1="{PLOT}" y2="{PLOT + 6}"/>')
+            if share < NAMED[0] or share > NAMED[1]:            # its name would overlap: the mark alone
+                continue
+            near = "" if NEAR[0] <= share <= NEAR[1] else ' class="near"'
             name = month_name(seen) if monthly else short_day(seen)
-            over.append(f'<line x1="{p}%" x2="{p}%" y1="{PLOT}" y2="{PLOT + 6}"/>'
-                        f'<text{near} x="{p}%" dx="5" y="{DATES_Y}">{text(name)}</text>')
+            over.append(f'<text{near} x="{p}%" dx="5" y="{DATES_Y}">{text(name)}</text>')
 
     order = sorted(points, key=lambda point: up(point[1]))         # top to bottom; a tie keeps the shelf first
     heights = [up(price) for _, price in order]

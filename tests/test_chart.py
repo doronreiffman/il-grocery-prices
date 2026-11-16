@@ -437,16 +437,46 @@ def test_the_dates_by_span():
                                      ("line", "51.11%"), ("Oct", None, "51.11%"), ("line", "85.56%"),
                                      ("Nov", "near", "85.56%")]
     assert chart.NEAR == (Fraction(22, 100), Fraction(84, 100))
-    # the weeks up to 45 days, the months from 46
+    # the weeks up to 45 days, the months from 46; a mark two days after the first date keeps its mark alone (NAMED)
     assert chart.WEEKLY_UNDER == 46
-    names = {}
+    names, marks = {}, {}
     for span in (45, 46):
         first = date(2026, 11, 13) - timedelta(days=span - 1)
         found = _verdict(_daily(first, date(2026, 11, 13)), today="5.00", usual=None, call="no_sale")
         over = _read(chart.render_chart(found, date(2026, 11, 13)))["over"]
         names[span] = [each.text for each in over if each.tag == "text"]
-    assert names == {45: ["30 Sep", "2 Oct", "9 Oct", "16 Oct", "23 Oct", "30 Oct", "6 Nov"],
-                     46: ["29 Sep", "Oct", "Nov"]}
+        marks[span] = [each.get("x1") for each in over if each.tag == "line"]
+    assert names == {45: ["30 Sep", "9 Oct", "16 Oct", "23 Oct", "30 Oct", "6 Nov"], 46: ["29 Sep", "Nov"]}
+    assert marks == {45: ["4.44%", "20%", "35.56%", "51.11%", "66.67%", "82.22%"], 46: ["4.35%", "71.74%"]}
+
+
+def test_a_name_never_runs_into_the_first_date_or_out_of_the_plot():
+    """At every width, a date's name is written only within NAMED's share of the span, its mark always: nearer the
+    first date it would run into the first date's words, nearer today out of the plot into the today column (fix
+    round 1, measured: the module's NAMED). An edge itself is written. Apart from it, the phone's near rule takes its
+    edges as shown too."""
+    assert chart.NAMED == (Fraction(8, 100), Fraction(91, 100))
+
+    def dates(first: date, span: int) -> list[tuple]:
+        today = first + timedelta(days=span - 1)
+        found = _verdict(_daily(first, today), today="5.00", usual=None, call="no_sale")
+        return _dates(_read(chart.render_chart(found, today))["over"])
+
+    # the review's spans: a week mark a day or two after the first date, 3.33% to 4.44% in
+    assert dates(date(2026, 11, 8), 23) == [("8 Nov", None, None), ("line", "4.35%"), ("line", "34.78%"),
+                                            ("16 Nov", None, "34.78%"), ("line", "65.22%"), ("23 Nov", None, "65.22%")]
+    assert dates(date(2026, 11, 1), 30)[:3] == [("1 Nov", None, None), ("line", "3.33%"), ("line", "26.67%")]
+    # the lower edge: 8% is written, 7.84% is not
+    assert dates(date(2026, 10, 28), 50) == [("28 Oct", None, None), ("line", "8%"), ("Nov", "near", "8%"),
+                                             ("line", "68%"), ("Dec", None, "68%")]
+    assert dates(date(2026, 10, 28), 51) == [("28 Oct", None, None), ("line", "7.84%"), ("line", "66.67%"),
+                                             ("Dec", None, "66.67%")]
+    # the upper edge, on 91 days: 90.11% is written, 91.21% is not
+    assert dates(date(2026, 9, 10), 91)[-2:] == [("line", "90.11%"), ("Dec", "near", "90.11%")]
+    assert dates(date(2026, 9, 9), 91)[-2:] == [("Nov", None, "58.24%"), ("line", "91.21%")]
+    # NEAR's edges are shown on a phone: 22% and 84% exactly carry no near class
+    assert dates(date(2026, 10, 21), 50)[1:3] == [("line", "22%"), ("Nov", None, "22%")]
+    assert dates(date(2026, 10, 20), 50)[-2:] == [("line", "84%"), ("Dec", None, "84%")]
 
 
 def test_a_short_history_has_its_first_date_and_today():
