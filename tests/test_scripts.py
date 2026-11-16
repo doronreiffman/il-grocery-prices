@@ -202,14 +202,22 @@ def test_sync_sh_never_writes_to_aws(tmp_path):
 
 # ---- publish.sh ----
 
+# The shared files under assets/, one of each kind: the stylesheet, a font and a licence.
+ASSETS = ("assets/look.0123456789.css", "assets/archivo-text.0123456789.woff2", "assets/OFL-archivo.txt")
+
+
 def a_build(tmp_path: Path) -> Path:
     """A shopper build as `tests/test_shop_guard.py` makes one, with the marker and a page or file of every other kind,
-    and the bucket (`tmp_path / "published"`) as it published that same build."""
+    the shared files under assets/ among them, and the bucket (`tmp_path / "published"`) as it published that same
+    build."""
     site = a_site(tmp_path)
     for key in ("index.html", "method.html", "basket.html", "browse/index.html", "search/05e9.json"):
         (site / key).parent.mkdir(parents=True, exist_ok=True)
         (site / key).write_text("<html></html>")
     (site / "search.js").write_text("")
+    for key in ASSETS:
+        (site / key).parent.mkdir(parents=True, exist_ok=True)
+        (site / key).write_text("")
     (site / MARKER).write_text("")
     a_bucket(tmp_path, site)
     return site
@@ -231,7 +239,7 @@ def test_publish_sh_uploads_a_build_the_check_and_the_guard_pass(tmp_path):
     run, calls = _publish(tmp_path, a_build(tmp_path), P_KEYS="\t".join(PAGES) + "\n")
     assert run.returncode == 0, run.stderr
     assert run.stdout.endswith("published: https://d1example.cloudfront.net/\n")
-    assert len(_syncs(calls)) == 5
+    assert len(_syncs(calls)) == 8
     assert calls[-2][:2] == ["cloudfront", "create-invalidation"] and "/*" in calls[-2]
 
 
@@ -263,7 +271,7 @@ def test_publish_sh_runs_the_check_and_the_guard_before_any_upload(tmp_path):
     read = _index(calls, lambda call: call[0] in ("s3", "s3api") and call[1] in ("cp", "list-objects-v2"))
     put = _index(calls, lambda call: call in _uploads(calls))
     assert calls[checked][3] == calls[guarded][3] == str(site)
-    assert len(read) == 5 and len(put) == 6
+    assert len(read) == 5 and len(put) == 9
     assert checked < min(read) and max(read) < guarded < min(put)
 
     site = a_build(tmp_path / "check")
@@ -314,13 +322,14 @@ def test_publish_sh_stops_on_a_failed_read_of_the_bucket(tmp_path, read, said):
     assert not _uploads(calls) and not _index(calls, lambda call: call[:3] == ["python", "-m", "shopper.guard"])
 
 
-UPLOAD_ORDER = ["*.csv.gz", "*.csv", "*.json", "*.js", "*.html"]
+UPLOAD_ORDER = ["*.csv.gz", "*.csv", "*.json", "*.js", "assets/*.css", "assets/*.woff2", "assets/*.txt", "*.html"]
 
 
 def test_publish_sh_uploads_the_data_files_before_the_pages(tmp_path):
     """The final review's finding 8: the records first (the forecasts and scores files), then the ledger, the day and
-    site-day files with the search pieces, `search.js`, and the pages last, as the site run puts them
-    (`basket.site.upload`), so a stop part-way never leaves a live page naming a file not yet up."""
+    site-day files with the search pieces, `search.js`, the shared files under assets/ (the stylesheet, the fonts, their
+    licences), and the pages last, as the site run puts them (`basket.site.upload`), so a stop part-way never leaves a
+    live page naming a file not yet up, a changed stylesheet's new name included."""
     run, calls = _publish(tmp_path, a_build(tmp_path))
     assert run.returncode == 0, run.stderr
     assert [_filters(call)[1][1] for call in _syncs(calls)] == UPLOAD_ORDER
@@ -371,8 +380,8 @@ def test_publish_sh_gives_the_guard_the_published_product_pages(tmp_path, listed
 
 def test_publish_sh_sets_each_content_type_and_cache_control(tmp_path):
     """One allowlisted sync per kind of file, each with its content type as `basket.site.CONTENT_TYPES` gives the
-    site run's uploads, and max-age=300; every file the build writes matches one allowlist, its own type's, and the
-    marker none."""
+    site run's uploads, and max-age=300; every file the build writes matches one allowlist, its own type's (the
+    stylesheet, the fonts and the licences under assets/ included), and the marker none."""
     site = a_build(tmp_path)
     run, calls = _publish(tmp_path, site)
     assert run.returncode == 0, run.stderr
@@ -385,12 +394,24 @@ def test_publish_sh_sets_each_content_type_and_cache_control(tmp_path):
         allowlists[_filters(call)[1][1]] = call[call.index("--content-type") + 1]
     assert allowlists == {"*.html": CONTENT_TYPES[".html"], "*.json": CONTENT_TYPES[".json"],
                           "*.js": CONTENT_TYPES[".js"], "*.csv": CONTENT_TYPES[".csv"],
-                          "*.csv.gz": CONTENT_TYPES[".gz"]}
+                          "*.csv.gz": CONTENT_TYPES[".gz"], "assets/*.css": CONTENT_TYPES[".css"],
+                          "assets/*.woff2": CONTENT_TYPES[".woff2"], "assets/*.txt": CONTENT_TYPES[".txt"]}
     files = sorted(path.relative_to(site).as_posix() for path in site.rglob("*") if path.is_file())
     assert {Path(key).suffix for key in files} == set(CONTENT_TYPES) | {""}
     for key in files:
         matched = [kind for pattern, kind in allowlists.items() if fnmatch(f"{site}/{key}", f"{site}/{pattern}")]
         assert matched == ([] if key == MARKER else [CONTENT_TYPES[Path(key).suffix]]), key
+
+
+def test_publish_sh_puts_an_asset_only_when_the_bucket_lacks_it(tmp_path):
+    """`aws s3 sync` puts a file whose size or time differs, and every build writes the assets afresh; a hashed name
+    carries its bytes' hash, so a name the bucket holds is the same file and the same size. So the three asset syncs,
+    and no other, go by size alone (`--size-only`): an asset the bucket holds is not put again, and a changed
+    stylesheet's new name, which the bucket lacks, goes up. Every other file goes by size and time, as before."""
+    run, calls = _publish(tmp_path, a_build(tmp_path))
+    assert run.returncode == 0, run.stderr
+    sized = [_filters(call)[1][1] for call in _syncs(calls) if "--size-only" in call]
+    assert sized == ["assets/*.css", "assets/*.woff2", "assets/*.txt"]
 
 
 @pytest.mark.parametrize("marker", [None, ".basket-site"])
