@@ -69,7 +69,7 @@ From "Left to the builder" and from places the design is silent. The owner can o
 - **The upload in Lambda** (`basket.site.upload`), with the pages only: the record files in a call of their own, as today; then every file under `assets/` that a listing of the bucket's `assets/` does not hold, in a `put_files` call of its own, ended before anything else starts; then the data files and the pages. A failed asset put raises and nothing after it is put.
 - **The upload by hand** (`scripts/publish.sh`): three allowlisted syncs, `assets/*.css`, `assets/*.woff2` and `assets/*.txt`, each with its content type, after `*.js` and before `*.html`. `aws s3 sync` uploads a file whose size or time differs, and every build writes the assets afresh, so each of the three passes `--size-only`: a name carries its bytes' hash, so a name the bucket holds is the same file and the same size.
 - **One more site check rule:** each hashed asset's name carries the first ten hex digits of its own SHA-256. The upload skips a name the bucket already holds, so a name that did not match its bytes would never be corrected.
-- **The chart, call by call.** Today's shelf price is `money(point.listed)` when the point exists, has a listed price, today is a record day (`today.record`) and the call is not `price_unread`; otherwise none. Today's sale point is the verdict's today's price when a promotion counts (`found.counting`) and the price is known. Today is a sale day of unknown price on `price_unread`.
+- **The chart, call by call.** Today's shelf price is `money(point.listed)` when the point exists, has a listed price, today is a record day (`today.record`) and the call is neither `price_unread` nor `unread_today`; otherwise none. Today's sale point is the verdict's today's price when a promotion counts (`found.counting`) and the price is known. Today is a sale day of unknown price on `price_unread`.
 
   | Call | Shelf line through today | Sale point today | Tick under today | Today's labels | Table cells |
   |---|---|---|---|---|---|
@@ -77,11 +77,11 @@ From "Left to the builder" and from places the design is silent. The owner can o
   | `no_sale`, `some_stores` | yes | no | no | shelf | Lowest, Highest, Today |
   | `mostly_unknown` | yes | yes | no | shelf, sale | Lowest, Highest (when a price is known), Today |
   | `price_unread` | no (ends the day before) | no | yes | none ("today" alone) | Lowest, Highest |
-  | `unread_today` | yes | no | no | shelf | Lowest, Highest |
+  | `unread_today` | no (ends the day before) | no | no | none ("today" alone) | Lowest, Highest |
   | `not_sold`, `too_few` | no | no | no | none ("today" alone) | Lowest, Highest |
   | `new`, `no_history` | no chart: no tracked day, as today | | | | |
 
-  On `price_unread` the chart shows no price for today: the shelf line ends at the day before, today's column holds "today" alone, and the tick under today marks the sale whose price was not read. "Price today" is not shown either. The owner's rulings of 2026-11-11 and 2026-11-16: a shelf price written at the line's end reads as what the shopper pays today, and a shopper holding a sale tag does not pay it. The fold-out still gives that day's listed price.
+  On `price_unread` and `unread_today` the chart shows no price for today: the shelf line ends at the day before and today's column holds "today" alone; on `price_unread` the tick under today marks the sale whose price was not read. "Price today" is not shown either. The owner's rulings of 2026-11-11 and 2026-11-16: a shelf price written at the line's end reads as what the shopper pays today, and a shopper holding a sale tag does not pay it. The fold-out still gives that day's listed price.
 - **The label, call by call.**
 
   | Call | What the section shows |
@@ -552,7 +552,7 @@ Wave 3, after Tasks 2, 3, 5 and 6. Its own worktree, `q36-product`. Its Step 7 m
 <details>…</details></section>
 ```
 
-  (written on one line, as today; "The label, call by call" says which form). `listed_today` is `Decimal(money(point.listed))` when the point exists, has a listed price and `today.record`, and the call is not `price_unread`; else None. The price's figure is today's price as shown, split at its point: the shekels, then `<sup>` with the point and the agorot. A badge of the row: `<a data-column="{key}" href="#c-{key}" class="badge {badge_class}">{name}<i> · </i><b>{short_verdict}</b></a>`.
+  (written on one line, as today; "The label, call by call" says which form). `listed_today` is `Decimal(money(point.listed))` when the point exists, has a listed price and `today.record`, and the call is neither `price_unread` nor `unread_today`; else None. The price's figure is today's price as shown, split at its point: the shekels, then `<sup>` with the point and the agorot. A badge of the row: `<a data-column="{key}" href="#c-{key}" class="badge {badge_class}">{name}<i> · </i><b>{short_verdict}</b></a>`.
 
 - [ ] **Step 1: Write the failing tests** in `tests/test_product.py`:
   - `test_a_deal_is_a_green_label_in_its_shade`: a ₪3.00 deal at Shufersal Deal gives `<div class="tag deal-2"><div class="say"><p class="verdict">At Shufersal Deal: <b>DEAL · ₪3.00 off</b></p><p class="reason">`; the verdict's text read is `badge(found)`.
@@ -561,7 +561,7 @@ Wave 3, after Tasks 2, 3, 5 and 6. Its own worktree, `q36-product`. Its Step 7 m
   - `test_the_price_part_sets_todays_price_as_on_a_shelf_edge`: today's 14.00 gives exactly `<p class="price">Price today: <b><i>₪</i>14<sup>.00</sup></b></p>`, whose text with its tags removed is `price_line(found)`; a weighed deal adds `<small> a kilogram</small>` and reads "Price today: ₪50.00 a kilogram"; `unread_today` and `price_unread` have no `class="price"`; `too_few` and `not_sold` no `class="pay"`.
   - `test_the_label_carries_the_products_barcode`: `drawing(code)` once, right after the barcode line, so `id="ean"` once; every label's `pay` part ends with `mark(code)`; a `price_unread` label's part holds the mark alone.
   - `test_a_product_with_no_bars_has_no_drawing_and_no_mark` (Review Focus 1): an 11-digit code gives no `<svg class="defs"`, no `<use`, a `pay` part holding the price alone, and the barcode line with its digits.
-  - `test_the_chart_takes_todays_shelf_price_from_the_day`: a section's history is `render_chart(found, DAY, Decimal(money(point.listed)))` on a record day, and `render_chart(found, DAY, None)` on a hole, for a product not sold today, and on `price_unread` (the owner's ruling of 2026-11-16: its chart's today column holds "today" alone, no `<circle` and no `₪`).
+  - `test_the_chart_takes_todays_shelf_price_from_the_day`: a section's history is `render_chart(found, DAY, Decimal(money(point.listed)))` on a record day, and `render_chart(found, DAY, None)` on a hole, for a product not sold today, and on `price_unread` and `unread_today` (the owner's ruling of 2026-11-16 and the design's state table: their chart's today column holds "today" alone, no `<circle` and no `₪`).
   - `test_the_facts_follow_the_history`: the section reads label, `<div class="history">`, `<p class="fact">` for "Last this low" and for "On sale on", then `<details>`.
   - `test_elsewhere_badges_read_as_their_words`: each badge's markup as above; its text with tags removed is `short_badge(found)`.
   - Rewritten to the new markup, their rules unchanged: `test_each_section_says_the_verdict_with_the_store_types_name`, `test_with_the_script_blocked_every_store_types_part_is_in_the_html` (each section's label, history and facts, in `COLUMNS` order), `test_a_weighed_deal_is_per_kilogram`, `test_a_product_sold_nowhere_today_has_no_badges_and_every_part` (`<div class="history">` in place of `<svg class="chart"`), `test_the_largest_page_is_under_60_kb` (`MAX_PAGE`; its size goes in "Deviations"; 42,314 bytes at 16fb85b, measured for this plan).
@@ -571,7 +571,7 @@ Wave 3, after Tasks 2, 3, 5 and 6. Its own worktree, `q36-product`. Its Step 7 m
 - [ ] **Step 3: Implement.** Rewrite `product.py`'s docstring to the label, the price part, the barcode and the badge's markup.
 - [ ] **Step 4: Run** the full test command. Expected: all pass but the golden's pin.
 - [ ] **Step 5: Repin the golden.** Expected moved names: every `day/` line and the 16 `site/p/` pages; nothing else. Reason: the verdict as a shelf label with its price part and barcode; the facts ruled; the badges' markup.
-- [ ] **Step 6: Mutations.** `(q36 product)`, target `SHOP_PRODUCT`: "a deal's label without its shade"; "no deal on the plain label"; "a line that is not a verdict on a deal's label"; "the price part on a day with no price today"; "the agorot left off the price"; "a kilogram's price without its unit"; "the barcode's drawing in every part"; "a mark with no drawing on the page"; "today's shelf price on a hole"; "today's shelf price on an unread sale price"; "the chart without today's shelf price"; "a badge's name and verdict run together"; "the facts before the chart". Re-point the `(q33 product)` and `(q22 product)` mutations whose text moved ("the chart left out", "the reason line left out", "the store type's name left out of the verdict" and the others the staleness check names). Run `$PY scripts/mutation_check.py "q36 product" "q33 product" "q22 product"`, then the staleness check.
+- [ ] **Step 6: Mutations.** `(q36 product)`, target `SHOP_PRODUCT`: "a deal's label without its shade"; "no deal on the plain label"; "a line that is not a verdict on a deal's label"; "the price part on a day with no price today"; "the agorot left off the price"; "a kilogram's price without its unit"; "the barcode's drawing in every part"; "a mark with no drawing on the page"; "today's shelf price on a hole"; "today's shelf price on an unread sale price"; "today's shelf price on a day whose sale prices were not read"; "the chart without today's shelf price"; "a badge's name and verdict run together"; "the facts before the chart". Re-point the `(q33 product)` and `(q22 product)` mutations whose text moved ("the chart left out", "the reason line left out", "the store type's name left out of the verdict" and the others the staleness check names). Run `$PY scripts/mutation_check.py "q36 product" "q33 product" "q22 product"`, then the staleness check.
 - [ ] **Step 7: Measure a real day** (the day under "Where the design leaves room"):
   1. `PYTHONPATH=src $PY -m shopper.build --day <the day> --collected-by 12:03 --data /Users/doronreiffman/Projects/il-grocery-prices/data --site site`, into the worktree's `site/`.
   2. `PYTHONPATH=src $PY -m shopper.check site`. Expected: exit 0.
@@ -693,3 +693,7 @@ After the merge and the push, each on the owner's go:
 ## Deviations
 
 (Append here when reality forces a change from this plan: what changed, why, and when.)
+
+- **Baseline** (2026-11-16, on `q36-site-look` at 09e5cdd): 2,649 tests passed, coverage 99.86%, 1,064 s.
+- **Branched from 09e5cdd, not 16fb85b** (Global Constraints): the commits between are this plan and its rulings, docs only.
+- **The owner's ruling of 2026-11-16 reaches `unread_today` too** (before Task 1): the design's state table gives "On sale, price not read today" and "sale prices not read today" one row, "no price; … the chart still shows the days before", so on both calls today's shelf price is not drawn and the shelf line ends the day before. site-look.md's chart section says so now; "The chart, call by call" and Task 8 follow.
