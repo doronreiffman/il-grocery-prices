@@ -14,15 +14,15 @@ the question mark plain, and under it, after a line break, the owner's line on w
 (`shopper.words.ROOT_LINE`); the picker; then the hiring line (question M (f)), its four links side by side, a single
 space between them, which the stylesheet's flex row does not draw (it draws no text of white space alone), so without
 the stylesheet the four do not run together. The picker is `<section id="pick" data-page="root">`, the pick link's
-target and search.js's mark for the root (it sends a remembered pick on to its store type's front page unless the hash
-is #pick, which is how the header's "change" reaches the picker instead): "Which store are you in?" (PICK_TITLE), then
-each chain as `<div class="chain">`, its name as a heading the stylesheet hides from sight alone (every label carries
-its chain's name), over a label linking to each of its store types' front pages (`store_path`), in the design's order by
-chain (PICK_GROUPS), never COLUMNS' order by name. A label is the store type's name and its count of promotions today,
-the figure in bold ("1,347 promotions today", one "promotion today": `shopper.words.promotions_today`), the number its
-store page's promotions line states (`promotions_shown`, read by both); on a hole or a promotion hole, whose promotions
-the build does not count, the name alone, never "0". The root shows no price, so it carries no ALWAYS phrase, and
-`shopper.check` holds it to none.
+target and search.js's mark for the root (with a remembered pick it shows "Your store" above the headline, a link to
+that store type's front page; it never sends the shopper on: the owner, 2026-11-16): "Which store are you in?"
+(PICK_TITLE), then each chain as `<div class="chain">`, its name as a heading the stylesheet hides from sight alone
+(every label carries its chain's name), over a label linking to each of its store types' front pages (`store_path`), in
+the design's order by chain (PICK_GROUPS), never COLUMNS' order by name. A label is the store type's name and its count
+of promotions today, the figure in bold ("1,347 promotions today", one "promotion today":
+`shopper.words.promotions_today`), the number its store page's promotions line states (`promotions_shown`, read by
+both); on a hole or a promotion hole, whose promotions the build does not count, the name alone, never "0". The root
+shows no price, so it carries no ALWAYS phrase, and `shopper.check` holds it to none.
 
 A store type's front page, `store/<key>.html` (`store_path`), one folder down (UP), with its main part marked
 `data-store` (`shopper.shell.page`), from which search.js sets the pick (docs/store-first.md, "What a visitor sees" 4
@@ -636,10 +636,11 @@ def store_rules() -> tuple[tuple[str, str], ...]:
          "chain, each a link to its front page. Opening a store type's front page picks it, and so does tapping a "
          "store type's badge on a product page while nothing is picked. The pick is kept in this browser's local "
          f"storage, under the one key \"{PICK_KEY}\", and sent nowhere: the site's one script, search.js, reads it "
-         "only to open the picked front page from the root, to name it in the header beside a \"change\" link back "
-         "to the picker, and to arrange a product page, the picked store type's part with the others as badges "
-         f"under \"{ELSEWHERE}\". Where storage is blocked the site forgets the pick; with the script blocked, a "
-         "product page shows every one of its parts, and the root's links still reach each front page."),
+         "only to offer the picked front page first on the root page (\"Your store\"), to name it in the header "
+         "beside a \"change\" link back to the picker, and to arrange a product page, the picked store type's part "
+         f"with the others as badges under \"{ELSEWHERE}\". Where storage is blocked the site forgets the pick; with "
+         "the script blocked, a product page shows every one of its parts, and the root's links still reach each "
+         "front page."),
     )
 
 def _section(id_: str, heading: str, *parts: str) -> str:
