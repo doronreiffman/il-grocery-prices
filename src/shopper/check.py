@@ -27,12 +27,31 @@ each chain's promotions error and every day scored to date. Every `.html` under 
   `up` "../" for each folder the page is in (`shopper.shell.SCRIPT_TAG`): "search.js" at the root, "../search.js" in
   `p/`, `browse/` and `store/`; any other form, depth or script is refused. No `src` and no `<link>` to another origin
   (a URL with a scheme, "https:" or "data:", or a host, "//").
+- `<link` as written only as the site's one stylesheet at the page's own depth, `<link rel="stylesheet"
+  href="<up>assets/look.<hash>.css">` (`shopper.assets.STYLESHEET`), exactly once: a second copy of it, any other
+  `<link` (another depth or form, another file) or none is refused, but a `<link>` to another origin, refused above,
+  is not refused again (docs/site-look.md, "The site check"; the site-look plan's Task 7).
+- No inline style: no `<style` as written, and no tag with a `style` attribute.
 - Every relative `href` and `src` resolves to a file in the build, and one with a fragment to a page that holds that id
   (`method.html#headline-basket`). The exceptions are the record's files, which went up on their own day and are never
   deleted (B5): a link to `forecasts/<d>.csv.gz` resolves when the build's `forecasts/ledger.csv` names day d, and one
   to `scores/<d>.csv.gz` when the newest site-day file lists d as scored (B2: it lists every day scored to date, and
   Lambda's build folder holds only the run day's site-day file). A link from the root ("/...") or out of the folder
   ("../" past it) resolves to nothing the check can see.
+
+Then the shared files, `assets/` (docs/site-look.md, "The shared stylesheet and the font files"):
+
+- `assets/` holds the stylesheet, each `.woff2` file the stylesheet names, and the two licences
+  (`shopper.assets.LICENCES`), and nothing else: any other file there is refused by name (so is a stylesheet an
+  earlier build left there; empty `assets/` before building into a used folder), and the stylesheet or a licence
+  missing is named. A font the stylesheet names and `assets/` lacks is the next rule's.
+- The stylesheet holds no `@import`, and each `url(` in it names a bare file name, with no scheme, no "/" and no quote
+  mark, that ends ".woff2" and is in `assets/`. Both are sought in any case, as CSS reads them, and each name is judged
+  once, however often the stylesheet names it. Bytes that are not UTF-8 are read as the replacement character, never
+  a crash: the build never writes them, so the next rule names the file.
+- The stylesheet and each font it names carry in their names the first ten hex digits of their own bytes' SHA-256
+  (`shopper.assets.hashed`), and a refusal gives the name the bytes would give: an upload skips a name the bucket
+  holds, so a name that did not match its bytes would never be corrected.
 
 Then by page. Every store type's front page, `store/*.html`, and every `p/*.html` carry every ALWAYS phrase in the text
 read; `index.html`, the picker, shows no price and is held to the rest alone. A product page holds at most 60,000 bytes
@@ -68,6 +87,7 @@ from urllib.parse import SplitResult, unquote, urlsplit
 from basket.check import INDEX, NOINDEX, NOT_ADVICE, PRONOUNS, NoPages, flatten, index_problems, says, strip_tags
 from basket.check import main as check_main
 from basket.page import HE_SPAN
+from shopper.assets import FOLDER, LICENCES, STYLESHEET, hashed
 from shopper.build import LEDGER, MARKER, read_ledger
 from shopper.columns import BY_KEY, COLUMNS
 from shopper.freeze import scores_site_key, site_key
@@ -85,6 +105,12 @@ STORE = re.compile(r"store/[^/]+\.html")                      # a store type's f
 PIECES = "search/*.json"
 SITE_DAYS = "site-days/????-??-??.json"
 SCRIPT = "<script"
+LINK, STYLE_BLOCK = "<link", "<style"
+SHEET_TAG = '<link rel="stylesheet" href="{up}' + STYLESHEET + '">'   # the site's one stylesheet, at depth `up`
+REQUIRED = (STYLESHEET, *(f"{FOLDER}/{licence}" for licence in LICENCES))   # assets/ names each missing
+IMPORT, FONT = "@import", ".woff2"
+URL = re.compile(r"url\(([^)]*)", re.I)                       # each url( to its closing bracket, or to the end
+BARE = re.compile(r"""[^:/'"]+""")                             # a bare file name: no scheme, no "/", no quote mark
 NOTICES = {"the credit line": CREDIT_START, f'"{NOT_ADVICE}"': NOT_ADVICE}   # every page, in the text read
 SPANS = tuple(re.compile("(.*?)".join(map(re.escape, span.split("{}"))), re.S) for span in (CHAIN_SPAN, HE_SPAN))
 MARKUP = re.compile("[<>]")
@@ -162,6 +188,29 @@ def _dated(raw: str, line: str) -> bool:
     return header is not None and says(line, flatten(strip_tags(header.group(1))))
 
 
+def _sheet_problems(name: str, written: str, tags: list[tuple[str, dict[str, str]]]) -> list[str]:
+    """The page's `<link`s and inline style (the module's docstring): one line a fault. A `<link>` to another origin is
+    the origin rule's alone; a stylesheet at another depth is another link, not also a missing one."""
+    sheet = SHEET_TAG.format(up="../" * name.count("/"))
+    pieces = written.split(flatten(sheet))
+    linked = len(pieces) - 1
+    outside = [found for tag, found in tags if tag == "link"
+               and (parts := _split(found.get("href", ""))) is not None and _elsewhere(parts)]
+    others = " ".join(pieces).count(LINK) - len(outside)
+    problems = []
+    if linked > 1:
+        problems.append(f"{name}: the stylesheet linked {linked} times")
+    if others:
+        problems.append(f"{name}: a link other than {sheet}")
+    elif not linked:
+        problems.append(f"{name}: missing {sheet}")
+    if STYLE_BLOCK in written:
+        problems.append(f"{name}: a <style> block")
+    styled = sorted({tag for tag, found in tags if "style" in found})
+    problems += [f"{name}: a style attribute on <{tag}>" for tag in styled]
+    return problems
+
+
 def _section_problems(name: str, attributes: Mapping[str, str], body: str, shown: Mapping) -> list[str]:
     """A product page's section of a column: F10 when the column's gate is closed, P10 when its chain's promotions
     were not read (the module's docstring). The chain is the column's, never the section's `data-chain`, so a markup
@@ -214,6 +263,7 @@ def _page(site_dir: Path, name: str, path: Path, day: date | None, shown: Mappin
     loaded += [found["href"] for tag, found in tags if tag == "link" and "href" in found]
     problems += [f"{name}: loads from another origin: {url!r}" for url in loaded
                  if (parts := _split(url)) is not None and _elsewhere(parts)]      # one not a URL: the link rule's
+    problems += _sheet_problems(name, written, tags)
     product = PRODUCT.fullmatch(name) is not None
     if STORE.fullmatch(name) or product:
         problems += [f"{name}: missing an always phrase: {phrase!r}" for phrase in ALWAYS if not says(phrase, read)]
@@ -274,6 +324,37 @@ def _link_problem(name: str, url: str, files: set[str], records: set[str], ids: 
     return f"{name}: a link to {url!r} reaches no file in the build"
 
 
+def _unhashed(key: str) -> str:
+    """A hashed name without its hash, "assets/look.css" for "assets/look.dc1312dbfc.css"; a plain name as it is."""
+    stem, _, suffix = key.rpartition(".")
+    plain, dot, _ = stem.rpartition(".")
+    return f"{plain}.{suffix}" if dot else key
+
+
+def _asset_problems(site_dir: Path, files: set[str]) -> list[str]:
+    """The problems of `assets/` (the module's docstring), `files` the build's: what the folder holds, what the
+    stylesheet names, and each hashed file's name against its bytes."""
+    text = (site_dir / STYLESHEET).read_bytes().decode("utf-8", "replace") if STYLESHEET in files else ""
+    urls = list(dict.fromkeys(URL.findall(text)))
+    fonts = [f"{FOLDER}/{url}" for url in urls if BARE.fullmatch(url) and url.endswith(FONT)]
+    problems = [f"{key}: missing" for key in REQUIRED if key not in files]
+    problems += [f"{key}: in {FOLDER}/, which holds only the stylesheet, the fonts it names and their licences"
+                 for key in sorted(files) if key.startswith(f"{FOLDER}/") and key not in {*REQUIRED, *fonts}]
+    if IMPORT in text.lower():
+        problems.append(f"{STYLESHEET}: an {IMPORT}")
+    for url in urls:
+        if not BARE.fullmatch(url):
+            problems.append(f"{STYLESHEET}: a url that is not a bare file name: {url!r}")
+        elif not url.endswith(FONT):
+            problems.append(f"{STYLESHEET}: a url to a file that is not a font: {url!r}")
+        elif f"{FOLDER}/{url}" not in files:
+            problems.append(f"{STYLESHEET}: a url to a file not in {FOLDER}/: {url!r}")
+    for key in [STYLESHEET, *fonts]:
+        if key in files and (right := hashed(_unhashed(key), (site_dir / key).read_bytes())) != key:
+            problems.append(f"{key}: not named by its bytes' hash, which names it {right}")
+    return problems
+
+
 def check_site(site_dir: Path) -> list[str]:
     """The site's problems, one line each naming the file and the rule; [] for a site fit to upload."""
     site_dir = Path(site_dir)
@@ -293,6 +374,7 @@ def check_site(site_dir: Path) -> list[str]:
     records = _records(site_dir, shown)
     for name, urls in links.items():
         problems += [problem for url in urls if (problem := _link_problem(name, url, files, records, ids))]
+    problems += _asset_problems(site_dir, files)
     for path in sorted(site_dir.glob(PIECES)):
         if (size := path.stat().st_size) > PIECE_MAX:
             problems.append(f"{path.relative_to(site_dir).as_posix()}: {size:,} bytes, over the {PIECE_MAX:,} bytes "
