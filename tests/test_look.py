@@ -9,8 +9,6 @@ import re
 from pathlib import Path
 from typing import NamedTuple
 
-from shopper.pages import FRONT_HEADS
-
 ROOT = Path(__file__).resolve().parent.parent
 SHEET = ROOT / "src" / "shopper" / "static" / "look.css"
 DARK = "@media (prefers-color-scheme:dark)"
@@ -287,11 +285,16 @@ def test_the_two_column_rules_need_the_script():
 
 def test_the_phones_label_for_the_usual_price_is_the_tables_head():
     """A phone's store row writes the usual price's column head before it: the first `content` for browsers without
-    alternative text, then the same words with none, so a screen reader reads the cell's own head."""
-    label = [rule for rule in _rules() if rule.media == PHONE and rule.selector == "table.front td:nth-child(4)::before"]
+    alternative text, then the same words with none, so a screen reader reads the cell's own head. FRONT_HEADS is
+    imported here, not at the top: once the pages import shopper.assets, which reads the stylesheet when it loads, a
+    module-level import would turn a break of a url() into a collection error, which the mutation check does not count
+    as caught."""
+    from shopper.pages import FRONT_HEADS
+
+    label =[rule for rule in _rules() if rule.media == PHONE and rule.selector == "table.front td:nth-child(4)::before"]
     assert len(label) == 1
     contents = [value for name, value in label[0].declarations if name == "content"]
-    assert contents ==[f'"{FRONT_HEADS[3]} "', f'"{FRONT_HEADS[3]} "/""']
+    assert contents == [f'"{FRONT_HEADS[3]} "', f'"{FRONT_HEADS[3]} "/""']
 
 
 def test_no_motion_and_nothing_from_outside():

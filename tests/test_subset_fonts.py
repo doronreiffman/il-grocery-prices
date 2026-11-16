@@ -62,7 +62,7 @@ def test_the_sources_are_pinned_at_the_designs_commits():
               for file, sha256 in ((source.font, source.font_sha256), ("OFL.txt", source.licence_sha256))}
     assert pinned == SOURCES
     readme = {(folder, version, commit, file, sha256)
-              for family, version, commit, folder, file, sha256 in README_SOURCE.findall(README.read_text())
+              for family, version, commit, folder, file, sha256 in README_SOURCE.findall(README.read_text(encoding="utf-8"))
               if family.lower() == folder}
     assert readme == SOURCES
 
