@@ -1,6 +1,7 @@
 """The shopper site's stylesheet, `src/shopper/static/look.css` (docs/site-look.md: "Colour", its "Contrast" table, "The
-chart", "The shared stylesheet and the font files", "What the tests should pin" 1, 2, 4 and 8, and its appendix, which
-the file is byte for byte; the site-look plan's Task 1).
+chart", "The header's name: green and yellow", "The front page stays put, with a shortcut to your store", "The shared
+stylesheet and the font files", "What the tests should pin" 1, 2, 4 and 8, and its appendix, which the file is byte for
+byte; the site-look plan's Task 1).
 
 The stylesheet is read by a small parser of its own: each rule as the @media around it, its selector and its
 declarations in order. The light tokens are the top-level `:root` block's; the dark ones the `:root` block under
@@ -269,7 +270,7 @@ def test_nothing_is_hidden_but_by_a_named_rule():
         ("", "#f-club:checked~.table tbody tr[data-club],#f-spend:checked~.table tbody tr[data-spend]", "none"),
         ("", "nav .badge i", "none"),
         (PHONE, ".chart .near", "none"),
-        (PRINT, ".store,.search,.letters,.toc,.deals>input,.deals>label", "none"),
+        (PRINT, ".store,.search,.letters,.toc,.deals>input,.deals>label,.yours", "none"),
     ]
     important = [rule.selector for rule in _rules() for name, value in rule.declarations
                  if name == "display" and "important" in value]
@@ -309,4 +310,23 @@ def test_no_motion_and_nothing_from_outside():
 def test_print_leaves_out_the_controls():
     hidden = {selector for rule in _rules() if rule.media == PRINT and ("display", "none") in rule.declarations
               for selector in split(rule.selector, ",")}
-    assert hidden == {".store", ".search", ".letters", ".toc", ".deals>input", ".deals>label"}
+    assert hidden == {".store", ".search", ".letters", ".toc", ".deals>input", ".deals>label", ".yours"}
+
+
+def test_the_headers_no_deal_is_the_yellow_label():
+    """The owner (2026-11-16): the header's name drawn as the front page's headline, "No Deal" on the yellow label,
+    with the yellow label's three tokens, so light and dark follow."""
+    found = [rule for rule in _rules() if rule.selector == ".brand .no"]
+    assert len(found) == 1 and found[0].media == ""
+    taken = dict(found[0].declarations)
+    assert ((taken["border-color"], taken["background"], taken["color"])
+            == ("var(--nd-edge)", "var(--nd)", "var(--on-nd)"))
+
+
+def test_the_shortcuts_arrow_is_not_read_aloud():
+    """The root's "Your store" ends in an arrow the stylesheet draws: the first `content` for browsers without
+    alternative text, then the same arrow with none, so a screen reader says "Your store Shufersal Deal, link"."""
+    arrow = [rule for rule in _rules() if rule.media == "" and rule.selector == ".yours a::after"]
+    assert len(arrow) == 1
+    contents = [value for name, value in arrow[0].declarations if name == "content"]
+    assert contents == ['"\\2192"', '"\\2192"/""']

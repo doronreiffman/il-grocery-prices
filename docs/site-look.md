@@ -13,7 +13,7 @@ It restyles the shopper site of [shopper-site.md](shopper-site.md) and [store-fi
 
 ## What the owner has decided
 
-All on 2026-11-15. Five of them were this design's recommendations, which the owner took as a whole ("go with your recommendations on the open questions"); each is marked.
+All on 2026-11-15, but those marked with a later date. Five of them were this design's recommendations, which the owner took as a whole ("go with your recommendations on the open questions"); each is marked.
 
 - **The direction: "Shelf label"**: the shelf label's shape and type: a coloured sale label for a deal, the price set as on a shelf edge, the barcode on the label.
 - **Deals are green, throughout** ("let's do green. I want to see what it looks like. I don't think the yellow on its own is such a strong idea anyway."): the verdict's label, the small labels of "Elsewhere today" and of a store's table, the box in the header's wordmark, the chart's sale line.
@@ -26,6 +26,8 @@ All on 2026-11-15. Five of them were this design's recommendations, which the ow
 - **The method page's row of links is named "On this page"** for screen readers (recommended to the owner; the owner's go).
 - **Four earlier word changes:** "Price today: ₪14.00" under the verdict on a product page; the first tracked day's date and "today" along the chart's bottom; the chains' line ("Shufersal · Rami Levy · ...") in the front page's header only; on a store's own page, the table's badge without "At <store>:".
 - **NO DEAL is a yellow label** (the owner's choice by eye between two drawn variants, 2026-11-15: "Yellow").
+- **The header's name is drawn as the front page's headline**, "Deal" on the green label and "No Deal" on the yellow one (the owner, 2026-11-16, after reading the built pages: "the home icon should match the image at the top of the homepage, green & yellow"; "The header's name: green and yellow").
+- **The front page stays the front page, with a shortcut to the remembered store** (the owner, 2026-11-16: "make clicking the homepage icon in the top right take you to the homepage. it's too confusing. then maybe on the homepage we can have something at the top that will take you to your selected store, some kind of shortcut."): the root no longer sends a remembered pick on; "Your store", then the store type's name, stands above the headline (the owner's answer on its words, the same day; "The front page stays put, with a shortcut to your store").
 
 ## Why: what was measured on the live pages
 
@@ -141,7 +143,7 @@ Computed by a script that reads the tokens out of the stylesheet in both themes,
 | The same, ₪5.00 or more | `#111111` on `#ffffff` | 18.88 | `#4fe08c` on `#131313` | 10.95 | 3 |
 | The NO DEAL label's edge against the page | `#111111` on `#ffffff` | 18.88 | `#ffd60a` on `#131313` | 13.16 | 3 |
 | A plain label's edge, a search box's and a checkbox's edge, the focus ring | `#111111` on `#ffffff` | 18.88 | `#f2f2ef` on `#131313` | 16.57 | 3 |
-| Words on the inverse label (the basket's lowest total, the current letter, a store's label under the pointer) | `#ffffff` on `#111111` | 18.88 | `#131313` on `#f2f2ef` | 16.57 | 4.5 |
+| Words on the inverse label (the basket's lowest total, the current letter, a store's label and "Your store" under the pointer) | `#ffffff` on `#111111` | 18.88 | `#131313` on `#f2f2ef` | 16.57 | 4.5 |
 | Words on the soft ground (the basket's lowest price in a row) | `#111111` on `#f1f1ee` | 16.69 | `#f2f2ef` on `#222220` | 14.21 | 4.5 |
 | Small print on the soft ground | `#555555` on `#f1f1ee` | 6.59 | `#b4b4b0` on `#222220` | 7.66 | 4.5 |
 | The barcode's bars on their plate | `#111111` on `#ffffff` | 18.88 | `#111111` on `#ffffff` | 18.88 | 4.5 |
@@ -151,7 +153,7 @@ The chart's two line colours were also put through the dataviz palette validator
 
 ## Components
 
-**Header.** A paper band with a 2.5-pixel ink rule under it. At the left the name as a wordmark in the narrow cut, capitals: "DEAL" on a small green label, then "OR NO DEAL". At the right the date line, then the store line ("Carrefour Market · change", or "Pick your store"); the chains' line before the date on the front page only. On a phone the date and the store line drop to rows of their own. The store line's links are 43 pixels high.
+**Header.** A paper band with a 2.5-pixel ink rule under it. At the left the name as a wordmark in the narrow cut, capitals: "DEAL" on a small green label, "OR", then "NO DEAL" on a small yellow one ("The header's name: green and yellow"). At the right the date line, then the store line ("Carrefour Market · change", or "Pick your store"; on the front page, hidden while "Your store" shows); the chains' line before the date on the front page only. On a phone the date and the store line drop to rows of their own. The store line's links are 43 pixels high.
 
 **The label** (`div.tag`): the picked store's answer on a product page. A 2.5-pixel edge, corners of 5 pixels, two parts:
 
@@ -184,11 +186,11 @@ A line that is not a verdict ("No sale today", "On sale at some stores only", "S
 
 **Motion.** None: no transition, no animation.
 
-**Print.** The store line, the search box, the filters, a browse page's letters and the method page's row of links are left out. Browsers print no backgrounds by default, so a coloured label prints as its outline, which still reads.
+**Print.** The store line, the search box, the filters, a browse page's letters, the method page's row of links and the front page's "Your store" are left out. Browsers print no backgrounds by default, so a coloured label prints as its outline, which still reads.
 
 ## Page by page
 
-**The front page.** The headline "DEAL OR NO DEAL?" in the narrow cut, capitals, at 132 pixels on a desktop (one line there, two on a phone): DEAL on the full green label, NO DEAL on the yellow no-deal label, "OR" and the question mark plain. The owner's line under it; a rule; "WHICH STORE ARE YOU IN?" and the nine labels; then the four links ("Built by ...", "How this is made", "Track record", "Code on GitHub") as small capitals, underlined.
+**The front page.** With a store remembered, "YOUR STORE Shufersal Deal →" first, above the headline (the script's; "The front page stays put, with a shortcut to your store"). The headline "DEAL OR NO DEAL?" in the narrow cut, capitals, at 132 pixels on a desktop (one line there, two on a phone): DEAL on the full green label, NO DEAL on the yellow no-deal label, "OR" and the question mark plain. The owner's line under it; a rule; "WHICH STORE ARE YOU IN?" and the nine labels; then the four links ("Built by ...", "How this is made", "Track record", "Code on GitHub") as small capitals, underlined.
 
 **A store page.** The store's name as a small label; the title question "IS IT ACTUALLY A DEAL?", smaller, on one line on a desktop, its last word on the full green label; the subtitle; the search box and "Browse by first letter"; a rule; the headline in bold with its two numbers in the narrow cut ("At Carrefour Market today: **14 of 4,196** promotions are actually deals."); the two filters; the table.
 
@@ -310,7 +312,48 @@ What each gives:
 - **Y** gives three states three looks: a deal is green, a sale that is not a deal is yellow, no sale is white. The case the site exists to catch, "on sale, but not actually a deal", has a colour of its own. Its price: a second loud colour, and a product that is No deal at seven store types shows seven yellow labels.
 - **W** keeps green the only colour on the site, which is the calmer and more formal page. Its price: NO DEAL and "No sale today" then differ only in their words.
 
-The header's wordmark is the same in both: DEAL in the green box, "OR NO DEAL" plain.
+The header's wordmark was the same in both: DEAL in the green box, "OR NO DEAL" plain. The owner then dressed its NO DEAL too (2026-11-16; next section).
+
+## The header's name: green and yellow
+
+The owner, 2026-11-16, after reading the built pages: "the home icon should match the image at the top of the homepage, green & yellow."
+
+The header's name is drawn as the front page's headline, at header size: "Deal" on the green label, "or" plain, "No Deal" on the yellow label. No question mark: the site's name has none. This overturns call 16 ("The header's wordmark keeps "OR NO DEAL" plain").
+
+```html
+<a class="brand" href="{up}index.html"><b>Deal</b> or <b class="no">No Deal</b></a>
+```
+
+`shell.band` writes it from `SITE_NAME`: the words before " or " in `<b>`, " or ", the words after it in `<b class="no">`. The text read is still "Deal or No Deal". One rule draws the yellow label, `.brand .no`, with the tokens the headline's NO DEAL takes (`--nd`, `--on-nd`, `--nd-edge`), so light and dark follow: an ink edge on paper, the yellow its own edge on the dark page. The name still links to the front page, which now stays put (next section). Measured in headless Chrome on the mockups before the build: the name is 197.8 pixels wide on a phone (177.5 before) and 215 at 1,280 (193.3); its height does not change (43.1 and 45.8); on a 320-pixel screen nothing scrolls sideways. It adds 18 bytes to every page.
+
+**Tests.** The brand's markup, exactly the line above, its text "Deal or No Deal" (`tests/test_product.py`, `tests/test_shop_pages.py`); `.brand .no` takes `--nd`, `--on-nd` and `--nd-edge` (`tests/test_look.py`).
+
+## The front page stays put, with a shortcut to your store
+
+The owner, 2026-11-16: "make clicking the homepage icon in the top right take you to the homepage. it's too confusing. then maybe on the homepage we can have something at the top that will take you to your selected store, some kind of shortcut."
+
+Until then the front page sent a shopper with a remembered store straight on to that store's page (`search.js`, with `location.replace`), unless the address ended `#pick`; so the site's name, which links to the front page, landed on a store page.
+
+- **The front page never sends anyone on.** The site's name takes a shopper to the front page and they stay there.
+- **With a remembered store, the script adds one shortcut, first on the page, above the headline:** the remembered store's own label, as in the picker, one line high.
+
+  ```html
+  <p class="yours"><a href="store/shufersal-deal.html"><small>Your store</small> Shufersal Deal</a></p>
+  ```
+
+  It reads "YOUR STORE  Shufersal Deal  →": small capitals in the second ink, the name in bold, an arrow at the right, a 2-pixel ink edge with 5-pixel corners; the whole label is the link and turns to ink under the pointer, as the picker's labels do. On a phone it takes the column's width; from 48rem it is as wide as its words. Measured in headless Chrome on the mockups before the build: 48 pixels high; 358 pixels wide at 390 and 288 at 320; 279 at 1,280 for "Shufersal Deal". The arrow is the stylesheet's (`::after`, with empty alternative text), so a screen reader says "Your store Shufersal Deal, link", and the script stays plain ASCII. Print leaves it out.
+- **Words: "Your store", then the store type's name** (the owner's answer, 2026-11-16). The other choice drawn up was "Back to Shufersal Deal": a shopper who came from a product page by the site's name was never on the store's page, so "back" would be wrong for them; "Your store" is true for everyone and is what the header already calls it ("Pick your store").
+- **Place: above the headline**, the owner's "at the top". A returning shopper's first tap is the first thing on the page; a first visitor, and so the hiring reader, never sees it, and the headline keeps the top.
+- **The header's store line on the front page** is hidden while the shortcut shows (call 19), and left as the build wrote it: otherwise a phone shows "Shufersal Deal · change" and, 60 pixels under it, "YOUR STORE Shufersal Deal". Changing the store there is the picker itself, right under the headline. With no store remembered, or storage blocked, there is no shortcut and the header says "Pick your store", as before. On every other page the store line is unchanged: "Pick your store", or "Shufersal Deal · change".
+- **`index.html#pick`** is still the header's "change" on every other page, and now an ordinary link to the picker's heading: it scrolls there, past the shortcut. The script no longer reads the address.
+- **Without the script** nothing changes: the page is static and says "Pick your store".
+- **The picker does not mark the remembered store's own label** (call 20); the shortcut is enough.
+
+No new colour: the shortcut's name and edge are ink on paper, "YOUR STORE" the second ink, and under the pointer paper on ink, three pairs the "Contrast" table already holds.
+
+**In `search.js`.** `redirectFor` and its `location.replace` are gone. On the root page (`#pick[data-page="root"]`) the script calls `showShortcut` in place of `showHeader`: it builds the paragraph above with `createElement` and `textContent` (never HTML text), its address from the site's root as the header's is (`headerFor`), puts it right before the headline's block (`div.hero`), and hides the pick link's paragraph (`p.store`). One new constant, `YOURS = "Your store"`.
+
+**Tests.** `tests/test_search_js.py`: the root never calls `location.replace` and never writes the pick, with a remembered store, none, one that no longer fits, or storage blocked, each with and without `#pick`; with each of the nine store types remembered, the shortcut's exact markup directly before `<div class="hero">` and the store line hidden and untouched; with none, a stale one or storage blocked, no shortcut and "Pick your store"; on a root page in a folder, the shortcut and a search both start from the site's root; on a store page and a product page, no shortcut and the header names the store. `tests/test_look.py`: print leaves out `.yours`; `.yours a::after` has both `content` forms, the second with empty alternative text. `tests/test_shop_pages.py`: the method page's "The store you pick." says the script offers the picked front page first on the root page, in the script's own words.
 
 ## Hebrew names in English pages
 
@@ -381,7 +424,7 @@ Both are under the SIL Open Font License 1.1. A subset is a modified version, an
 
 No function changes what it computes, but for the two counts under "Calls".
 
-- **`src/shopper/shell.py`:** `page` links the stylesheet in place of the `<style>` block and takes the page's kind, written as a class on `<body>` (`t-front`, `t-store`, `t-product`, `t-browse`, `t-method`, `t-record`, `t-basket`); its `style` argument goes. `band` gives the name's link `class="brand"` and writes it as `<b>Deal</b> or No Deal` (the green box around the first word), and writes the chains' line on the front page only.
+- **`src/shopper/shell.py`:** `page` links the stylesheet in place of the `<style>` block and takes the page's kind, written as a class on `<body>` (`t-front`, `t-store`, `t-product`, `t-browse`, `t-method`, `t-record`, `t-basket`); its `style` argument goes. `band` gives the name's link `class="brand"` and writes it as `<b>Deal</b> or <b class="no">No Deal</b>` (the green label around the first word, the yellow one around the last two: the owner, 2026-11-16), and writes the chains' line on the front page only.
 - **`src/basket/page.py`:** `Frame` carries the stylesheet's link and the body's class, so `basket.html` takes the frame's head; the stand-alone pages keep `STYLE`.
 - **`src/shopper/pages.py`:** the style constants go (`PAGE_STYLE`, `ROOT_STYLE`, `STORE_STYLE`, `METHOD_STYLE`, `RECORD_STYLE`). `render_root` writes the headline with DEAL and NO DEAL each in a `<span>` (`class="yes"`, `class="no"`), and a store page's title question has its last word in `<span class="yes">`. `_picker` wraps each chain in `<div class="chain">` and adds each store's count when it is known. `_hiring` drops the dots between its links. `_row` writes the badge without "At <store>:" (decided) and `_deals` gives the table its roles (`role="table"`, `rowgroup`, `row`, `columnheader`, `rowheader`, `cell`), which a phone's block layout would otherwise take away. `render_store` puts the headline's two numbers in a `<b>`. The method page gains its row of section links.
 - **`src/shopper/product.py`:** `BADGE_STYLE` and `PRODUCT_STYLE` go. `_section` builds the label: `<div class="tag <class>">` holding `<div class="say">` (the verdict as `<p class="verdict">At <store>: <b>DEAL · ₪5.00 off</b></p>`, or the plain line; the reason; the conditions; a coming sale) and `<div class="pay">` (the price line; the barcode's mark). `render_product` writes the barcode's drawing once after the barcode line. `_row` writes each badge as the name, a hidden separator and the verdict in a `<b>`. The chart, its key and its table go in `<div class="history">`; the two facts get `class="fact"`.
@@ -390,7 +433,7 @@ No function changes what it computes, but for the two counts under "Calls".
 - **`src/shopper/words.py`:** the front page's headline and its line (`FRONT_TITLE` stays the store pages'; the root page gets its own two constants); the price line ("Price today: ₪14.00", from `price_text`); the table's four heads; the short date ("13 Nov"); `chart_summary` and the table take lowest and highest over the tracked days and today; `reason` and `last_low` name "days with a known price" when `len(found.priced)` differs from `len(found.days)` ("Word changes", 3).
 - **`src/shopper/search.py`:** `BROWSE_STYLE` goes.
 - **`src/shopper/build.py`, `src/shopper/check.py`, `src/basket/site.py`, `scripts/publish.sh`:** as under "The shared stylesheet and the font files".
-- **`src/shopper/static/search.js`: no change.** Its hooks stay as they are: `#pick-link` inside `p.store`, `#pick` with `data-page`, `main[data-store]`, `nav.badges`, `a[data-column]`, `section[data-column]`, `h2.elsewhere`, `.not-sold`, `#q`, `#results`, and the `js` class it puts on `<html>`. The preview runs the live script unchanged against the new markup.
+- **`src/shopper/static/search.js`:** no change in the build; one after the owner's read of it (2026-11-16): the root no longer sends a remembered pick on, and shows "Your store" above the headline ("The front page stays put, with a shortcut to your store"). Its hooks stay as they are, with `div.hero` added: `#pick-link` inside `p.store`, `#pick` with `data-page`, `main[data-store]`, `nav.badges`, `a[data-column]`, `section[data-column]`, `h2.elsewhere`, `.not-sold`, `#q`, `#results`, and the `js` class it puts on `<html>`. The preview runs the live script unchanged against the new markup.
 
 ## What the tests should pin
 
@@ -474,9 +517,11 @@ Following from these, not new words: the chart's spoken summary changes its numb
 13. **A not-sold line is drawn as an empty slot**, a dashed outline.
 14. **The product page in two columns on a desktop**, laid out by the stylesheet alone, only while the script runs.
 15. **The basket's lowest total in ink, not green**: green stays the mark of a deal. A store's label on the front page turns to ink under the pointer for the same reason.
-16. **The header's wordmark keeps "OR NO DEAL" plain**; only the big headline dresses NO DEAL.
+16. **The header's wordmark keeps "OR NO DEAL" plain**; only the big headline dresses NO DEAL. Overturned by the owner on 2026-11-16: the header's NO DEAL is on the yellow label too ("The header's name: green and yellow").
 17. **The price part of a label stays paper**; only its edge takes the label's colour.
 18. **Hebrew names keep `dir="rtl"` and stay left-aligned.**
+19. **The header's store line is hidden on the front page while "Your store" shows** (2026-11-16): one link to the remembered store at the top of the page, not two.
+20. **The picker does not mark the remembered store's own label** (2026-11-16); the shortcut is enough.
 
 ## Left to the builder
 
@@ -502,7 +547,7 @@ Following from these, not new words: the chart's spoken summary changes its numb
 
 ## Appendix: the stylesheet
 
-`src/shopper/static/look.css` as proposed, written with the yellow NO DEAL's three tokens: 20,884 bytes as written here, 20,928 once the build has written the fonts' hashed names into its four `url(...)`.
+`src/shopper/static/look.css` as proposed, written with the yellow NO DEAL's three tokens, and with the rules of the owner's read of 2026-11-16 for the header's name and the front page's "Your store": 21,449 bytes as written here, 21,493 once the build has written the fonts' hashed names into its four `url(...)` (20,884 and 20,928 as approved).
 
 ```css
 @font-face{font-family:Shelf;src:url(archivo-text.woff2) format("woff2");font-weight:400 700;font-display:swap;unicode-range:U+0020-007E,U+00A0-00FF,U+2013-2014,U+2018-2019,U+201C-201D,U+2022,U+2026,U+2190,U+2192,U+2212}
@@ -527,7 +572,7 @@ a:hover{text-decoration-thickness:3px}
 h1,h2,h3,p,ul,ol,dl,dd{margin:0}
 h1{font:800 2.5rem/.95 var(--narrow);letter-spacing:-.005em;text-transform:uppercase}
 h2{font:800 1.375rem/1.05 var(--narrow);letter-spacing:.02em;text-transform:uppercase}
-h3,.at,.verdict,.price,thead th,.stats th,.tile dt{font:600 .75rem/1.35 var(--text);letter-spacing:.09em;text-transform:uppercase}
+h3,.at,.verdict,.price,thead th,.stats th,.tile dt,.yours small{font:600 .75rem/1.35 var(--text);letter-spacing:.09em;text-transform:uppercase}
 main p,main li{max-width:44rem}
 small{font-size:.8125rem}
 main{padding-top:2rem;padding-bottom:1rem}
@@ -536,6 +581,7 @@ main{padding-top:2rem;padding-bottom:1rem}
 .band .wrap{display:flex;flex-wrap:wrap;align-items:center;gap:0 1.5rem;padding-top:.5rem;padding-bottom:.5rem}
 .brand{margin-right:auto;padding:.3rem 0;font:800 1.375rem/1 var(--narrow);letter-spacing:.02em;text-transform:uppercase;text-decoration:none;white-space:nowrap}
 .brand b{display:inline-block;margin-right:.1em;padding:.2em .32em .14em;border:2px solid var(--edge);border-radius:3px;background:var(--fill);color:var(--on-deal)}
+.brand .no{margin:0 0 0 .1em;border-color:var(--nd-edge);background:var(--nd);color:var(--on-nd)}
 .dateline{flex-basis:100%;color:var(--ink-2);font-size:.8125rem}
 .store{order:3;font-size:.9375rem;font-weight:600}
 .store a{display:inline-block;padding:.65rem 0}
@@ -568,6 +614,11 @@ h1 .yes,h1 .no{display:inline-block;margin:.04em 0 0 -.06em;padding:.07em .14em 
 h1 .yes{border-color:var(--edge);background:var(--fill);color:var(--on-deal)}
 h1 .no{margin-left:0;border-color:var(--nd-edge);background:var(--nd);color:var(--on-nd)}
 .hero .lede{max-width:31rem;margin-top:1.4rem}
+.yours{max-width:none}
+.yours a{display:flex;align-items:center;gap:.7rem;min-height:3rem;padding:.4rem .9rem;border:2px solid var(--ink);border-radius:5px;font-weight:700;text-decoration:none}
+.yours a::after{content:"\2192";content:"\2192"/"";margin-left:auto;padding-left:.5rem}
+.yours small{color:var(--ink-2)}
+.yours+.hero{padding-top:1.5rem}
 #pick{padding-top:.9rem;border-top:var(--rule)}
 #pick h2{font-size:1.625rem}
 #pick h3{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
@@ -576,10 +627,10 @@ h1 .no{margin-left:0;border-color:var(--nd-edge);background:var(--nd);color:var(
 #pick .chain,#pick ul{display:contents}
 #pick li{display:block;max-width:none}
 #pick a{display:flex;flex-direction:column;justify-content:space-between;height:100%;min-height:6.4rem;padding:.7rem .8rem .6rem;border:2px solid var(--ink);border-radius:5px;font-weight:700;line-height:1.2;text-decoration:none}
-#pick a:hover{background:var(--ink);color:var(--bg)}
+#pick a:hover,.yours a:hover{background:var(--ink);color:var(--bg)}
 #pick small{margin-top:.8rem;color:var(--ink-2);font-size:.6875rem;font-weight:600;letter-spacing:.07em;text-transform:uppercase;white-space:nowrap}
 #pick small b{display:block;color:var(--ink);font:800 2.125rem/.95 var(--narrow);letter-spacing:0;font-variant-numeric:tabular-nums}
-#pick a:hover small,#pick a:hover b{color:var(--bg)}
+#pick a:hover small,#pick a:hover b,.yours a:hover small{color:var(--bg)}
 .hiring{display:flex;flex-wrap:wrap;gap:.25rem 1.75rem;max-width:none;margin-top:1.75rem}
 .hiring a{padding:.5rem 0;font-size:.875rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;text-decoration-thickness:2px;text-underline-offset:.3em}
 .at{color:var(--ink-2)}
@@ -763,6 +814,8 @@ h1{font-size:3.75rem}
 .hero{padding:4rem 0 3.5rem}
 .hero h1{font-size:8.25rem}
 .hero .lede{max-width:34rem;margin-top:2rem;font-size:1.3125rem}
+.yours a{display:inline-flex}
+.yours+.hero{padding-top:2.5rem}
 #pick{grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem;padding-top:1.1rem}
 #pick h2{font-size:2rem}
 #pick a{min-height:8.2rem;padding:1rem 1.2rem .9rem;font-size:1.3125rem}
@@ -805,5 +858,5 @@ ol.rules li{grid-template-columns:11rem minmax(0,1fr);gap:1rem}
 .js .t-product main>.elsewhere:not([hidden])+nav.badges{margin-top:4.2rem}
 .js .verdict b{font-size:clamp(3rem,4.9vw,4rem)}
 }
-@media print{.store,.search,.letters,.toc,.deals>input,.deals>label{display:none}}
+@media print{.store,.search,.letters,.toc,.deals>input,.deals>label,.yours{display:none}}
 ```

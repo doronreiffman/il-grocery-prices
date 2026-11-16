@@ -303,13 +303,14 @@ def test_a_store_page_has_the_always_phrases_and_the_search_box():
 
 
 def test_every_page_header_names_the_site_and_the_day():
-    """The owner's plain words (2026-11-10) and the site's look (q36): the site's name as the brand, its first word on
-    the label, the pick link (store first, q33), on the front page alone the five chains in slug order on one line, and
-    the date line, "Prices of" the day."""
+    """The owner's plain words (2026-11-10) and the site's look (q36): the site's name as the brand, drawn as the front
+    page's headline ("Deal" on the green label, "No Deal" on the yellow one: the owner, 2026-11-16), the pick link
+    (store first, q33), on the front page alone the five chains in slug order on one line, and the date line, "Prices
+    of" the day."""
     chains = '<p class="dateline">Shufersal · Rami Levy · Osher Ad · Carrefour · Yochananof</p>'
     for page, up, line in ((_storepage(), "../", ""), (_root(), "", chains)):
-        assert (f'<header class="band"><div class="wrap"><a class="brand" href="{up}index.html"><b>Deal</b> or No Deal'
-                f'</a>{PICK_LINK.format(up=up)}{line}'
+        assert (f'<header class="band"><div class="wrap"><a class="brand" href="{up}index.html"><b>Deal</b> or '
+                f'<b class="no">No Deal</b></a>{PICK_LINK.format(up=up)}{line}'
                 '<p class="dateline">Prices of Friday 20 November 2026</p></div></header>') in page
 
 
@@ -911,6 +912,10 @@ def test_the_method_page_states_the_rules_with_the_codes_constants(monkeypatch):
     key = re.search(r'const PICK_KEY = "([^"]+)";', SEARCH_JS).group(1)
     assert f'kept in this browser\'s local storage, under the one key "{key}", and sent nowhere' in pick
     assert f'"{PICK_TITLE}"' in pick and "nine" in pick
+    # the owner (2026-11-16): the root no longer opens the picked front page; it offers it first, in search.js's words
+    yours = re.search(r'const YOURS = "([^"]+)";', SEARCH_JS).group(1)
+    assert f'reads it only to offer the picked front page first on the root page ("{yours}"), to name it' in pick
+    assert "open the picked front page" not in pick
     _no_never_phrase_and_no_pronoun(page)
     assert "0123456789ab" in page and 'href="site-days/2026-11-02.json"' in page
     reproduce = re.search(r'<section id="reproduce">(.*?)</section>', page, re.DOTALL).group(1)
@@ -1218,7 +1223,8 @@ def test_basket_html_keeps_the_baskets_always_phrases_links_covered_items_only_a
     assert prices.endswith(f"</table></div><p>{formats_note()}</p></section>")
     assert flatten(ALWAYS_SENTENCE) not in text
     assert flatten(CREDIT_START) in text and flatten(date_line(BASKET_DAY)) in text
-    assert f'<a class="brand" href="index.html"><b>Deal</b> or No Deal</a>{PICK_LINK.format(up="")}' in page
+    assert ('<a class="brand" href="index.html"><b>Deal</b> or <b class="no">No Deal</b></a>'
+            f'{PICK_LINK.format(up="")}') in page
     assert f'<a href="method.html#{BASKET_SECTION}">' in page
     assert f"<h1>{BASKET_TITLE}</h1>" in page and page.count("<script") == 1
     assert f'{SCRIPT}\n</head>' in page

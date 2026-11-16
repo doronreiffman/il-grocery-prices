@@ -9,15 +9,18 @@ and its one script (`SCRIPT_TAG`, `search.js`), each from the site's root; no pa
 The body names the page's kind as its class, `t-<kind>` (KINDS: the front page, a store type's front page, a product
 page, a browse page, the method, record and basket pages), from which the stylesheet lays each kind out; a kind not in
 KINDS is refused. Then the header band, the main part, and the footer with the credit line (`shopper.words.credit`)
-and the page's links. The band holds the brand, the site's name linking to the root with its first word in `<b>` (the
-green label the stylesheet draws), so its text read is the name; the store line; on the front page alone the chains'
-line (`shopper.words.CHAINS_LINE`); and the date line (`shopper.words.date_line`), the chains' line in the date line's
-style. The store line is the pick link, `<a id="pick-link" href="<up>index.html#pick">`, "Pick your store", on every
-page, a store type's front page included: search.js reads the site's root from its href and, once a store type is
-picked and remembered, writes "<store type> · change" there (its header comment). A store type's front page marks its
-main part with `data-store` (`store`), from which the script sets the pick. Nothing else is loaded, from here or
-elsewhere. `up` is the path from the page's folder to the site's root, "../" for `p/`, `browse/` and `store/` and ""
-for the root pages, so every link, the stylesheet and the script resolve in the build.
+and the page's links. The band holds the brand, the site's name linking to the root, drawn as the front page's
+headline (the owner, 2026-11-16; docs/site-look.md, "The header's name: green and yellow"): "Deal" in `<b>` (the green
+label the stylesheet draws), " or ", "No Deal" in `<b class="no">` (the yellow one), so its text read is the name; the
+store line; on the front page alone the chains' line (`shopper.words.CHAINS_LINE`); and the date line
+(`shopper.words.date_line`), the chains' line in the date line's style. The store line is the pick link,
+`<a id="pick-link" href="<up>index.html#pick">`, "Pick your store", in `<p class="store">` on every page, a store
+type's front page included: search.js reads the site's root from its href and, once a store type is picked and
+remembered, writes "<store type> · change" there, but on the front page, where it hides the store line beside its
+"Your store" shortcut (its header comment). A store type's front page marks its main part with `data-store`
+(`store`), from which the script sets the pick. Nothing else is loaded, from here or elsewhere. `up` is the path from
+the page's folder to the site's root, "../" for `p/`, `browse/` and `store/` and "" for the root pages, so every link,
+the stylesheet and the script resolve in the build.
 
 The shell lives in its own module so that the front page's module can import the product pages' `page_path` while
 the product pages import the shell: no import goes round in a circle.
@@ -46,13 +49,14 @@ def head(up: str) -> str:
 
 
 def band(day: date, up: str, front: bool = False) -> str:
-    """The header band: the brand linking to the root, the store line's pick link, the chains' line on the front page
-    alone (`front`), then the date line (`basket.html`'s too, in the basket's frame)."""
-    first, _, rest = SITE_NAME.partition(" ")
+    """The header band: the brand linking to the root, the site's name on the headline's two labels, the store line's
+    pick link, the chains' line on the front page alone (`front`), then the date line (`basket.html`'s too, in the
+    basket's frame)."""
+    yes, no = SITE_NAME.split(" or ")
     chains = f'<p class="dateline">{text(CHAINS_LINE)}</p>' if front else ""
-    return (f'<header class="band"><div class="wrap"><a class="brand" href="{up}index.html"><b>{text(first)}</b> '
-            f'{text(rest)}</a><p class="store"><a id="pick-link" href="{up}index.html#pick">{text(PICK)}</a></p>'
-            f'{chains}<p class="dateline">{text(date_line(day))}</p></div></header>')
+    return (f'<header class="band"><div class="wrap"><a class="brand" href="{up}index.html"><b>{text(yes)}</b> or '
+            f'<b class="no">{text(no)}</b></a><p class="store"><a id="pick-link" href="{up}index.html#pick">'
+            f'{text(PICK)}</a></p>{chains}<p class="dateline">{text(date_line(day))}</p></div></header>')
 
 
 def page(title: str, main: str, day: date, collected_by: str, links: Sequence[tuple[str, str]], kind: str,

@@ -2,14 +2,15 @@
 Node, through `tests/search_harness.js`. Search: its normalisation agrees with `shopper.search`'s, it names the piece a
 query belongs in, it matches in name order and stops at 50, it asks for a barcode's page by HEAD and says what the site
 has, and it asks from the site's root on a page in a folder. The picker: its store names are the columns, a remembered
-pick counts only when it is one of them and storage never stops the script, the header names the pick, the root sends a
-remembered pick to its store page unless "change" asked for the picker, a store page remembers its store, and a product
-page opens the pick's part and lists the rest under "Elsewhere today". Node is a CI tool for this one file (Node 22.11.0
-there); a machine without it fails these tests, as it should.
+pick counts only when it is one of them and storage never stops the script, the header names the pick on every page
+but the root, the root never sends anyone on and offers a remembered pick first, as "Your store" above the headline
+(the owner, 2026-11-16: docs/site-look.md, "The front page stays put, with a shortcut to your store"), a store page
+remembers its store, and a product page opens the pick's part and lists the rest under "Elsewhere today". Node is a CI
+tool for this one file (Node 22.11.0 there); a machine without it fails these tests, as it should.
 
 The fake page (the harness's `page`) is a small DOM, a search box (`#q`) alone unless a test gives one, with a storage, a
 location and a fetch that records its requests; the answers are the results box's HTML, the page's HTML after the
-script, what the storage holds and where `location.replace` was sent."""
+script, what the storage holds and where `location.replace` was sent (nowhere, now, on any page)."""
 import json
 import random
 import re
@@ -277,21 +278,11 @@ def test_write_pick_never_throws():
                                         {"threw": False, "stored": {}}, {"threw": False, "stored": {}}]
 
 
-# the root, the redirect and the header
+# the root and the header
 
 def test_root_of():
     assert _run("rootOf", ["index.html#pick", "../index.html#pick", "../../index.html#pick"]) == ["", "../", "../../"]
     assert _run("rootOf", ["../index.html", "../about.html#pick"]) == ["", ""]   # not the picker's: the page's folder
-
-
-@pytest.mark.parametrize("pick, hash_, url", [
-    ("osherad", "", "store/osherad.html"), ("shufersal-deal", "", "store/shufersal-deal.html"),
-    ("osherad", "#q", "store/osherad.html"),        # any other hash
-    ("osherad", "#pick", None),                     # "change": the picker, not straight back
-    (None, "", None), (None, "#pick", None),        # no pick
-])
-def test_redirect_for(pick, hash_, url):
-    assert _run("redirectFor", [[pick, hash_]]) == [url]
 
 
 def test_header_for():
@@ -342,13 +333,19 @@ def _el(tag, attributes=None, *children):
 
 
 def _header(up):
-    """Every page's header: the pick link, whose href leads up to the site's root."""
-    return _el("header", {}, _el("a", {"id": "pick-link", "href": f"{up}index.html#pick"}, PICK))
+    """Every page's header: the store line, `p.store`, holding the pick link, whose href leads up to the site's root
+    (`shopper.shell.band`)."""
+    return _el("header", {}, _el("p", {"class": "store"}, _el("a", {"id": "pick-link", "href": f"{up}index.html#pick"},
+                                                                PICK)))
 
 
-def _root_page():
-    links = [_el("a", {"href": f"store/{column.key}.html"}, column.name) for column in COLUMNS]
-    return [_header(""), _el("main", {}, _el("section", {"id": "pick", "data-page": "root"}, *links))]
+def _root_page(up="", search=False):
+    """The root page: the hero (the headline's block), then the picker. `up` and `search` make a root page no build
+    writes, one in a folder with a search box, to show what the script reads its root from."""
+    links = [_el("a", {"href": f"{up}store/{column.key}.html"}, column.name) for column in COLUMNS]
+    box = [_el("input", {"id": "q"})] if search else []
+    return [_header(up), _el("main", {}, _el("div", {"class": "hero"}, _el("h1", {}, "Deal or No Deal?")),
+                             _el("section", {"id": "pick", "data-page": "root"}, *links), *box)]
 
 
 def _store_page(key):
@@ -379,8 +376,20 @@ def _listed(page):
 
 
 def _named(up, key, name):
-    return (f'<header><a href="{up}store/{key}.html">{name}</a> · '
-            f'<a id="pick-link" href="{up}index.html#pick">change</a></header>')
+    return (f'<header><p class="store"><a href="{up}store/{key}.html">{name}</a> · '
+            f'<a id="pick-link" href="{up}index.html#pick">change</a></p></header>')
+
+
+def _asking(up="", hidden=False):
+    """The header as the build writes it, "Pick your store", untouched by the script; its store line hidden or not."""
+    line = '<p class="store" hidden>' if hidden else '<p class="store">'
+    return f'<header>{line}<a id="pick-link" href="{up}index.html#pick">{PICK}</a></p></header>'
+
+
+def _shortcut(up, key, name):
+    """The root's shortcut to the remembered store type, first in the main part, right before the headline's block."""
+    return (f'<main><p class="yours"><a href="{up}store/{key}.html"><small>Your store</small> {name}</a></p>'
+            '<div class="hero">')
 
 
 @pytest.mark.parametrize("dom", [None, _root_page(), _store_page("osherad"), _product_page(PARTS, BADGES)])
@@ -397,29 +406,58 @@ def test_a_store_page_remembers_its_store(before):
     assert found["replaced"] == []
 
 
-@pytest.mark.parametrize("storage, hash_, replaced", [
-    ({"store": "ramilevy"}, "", ["store/ramilevy.html"]),      # a remembered pick: straight to its page
-    ({"store": "ramilevy"}, "#pick", []),                      # "change": the picker stays
-    ({}, "", []), ({"store": "garbage"}, "", []),              # no pick, or one that no longer fits
-])
-def test_the_root_sends_a_remembered_pick_to_its_store_page_and_change_does_not(storage, hash_, replaced):
+@pytest.mark.parametrize("hash_", ["", "#pick"])
+@pytest.mark.parametrize("storage", [{"store": "ramilevy"}, {}, {"store": "garbage"}, "blocked", "throws"])
+def test_the_root_never_sends_anyone_on(storage, hash_):
+    # The owner (2026-11-16): the site's name leads to the front page, and the shopper stays there; "change"
+    # (index.html#pick) is an ordinary link to the picker. A remembered pick, none, one that no longer fits, storage
+    # blocked: location.replace is never called, and the root never writes the pick.
     found = _site(_root_page(), storage, hash=hash_)
-    assert found["replaced"] == replaced
-    assert found["stored"] == storage                          # the root never writes the pick
+    assert found["replaced"] == []
+    assert found["stored"] == (storage if isinstance(storage, dict) else None)
+
+
+@pytest.mark.parametrize("hash_", ["", "#pick"])
+@pytest.mark.parametrize("column", COLUMNS, ids=lambda column: column.key)
+def test_the_root_offers_the_remembered_store_first(column, hash_):
+    # "Your store", then the store type's name, a link to its front page, first on the page, right before the
+    # headline's block; the header's store line hidden there and left as the build wrote it (call 10).
+    page = _site(_root_page(), {"store": column.key}, hash=hash_)["page"]
+    assert _shortcut("", column.key, column.name) in page
+    assert page.count('class="yours"') == 1
+    assert _asking(hidden=True) in page
+
+
+@pytest.mark.parametrize("storage", [{}, {"store": "garbage"}, "blocked", "throws"])
+def test_the_root_with_no_store_remembered_has_no_shortcut(storage):
+    page = _site(_root_page(), storage)["page"]
+    assert "yours" not in page and "Your store" not in page
+    assert _asking() in page
+
+
+def test_the_roots_shortcut_and_search_go_from_the_root():
+    # The pick link's address is read as before, its line hidden or not: on a root page in a folder (none is built so),
+    # the shortcut and a search both start from the site's root.
+    responses = {"../search/pieces.json": {"status": 200, "body": []}, f"../p/{CODE}.html": {"status": 200}}
+    found = _site(_root_page("../", search=True), {"store": "osherad"}, inputs=[{"value": CODE}], responses=responses)
+    assert _shortcut("../", "osherad", "Osher Ad") in found["page"]
+    assert _asking(up="../", hidden=True) in found["page"]
+    assert found["requests"] == [{"url": "../search/pieces.json", "method": "GET"},
+                                 {"url": f"../p/{CODE}.html", "method": "HEAD"}]
 
 
 @pytest.mark.parametrize("dom, up", [
-    (_root_page(), ""), (_store_page("carrefour-market"), "../"),
-    (_product_page(["carrefour-market"], ["carrefour-market"]), "../")])
-def test_the_header_names_the_pick_on_every_page(dom, up):
+    (_store_page("carrefour-market"), "../"), (_product_page(["carrefour-market"], ["carrefour-market"]), "../")])
+def test_the_header_names_the_pick_on_every_page_but_the_root(dom, up):
     found = _site(dom, {"store": "carrefour-market"}, hash="#pick")
     assert _named(up, "carrefour-market", "Carrefour Market") in found["page"]
+    assert "yours" not in found["page"]                       # the shortcut is the root's alone
 
 
 @pytest.mark.parametrize("storage", [{}, {"store": "garbage"}, "blocked"])
 def test_the_header_without_a_pick_asks_for_one(storage):
     found = _site(_product_page(PARTS, BADGES), storage)
-    assert f'<header><a id="pick-link" href="../index.html#pick">{PICK}</a></header>' in found["page"]
+    assert _asking("../") in found["page"]
 
 
 @pytest.mark.parametrize("storage", [{}, {"store": "ramilevy"}, "blocked"])

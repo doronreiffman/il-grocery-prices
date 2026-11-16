@@ -973,7 +973,7 @@ def test_the_shell_band_and_footer():
     page = _render(covered, pairs)
     assert page.startswith("<!doctype html>") and '<meta name="robots" content="noindex">' in page
     assert ('</head>\n<body class="t-product">\n<header class="band"><div class="wrap">'
-            '<a class="brand" href="../index.html"><b>Deal</b> or No Deal</a>'
+            '<a class="brand" href="../index.html"><b>Deal</b> or <b class="no">No Deal</b></a>'
             '<p class="store"><a id="pick-link" href="../index.html#pick">Pick your store</a></p>'
             f'<p class="dateline">{date_line(DAY)}</p></div></header>\n<main>') in page
     assert CHAINS_LINE not in page
@@ -984,12 +984,14 @@ def test_the_shell_band_and_footer():
                      ("../method.html", "How this is made")]
 
 
-def test_the_brand_dresses_its_first_word():
-    """The site look's header: the site's name as its wordmark, linking up to the root, its first word in `<b>` (the
-    green label); read as text it is the site's name."""
+def test_the_brand_is_drawn_as_the_headline():
+    """The site look's header: the site's name as its wordmark, linking up to the root, drawn as the front page's
+    headline (the owner, 2026-11-16: "the home icon should match the image at the top of the homepage, green &
+    yellow"): "Deal" in `<b>` (the green label), " or ", "No Deal" in `<b class="no">` (the yellow one), no question
+    mark; read as text it is the site's name."""
     page = _render(*_typical())
     (brand,) = re.findall(r'<a class="brand" href="\.\./index\.html">(.*?)</a>', page)
-    assert brand == "<b>Deal</b> or No Deal"
+    assert brand == '<b>Deal</b> or <b class="no">No Deal</b>'
     assert re.sub(r"<[^>]*>", "", brand) == SITE_NAME
 
 
