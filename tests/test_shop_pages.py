@@ -29,9 +29,10 @@ from shopper.pages import (BASKET_PAGE, BASKET_SECTION, CONDITIONS, CONDITIONS_N
                            ROOT_LINE, SCORED_SO_FAR, ColumnsToday, StoreFront, column_ready, render_basket,
                            render_method, render_record, render_root, render_store, scorecard_section, shown_rows,
                            store_path)
-from shopper.product import BADGE_STYLE, CHAIN_SPAN, page_path
+from shopper.assets import STYLESHEET, asset_files
+from shopper.product import CHAIN_SPAN, page_path
 from shopper.search import browse_pages
-from shopper.shell import SCRIPT_TAG
+from shopper.shell import SCRIPT_TAG, band, head
 from shopper.items import HORIZON
 from shopper.record import scorecard
 from shopper.measures import MIN_FRONT_DAYS, RECENT_DAYS
@@ -197,13 +198,14 @@ def test_a_store_page_has_the_always_phrases_and_the_search_box():
     assert '<input id="q" type="search" autocomplete="off"></section>' in _storepage(browse=None)
 
 
-def test_every_page_header_names_the_site_the_chains_and_the_day():
-    """The owner's plain words (2026-11-10): the site's name, the pick link (store first, q33), the five chains in slug
-    order on one line, and the date line, "Prices of" the day."""
-    for page, up in ((_storepage(), "../"), (_root(), "")):
-        assert (f'<header class="band"><div class="wrap"><a href="{up}index.html">Deal or No Deal</a>'
-                f'{PICK_LINK.format(up=up)}'
-                '<p class="dateline">Shufersal · Rami Levy · Osher Ad · Carrefour · Yochananof</p>'
+def test_every_page_header_names_the_site_and_the_day():
+    """The owner's plain words (2026-11-10) and the site's look (q36): the site's name as the brand, its first word on
+    the label, the pick link (store first, q33), on the front page alone the five chains in slug order on one line, and
+    the date line, "Prices of" the day."""
+    chains = '<p class="dateline">Shufersal · Rami Levy · Osher Ad · Carrefour · Yochananof</p>'
+    for page, up, line in ((_storepage(), "../", ""), (_root(), "", chains)):
+        assert (f'<header class="band"><div class="wrap"><a class="brand" href="{up}index.html"><b>Deal</b> or No Deal'
+                f'</a>{PICK_LINK.format(up=up)}{line}'
                 '<p class="dateline">Prices of Friday 20 November 2026</p></div></header>') in page
 
 
@@ -327,22 +329,23 @@ def test_a_row_shows_the_badge_its_condition_todays_price_and_the_usual_price():
             "kilograms</small></td><td>₪50.00 a kilogram</td><td>₪69.90 a kilogram</td>") in cells
     plain = re.search(r"<tr data-column[^>]*>(.*?)</tr>", _storepage()).group(1)
     assert '<span class="badge deal-2">At Shufersal Sheli: DEAL · ₪3.00 off</span></td>' in plain     # no condition
-    assert BADGE_STYLE in page
 
 
 def test_the_filters_need_no_script():
     """The club-only and minimum-spend checkboxes, each ruled by CSS alone (`:checked` and the sibling combinator); a
     row carries what the filters read from the promotion its verdict judges (`data-club` for any restriction,
     `data-spend` for a minimum spend). No store radio: the page is one store type's. The labels are the owner's plain
-    words (2026-11-10); their caveats are the fold-out's."""
+    words (2026-11-10); their caveats are the fold-out's. The rule is the site's one stylesheet's (the site's look,
+    q36), which the page links."""
     restricted = _deal_row(DEAL, code="1", restrictions=["chain_card"])
     spend = _deal_row(DEAL, code="2", price="8.00", min_spend="200")
     page = _storepage(_front(DEAL, rows=[restricted, spend, _deal_row(DEAL, code="3", price="9.00")]))
     assert ('<section class="deals"><input type="checkbox" id="f-club"><label for="f-club">Hide club-only deals</label>'
             '<input type="checkbox" id="f-spend"><label for="f-spend">Hide deals with a minimum spend</label>'
             '<div class="table"') in page
-    assert "#f-club:checked ~ .table tbody tr[data-club] { display: none; }" in page
-    assert "#f-spend:checked ~ .table tbody tr[data-spend] { display: none; }" in page
+    assert f'<link rel="stylesheet" href="../{STYLESHEET}">' in page
+    assert ("#f-club:checked~.table tbody tr[data-club],#f-spend:checked~.table tbody tr[data-spend]{display:none}"
+            in asset_files()[STYLESHEET].decode("utf-8"))
     assert 'type="radio"' not in page and not re.search(r"#f-(?!club|spend)", page)
     assert re.findall(r"<tr data-column=\"shufersal-deal\"( [^>]*)?>", page) == [' data-club=""', ' data-spend=""', ""]
 
@@ -425,12 +428,30 @@ def _every_page() -> list[tuple[str, str]]:
             (_render(covered, pairs), "../"), (next(iter(browse.values())), "../")]
 
 
-def test_every_page_carries_the_one_script_at_its_depth():
-    """Q2's one script (store-first.md): `search.js` in every page's head, at the page's own depth ("../" for p/,
-    browse/ and store/ pages), and no other."""
+def test_every_page_links_the_one_stylesheet_at_its_depth():
+    """Q2's one script (store-first.md) and the site's look (q36): every page's head ends with the one shared
+    stylesheet and `search.js`, each at the page's own depth ("../" for p/, browse/ and store/ pages), in place of a
+    style block; no other stylesheet or script, no style block and no style attribute."""
     for page, up in _every_page():
-        assert page.count("<script") == 1, up
-        assert f"</style>\n{SCRIPT_TAG.format(up=up)}\n</head>" in page, up
+        assert page.count("<link") == 1 and page.count("<script") == 1, up
+        assert (f'</title>\n<link rel="stylesheet" href="{up}{STYLESHEET}">\n<script src="{up}search.js" defer>'
+                "</script>\n</head>") in page, up
+        assert "<style" not in page and "style=" not in page, up
+
+
+def test_every_page_names_its_kind_on_its_body():
+    """The site's look (q36): each page's body names its kind, which the stylesheet reads (`t-<kind>`)."""
+    kinds = ["front", "store", "method", "record", "basket", "product", "browse"]
+    for (page, _), kind in zip(_every_page(), kinds, strict=True):
+        assert page.count("<body") == 1 and f'</head>\n<body class="t-{kind}">\n<header class="band">' in page, kind
+
+
+def test_the_chains_line_is_on_the_front_page_only():
+    """The owner's words (2026-11-15, site-look.md): the chains' line in the front page's header, and in no other's."""
+    (root, _), *others = _every_page()
+    assert f'<p class="dateline">{CHAINS_LINE}</p>' in _header(root)
+    for page, up in others:
+        assert CHAINS_LINE not in _header(page), up
 
 
 def test_the_header_says_pick_your_store_before_a_pick():
@@ -934,12 +955,21 @@ def test_basket_html_keeps_the_baskets_always_phrases_links_covered_items_only_a
     assert prices.endswith(f"</table></div><p>{formats_note()}</p></section>")
     assert flatten(ALWAYS_SENTENCE) not in text
     assert flatten(CREDIT_START) in text and flatten(date_line(BASKET_DAY)) in text
-    assert (f'<a href="index.html">Deal or No Deal</a>{PICK_LINK.format(up="")}<p class="dateline">{CHAINS_LINE}</p>'
-            in page)
+    assert f'<a class="brand" href="index.html"><b>Deal</b> or No Deal</a>{PICK_LINK.format(up="")}' in page
     assert f'<a href="method.html#{BASKET_SECTION}">' in page
     assert f"<h1>{BASKET_TITLE}</h1>" in page and page.count("<script") == 1
-    assert f'</style>\n{SCRIPT}\n</head>' in page
+    assert f'{SCRIPT}\n</head>' in page
     assert 'href="p/' not in _basket_page(pages=())
+
+
+def test_basket_html_takes_the_sites_frame_whole():
+    """The site's look (q36): basket.html is the basket's index in the site's frame whole: the site's head (the shared
+    stylesheet and the one script, from the root) in place of the basket's style block, its body named "t-basket",
+    and the site's band, with no chains' line."""
+    page = _basket_page()
+    assert (f"<title>{BASKET_TITLE}</title>\n{head('')}\n</head>\n<body class=\"t-basket\">\n"
+            f"{band(BASKET_DAY, '')}\n<main>") in page
+    assert "<style" not in page and CHAINS_LINE not in page
 
 
 def test_basket_html_links_an_item_whose_code_has_leading_zeros():

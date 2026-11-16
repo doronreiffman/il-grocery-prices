@@ -26,9 +26,9 @@ starts some covered product's longest name, and `browse/other.html` for every pr
 with a Hebrew letter: a Latin name, a digit, a sign. A page lists its products in name order, each a link to
 `../p/<barcode>.html` with the name as published, escaped, in a span of its own (`CHAIN_SPAN`), and the barcode; a row of
 links to every browse page sits above the list. The pages need no script: they are the path to every product. They are
-built on the site's shared shell (`shopper.shell`: the band, the date line, the credit line, `noindex`, the base style
-and the site's one script, which they do not need), with their own few rules after the base. A letter nobody starts
-a name with has no page.
+built on the site's shared shell (`shopper.shell`: the band, the date line, the credit line, `noindex`, the site's one
+stylesheet and its one script, which they do not need, and the kind "browse" on the body); their look is the
+stylesheet's. A letter nobody starts a name with has no page.
 """
 import json
 from collections import defaultdict
@@ -54,15 +54,6 @@ CHAIN_SPAN = '<span class="as-listed" lang="he" dir="rtl">{}</span>'
 HEBREW_LETTERS = ("\u05d0", "\u05ea")        # alef to tav
 OTHER = "other"
 OTHER_HEADING = "Names that do not start with a Hebrew letter"
-BROWSE_STYLE = """
-.letters { display: flex; flex-wrap: wrap; gap: var(--s2); list-style: none; padding: 0; margin: 0 0 var(--s4); }
-.letters a { display: block; padding: var(--s1) var(--s3); background: var(--surface); border: 1px solid var(--border);
-             border-radius: 6px; text-decoration: none; }
-.letters a[aria-current] { border-color: var(--accent); font-weight: 700; }
-ul.names { list-style: none; padding: 0; margin: 0; }
-ul.names li { padding: var(--s1) 0; border-bottom: 1px solid var(--border); }
-ul.names small { color: var(--text-3); font-variant-numeric: tabular-nums; }
-"""
 
 
 def normalize(text: str) -> str:
@@ -160,4 +151,4 @@ def _browse_page(key: str, items: list[Covered], keys: list[str], day: date, col
     main = (f'<h1>{heading}</h1>\n<nav aria-label="First letters"><ul class="letters">{nav}</ul></nav>\n'
             f'<p>{count}</p>\n<section><ul class="names">{rows}</ul></section>')
     title = (OTHER_HEADING if key == OTHER else f"Names that start with {chr(int(key, 16))}") + f" - {SITE_NAME}"
-    return page(title, main, day, collected_by, ((METHOD_LINK, "method.html"),), BROWSE_STYLE)
+    return page(title, main, day, collected_by, ((METHOD_LINK, "method.html"),), "browse")

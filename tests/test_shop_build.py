@@ -27,7 +27,9 @@ from basket.build import RevisionNeeded
 from basket.chains import SLUGS
 from basket.extract import table_path
 from basket.rules import MissingTable
+from basket.site import ASSET_FOLDER
 from shopper import build as shop_build
+from shopper.assets import FOLDER, asset_files
 from shopper.build import MARKER, NotFrozenYet, NotSynced, build_site, main
 from shopper.extract import extract_chain_day
 from shopper.forecast import Forecast, forecasts_csv
@@ -192,6 +194,19 @@ def test_the_build_writes_every_covered_products_page_and_the_marker(tmp_path):
     assert sorted(outcome.pages + outcome.data + [MARKER]) == written
     assert set(outcome.pages) >= {page_path(code) for code in codes} | {"index.html", "search.js", "basket.html"}
     assert "<h1>" in (site / page_path(A)).read_text(encoding="utf-8")
+
+
+def test_the_build_writes_the_shared_files(tmp_path):
+    """The site's look (q36): the build writes the site's shared files, `assets/`, byte for byte as `asset_files` makes
+    them and nothing else there, and lists them among the pages written; the upload's folder is the same one."""
+    data, site = tree(tmp_path), tmp_path / "site"
+    outcome = _build(data, site)
+    files = asset_files()
+    held = {path.relative_to(site).as_posix(): path.read_bytes() for path in (site / FOLDER).rglob("*")
+            if path.is_file()}
+    assert held == files and len(files) == 6
+    assert set(files) <= set(outcome.pages)
+    assert FOLDER == ASSET_FOLDER == "assets"
 
 
 def test_the_build_writes_the_root_and_nine_store_pages(tmp_path):

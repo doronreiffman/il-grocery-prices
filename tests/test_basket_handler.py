@@ -46,6 +46,7 @@ from collector.store import LOCK_MODE, RETENTION_DAYS, check_key, raw_key
 from shopper import build as shop_build
 from shopper import extract as shop_extract
 from shopper import guard as shop_guard
+from shopper.assets import asset_files
 from shopper.build import LEDGER, STEP_LINE
 from shopper.freeze import ArchiveFreezer, ForecastsDiffer, archive_key, ledger, scores_archive_key, scores_site_key, site_key
 from shopper.history import load as shop_load
@@ -712,7 +713,7 @@ def test_unchanged_day_uploads_pages_not_the_day_file(morning, tmp_root):
     second = run(CFG, BASKET_EVENT, deps, AGAIN, tmp_root)
     assert (second["unchanged"], second["site_day_unchanged"], second["pages"], second["uploaded"]) == (
         True, True, True, [])
-    assert second["pages_uploaded"] == first["pages_uploaded"] > 0
+    assert second["pages_uploaded"] == first["pages_uploaded"] - len(asset_files()) > 0   # the assets went up once
     assert second["headline"] == HEADLINE
     assert {key: deps.site.objects[key] for key in PUBLISHED} == published  # the day files as first published
     assert deps.site.invalidations == [first["run_id"], second["run_id"]]
@@ -818,7 +819,7 @@ def test_site_check_failure_uploads_nothing(morning, tmp_root, monkeypatch):
     with pytest.raises(SiteCheckFailed) as raised:
         run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
     assert str(raised.value) == "the site check failed:\nindex.html: x"
-    assert checked == [[".shopper-site", "basket.html", "browse", "days", "index.html", "method.html", "p",
+    assert checked == [[".shopper-site", "assets", "basket.html", "browse", "days", "index.html", "method.html", "p",
                         "record.html", "search", "search.js", "site-days", "store"]]  # the built site
     assert deps.site.objects == {} and deps.site.invalidations == []
     assert len(records_of(morning)) == 1  # the record went up all the same
@@ -1092,7 +1093,8 @@ def test_an_earlier_day_uploads_its_data_files_only(site_morning, tmp_root, outc
 
 def test_an_unchanged_rerun_uploads_pages_not_the_day_files(site_morning, tmp_root, outcomes):
     """A second run of the day meets the frozen file ("same") and T's summary: no data file is new, so the pages go up
-    alone, and the site's data files stay as first published."""
+    alone, and the site's data files stay as first published; the shared files under assets/, put by the first run,
+    are not put again (the site's look, q36)."""
     deps = site_deps(site_morning)
     first = run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
     data = {key: deps.site.objects[key] for key in first["uploaded"]}
@@ -1100,7 +1102,8 @@ def test_an_unchanged_rerun_uploads_pages_not_the_day_files(site_morning, tmp_ro
     second = run(CFG, BASKET_EVENT, deps, AGAIN, tmp_root)
     assert (second["unchanged"], second["site_day_unchanged"], second["pages"], second["uploaded"]) == (
         True, True, True, [])
-    assert second["pages_uploaded"] == first["pages_uploaded"] == len(outcomes[1].pages)
+    assert first["pages_uploaded"] == len(outcomes[1].pages)
+    assert second["pages_uploaded"] == first["pages_uploaded"] - len(asset_files())
     assert (second["forecasts"], second["scored"]) == ({**first["forecasts"], "status": "same"}, [])
     assert {key: deps.site.objects[key] for key in data} == data
     assert deps.site.invalidations == [first["run_id"], second["run_id"]]

@@ -70,7 +70,8 @@ In order:
     unchanged; then every page: each product's, `index.html` (the picker), each store type's front page
     (`store/<key>.html`, store first), `method.html`, `record.html` (the day frozen and in the ledger before it is
     drawn, so it never lists its own day as one with no file), `basket.html` (an item linked when its page is built),
-    the browse pages, the search pieces, `search.js` and the marker `.shopper-site`. The pages show
+    the browse pages, the search pieces, `search.js`, the site's shared files under `assets/` (`shopper.assets`: the
+    stylesheet every page links, its fonts and their licences) and the marker `.shopper-site`. The pages show
     the day as published: its "collected by" time and code fingerprint are the published site-day file's, the product
     pages drawn again when the time differs from this run's.
 
@@ -119,6 +120,7 @@ from basket.record import code_fingerprint
 from basket.rules import MissingTable
 from basket.stores import NoStoreList, chain_stores, included
 from collector.run import new_run_id
+from shopper.assets import asset_files
 from shopper.columns import COLUMNS, members, outside, under_floor
 from shopper.extract import extract_chain_day
 from shopper.forecast import forecasts, forecasts_csv
@@ -544,6 +546,7 @@ def build_site(day: date, data_dir: Path, site_dir: Path, now: datetime, collect
         **browse,
         **pieces(covered_now),
         "search.js": SCRIPT.read_bytes(),
+        **asset_files(),
     }
     written += [_write(site_dir, path, body) for path, body in fixed.items()]
     (site_dir / MARKER).write_text("", encoding="utf-8")

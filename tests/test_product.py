@@ -1,11 +1,10 @@
 """The product pages (`shopper.product`; the plan's Task 16, then store first, q33: docs/store-first.md, "What a visitor
 sees" 5 to 8, "The chart", "Words" and "Testing"; the store-first plan's Task 3): the badge row, a section per store type
 (a column) with its verdict, reason, conditions, coming sale, chart, last this low, how often and the fold-out "How this
-is worked out", on the shared shell (`shopper.shell`) with the base style (`basket.page.BASE_STYLE`, split from the
-basket's block, the first pre-flight's S11). Pairs, points and column-days are built by hand, as tests/test_measures.py
-builds them; names, barcodes and programmes are synthetic. Each page's verdicts are worked by `shopper.verdict`, as the
+is worked out", on the shared shell (`shopper.shell`), which links the site's one stylesheet (`shopper.assets`; its
+rules are tests/test_look.py's). Pairs, points and column-days are built by hand, as tests/test_measures.py builds them;
+names, barcodes and programmes are synthetic. Each page's verdicts are worked by `shopper.verdict`, as the
 build works them."""
-import hashlib
 import re
 from dataclasses import replace
 from datetime import date, timedelta
@@ -15,9 +14,9 @@ from fractions import Fraction
 import pytest
 
 from basket.check import PRONOUNS, flatten, strip_tags
-from basket.page import BASE_STYLE, BASKET_STYLE, STYLE
 from basket.words import too_few
-from shopper import product, words
+from shopper import product, shell, words
+from shopper.assets import STYLESHEET
 from shopper.columns import BY_KEY, COLUMNS
 from shopper.deals import to_agora
 from shopper.history import ColumnDay, Covered, Pair, Point
@@ -336,15 +335,12 @@ def test_each_section_says_the_verdict_with_the_store_types_name():
     assert "At Carrefour Market: DEAL · ₪1.50 off" in market
 
 
-def test_a_no_deal_badge_is_grey_and_writes_its_words():
-    """S5 and anti-goal 5: a no deal is said in words, "NO DEAL", in a neutral grey in both themes, never red."""
+def test_a_no_deal_badge_writes_its_words():
+    """S5 and anti-goal 5: a no deal is said in words, "NO DEAL", so colour is never the only signal (its yellow is the
+    stylesheet's, tests/test_look.py)."""
     body = _sections(_render(*_one("5.00", _struct("4.50"))))[DEAL]
     assert '<p class="badge no-deal">At Shufersal Deal: NO DEAL</p>' in body
     assert '<p class="reason">Only ₪0.50 below its usual ₪5.00 (90 days tracked).</p>' in body
-    for shades in _themes():
-        for token in ("--no-deal-bg", "--no-deal-text"):
-            red, green, blue = _rgb(shades[token])
-            assert max(red, green, blue) - min(red, green, blue) <= 0x10, (token, shades[token])
 
 
 def test_the_reason_line_names_its_days():
@@ -696,22 +692,11 @@ def test_with_the_script_blocked_every_store_types_part_is_in_the_html():
 
 def test_nothing_is_hidden_without_the_script():
     """"Nothing is hidden without the script" (the plan), as the script hides parts with its own `hidden` attribute
-    (Task 4): the only `hidden` in the HTML is the Elsewhere heading's; the style's only hiding rule is
-    `[hidden]{display:none!important}`, so no display rule of the page's shows a part the script hid; and no rule sets
-    `display` on a part, a badge or the heading (the controller's ruling, in place of the brief's ".js" rules)."""
+    (Task 4): the only `hidden` in the HTML is the Elsewhere heading's. What the style hides is the stylesheet's
+    (tests/test_look.py's `test_nothing_is_hidden_but_by_a_named_rule`)."""
     for covered, pairs in (_typical(), _largest(), _shops()):
         page = _render(covered, pairs)
         assert re.findall(r"<[^>]*\shidden(?=[\s>=])[^>]*>", page) == ['<h2 class="elsewhere" hidden>']
-        (style,) = re.findall(r"<style>(.*?)</style>", page, re.DOTALL)
-        rules = [(selector.strip(), body) for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", style)]
-        hiding = [(selector, body) for selector, body in rules
-                  if re.search(r"display\s*:\s*none|visibility\s*:\s*hidden", body)]
-        assert hiding == [("[hidden]", "display:none!important")]
-        for selector, body in rules:
-            if re.search(r"(^|;|\s)display\s*:", body):
-                for each in selector.split(","):
-                    assert not re.search(r"(section|h2|\.elsewhere|\.badge|nav\.badges\s+a)$", each.strip()), each
-    assert "[hidden]{display:none!important}" in product.BADGE_STYLE
 
 
 def test_a_product_sold_nowhere_today_has_no_badges_and_every_part():
@@ -744,49 +729,10 @@ def test_p7_p8_and_p9_are_gone():
             assert flatten(gone) not in text and gone not in page, gone
 
 
-# The shades and the chart's style
-
-def _rgb(colour: str) -> tuple[int, int, int]:
-    return int(colour[1:3], 16), int(colour[3:5], 16), int(colour[5:7], 16)
-
-
-def _themes() -> list[dict[str, str]]:
-    """BADGE_STYLE's tokens: the light set, then the dark set (the one under prefers-color-scheme: dark)."""
-    light, dark = re.findall(r":root \{([^{}]*)\}", product.BADGE_STYLE)
-    assert product.BADGE_STYLE.index("@media (prefers-color-scheme: dark)") < product.BADGE_STYLE.index(dark)
-    return [dict(re.findall(r"(--[a-z0-9-]+):\s*(#[0-9a-f]{6})", found)) for found in (light, dark)]
-
-
-def _luminance(colour: str) -> float:
-    linear = [part / 12.92 if part <= 0.04045 else ((part + 0.055) / 1.055) ** 2.4
-              for part in (value / 255 for value in _rgb(colour))]
-    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
-
-
-def _contrast(one: str, other: str) -> float:
-    high, low = sorted((_luminance(one), _luminance(other)), reverse=True)
-    return (high + 0.05) / (low + 0.05)
-
-
-def test_every_shade_reads_in_both_themes():
-    """S5: each badge's text contrasts at least 4.5:1 with its background (WCAG AA for normal text) in the light and
-    the dark set; the three deal greens differ; each class's rule draws its own two tokens."""
-    classes = ("deal-1", "deal-2", "deal-3", "no-deal", "none")
-    for shades in _themes():
-        for name in classes:
-            assert _contrast(shades[f"--{name}-bg"], shades[f"--{name}-text"]) >= 4.5, (name, shades)
-        assert len({shades[f"--deal-{n}-bg"] for n in (1, 2, 3)}) == 3
-        for n in (1, 2, 3):
-            red, green, blue = _rgb(shades[f"--deal-{n}-bg"])
-            assert green > red and green > blue, n                       # a green
-    assert set(_themes()[0]) == set(_themes()[1])
-    for name in classes:
-        assert re.search(rf"\.badge\.{name} \{{[^}}]*background: var\(--{name}-bg\); color: var\(--{name}-text\)",
-                         product.BADGE_STYLE), name
-
+# The badge's class
 
 def test_the_badge_class():
-    """S5's shade of a deal, no deal's grey, and none for every call without a verdict."""
+    """S5's shade of a deal, no deal's class, and none for every call without a verdict."""
     days = _days()
     shades = {}
     for usual, price in (("5.00", "4.00"), ("5.00", "2.01"), ("5.00", "2.00"), ("10.00", "5.00"), ("5.00", "4.01")):
@@ -799,34 +745,22 @@ def test_the_badge_class():
         assert product.badge_class(_verdicts(pairs, column_days)[DEAL]) == "none"
 
 
-def test_the_charts_style():
-    """Task 2's SVG draws no fill or stroke of its own and states its size: the page's style keeps a short history
-    short (a maximum width, never a full width), sets no font size on its text, draws no path filled, the shelf price
-    grey, the sale days green and today's line dashed, in tokens the base style sets in both themes."""
-    style = product.PRODUCT_STYLE
-    rules = {selector.strip(): body for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", style)}
-    assert "max-width: 100%" in rules[".chart"] and "height: auto" in rules[".chart"]
-    assert not re.search(r"(^|[^-])width: 100%", rules[".chart"])
-    assert not [selector for selector, body in rules.items() if ".chart" in selector and "font-size" in body]
-    assert "fill: none" in rules[".chart path"]
-    assert "stroke: var(--bar)" in rules[".chart .listed"] and "stroke: var(--accent)" in rules[".chart .sale"]
-    assert "stroke: var(--accent)" in rules[".chart .unread"]
-    assert "stroke-dasharray" in rules[".chart line.today"] and "fill:" in rules[".chart circle.today"]
-    assert "background: var(--bar)" in rules[".key .listed"] and "background: var(--accent)" in rules[".key .sale"]
-    light, dark = re.findall(r":root \{([^{}]*)\}", BASE_STYLE)
-    for token in ("--bar", "--accent", "--text-2", "--text-3"):
-        assert f"{token}:" in light and f"{token}:" in dark, token
+# The shell
 
+HEAD = f'<link rel="stylesheet" href="../{STYLESHEET}">\n<script src="../search.js" defer></script>'
 
-# The shell and the style
 
 def test_the_shell_band_and_footer():
+    """The site's look (q36): a product page names its kind on its body, and its band is the brand, the pick link and
+    the date line, with no chains' line (the front page's alone); the footer, the credit line and the page's links."""
     covered, pairs = _typical()
     page = _render(covered, pairs)
     assert page.startswith("<!doctype html>") and '<meta name="robots" content="noindex">' in page
-    assert (f'<header class="band"><div class="wrap"><a href="../index.html">{SITE_NAME}</a>'
+    assert ('</head>\n<body class="t-product">\n<header class="band"><div class="wrap">'
+            '<a class="brand" href="../index.html"><b>Deal</b> or No Deal</a>'
             '<p class="store"><a id="pick-link" href="../index.html#pick">Pick your store</a></p>'
-            f'<p class="dateline">{CHAINS_LINE}</p><p class="dateline">{date_line(DAY)}</p></div></header>') in page
+            f'<p class="dateline">{date_line(DAY)}</p></div></header>\n<main>') in page
+    assert CHAINS_LINE not in page
     footer = re.search(r"<footer>(.*?)</footer>", page, re.DOTALL).group(1)
     assert credit(DAY, "12:03") in footer
     links = re.findall(r'<a href="([^"]+)">([^<]+)</a>', footer)
@@ -834,45 +768,50 @@ def test_the_shell_band_and_footer():
                      ("../method.html", "How this is made")]
 
 
-def test_a_product_page_carries_the_one_script_and_the_pick_link():
-    """S12 (b), Q2 as store-first.md changes it: `search.js`, the site's one script, in the head from the site's root
-    (`../`), and nothing else loaded; the header's pick link up to the picker (`#pick`), which search.js reads the
-    site's root from."""
+def test_the_brand_dresses_its_first_word():
+    """The site look's header: the site's name as its wordmark, linking up to the root, its first word in `<b>` (the
+    green label); read as text it is the site's name."""
+    page = _render(*_typical())
+    (brand,) = re.findall(r'<a class="brand" href="\.\./index\.html">(.*?)</a>', page)
+    assert brand == "<b>Deal</b> or No Deal"
+    assert re.sub(r"<[^>]*>", "", brand) == SITE_NAME
+
+
+def test_a_product_page_links_the_stylesheet_and_the_one_script():
+    """S12 (b), Q2 as store-first.md changes it, and the site's look (q36): the one shared stylesheet and `search.js`,
+    the site's one script, end the head, each from the site's root (`../`), and nothing else is loaded; the header's
+    pick link up to the picker (`#pick`), which search.js reads the site's root from."""
     for page in (_render(*_typical()), _render(*_largest())):
-        assert page.count("<script") == 1 and "javascript:" not in page.lower()
-        assert '</style>\n<script src="../search.js" defer></script>\n</head>' in page
+        assert page.count("<link") == 1 and page.count("<script") == 1 and "javascript:" not in page.lower()
+        assert f"</title>\n{HEAD}\n</head>" in page
+        assert "<style" not in page and "style=" not in page
         assert '<a id="pick-link" href="../index.html#pick">Pick your store</a>' in page
         assert not re.search(r"\son\w+=", page)                                  # no inline handler either
-        rest = page.replace('<script src="../search.js" defer></script>', "")
+        rest = page.replace(HEAD, "")
         assert not re.search(r"https?:|//|@import|url\(|<link|<img|<iframe|src=", rest.lower())
 
 
+def test_page_refuses_a_kind_it_does_not_know():
+    """The body's class names the page's kind, one of the shell's seven; any other kind is refused."""
+    assert shell.KINDS == ("front", "store", "product", "browse", "method", "record", "basket")
+    for kind in shell.KINDS:
+        assert f'</head>\n<body class="t-{kind}">\n' in shell.page("T", "<p>M</p>", DAY, "12:03", (), kind)
+    for kind in ("", "shop", "t-product", "Product"):
+        with pytest.raises(ValueError, match="kind"):
+            shell.page("T", "<p>M</p>", DAY, "12:03", (), kind)
+
+
 def test_the_product_page_and_the_browse_pages_share_one_shell():
-    """Task 17's carry: one shell for browse, product and the root pages: the same head, band and footer frame."""
+    """Task 17's carry: one shell for browse, product and the root pages: the same head, band and footer frame, the
+    title and the body's kind aside."""
     covered, pairs = _typical()
     product_page = _render(covered, pairs)
     browse = browse_pages({CODE: covered}, DAY, "12:03")[browse_path(covered.title)]
 
     def frame(page: str) -> tuple[str, str]:
-        """The head and band with the title and style taken out, and the footer up to its first link."""
-        head = re.sub(r"<title>.*?</title>|<style>.*?</style>", "", page[:page.index("<main>")], flags=re.DOTALL)
-        return head, page[page.index("</main>"):page.index("<a ", page.index("<footer>"))]
+        """The head and band with the title and the body's kind taken out, and the footer up to its first link."""
+        top = re.sub(r'<title>.*?</title>|<body class="t-[a-z]+">', "", page[:page.index("<main>")], flags=re.DOTALL)
+        return top, page[page.index("</main>"):page.index("<a ", page.index("<footer>"))]
     assert frame(product_page) == frame(browse)
-    for page in (product_page, browse):
-        assert f"<style>{BASE_STYLE}" in page and BASKET_STYLE not in page
-    assert f"<style>{BASE_STYLE}{product.PRODUCT_STYLE}</style>" in product_page
-    assert product.PRODUCT_STYLE.startswith(product.BADGE_STYLE)
-
-
-def test_the_style_split_keeps_the_baskets_block_byte_for_byte():
-    """The first pre-flight's S11: `STYLE` is the block the basket's pages carried before the split (its SHA-256 then),
-    cut into the base rules and the basket's own, each a whole set of rules."""
-    assert hashlib.sha256(STYLE.encode()).hexdigest() == (
-        "8179d0e4d8567b8c1426100ab5f171aee6dd502f2d84fc87ae5848f83ce768b4")
-    for part in (BASE_STYLE, BASKET_STYLE):
-        assert part.count("{") == part.count("}")
-    assert len(BASE_STYLE) + len(BASKET_STYLE) == len(STYLE) + len("@media (max-width: 37.5rem) {\n}\n")
-    for rule in ("--bg:", "@media (prefers-color-scheme: dark)", ".band {", "main > section {", "th, td {", "footer {"):
-        assert rule in BASE_STYLE and rule not in BASKET_STYLE, rule
-    for rule in (".tiles {", "ol.bars li {", "table.prices {", "table.basket {", "ol.rules li {", "details {"):
-        assert rule in BASKET_STYLE and rule not in BASE_STYLE, rule
+    assert f"</title>\n{HEAD}\n</head>" in product_page and f"</title>\n{HEAD}\n</head>" in browse
+    assert '<body class="t-product">' in product_page and '<body class="t-browse">' in browse

@@ -54,14 +54,15 @@ A section, in this order:
   - F10's sentence naming the column (the gate is closed in step one: an open gate stops the page, since step one has
     no odds line).
 
-Nothing is hidden without the script (the plan): the only `hidden` attribute is the row's heading's, and the style
-hides only what has one (`[hidden]{display:none!important}`, BADGE_STYLE's), sets no `display` on a section, a badge or
-the heading, and so cannot show a part the script hid. `search.js` reads this markup (its header comment), and every
-fact stays in the HTML with the script blocked. BADGE_STYLE holds the shades, light and dark, for the product and the
-store pages; PRODUCT_STYLE is it and the product page's own rules, the chart's strokes among them (its SVG draws none).
+Nothing is hidden without the script (the plan): the only `hidden` attribute is the row's heading's, and the site's
+stylesheet hides only what has one (`[hidden]{display:none!important}`), so it cannot show a part the script hid.
+`search.js` reads this markup (its header comment), and every fact stays in the HTML with the script blocked. The page
+holds no style of its own: the shades, light and dark, and every rule of the page, the chart's strokes among them (its
+SVG draws none), are the site's one stylesheet's (docs/site-look.md), which the shell links.
 
-The shell (`shopper.shell`) loads the site's one script, `search.js`, as on every page; no fact needs it. The page is
-a pure function of its inputs: the same bytes whatever order the mappings come in.
+The shell (`shopper.shell`) links the site's one stylesheet and loads its one script, `search.js`, as on every page,
+and names the page's kind on its body ("product"); no fact needs the script. The page is a pure function of its
+inputs: the same bytes whatever order the mappings come in.
 """
 from collections.abc import Mapping
 from datetime import date
@@ -83,57 +84,10 @@ from shopper.words import (ALWAYS_SENTENCE, AT_SOME_STORES, BARCODE, BROWSE_LINK
                            listed_price, minimum_spend, no_odds_yet, not_sold, reason, short_badge, stores_range,
                            targets, unreadable)
 
-__all__ = ["BADGE_STYLE", "CHAIN_SPAN", "MAX_PAGE", "badge_class", "field_conditions", "page_path", "render_product",
-           "running_today", "section_keys"]
+__all__ = ["CHAIN_SPAN", "MAX_PAGE", "badge_class", "field_conditions", "page_path", "render_product", "running_today",
+           "section_keys"]
 
 MAX_PAGE = 60_000      # bytes a product page may hold (the design's check)
-# S5's shades, light and dark: each badge's text at least 4.5:1 on its background (tests/test_product.py)
-BADGE_STYLE = """
-:root {
-  --deal-1-bg: #d7f2df; --deal-1-text: #0f4d27; --deal-2-bg: #2a7f4b; --deal-2-text: #ffffff;
-  --deal-3-bg: #14532d; --deal-3-text: #ffffff; --no-deal-bg: #e4e6e5; --no-deal-text: #2b2e2c;
-  --none-bg: #ffffff; --none-text: #3f4a43;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --deal-1-bg: #1b3d29; --deal-1-text: #c3f2d4; --deal-2-bg: #2f7d4f; --deal-2-text: #ffffff;
-    --deal-3-bg: #7ee0a5; --deal-3-text: #052e16; --no-deal-bg: #393c3a; --no-deal-text: #eceeed;
-    --none-bg: #151a17; --none-text: #b7c0ba;
-  }
-}
-[hidden]{display:none!important}
-.badge { width: fit-content; max-width: 100%; padding: var(--s1) var(--s3); border: 1px solid transparent;
-         border-radius: 999px; font-weight: 650; font-variant-numeric: tabular-nums; text-decoration: none; }
-.badge.deal-1 { background: var(--deal-1-bg); color: var(--deal-1-text); }
-.badge.deal-2 { background: var(--deal-2-bg); color: var(--deal-2-text); }
-.badge.deal-3 { background: var(--deal-3-bg); color: var(--deal-3-text); }
-.badge.no-deal { background: var(--no-deal-bg); color: var(--no-deal-text); }
-.badge.none { background: var(--none-bg); color: var(--none-text); border-color: var(--border); font-weight: 500; }
-"""
-PRODUCT_STYLE = BADGE_STYLE + """\
-.names { list-style: none; padding: 0; margin: 0 0 var(--s3); }
-nav.badges { display: flex; flex-wrap: wrap; gap: var(--s2); margin: 0 0 var(--s4); }
-.reason { color: var(--text-2); }
-.today small, .deals small { display: block; color: var(--text-3); font-size: .8125rem; }
-.few, .warn { color: var(--warn); }
-.deals { padding-left: 1.25rem; margin: 0 0 var(--s3); }
-.deals li { margin: 0 0 var(--s2); }
-details { margin: var(--s4) 0 0; }
-summary { cursor: pointer; color: var(--accent); margin: 0 0 var(--s3); }
-.chart { display: block; max-width: 100%; height: auto; margin: var(--s3) 0 var(--s1); }
-.chart path { fill: none; stroke-width: 2; }
-.chart .listed { stroke: var(--bar); }
-.chart .sale { stroke: var(--accent); stroke-width: 3; }
-.chart .unread { stroke: var(--accent); stroke-width: 5; stroke-opacity: .5; }
-.chart line.today { stroke: var(--text-2); stroke-width: 1.5; stroke-dasharray: 4 3; }
-.chart circle.today { fill: var(--text-2); }
-.chart text { fill: var(--text-3); }
-.key { color: var(--text-3); font-size: .8125rem; }
-.key i { display: inline-block; width: .75rem; height: .375rem; margin-right: .25rem; vertical-align: middle; }
-.key .listed { background: var(--bar); }
-.key .sale { background: var(--accent); }
-.key .unread { background: var(--accent); opacity: .5; }
-"""
 
 
 def page_path(code: str) -> str:
@@ -310,4 +264,4 @@ def render_product(covered: Covered, pairs: Mapping[str, Pair], verdicts: Mappin
                       f'<p class="lede">{text(ALWAYS_SENTENCE)}</p>',
                       ])
     links = ((BROWSE_LINK, browse_path(covered.title)), (RECORD_TITLE, "record.html"), (METHOD_TITLE, "method.html"))
-    return page(f"{covered.code} - {SITE_NAME}", main, day, collected_by, links, PRODUCT_STYLE)
+    return page(f"{covered.code} - {SITE_NAME}", main, day, collected_by, links, "product")
