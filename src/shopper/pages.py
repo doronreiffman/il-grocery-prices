@@ -68,8 +68,8 @@ store by store, and how it was drawn; the included stores in no column, chain by
 with the code's own constants: P1 to P6 and P10 (RULES), then store first's S0 to S8, the front page's list and the pick
 (`store_rules`, in place of P7, P8 and P9: built with the page, from the constants as they stand, so a changed constant
 changes the page; the pick's key is search.js's, PICK_KEY), then F1 to F11 (FORECAST_RULES); the NEVER list as
-`<ul id="never-words">`, the only place its phrases appear; what is measured and what is inferred; the law; how to reproduce
-a page; and the headline basket's method, `basket.page.method_parts` byte for byte, in a section whose id
+`<ul id="never-words">`, the only place its phrases appear; what is measured and what is inferred; the law; how to
+reproduce a page; and the headline basket's method, `basket.page.method_parts` byte for byte, in a section whose id
 (`BASKET_SECTION`) is not its inner heading's (S6).
 
 The record page: `scorecard_section`, a function of the scorecard alone, so the guard can render it again from the
@@ -579,7 +579,10 @@ def store_rules() -> tuple[tuple[str, str], ...]:
         ("S4 Verdict.",
          "Deal when the saving, the usual price less today's price, "
          f"is ₪{DEAL_MIN} or more, worked on the figures as shown (\"3 for ₪10.00\" is ₪3.33 a unit, P4); No deal "
-         "otherwise. The badge names the store type (\"At Carrefour Market: DEAL · ₪1.90 off\"). A No deal's reason "
+         "otherwise. A product page's badge names the store type (\"At Carrefour Market: DEAL · ₪1.90 off\", and "
+         "under \"Elsewhere today\" \"Rami Levy · DEAL · ₪1.90 off\"), as does a store page's \"One of today's "
+         "deals\"; a store page's rows leave it out (\"DEAL · ₪1.90 off\"), the page being that store type's. A No "
+         "deal's reason "
          "says on how many days it was at today's price or less when that is at or above the usual price (\"It's been "
          "₪10.90 or less on 9 of the 9 days tracked.\"), else how little it is below it (\"Only ₪0.40 below its "
          "usual ₪3.20 (12 days tracked).\"). There is no verdict, only a plain line, when one of these applies "

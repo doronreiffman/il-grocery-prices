@@ -19,7 +19,8 @@ NEVER phrase, of "we", "our" and "us", and, F10's sentence aside, of every odds 
 Names. A column is named by `shopper.columns` ("Shufersal Deal"; a whole chain by its own name); a chain by
 `basket.words.CHAIN_NAMES`. F10's sentence names the column, P10's the chain, on each of its columns (question M (g)).
 The site's name is "Deal or No Deal" (question J, as the owner changed it on 2026-11-10), one constant, so a rename is
-one line; every page's header names the five chains under it (`CHAINS_LINE`) and then the day (`date_line`).
+one line; every page's header gives the day under it (`date_line`), and the front page's alone names the five chains
+before the day (`CHAINS_LINE`; `shopper.shell.band`).
 
 What the words state (Task 15's review, fix round 1): never more than the figures shown and the records support. Every
 comparison a sentence states is worked on the two-place figures it shows (half up: a listed price by
@@ -116,7 +117,7 @@ from shopper.measures import MIN_FRONT_DAYS, RECENT_DAYS
 from shopper.verdict import DEAL_MIN, FRONT_LIMIT, Verdict, extremes
 
 SITE_NAME = "Deal or No Deal"                       # question J, as the owner changed it on 2026-11-10
-CHAINS_LINE = " · ".join(CHAIN_NAMES[slug] for slug in SLUGS)              # every page's header, under the name
+CHAINS_LINE = " · ".join(CHAIN_NAMES[slug] for slug in SLUGS)              # the front page's header alone
 FRONT_TITLE = "Is it actually a deal?"           # Q4, the owner's final framing of 2026-11-10; the store pages' (q36)
 # the front page's headline and the line under it (the owner, 2026-11-15: site-look.md, "Word changes" 1 and 2)
 ROOT_TITLE = "Deal or No Deal?"
@@ -208,7 +209,8 @@ def _plural(count: int, one: str, many: str) -> str:
 
 
 def date_line(day: date) -> str:
-    """The last line of every page's header, under the site's name and the chains' line."""
+    """The last line of every page's header, under the site's name and the pick link, and on the front page under the
+    chains' line (`shopper.shell.band`)."""
     return f"Prices of {day:%A %-d %B %Y}"
 
 

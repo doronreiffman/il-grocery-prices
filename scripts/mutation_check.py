@@ -3276,6 +3276,7 @@ MUTATIONS = {
     'S8 calling every count days tracked (q36 method)': (SHOP_PAGES, ', else their "\n         "own count, since a sale day of unknown price (S1) has none (\\"Usually ₪22.90, sales included (83 days with "\n         "a known price).\\"), so a page never shows two different numbers both called days tracked.', '.'),
     'S6 calling every count days tracked (q36 method)': (SHOP_PAGES, ', named as days with a known "\n         "price when some have none (\\"Lowest in the 83 days with a known price.\\")', ''),
     'the hiring links run together (q36 front)': (SHOP_PAGES, '    links = " ".join(f\'<a href="{escape(href)}">', '    links = "".join(f\'<a href="{escape(href)}">'),
+    "S4 saying every badge names the store type (q36 method)": (SHOP_PAGES, "otherwise. A product page's badge names the store type", "otherwise. The badge names the store type"),
 }
 
 

@@ -133,7 +133,7 @@ class _Site:
         `put_files` call of their own, then those assets, in a call of their own, then the rest; their keys, in that
         order. Refuses, putting nothing, when one of them is not in the folder (FileNotFoundError) or has no content
         type (ValueError); RecordsNotUploaded, with nothing else put, when a record put fails; a failed asset put is
-        raised, with no data file or page put."""
+        raised, the record files up and nothing after it put: not the ledger, the day files or any page."""
         keys = list(data)
         if with_pages:
             keys += [path.relative_to(site_dir).as_posix() for folder in PAGE_FOLDERS

@@ -720,6 +720,22 @@ def test_the_method_page_says_a_no_deal_is_yellow():
     assert "--nd:#ffd60a;" in asset_files()[STYLESHEET].decode("utf-8")   # the stylesheet's yellow
 
 
+def test_the_method_pages_s4_says_where_a_badge_names_the_store_type():
+    """Task 10's fix round 1 (the controller's ruling): since Task 9 a store page's rows show the verdict alone, so S4
+    no longer says every badge names the store type; it says which do, each example the words the pages show: a
+    product page's badge (`badge`) and its "Elsewhere today" row (`short_badge`), a store page's "One of today's deals"
+    (`badge`), and a store page's rows (`verdict_words`)."""
+    s4 = _rule(_rules_of(_method()), "S4 ")
+    found = replace(_deal_row(MARKET).verdict, saving=Decimal("1.90"))
+    assert badge(found) == "At Carrefour Market: DEAL · ₪1.90 off" and verdict_words(found) == "DEAL · ₪1.90 off"
+    assert words_module.short_badge(replace(found, column=RAMI)) == "Rami Levy · DEAL · ₪1.90 off"
+    assert (words_module.ELSEWHERE, words_module.STORY_HEADING) == ("Elsewhere today", "One of today's deals")
+    assert ('A product page\'s badge names the store type ("At Carrefour Market: DEAL · ₪1.90 off", and under '
+            '"Elsewhere today" "Rami Levy · DEAL · ₪1.90 off"), as does a store page\'s "One of today\'s deals"; a '
+            'store page\'s rows leave it out ("DEAL · ₪1.90 off"), the page being that store type\'s.') in s4
+    assert "The badge names the store type" not in s4
+
+
 def test_the_method_page_names_the_reasons_other_count():
     """Task 10's ruling 2 (the owner, 2026-11-15: docs/site-look.md, "Word changes" 3): S8 says a reason names "days
     tracked" when every day tracked has a day price, and its own count, "days with a known price", when a sale day of
