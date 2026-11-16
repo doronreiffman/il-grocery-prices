@@ -259,6 +259,34 @@ def test_the_charts_words_never_shrink():
     assert len(strokes) == 1 and ("vector-effect", "non-scaling-stroke") in strokes[0].declarations
 
 
+def _declared(selector: str) -> dict[str, str]:
+    """The declarations of the one top-level rule with this selector."""
+    (rule,) = [rule for rule in _rules() if rule.media == "" and rule.selector == selector]
+    return dict(rule.declarations)
+
+
+def test_the_date_line_is_quiet_and_the_dotted_stretch_is_not_the_usual_price():
+    """The one line (docs/site-look.md, "The chart", the owner's of 2026-11-16): the date line and the dates' marks are
+    1 pixel in the second ink, never the price line's colour or weight, so the date line never reads as a price; the
+    dotted stretch over days with no price (`.gap`) and the usual price's dashes (`.usual`) each have a dash pattern,
+    and not the same one; a sale's dotted stretch (`gap sale`) takes the sale's colour and weight from
+    `.chart path.sale`, which sets no pattern of its own, so it keeps its dots."""
+    line = _declared(".chart path.paid")["stroke"]
+    assert line == "var(--ink)" and _declared(".chart path.paid")["stroke-width"] == "2"
+    assert _declared(".chart .lines")["border-bottom"] == "1px solid var(--ink-2)"
+    assert _declared(".chart line")["stroke"] == "var(--ink-2)" != line
+    gap, usual = _declared(".chart .gap"), _declared(".chart .usual")
+    assert gap["stroke"] == line and gap["stroke-width"] == "2"
+    dots, dashes = gap.get("stroke-dasharray"), usual.get("stroke-dasharray")
+    assert dots and dashes and dots != dashes
+    assert "stroke-dasharray" not in _declared(".chart path.sale")
+    selectors = [rule.selector for rule in _rules() if rule.media == ""]
+    assert selectors.index(".chart .gap") < selectors.index(".chart path.sale")
+    # the key's one swatch for a line is the sale's: the plain line has no entry
+    assert _declared(".key i")["border-top"] == "3.5px solid var(--sale)" and ".key .sale" not in selectors
+    assert not [selector for selector in selectors if re.search(r"\.listed(?![\w-])", selector)]
+
+
 def test_nothing_is_hidden_but_by_a_named_rule():
     """`[hidden]` wins over every rule (so a part the script hides stays hidden); the only other rules that hide are
     the two filters' rows, the badge's hidden separator, the chart's dates near an end on a phone, and print's."""

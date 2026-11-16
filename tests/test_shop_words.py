@@ -348,13 +348,13 @@ def test_the_no_verdict_lines_and_the_plans_words():
 def test_the_reason_names_its_own_count_when_it_differs():
     """S8 and site-look.md's "Word changes" 3: the reason and "Lowest in the ..." rest on the days with a day price and
     say "days tracked" when every tracked day has one, as before; when a sale day's price was not read, the counts
-    differ and they name their own, "days with a known price", so "days tracked" is only ever every tracked day
-    (`how_often`'s); one day is "1 day"."""
+    differ and they name their own, "days with a known price", so "days tracked" is only ever every tracked day;
+    `how_often` counts every tracked day as "days before today" (the owner, 2026-11-16); one day is "1 day"."""
     days = _days_of("11.90", None, "11.90", "11.90", on=[0])
     deal = _verdict(days=days, today="9.90", usual="11.90", saving="2.00", struct={"per": "unit"})
     assert words.reason(deal) == "Usually ₪11.90, sales included (3 days with a known price)."
     assert words.last_low(deal) == "Lowest in the 3 days with a known price."
-    assert words.how_often(deal) == "On sale on 2 of the 4 days tracked."
+    assert words.how_often(deal) == "On sale on 2 of the 4 days before today."
     always = _verdict("no_deal", days=_days_of("9.90", None, "9.90", "10.90"), today="9.90", usual="9.90",
                       saving="0.00", struct={"per": "unit"})
     assert words.reason(always) == "It's been ₪9.90 or less on 2 of the 3 days with a known price."
@@ -370,7 +370,7 @@ def test_the_reason_names_its_own_count_when_it_differs():
     one = _verdict(days=_days_of("6.00"), today="4.50", usual="6.00", saving="1.50", struct={"per": "unit"})
     assert words.reason(one) == "Usually ₪6.00, sales included (1 day tracked)."
     assert words.last_low(one) == "Lowest in the 1 day tracked."
-    assert words.how_often(_verdict(days=_days_of("6.00", on=[0]))) == "On sale on 1 of the 1 day tracked."
+    assert words.how_often(_verdict(days=_days_of("6.00", on=[0]))) == "On sale on 1 of the 1 day before today."
     # a saving above ₪0.00 and below ₪1.00 is the small form; at ₪0.00 or below, the always-on form
     above = _verdict("no_deal", days=_days_of("5.00", "5.00"), today="5.40", usual="5.00", saving="-0.40",
                      struct={"per": "unit"})
@@ -381,22 +381,25 @@ def test_the_reason_names_its_own_count_when_it_differs():
 
 
 def test_how_often_and_the_last_sale():
-    """S7: every tracked day counts, unknown prices too; the last sale before this one when today is on sale, the
-    last sale when it is not; its price left out when it was not read; nothing with no tracked day."""
+    """S7: every tracked day counts, unknown prices too, said as "days before today" (the owner, 2026-11-16: today is
+    not a tracked day, so beside a DEAL today "0 of the 13 days tracked" read wrong); the last sale before this one
+    when today is on sale, the last sale when it is not; its price left out when it was not read; nothing with no
+    tracked day."""
     from shopper.verdict import Day
     days = _days_of("9.90", None, "12.90", "12.90", on=[0])
     ended = Day(date(2026, 10, 12), Decimal("12.90"), Decimal("9.90"), True)
     unread = Day(date(2026, 10, 12), Decimal("12.90"), None, True)
     assert words.how_often(_verdict(days=days, sale=ended, on_sale=True)) == (
-        "On sale on 2 of the 4 days tracked. The last sale before this one ended 12 October, at ₪9.90.")
+        "On sale on 2 of the 4 days before today. The last sale before this one ended 12 October, at ₪9.90.")
     assert words.how_often(_verdict(days=days, sale=ended, on_sale=False)) == (
-        "On sale on 2 of the 4 days tracked. The last sale ended 12 October, at ₪9.90.")
+        "On sale on 2 of the 4 days before today. The last sale ended 12 October, at ₪9.90.")
     assert words.how_often(_verdict(days=days, sale=unread, on_sale=True)) == (
-        "On sale on 2 of the 4 days tracked. The last sale before this one ended 12 October.")
+        "On sale on 2 of the 4 days before today. The last sale before this one ended 12 October.")
     assert words.how_often(_verdict(days=days, sale=unread)) == (
-        "On sale on 2 of the 4 days tracked. The last sale ended 12 October.")
-    assert words.how_often(_verdict(days=days)) == "On sale on 2 of the 4 days tracked."
-    assert words.how_often(_verdict(days=())) is None                          # never "0 days tracked"
+        "On sale on 2 of the 4 days before today. The last sale ended 12 October.")
+    assert words.how_often(_verdict(days=days)) == "On sale on 2 of the 4 days before today."
+    assert words.how_often(_verdict(days=())) is None                          # never "0 days before today"
+    assert "tracked" not in words.how_often(_verdict(days=days, sale=ended, on_sale=True))
 
 
 def test_last_this_low_needs_todays_price_and_a_day_price():
@@ -417,7 +420,7 @@ def test_an_unread_sale_price_says_no_last_this_low():
     assert (found.call, found.today_price, words.last_low(found)) == ("price_unread", None, None)
     past = _judge([*_history(), _sale(5, "4.00"), _today("5.00", _struct("13", valid=False))])
     assert words.how_often(past) == (
-        "On sale on 1 of the 30 days tracked. The last sale before this one ended 15 November, at ₪4.00.")
+        "On sale on 1 of the 30 days before today. The last sale before this one ended 15 November, at ₪4.00.")
 
 
 def test_the_badge_rows_words():
@@ -619,13 +622,17 @@ def test_the_price_line():
 
 
 def test_the_charts_words():
-    """The chart's short dates, month names and table heads (site-look.md, "Word changes" 5 and 6); "today" as the
-    last date and the date of a lowest or highest that is today's."""
+    """The chart's short dates, month names, table heads and key (site-look.md, "Word changes" 5, 6 and 9); "today"
+    under today's price at the line's end, on the dates' line when today has none, and as the date of a lowest or
+    highest that is today's."""
     assert words.short_day(date(2026, 8, 16)) == "16 Aug"
     assert words.short_day(date(2026, 11, 7)) == "7 Nov"
     assert words.month_name(date(2026, 9, 1)) == "Sep"
-    assert words.STATS_HEADS == ("Lowest", "Highest", "Usual", "Today")
+    assert words.STATS_HEADS == ("Lowest", "Highest", "Today")
     assert words.TODAY_WORD == "today"
+    # the key names only the marks that need words (the owner, 2026-11-16: one line; "what does 'shelf price' even
+    # mean in this context?")
+    assert words.CHART_KEY == ("on sale", "on sale, price not read")
 
 
 def test_the_verdict_alone_and_the_badge_rows_words():
@@ -654,13 +661,14 @@ def test_promotions_today():
 
 def test_the_summary_counts_today():
     """The chart's spoken summary takes its lowest and highest over the tracked days' day prices and today's price
-    (site-look.md, "Calls made in this design" 3), so a deal at a new low says it: the design's example. One day
-    was listed at ₪26.90 and on sale at ₪19.90, so the summary's figures are day prices, never listed ones."""
+    (site-look.md, "Calls made in this design" 3), so a deal at a new low says it: the design's example (its chart,
+    "The chart"). One day was listed at ₪12.90 and on sale at ₪9.90, so the summary's figures are day prices, never
+    listed ones, as the one line draws them."""
     from shopper.verdict import Day
-    days = (Day(date(2026, 11, 10), Decimal("22.90"), Decimal("22.90"), False),
-            Day(date(2026, 11, 11), Decimal("26.90"), Decimal("19.90"), True),
-            Day(date(2026, 11, 12), Decimal("22.90"), Decimal("22.90"), False),
-            Day(date(2026, 11, 13), Decimal("24.90"), Decimal("24.90"), False))
-    deal = _verdict(days=days, today="17.90", usual="22.90", saving="5.00", struct={"per": "unit"})
-    assert words.chart_summary(deal) == "Price chart: usually ₪22.90, lowest ₪17.90, highest ₪24.90, today ₪17.90."
+    days = (Day(date(2026, 11, 9), Decimal("9.90"), Decimal("9.90"), False),
+            Day(date(2026, 11, 10), Decimal("10.00"), Decimal("10.00"), False),
+            Day(date(2026, 11, 11), Decimal("12.90"), Decimal("9.90"), True),
+            Day(date(2026, 11, 12), Decimal("9.90"), Decimal("9.90"), False))
+    deal = _verdict(days=days, today="2.90", usual="9.90", saving="7.00", struct={"per": "unit"})
+    assert words.chart_summary(deal) == "Price chart: usually ₪9.90, lowest ₪2.90, highest ₪10.00, today ₪2.90."
     assert f'aria-label="{words.chart_summary(deal)}"' in SITE_LOOK
