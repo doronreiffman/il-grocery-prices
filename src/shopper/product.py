@@ -47,11 +47,11 @@ A section, in this order, on one line:
   fewer than half the column's stores; the verdict's first call, so a product the few files miss is never said not
   sold); and the empty slot, `<p class="not-sold">`, `not_sold` with the last day the registry saw it listed across
   the column (`last_wide`, Call 10's).
-- The history (`shopper.chart.render_chart`, from the verdict and today's shelf price): today's listed price, as shown,
-  on a day with records, but none on an unread sale price or sale prices not read today (the owner's rulings of
-  2026-11-11 and 2026-11-16: a shelf price at the line's end reads as what the shopper pays today); none on a hole or
-  with no point today. Then "Last this low" (`last_low`, S6) and "How often on sale" (`how_often`, S7), each
-  `<p class="fact">` when it has something to say.
+- The history (`shopper.chart.render_chart`, from the verdict and the day alone): one line of the price paid each day,
+  ending at today's price, the label's "Price today" (the owner, 2026-11-16), so there is none at today wherever the
+  label shows none: on a hole, not sold, an unread sale price, sale prices not read today (the owner's rulings of
+  2026-11-11 and 2026-11-16); no chart at all when no tracked day has a price. Then "Last this low" (`last_low`, S6)
+  and "How often on sale" (`how_often`, S7), each `<p class="fact">` when it has something to say.
 - The fold-out, `<details>` "How this is worked out", holding in this order:
   - today's listed price (P2), with "before promotions" and "as listed in the chain's price files" (its definition),
     the stores' range beneath it labelled as the stores' (`basket.words.range_note`), never as a listed price; on a
@@ -82,7 +82,6 @@ inputs: the same bytes whatever order the mappings come in.
 """
 from collections.abc import Mapping
 from datetime import date
-from decimal import Decimal
 
 from basket.record import money
 from basket.units import Size
@@ -107,7 +106,6 @@ __all__ = ["CHAIN_SPAN", "MAX_PAGE", "badge_class", "field_conditions", "page_pa
 
 MAX_PAGE = 60_000      # bytes a product page may hold (the design's check)
 NO_LABEL = ("too_few", "not_sold")              # a line of their own, no label: no price part, no barcode's mark
-NO_PRICE_TODAY = ("price_unread", "unread_today")   # no shelf price at today's end of the chart (the module's docstring)
 
 
 def page_path(code: str) -> str:
@@ -244,17 +242,6 @@ def _label(key: str, found: Verdict, today: ColumnDay, point: Point | None, cove
     return f'<div class="tag {badge_class(found)}"><div class="say">{"".join(say)}</div>{part}</div>'
 
 
-def _listed_today(found: Verdict, today: ColumnDay, point: Point | None) -> Decimal | None:
-    """Today's shelf price for the chart (the plan's "The chart, call by call"): the point's listed price, as shown, on
-    a day with records; None on a hole or with no point today, and on NO_PRICE_TODAY's calls (the module's
-    docstring)."""
-    if point is None or point.listed is None or not today.record:
-        return None
-    if found.call in NO_PRICE_TODAY:
-        return None
-    return Decimal(money(point.listed))
-
-
 def _section(key: str, covered: Covered, pair: Pair | None, found: Verdict,
              column_days: Mapping[tuple[str, date], ColumnDay], day: date, promotions_errors: Mapping[str, str]) -> str:
     """A column's section (the module's docstring)."""
@@ -265,7 +252,7 @@ def _section(key: str, covered: Covered, pair: Pair | None, found: Verdict,
         parts.append(f'<p class="warn">{text(unreadable(column.slug))}</p>')
     today = column_days[(key, day)]
     parts.append(_label(key, found, today, point, covered))
-    parts.append(render_chart(found, day, _listed_today(found, today, point)))
+    parts.append(render_chart(found, day))
     parts += [f'<p class="fact">{text(line)}</p>' for line in (last_low(found), how_often(found)) if line is not None]
     parts.append(_worked_out(key, today, point, covered, day))
     return f'<section data-column="{key}" id="c-{key}" data-chain="{column.slug}">{"".join(parts)}</section>'

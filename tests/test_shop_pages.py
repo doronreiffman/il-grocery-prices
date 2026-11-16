@@ -501,7 +501,7 @@ def test_the_story_is_the_top_rows_verdict():
             f'{CHAIN_SPAN.format(TITLE)}</a></p><p class="badge deal-2">At Shufersal Sheli: DEAL · ₪3.00 off</p>'
             f"{said}") in page
     assert said == ("<p>Usually ₪10.00, sales included (90 days tracked).</p><p>Lowest in the 90 days tracked.</p>"
-                    "<p>On sale on 0 of the 90 days tracked.</p>")
+                    "<p>On sale on 0 of the 90 days before today.</p>")
 
 
 def test_a_store_pages_links_lead_up_to_the_root():
@@ -858,11 +858,20 @@ def test_the_method_page_states_the_rules_with_the_codes_constants(monkeypatch):
                    "at least 90 scored days", "at most 0.03", "more than 4 holes", "d + 1 to d + 14"):
         assert figure in rules, figure
     assert unreadable("carrefour") in rules and no_odds_yet(DEAL).split(".")[0] in rules
-    # "listed price" with its definition (store-first.md, "Words"), and the chart's name for it
+    # "listed price" with its definition (store-first.md, "Words"); the chart names no listed price (the owner,
+    # 2026-11-16: one line, the price paid each day), and no shopper text says "shelf price"
     assert _rule(rules, "P2 ").startswith("A column's listed price for a product on a day is its price as listed in "
                                           "the chain's price files, before promotions: the median of the product's "
                                           "price across the column's included stores")
-    assert "The price chart calls it the shelf price." in _rule(rules, "P2 ")
+    assert "shelf price" not in page and "the lowest and highest store prices are shown beside it. A column" in rules
+    # S0: a day not tracked has no price in the chart, joined when seven or fewer in a row (the owner, 2026-11-16)
+    assert _rule(rules, "S0 ").endswith(
+        'A day not tracked is left out of the usual price, "Last this low", "How often on sale" and every count of '
+        "days tracked. In the price chart it has no price: the line goes on dotted over seven such days or fewer in a "
+        "row, and stops for more.")
+    assert "gap in the price chart" not in rules
+    # S7 quotes "How often on sale" as the page says it: out of the days before today (the owner, 2026-11-16)
+    assert '("On sale on 12 of the 60 days before today.")' in _rule(rules, "S7 ")
     assert ('no listed price is claimed, every promotion that day is shown "at some stores", with no verdict (S4), no '
             "promotion is said to be listed to start, and the day counts in no window, front page or "
             "forecast.") in rules                                                                   # deploy prep

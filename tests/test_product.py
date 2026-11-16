@@ -552,29 +552,41 @@ def test_a_page_with_no_label_carries_no_drawing():
     assert page.count(drawing(CODE)) == 1 and page.count(mark(CODE)) == 1
 
 
-def test_the_chart_takes_todays_shelf_price_from_the_day():
-    """The plan's "The chart, call by call": a section's history is drawn with today's shelf price, as shown, on a day
-    with records; with none on a hole, for a product not sold today, and on an unread sale price or sale prices not
-    read today (the owner's rulings of 2026-11-11 and 2026-11-16, and the design's state table), whose chart's today
-    column then holds "today" alone."""
-    covered, pairs = _typical()
-    found = _verdicts(pairs, _days())[DEAL]
-    history = _history(_sections(_render(covered, pairs))[DEAL])
-    assert history == render_chart(found, DAY, Decimal(money(pairs[DEAL].points[DAY].listed)))
-    assert history == render_chart(found, DAY, Decimal("11.90")) != render_chart(found, DAY, None)
-    for call in ("too_few", "not_sold", "price_unread", "unread_today"):
-        (covered, pairs), days = _no_verdict_case(call)
+def test_the_charts_today_is_the_labels_price_today():
+    """The one line (the owner, 2026-11-16): a section's chart is drawn from its verdict and the day alone, so the
+    figure at its right end is the label's "Price today" in every part, call by call; with no price today (a hole, not
+    sold, an unread sale price, sale prices not read today: the owner's rulings of 2026-11-11 and 2026-11-16) its today
+    column holds "today" alone. No product page names a "shelf price"."""
+    calls = (*words.NO_VERDICT, "too_few", "not_sold")
+    for (covered, pairs), days in [(_typical(), _days()), *(_no_verdict_case(call) for call in calls)]:
         found = _verdicts(pairs, days)[DEAL]
-        assert found.call == call and found.days
-        body = _sections(_render(covered, pairs, column_days=days))[DEAL]
-        assert _history(body) == render_chart(found, DAY, None), call
-        point = pairs[DEAL].points.get(DAY)
-        assert (point is None) is (call == "not_sold")
-        if point is not None:                       # a shelf price there to draw, and not drawn
-            assert _history(body) != render_chart(found, DAY, Decimal(money(point.listed))), call
-        if call in ("price_unread", "unread_today"):
-            (now,) = re.findall(r'<svg class="now" aria-hidden="true">(.*?)</svg>', body)
-            assert "<circle" not in now and "₪" not in now and _read(now) == "today", call
+        page = _render(covered, pairs, column_days=days)
+        body = _sections(page)[DEAL]
+        history = _history(body)
+        assert history == render_chart(found, DAY), found.call
+        assert "shelf price" not in page, found.call
+        if not found.priced:                                       # new, no_history: no line to draw
+            assert history == "" and found.call in ("new", "no_history"), found.call
+            continue
+        (now,) = re.findall(r'<svg class="now" aria-hidden="true">(.*?)</svg>', history)
+        line = words.price_line(found)
+        assert re.findall(r"₪[\d.]+", now) == ([] if line is None else re.findall(r"₪[\d.]+", line)), found.call
+        if line is None:
+            assert found.call in ("too_few", "not_sold", "price_unread", "unread_today"), found.call
+            assert "<circle" not in now and _read(now) == "today", found.call
+    assert "shelf price" not in _render(*_largest())
+
+
+def test_no_chart_when_no_day_has_a_price_and_the_facts_still_stand():
+    """No tracked day with a price, no line to draw, so no chart (the owner, 2026-11-16): a sale whose price could not
+    be read on every tracked day and today; "How often on sale" still says so, before the fold-out."""
+    unread = _struct(None, valid=False, why="no price in the fields")
+    pairs = {DEAL: _pair(DEAL, _listed("10.00"), on=[back(n) for n in range(91)], promotions=[unread])}
+    found = _verdicts(pairs, _days())[DEAL]
+    assert (found.call, len(found.days), found.priced) == ("price_unread", 90, ())
+    body = _sections(_render(_covered({DEAL: "שם"}), pairs))[DEAL]
+    assert '<div class="history">' not in body and '<svg class="lines"' not in body
+    assert '</div></div><p class="fact">On sale on 90 of the 90 days before today.</p><details>' in body
 
 
 def test_the_facts_follow_the_history():
@@ -586,7 +598,7 @@ def test_the_facts_follow_the_history():
     body = _sections(_render(_covered({DEAL: "שם"}), pairs))[DEAL]
     low, often = (f'<p class="fact">{said}</p>' for said in (words.last_low(found), words.how_often(found)))
     assert low == '<p class="fact">Last this low: 10 November, at ₪6.90.</p>'
-    assert often.startswith('<p class="fact">On sale on 3 of the 90 days tracked.')
+    assert often.startswith('<p class="fact">On sale on 3 of the 90 days before today.')
     history = _history(body)
     assert history.startswith('<div class="history"><div class="chart">')
     assert f"</div></div>{history}{low}{often}<details>" in body
@@ -682,7 +694,7 @@ def test_a_not_sold_section_says_when_last_seen():
     page = _render(_covered({DEAL: "שם"}, last_wide={DEAL: date(2026, 11, 3)}), {DEAL: pair})
     body = _sections(page)[DEAL]
     assert '<p class="not-sold">Not sold at Shufersal Deal today, last seen 3 November</p>' in body
-    assert '<div class="history">' in body and "On sale on 0 of the 51 days tracked." in body
+    assert '<div class="history">' in body and "On sale on 0 of the 51 days before today." in body
     assert 'class="badge' not in body and "Listed price" not in body
     bare = _sections(_render(_covered({DEAL: "שם"}, last_wide={}), {DEAL: pair}))[DEAL]
     assert '<p class="not-sold">Not sold at Shufersal Deal today</p>' in bare
@@ -925,7 +937,7 @@ def test_a_product_sold_nowhere_today_has_no_badges_and_every_part():
     assert list(sections) == [RAMI, DEAL, SHELI]
     for key, body in sections.items():
         assert f"Not sold at {BY_KEY[key].name} today, last seen 10 November" in body
-        assert '<div class="history">' in body and "On sale on 0 of the 51 days tracked." in body
+        assert '<div class="history">' in body and "On sale on 0 of the 51 days before today." in body
         assert no_odds_yet(key) in _fold(body)
     text = _visible(page)
     assert all(flatten(phrase) in text for phrase in ALWAYS)

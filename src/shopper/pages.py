@@ -428,8 +428,8 @@ RULES = (
      "A column's listed price for a product on a day is its price as listed in the chain's price files, before "
      "promotions: the median of the product's price across the column's included stores whose latest full price file "
      "that day lists it (with an even count, the mean of the two middle prices), prices of ₪0.01 or less dropped as "
-     "placeholders; the lowest and highest store prices are shown beside it. The price chart calls it the shelf price. "
-     "A column whose files that day come from fewer than half its included stores is a hole: its prices are shown as "
+     "placeholders; the lowest and highest store prices are shown beside it. A column whose files that day come from "
+     "fewer than half its included stores is a hole: its prices are shown as "
      "from too few files, no listed price is claimed, every promotion that day is shown \"at some stores\", with no "
      "verdict (S4), no promotion is said to be listed to start, and the day counts in no window, front page or "
      "forecast."),
@@ -555,8 +555,8 @@ def store_rules() -> tuple[tuple[str, str], ...]:
          f"A product's days tracked at a column are the days, of the {READ_DAYS} before the page's day, on which the "
          "column has a record (P2), its promotions were read (the chain's files read, P10, and promotion files from at "
          "least half its counted stores) and the product has a listed price there. A day not tracked is left out of "
-         "the usual price, \"Last this low\", \"How often on sale\" and every count of days tracked, and is a gap in "
-         "the price chart, never filled in."),
+         "the usual price, \"Last this low\", \"How often on sale\" and every count of days tracked. In the price "
+         "chart it has no price: the line goes on dotted over seven such days or fewer in a row, and stops for more."),
         ("S1 Day price.",
          "On a day tracked, the lower of the listed price and the lowest price among the promotions that count that "
          "day (S3), each as shown, to the agora. A day on a promotion listed across the column (P3) of which none "
@@ -609,8 +609,8 @@ def store_rules() -> tuple[tuple[str, str], ...]:
          "known and some day tracked has a day price."),
         ("S7 How often on sale.",
          "Of the days tracked, on how many the product was on a promotion listed across the column (P3), its price "
-         "read or not (\"On sale on 12 of the 60 days tracked.\"). A run is the days tracked on sale in a row; a day "
-         "not tracked neither ends nor extends one. When today is on sale and the latest run reaches the last day "
+         "read or not (\"On sale on 12 of the 60 days before today.\"). A run is the days tracked on sale in a row; a "
+         "day not tracked neither ends nor extends one. When today is on sale and the latest run reaches the last day "
          "tracked, that run is this sale, not the last one. The last sale's last day is given, with its day price "
          "when it was read: \"The last sale before this one ended 12 October, at ₪9.90.\" (\"The last sale "
          "ended …\" when today is not on sale). On a day with too few files, not sold, "

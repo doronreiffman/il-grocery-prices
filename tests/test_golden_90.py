@@ -126,7 +126,7 @@ def _summaries(golden) -> list:
 # ---- the pages: the store types' front pages, the product pages' verdicts, the holes ----
 
 G3_STORY = ("At Shufersal Sheli: DEAL · ₪3.00 off", "Usually ₪10.90, sales included (74 days tracked).",
-            "Lowest in the 74 days tracked.", "On sale on 0 of the 74 days tracked.")      # under its name
+            "Lowest in the 74 days tracked.", "On sale on 0 of the 74 days before today.")      # under its name
 
 
 def test_the_golden_pages_windows_and_gaps(golden):
@@ -146,7 +146,7 @@ def test_the_golden_pages_windows_and_gaps(golden):
     page = golden.page(75, f"p/{G3}.html")
     sheli, deal = _text(_section(page, "shufersal-sheli")), _text(_section(page, "shufersal-deal"))
     for said in ("At Shufersal Sheli: DEAL · ₪3.00 off", "Usually ₪10.90, sales included (74 days tracked).",
-                 "Lowest in the 74 days tracked.", "On sale on 0 of the 74 days tracked."):
+                 "Lowest in the 74 days tracked.", "On sale on 0 of the 74 days before today."):
         assert said in sheli, said
     assert "No sale today" in deal and "Listed price ₪9.90, before promotions" in deal and "Deal price" not in deal
     # the site look's label (Task 8): the deal on its green label in the shade of ₪3.00, today's price as on a shelf
@@ -156,8 +156,8 @@ def test_the_golden_pages_windows_and_gaps(golden):
             '</p><p class="reason">Usually ₪10.90, sales included (74 days tracked).</p></div><div class="pay">'
             '<p class="price">Price today: <b><i>₪</i>7<sup>.90</sup></b></p><div class="code" aria-hidden="true">'
             f'<small>{G3}</small></div></div></div><div class="history">') in marked
-    assert ('<p class="fact">Lowest in the 74 days tracked.</p><p class="fact">On sale on 0 of the 74 days tracked.</p>'
-            '<details>') in marked
+    assert ('<p class="fact">Lowest in the 74 days tracked.</p><p class="fact">On sale on 0 of the 74 days before '
+            'today.</p><details>') in marked
     assert ('<div class="tag none"><div class="say"><p class="verdict">No sale today</p></div><div class="pay">'
             '<p class="price">Price today: <b><i>₪</i>9<sup>.90</sup></b></p>') in _section(page, "shufersal-deal")
     assert page.count('<path id="ean" ') == 1 and page.count('<use href="#ean"/>') == page.count('<div class="tag ')
@@ -165,10 +165,11 @@ def test_the_golden_pages_windows_and_gaps(golden):
     # day before, and its sale days counted, the last sale's end and price said
     osher = _text(_section(golden.page(DAYS, f"p/{G1}.html"), "osherad"))
     for said in ("No sale today", "Last this low: 29 April, at ₪5.00.",
-                 "On sale on 31 of the 90 days tracked. The last sale ended 26 April, at ₪3.90."):
+                 "On sale on 31 of the 90 days before today. The last sale ended 26 April, at ₪3.90."):
         assert said in osher, said
-    assert ('<p class="fact">Last this low: 29 April, at ₪5.00.</p><p class="fact">On sale on 31 of the 90 days tracked.'
-            ' The last sale ended 26 April, at ₪3.90.</p>') in _section(golden.page(DAYS, f"p/{G1}.html"), "osherad")
+    assert ('<p class="fact">Last this low: 29 April, at ₪5.00.</p><p class="fact">On sale on 31 of the 90 days '
+            'before today. The last sale ended 26 April, at ₪3.90.</p>') in _section(golden.page(DAYS, f"p/{G1}.html"),
+                                                                                  "osherad")
     # G4 at Rami Levy alone, weighed: "2 for ₪100" stored as 1.5 for ₪75.00, ₪50.00 a kilogram; its chain's holes of 9
     # and 10 February skipped in every window
     assert _fronts(golden, 85) == {"ramilevy": [G4], "shufersal-sheli": [G3]}
@@ -224,7 +225,8 @@ def test_the_golden_pages_windows_and_gaps(golden):
     assert shown["Shufersal Express"] == ["0", "30 January to 30 April 2026", "none", "none"]   # no store: a hole
     # Shufersal Universe on the last day, 27 days tracked from 2 April: each verdict's or no-verdict's words
     universe = {U1: "It's been ₪9.90 or less on 27 of the 27 days tracked.",
-                U2: "On sale on 10 of the 27 days tracked. The last sale before this one ended 11 April, at ₪6.90.",
+                U2: ("On sale on 10 of the 27 days before today. The last sale before this one ended 11 April, at "
+                     "₪6.90."),
                 U5: "New today: no price history yet.", U6: "Only ₪0.99 below its usual ₪5.00 (27 days tracked).",
                 U7: "DEAL · ₪1.00 off", U8: "When you buy 2", U9: "On sale at some stores only",
                 U10: "On sale, but the sale price could not be read"}
