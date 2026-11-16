@@ -3234,6 +3234,8 @@ MUTATIONS = {
     "no dashes where there is no line (q36 chart)": (SHOP_CHART, 'clear = [(at, level) for at in range(span) if at not in line_at or abs(line_at[at] - level) >= CLEAR]', 'clear = [(at, level) for at in range(span) if at in line_at and abs(line_at[at] - level) >= CLEAR]'),
     "dashes left out six pixels from the line (q36 chart)": (SHOP_CHART, 'abs(line_at[at] - level) >= CLEAR]', 'abs(line_at[at] - level) > CLEAR]'),
     "the usual words ignoring a step (q36 chart)": (SHOP_CHART, '        late += [(min(was, to), max(was, to)) for at, was, to in steps if 10 * (at + 1) > 7 * span]\n', ''),
+    "the usual words kept out of the top margin (q36 chart)": (SHOP_CHART, '        above = not any(low <= level - 1', '        above = level >= 20 and not any(low <= level - 1'),
+    "the usual words written on the date line (q36 chart)": (SHOP_CHART, '        below = level <= PLOT - 20 and not any(', '        below = not any('),
     "today left on the dates' line beside a price (q36 chart)": (SHOP_CHART, 'y="{height + 5 + WORD_DROP}">', 'y="{DATES_Y}">'),
     "a key entry for the plain line (q36 chart)": (SHOP_CHART, '    marks = [*([("sale", CHART_KEY[0])]', '    marks = [("paid", "price"), *([("sale", CHART_KEY[0])]'),
     "an empty key written (q36 chart)": (SHOP_CHART, """key = f'<p class="key">{key}</p>' if marks else \"\"""", """key = f'<p class="key">{key}</p>'"""),

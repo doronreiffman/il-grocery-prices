@@ -197,13 +197,13 @@ A line that is not a verdict ("No sale today", "On sale at some stores only", "S
 - **On a phone** each row is a block: the name and barcode; under them the label at the left with its condition, and at the right the price today in bold over "Usually ₪26.80". Nothing scrolls sideways. The table keeps its table roles for screen readers.
 - With no row to show, the line the page already has ("None yet: a product needs 20 days of price history first.") stands as the headline and the table says "No deals to show."
 
-**A product page.** The name; the names as each chain lists it; the barcode and size line. Then, for the picked store type, the label, the chart with its key and its table, "Last this low" and "How often" as two ruled lines, and the fold-out. On a desktop (64rem and up, while the script runs) the page is two columns of a 12-column grid: the label, chart and facts in eight, "Elsewhere today" in four, level with the label. The states:
+**A product page.** The name; the names as each chain lists it; the barcode and size line. Then, for the picked store type, the label, the chart with its table (and its key when a sale or an unread sale price is drawn), "Last this low" and "How often" as two ruled lines, and the fold-out. On a desktop (64rem and up, while the script runs) the page is two columns of a 12-column grid: the label, chart and facts in eight, "Elsewhere today" in four, level with the label. The states:
 
 | State | What shows |
 |---|---|
 | Deal | the green label, in the shade of its saving; the price part; the chart with today's sale price in green at the right end |
 | No deal | the same label in yellow: "NO DEAL", its reason, its condition |
-| No sale today | a white label: "No sale today" and the price part; a chart with the shelf line alone |
+| No sale today | a white label: "No sale today" and the price part; the chart's line in ink, today's price at its end in ink |
 | On sale, price not read today; sale prices not read today | a white label with that line; no price; the warning above it when the chain's promotions could not be read; the chart still shows the days before |
 | Not sold at the picked store | the empty slot; under it "Elsewhere today"; when the store listed it before, the chart of those days and no price today |
 | A first visit, no store picked | the rows of all store types first, then the first one's label and chart |
@@ -331,7 +331,7 @@ Drawn and measured, not only planned (`prefers-color-scheme: dark`; the preview'
 - **A green label keeps dark words** on its own three greens of the dark theme (5.21:1, 7.31:1 and 11.13:1) and loses its dark edge: on the dark page each green is its own edge (5.12:1, 7.19:1 and 10.95:1 against the page). The wordmark's "DEAL" and the headline's DEAL do the same.
 - **The price part** is the dark page inside the label's edge, its price in the light ink; the barcode sits on its white plate.
 - **NO DEAL**: the yellow stays, with dark words, and is its own edge (13.16:1 against the page).
-- **The chart**: the shelf line and the axis in the light ink, the sale line and today's sale price in `#4fe08c` (10.95:1), the grid `#3d3d3a`.
+- **The chart**: the price line, its dotted stretch and today's price in the light ink, the sale stretch and today's sale price in `#4fe08c` (10.95:1), the axis words, the date line and its marks and the usual price's dashes in the second ink `#b4b4b0` (8.93:1), the grid `#3d3d3a`.
 - The basket's lowest total is the light ink with dark words on it; the soft ground is `#222220`.
 
 ## The shared stylesheet and the font files

@@ -488,10 +488,11 @@ def test_the_usual_words_are_written_even_with_no_dash():
 def test_the_usual_words_stand_above_their_level_unless_the_line_runs_there():
     """The usual price's words at the right, LIFT pixels above its level, unless the line runs within 21 pixels above
     it in the last 30% of the span's days (a point, a dotted stretch, or a step crossing that band), then 15 below;
-    above again when below is as busy. At the very top of the plot they stand above, in the chart's top margin."""
-    def label(prices: list[str], today: str, call: str = "deal") -> int:
+    above again when below is as busy, or when the level is under 20 pixels from the date line, so the words never
+    stand on it. At the very top of the plot they stand above, in the chart's top margin."""
+    def label(prices: list[str], today: str, call: str = "deal", usual: str = "5.00") -> int:
         days = [_shelf(9 - x, price) for x, price in enumerate(prices)]
-        found = _verdict(days, today=today, usual="5.00", call=call)
+        found = _verdict(days, today=today, usual=usual, call=call)
         over = _read(chart.render_chart(found, DAY))["over"]
         (said,) = [each for each in over if each.get("class") == "usually"]
         assert [each.get("class") for each in over][0] == "usually"           # first in the overlay
@@ -509,8 +510,13 @@ def test_the_usual_words_stand_above_their_level_unless_the_line_runs_there():
     assert label(["6.00", "6.00", *["5.00"] * 5, "6.00", "6.00"], "6.00", call="no_deal") == 115
     # busy below too, today's ₪4.90 10 pixels under it: above
     assert label(["6.00", "6.00", *["5.00"] * 5, "5.10", "5.10"], "4.90", call="no_deal") == 92
-    # at the axis's top: axis(4.00, 5.00) is (3, 5, 1), ₪5 at 0, so the words stand in the top margin
+    # at the axis's top: axis(4.00, 5.00) is (3, 5, 1), ₪5 at 0, so the words stand in the top margin; today's step
+    # crosses the band below, and so does nothing in the second, whose drop comes before the last 30%: above there too
     assert label(["5.00"] * 9, "4.00") == -8
+    assert label([*["5.00"] * 6, *["4.00"] * 3], "4.00") == -8
+    # the level under 20 pixels from the date line: axis(4.18, 6.00) is (4, 6, 1), the usual ₪4.18 at 182 and ₪4.30 at
+    # 170 on the last days and today, 12 pixels above; below is free, but the words would stand on the date line: above
+    assert label(["6.00", *["4.18"] * 5, *["4.30"] * 3], "4.30", call="no_deal", usual="4.18") == 174
     # no usual dashes nor words without a Deal or No deal
     parts = _read(chart.render_chart(_verdict([_shelf(2), _shelf(1)], today="5.00", usual=None, call="no_sale"), DAY))
     assert "usual" not in _paths(parts["lines"])

@@ -75,10 +75,9 @@ this low: 12 October, at ₪9.90." or "Lowest in the 10 days tracked." ("Lowest 
 the counts differ), only when today's price is known and a day before today has a day price. How often (S7,
 `how_often`), over every tracked day, said as the days before today (the owner, 2026-11-16: today is not a tracked
 day, so beside a DEAL today "0 of the 13 days tracked" read wrong): "On sale on 12 of the 60 days before today.", then
-"The last sale before this one ended
-12 October, at ₪9.90." when today is on sale, "The last sale ended …" when it is not, the price left out when it was not
-read; nothing with no tracked day. A coming sale (F2, `coming_sale`): "A sale starts on 14 November". The fold-out's
-name: "How this is worked out" (WORKED_OUT).
+"The last sale before this one ended 12 October, at ₪9.90." when today is on sale, "The last sale ended …" when it is
+not, the price left out when it was not read; nothing with no tracked day. A coming sale (F2, `coming_sale`): "A sale
+starts on 14 November". The fold-out's name: "How this is worked out" (WORKED_OUT).
 
 A store type's front page (store first, q33: docs/store-first.md, "What a visitor sees" 4 and "Words", verbatim where
 the design gives them; the plan's "Words this plan adds", provisional until the owner's read). The title asks the
