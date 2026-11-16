@@ -1,47 +1,59 @@
 """The root, the store types' front pages, and the method, record and basket pages (docs/shopper-site.md, "What a
 visitor sees" 1, 4, 5 and 6, P1 to P10, F1 to F11, "Words" and Q1 to Q4, with "Changed after the survey", S1 and "The
 column"; the plan's Task 18, its questions A, K, M (c), (d) and (f) and O, and the second pre-flight's S1, S6 and S13;
-docs/store-first.md, "What a visitor sees" 1, 3 and 4, and the store-first plan's Tasks 5 to 7; docs/site-look.md and
-the site-look plan's Task 6). Every page is on the site's shared shell (`shopper.shell`: the band with the site's name,
-the pick link and the date line, the chains' line on the root alone, `noindex`, the one stylesheet and the one script,
-the page's kind on its body, the credit line), and holds no style of its own; every chain-supplied text (a product's
-name, a programme's, a store's) is escaped inside `CHAIN_SPAN`.
+docs/store-first.md, "What a visitor sees" 1, 3 and 4, and the store-first plan's Tasks 5 to 7; docs/site-look.md, "Page
+by page", and the site-look plan's Tasks 6 and 9). Every page is on the site's shared shell (`shopper.shell`: the band
+with the site's name, the pick link and the date line, the chains' line on the root alone, `noindex`, the one stylesheet
+and the one script, the page's kind on its body, the credit line), and holds no style of its own; every chain-supplied
+text (a product's name, a programme's, a store's) is escaped inside `CHAIN_SPAN`.
 
-The root page, `index.html`, also the portfolio's landing page: the title question (`shopper.words.FRONT_TITLE`), one
-line on what the site does (ROOT_LINE), the picker, then the hiring line (question M (f)). The picker is
-`<section id="pick" data-page="root">`, the pick link's target and search.js's mark for the root (it sends a remembered
-pick on to its store type's front page unless the hash is #pick, which is how the header's "change" reaches the picker
-instead): "Which store are you in?" (PICK_TITLE), then each chain's name over a link to each of its store types' front
-pages (`store_path`), in the design's order by chain (PICK_GROUPS), never COLUMNS' order by name. The root shows no
-price, so it carries no ALWAYS phrase, and `shopper.check` holds it to none.
+The root page, `index.html`, also the portfolio's landing page, its tab titled with the site's name alone
+(`shopper.words.SITE_NAME`): the hero, the headline "Deal or No Deal?" (`shopper.words.ROOT_TITLE`, set in capitals by
+the stylesheet) with "Deal" on the green label (`class="yes"`) and "No Deal" on the yellow one (`class="no"`), "or" and
+the question mark plain, and under it, after a line break, the owner's line on what the site does
+(`shopper.words.ROOT_LINE`); the picker; then the hiring line (question M (f)), its four links side by side with
+nothing between them. The picker is `<section id="pick" data-page="root">`, the pick link's target and search.js's
+mark for the root (it sends a remembered pick on to its store type's front page unless the hash is #pick, which is how
+the header's "change" reaches the picker instead): "Which store are you in?" (PICK_TITLE), then each chain as
+`<div class="chain">`, its name as a heading the stylesheet hides from sight alone (every label carries its chain's
+name), over a label linking to each of its store types' front pages (`store_path`), in the design's order by chain
+(PICK_GROUPS), never COLUMNS' order by name. A label is the store type's name and its count of promotions today, the
+figure in bold ("1,347 promotions today", one "promotion today": `shopper.words.promotions_today`), the number its
+store page's promotions line states (`promotions_shown`, read by both); on a hole or a promotion hole, whose
+promotions the build does not count, the name alone, never "0". The root shows no price, so it carries no ALWAYS
+phrase, and `shopper.check` holds it to none.
 
 A store type's front page, `store/<key>.html` (`store_path`), one folder down (UP), with its main part marked
 `data-store` (`shopper.shell.page`), from which search.js sets the pick (docs/store-first.md, "What a visitor sees" 4
-and "The front page's list"; the store-first plan's Task 6). It is a function of the store type's front
-(`StoreFront`), which the build makes in its one pass: its deals, the verdicts that are Deal and pass the 20-day bar
+and "The front page's list"; the store-first plan's Task 6). It is a function of the store type's front (`StoreFront`),
+which the build makes in its one pass: its deals, the verdicts that are Deal and pass the 20-day bar
 (`shopper.verdict.on_list`), every one, in `shopper.verdict.front_list`'s order (by saving, largest first, then by
-barcode as a number); how many products it checked (`shopper.verdict.checked`: a promotion counts today and the bar
-is passed); whether any product could pass the bar yet (`column_ready`); and its promotions line's two numbers. The
-page neither sorts nor filters by store type: it shows the first FRONT_LIMIT (100) rows, and none when today is a hole
-or a promotion hole there (`shown_rows`), whatever it is handed. Top to bottom, in the owner's plain words: the store
-type's name over the title, the owner's question; the line under it (`shopper.words.FRONT_SUBTITLE`); the search box,
-`<input id="q">` (`shopper.words.SEARCH_LABEL`), and a link to the browse pages, which need no script; the lead line
+barcode as a number); how many products it checked (`shopper.verdict.checked`: a promotion counts today and the bar is
+passed); whether any product could pass the bar yet (`column_ready`); and its promotions line's two numbers. The page
+neither sorts nor filters by store type: it shows the first FRONT_LIMIT (100) rows, and none when today is a hole or a
+promotion hole there (`shown_rows`), whatever it is handed. Top to bottom, in the owner's plain words: the store type's
+name as a small label over the title, the owner's question (`shopper.words.FRONT_TITLE`), its last word on the green
+label (`class="yes"`); the line under it (`shopper.words.FRONT_SUBTITLE`); the search box, `<input id="q">`
+(`shopper.words.SEARCH_LABEL`), and a link to the browse pages, which need no script; the lead line
 (`shopper.words.store_lead`: the too-few line on a hole, the promotion hole's line, "None yet" until `column_ready`,
-else the headline, "At Carrefour Market today: 1,130 of 4,210 promotions are actually deals.", whose N is every deal
-of the front, never only those shown); the filters, CSS only: two checkboxes, the club-only one (hiding every
-restricted promotion, question K) and the minimum-spend one, each ruled by a `:checked` sibling selector over the rows'
-`data-club` and `data-spend`, read from the promotion each row's verdict judges; the table, a row per deal: the
-product's link with its name and barcode, the deal badge in its shade (`shopper.product.badge_class`,
-`shopper.words.badge`, which names the store type) with its conditions beside it (`shopper.words.conditions`), today's
-price and the usual price, each a kilogram's for a weighed product; then the fold-out, `<details>` "How a deal passes",
-closed, needing no script, in the design's order: its first line (`shopper.words.FOLD_INTRO`), the rules in shopper
-words (`shopper.words.STORE_RULES`), what the two filters hide, with the store's chain when its files mark no
-restricted promotion today (`shopper.words.marked_none`), where the rows' conditions come from and that the fine print
-was not read (CONDITIONS_NOTE: the design's Always, the source of every condition), the top row's story under "One
-of today's deals" (its badge, reason, last this low and how often, the product page's words), the store type's
-promotions line (`shopper.words.store_promotions_line`), left out on a hole or a promotion hole, whose promotions the
-build does not count, one note carrying the four ALWAYS phrases (`shopper.words.ALWAYS_SENTENCE`), so the page
-carries them on any morning, and the method page. Every link leads up to the site's root. The badges' shades, like
+else the headline, "At Carrefour Market today: 1,130 of 4,210 promotions are actually deals.", whose N is every deal of
+the front, never only those shown, its two numbers, "1,130 of 4,210", in bold); the filters, CSS only: two checkboxes,
+the club-only one (hiding every restricted promotion, question K) and the minimum-spend one, each ruled by a `:checked`
+sibling selector over the rows' `data-club` and `data-spend`, read from the promotion each row's verdict judges; the
+table, which writes its roles (`table`, `rowgroup`, `row`, `columnheader`, `rowheader`, `cell`), since on a phone the
+stylesheet lays each row out as a block, which would take them away; a row per deal: the product's link with its name
+and barcode, the deal badge in its shade (`shopper.product.badge_class`), the verdict alone
+(`shopper.words.verdict_words`: the page is the store type's), with its conditions beside it
+(`shopper.words.conditions`), today's price and the usual price, each a kilogram's for a weighed product; then the
+fold-out, `<details>` "How a deal passes", closed, needing no script, in the design's order: its first line
+(`shopper.words.FOLD_INTRO`), the rules in shopper words (`shopper.words.STORE_RULES`), what the two filters hide, with
+the store's chain when its files mark no restricted promotion today (`shopper.words.marked_none`), where the rows'
+conditions come from and that the fine print was not read (CONDITIONS_NOTE: the design's Always, the source of every
+condition), the top row's story under "One of today's deals" (its badge, `shopper.words.badge`, naming the store type,
+its reason, last this low and how often, the product page's words), the store type's promotions line
+(`shopper.words.store_promotions_line`, its count `promotions_shown`), left out on a hole or a promotion hole, whose
+promotions the build does not count, one note carrying the four ALWAYS phrases (`shopper.words.ALWAYS_SENTENCE`), so the
+page carries them on any morning, and the method page. Every link leads up to the site's root. The badges' shades, like
 every rule of the look, are the site's one stylesheet's (docs/site-look.md).
 
 The method page: what a column is and the nine, with how each one's stores are chosen and how many the day's store list
@@ -105,17 +117,16 @@ from shopper.shell import band, head, page, text
 from shopper.verdict import DEAL_MIN, FRONT_LIMIT, SHADES, DealRow
 from shopper.words import (ALWAYS_SENTENCE, BROWSE_LINK, ELSEWHERE, FINE_PRINT, FOLD_INTRO, FROM_FIELDS, FRONT_SUBTITLE,
                            FRONT_TITLE, HIRING, METHOD_TITLE, NEVER, NO_VERDICT, NONE_YET, NUMBER_WORDS, RECORD_TITLE,
-                           SEARCH_LABEL, SITE_NAME, STORE_RULES, STORY_HEADING, badge, columns_tested, conditions,
-                           credit, date_range, formats_note, how_often, last_low, marked_none, no_odds_yet, price_text,
-                           reason, store_lead, store_promotions_line, unreadable)
+                           ROOT_LINE, ROOT_TITLE, SEARCH_LABEL, SITE_NAME, STORE_RULES, STORY_HEADING, badge,
+                           columns_tested, conditions, credit, date_range, formats_note, headline, how_often, last_low,
+                           marked_none, no_odds_yet, price_text, promotions_today, reason, store_lead,
+                           store_promotions_line, unreadable, verdict_words)
 
 BASKET_SECTION = "headline-basket"     # the basket's method on the method page: not its inner heading's id, "basket"
 BASKET_PAGE = "the basket page"        # what the basket's method section speaks of on the method page
 GITHUB = HIRING[-1][1]
 # The root's own words (store first, q33; provisional until the owner's read): the picker's title is the design's
 PICK_TITLE = "Which store are you in?"
-ROOT_LINE = ("Pick the store you're in, then look up a product: each sale is checked against what it usually costs "
-             "there.")
 # The picker's store types by chain, in the design's order ("What a visitor sees" 1), never COLUMNS' (by name)
 PICK_GROUPS = (("shufersal", ("shufersal-deal", "shufersal-express", "shufersal-sheli", "shufersal-universe")),
                ("carrefour", ("carrefour-city", "carrefour-market")), ("ramilevy", ("ramilevy",)),
@@ -216,6 +227,14 @@ def shown_rows(front: StoreFront, today: ColumnDay) -> tuple[DealRow, ...]:
     return front.rows[:FRONT_LIMIT]
 
 
+def promotions_shown(front: StoreFront, today: ColumnDay) -> int | None:
+    """The store type's count of promotions today, the one number its store page's promotions line and its label on
+    the root both show: the front's on a day read; None on a hole or a promotion hole, whose promotions the build does
+    not count (`shopper.build`), so neither page says 0."""
+    read = today.record and not today.promo_hole
+    return front.promotions if read else None
+
+
 def _search(browse: str | None) -> str:
     """The search box (search.js, the shell's one script, finds it) and the browse link, from the site's root."""
     link = f'<p><a href="{UP}{escape(browse)}">{text(BROWSE_LINK)}</a></p>' if browse else ""
@@ -237,16 +256,21 @@ def _row(row: DealRow) -> str:
                                                                    else "")
     named = conditions(struct)
     said = f"<small>{text('; '.join(named))}</small>" if named else ""
-    return (f'<tr data-column="{row.column}"{marks}><th scope="row"><a href="{UP}{page_path(row.code)}">'
-            f"{_span(row.title)}</a><small>{text(row.code)}</small></th>"
-            f'<td><span class="badge {badge_class(found)}">{text(badge(found))}</span>{said}</td>'
-            f"<td>{text(price_text(found, found.today_price))}</td><td>{text(price_text(found, found.usual))}</td></tr>")
+    return (f'<tr data-column="{row.column}"{marks} role="row"><th scope="row" role="rowheader">'
+            f'<a href="{UP}{page_path(row.code)}">{_span(row.title)}</a><small>{text(row.code)}</small></th>'
+            f'<td role="cell"><span class="badge {badge_class(found)}">{text(verdict_words(found))}</span>{said}</td>'
+            f'<td role="cell">{text(price_text(found, found.today_price))}</td>'
+            f'<td role="cell">{text(price_text(found, found.usual))}</td></tr>')
 
 
 def _deals(shown: Sequence[DealRow]) -> str:
-    heads = "".join(f'<th scope="col">{text(head)}</th>' for head in FRONT_HEADS)
-    body = "".join(_row(row) for row in shown) or f'<tr><td colspan="{len(FRONT_HEADS)}">{text(NO_DEALS)}</td></tr>'
-    table = f'<table class="front"><thead><tr>{heads}</tr></thead><tbody>{body}</tbody></table>'
+    """The filters and the table (the module's docstring), the table writing its roles, which a phone's block layout
+    would otherwise take away."""
+    heads = "".join(f'<th scope="col" role="columnheader">{text(head)}</th>' for head in FRONT_HEADS)
+    body = "".join(_row(row) for row in shown) or (
+        f'<tr role="row"><td colspan="{len(FRONT_HEADS)}" role="cell">{text(NO_DEALS)}</td></tr>')
+    table = (f'<table class="front" role="table"><thead role="rowgroup"><tr role="row">{heads}</tr></thead>'
+             f'<tbody role="rowgroup">{body}</tbody></table>')
     return f'<section class="deals">{_filters()}{_scroller(FRONT_TITLE, table)}</section>'
 
 
@@ -266,8 +290,9 @@ def _rules(front: StoreFront, today: ColumnDay, shown: Sequence[DealRow], markin
                     if part)
     story = _story(shown[0]) if shown else ""
     # the promotions line only on a day read: on a hole or a promotion hole the build counts none (`shopper.build`)
-    read = today.record and not today.promo_hole
-    counts = f"<p>{text(store_promotions_line(front.column, front.promotions, front.products))}</p>" if read else ""
+    count = promotions_shown(front, today)
+    counts = (f"<p>{text(store_promotions_line(front.column, count, front.products))}</p>" if count is not None
+              else "")
     return (f'<details><summary>{text(RULES_TITLE)}</summary><p>{text(FOLD_INTRO)}</p><ul>{rules}</ul>'
             f"<p>{text(club)}</p><p>{text(SPEND_NOTE)}</p><p>{text(CONDITIONS_NOTE)}</p>{story}{counts}"
             f'<p class="note">{text(ALWAYS_SENTENCE)}</p>'
@@ -275,24 +300,51 @@ def _rules(front: StoreFront, today: ColumnDay, shown: Sequence[DealRow], markin
 
 
 def _hiring() -> str:
-    links = " · ".join(f'<a href="{escape(href)}">{text(label)}</a>' for label, href in HIRING)
+    """The hiring line: its four links side by side, nothing between them (the stylesheet spaces them)."""
+    links = "".join(f'<a href="{escape(href)}">{text(label)}</a>' for label, href in HIRING)
     return f'<p class="hiring">{links}</p>'
 
 
-def _picker() -> str:
-    """The picker (the module's docstring): each chain's name over its store types' links, in PICK_GROUPS' order."""
-    groups = "".join(f"<h3>{text(CHAIN_NAMES[slug])}</h3><ul>"
-                     + "".join(f'<li><a href="{store_path(key)}">{text(BY_KEY[key].name)}</a></li>' for key in keys)
-                     + "</ul>" for slug, keys in PICK_GROUPS)
+def _label(key: str, front: StoreFront, today: ColumnDay) -> str:
+    """A store type's label in the picker (the module's docstring): its name, then its count of promotions today when
+    the day was read (`promotions_shown`)."""
+    count = promotions_shown(front, today)
+    said = ""
+    if count is not None:
+        figure, words = promotions_today(count)
+        said = f" <small><b>{text(figure)}</b> {text(words)}</small>"
+    return f'<li><a href="{store_path(key)}">{text(BY_KEY[key].name)}{said}</a></li>'
+
+
+def _picker(fronts: Mapping[str, StoreFront], column_days: Mapping[tuple[str, date], ColumnDay], day: date) -> str:
+    """The picker (the module's docstring): each chain's heading over its store types' labels, in PICK_GROUPS'
+    order."""
+    groups = "".join(f'<div class="chain"><h3>{text(CHAIN_NAMES[slug])}</h3><ul>'
+                     + "".join(_label(key, fronts[key], column_days[(key, day)]) for key in keys)
+                     + "</ul></div>" for slug, keys in PICK_GROUPS)
     return f'<section id="pick" data-page="root"><h2>{text(PICK_TITLE)}</h2>{groups}</section>'
 
 
-def render_root(day: date, collected_by: str) -> str:
-    """`index.html`, the picker (the module's docstring)."""
-    parts = [f"<h1>{text(FRONT_TITLE)}</h1>", f'<p class="lede">{text(ROOT_LINE)}</p>', _picker()]
+def render_root(day: date, collected_by: str, fronts: Mapping[str, StoreFront],
+                column_days: Mapping[tuple[str, date], ColumnDay]) -> str:
+    """`index.html` (the module's docstring): `fronts` each store type's front, as the build hands them in;
+    `column_days` holding each store type's day, for its label's count."""
+    yes, no = ROOT_TITLE.removesuffix("?").split(" or ")
+    hero = (f'<div class="hero"><h1><span class="yes">{text(yes)}</span> or <span class="no">{text(no)}</span>?</h1>'
+            f'\n<p class="lede">{text(ROOT_LINE)}</p></div>')
+    parts = [hero, _picker(fronts, column_days, day)]
     parts.append(_hiring())
     links = [(BASKET_TITLE, "basket.html"), (RECORD_TITLE, "record.html"), (METHOD_TITLE, "method.html")]
-    return page(f"{FRONT_TITLE} - {SITE_NAME}", "\n".join(parts), day, collected_by, links, "front", up="")
+    return page(SITE_NAME, "\n".join(parts), day, collected_by, links, "front", up="")
+
+
+def _lead(front: StoreFront, today: ColumnDay) -> str:
+    """The lead line, `store_lead`'s words; when it is the headline, its two numbers ("14 of 4,196") in bold."""
+    said = text(store_lead(front, today))
+    if said == text(headline(front.column, len(front.rows), front.checked)):
+        numbers = f"{len(front.rows):,} of {front.checked:,}"
+        said = said.replace(numbers, f"<b>{numbers}</b>", 1)
+    return said
 
 
 def render_store(front: StoreFront, column_days: Mapping[tuple[str, date], ColumnDay], day: date, collected_by: str,
@@ -304,9 +356,11 @@ def render_store(front: StoreFront, column_days: Mapping[tuple[str, date], Colum
     name = BY_KEY[column].name
     today = column_days[(column, day)]
     shown = shown_rows(front, today)
-    parts = [f'<p class="at">{text(name)}</p>', f'<h1 id="deals">{text(FRONT_TITLE)}</h1>',
+    asked, last = FRONT_TITLE.rsplit(" ", 1)          # its last word on the green label
+    parts = [f'<p class="at">{text(name)}</p>',
+             f'<h1 id="deals">{text(asked)} <span class="yes">{text(last)}</span></h1>',
              f'<p class="sub">{text(FRONT_SUBTITLE)}</p>', _search(browse),
-             f'<p class="lede">{text(store_lead(front, today))}</p>', _deals(shown),
+             f'<p class="lede">{_lead(front, today)}</p>', _deals(shown),
              _rules(front, today, shown, marking_none)]
     links = [(BROWSE_LINK, browse)] if browse else []
     links += [(BASKET_TITLE, "basket.html"), (RECORD_TITLE, "record.html"), (METHOD_TITLE, "method.html")]

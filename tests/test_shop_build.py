@@ -233,11 +233,29 @@ def test_the_build_writes_the_root_and_nine_store_pages(tmp_path):
         assert f'<main data-store="{key}">' in page
         assert re.findall(r'<tr data-column="([^"]+)"', page) == ([OSHER] if key == OSHER else []), key
         block = columns[key]
-        lead = ("At Osher Ad today: 1 of 1 promotions is actually a deal." if key == OSHER
+        lead = ("At Osher Ad today: <b>1 of 1</b> promotions is actually a deal." if key == OSHER
                 else "too few files today: 0 of 0 stores" if not block["record"] else words.NOT_READ_TODAY)
         assert f'<p class="lede">{lead}</p>' in page, key
         leads.add(lead)
     assert len(leads) == 3
+
+
+def test_the_root_counts_each_store_types_promotions(tmp_path):
+    """The site's look (q36, "Word changes" 4): the build hands the root each store type's front and day, so each
+    label carries its front's count of promotions today, the number its store page states: Osher Ad's one promotion;
+    every other store type, its prices from too few files or its promotions not read (the golden day has no promotion
+    file), its name alone."""
+    data, site = tree(tmp_path), tmp_path / "site"
+    _build(data, site)
+    root = (site / "index.html").read_text(encoding="utf-8")
+    labels = dict(re.findall(r'<li><a href="store/([^"]+)\.html">(.*?)</a></li>', root))
+    columns = _site_day(site)["columns"]
+    assert labels[OSHER] == "Osher Ad <small><b>1</b> promotion today</small>"
+    assert "Today Osher Ad lists 1 promotion carried by" in _text(site / store_path(OSHER))
+    assert {key: columns[key]["front"]["promotions"] for key in labels} == {
+        column.key: 1 if column.key == OSHER else None for column in COLUMNS}
+    assert {key: label for key, label in labels.items() if key != OSHER} == {
+        column.key: column.name for column in COLUMNS if column.key != OSHER}
 
 
 def test_every_product_link_resolves_to_a_page_the_build_wrote(tmp_path):
@@ -269,8 +287,9 @@ def test_the_store_page_has_the_days_deal_and_headline(tmp_path):
     data, site = tree(tmp_path), tmp_path / "site"
     _build(data, site)
     front = _text(site / store_path(OSHER))
-    assert "At Osher Ad today: 1 of 1 promotions is actually a deal." in front
-    assert "At Osher Ad: DEAL · ₪3.15 off" in front and "Club members only" in front
+    assert "At Osher Ad today: <b>1 of 1</b> promotions is actually a deal." in front
+    assert '">DEAL · ₪3.15 off</span>' in front and "Club members only" in front          # the row's badge
+    assert "At Osher Ad: DEAL · ₪3.15 off" in front                                      # the story's
     assert "Today Osher Ad lists 1 promotion carried by at least half its stores, on 1 product." in front
     found = _site_day(site)
     block = found["columns"][OSHER]["front"]
@@ -309,7 +328,7 @@ def test_the_headline_says_none_of_the_promotions_once_a_store_type_has_20_days(
     block = _site_day(site)["columns"][OSHER]["front"]
     assert (block["deals"], block["checked"], block["promotions"], block["products"], block["rows"]) == (0, 1, 1, 1, [])
     front = _text(site / store_path(OSHER))
-    assert "At Osher Ad today: 0 of 1 promotions are actually deals." in front and "None yet" not in front
+    assert "At Osher Ad today: <b>0 of 1</b> promotions are actually deals." in front and "None yet" not in front
 
 
 def test_the_record_page_counts_the_day_just_frozen(tmp_path):

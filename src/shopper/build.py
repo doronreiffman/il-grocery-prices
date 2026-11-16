@@ -67,13 +67,14 @@ In order:
    numbers and no one-line reason is given (`revise`, the basket's too).
 10. The files: the day's forecasts file on the site when the ledger gains its line in this run (`forecasts/<d>.csv.gz`,
     the archive's bytes), the ledger when it changed, each scored day's scores file, the site-day file when it is not
-    unchanged; then every page: each product's, `index.html` (the picker), each store type's front page
-    (`store/<key>.html`, store first), `method.html`, `record.html` (the day frozen and in the ledger before it is
-    drawn, so it never lists its own day as one with no file), `basket.html` (an item linked when its page is built),
-    the browse pages, the search pieces, `search.js`, the site's shared files under `assets/` (`shopper.assets`: the
-    stylesheet every page links, its fonts and their licences) and the marker `.shopper-site`. The pages show
-    the day as published: its "collected by" time and code fingerprint are the published site-day file's, the product
-    pages drawn again when the time differs from this run's.
+    unchanged; then every page: each product's, `index.html` (the picker, from the same fronts: each store type's
+    label with its count of promotions today), each store type's front page (`store/<key>.html`, store first),
+    `method.html`, `record.html` (the day frozen and in the ledger before it is drawn, so it never lists its own day
+    as one with no file), `basket.html` (an item linked when its page is built), the browse pages, the search pieces,
+    `search.js`, the site's shared files under `assets/` (`shopper.assets`: the stylesheet every page links, its fonts
+    and their licences) and the marker `.shopper-site`. The pages show the day as published: its "collected by" time
+    and code fingerprint are the published site-day file's, the product pages drawn again when the time differs from
+    this run's.
 
 Each store type's front (store first, q33: docs/store-first.md, "The front page's list"). Of the covered products'
 verdicts at a column with its pair, a deal passing the 20-day bar is a row of that store type's list
@@ -534,7 +535,7 @@ def build_site(day: date, data_dir: Path, site_dir: Path, now: datetime, collect
     files += [scores_site_key(summary.day) for summary in known]
     browse = browse_pages(covered_now, day, shown_by)
     fixed = {
-        "index.html": render_root(day, shown_by),
+        "index.html": render_root(day, shown_by, fronts, history.column_days),
         **{store_path(key): render_store(front, history.column_days, day, shown_by, pages.marking_none(),
                                          next(iter(browse), None))
            for key, front in fronts.items()},

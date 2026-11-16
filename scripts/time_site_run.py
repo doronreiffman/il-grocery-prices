@@ -382,10 +382,11 @@ def main(argv: list[str] | None = None) -> int:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(staging / path, target)
         browse = browse_pages(found, DAY, COLLECTED_BY)
-        fixed = {"index.html": render_root(DAY, COLLECTED_BY),
+        fronts = pages.fronts()
+        fixed = {"index.html": render_root(DAY, COLLECTED_BY, fronts, history.column_days),
                  **{store_path(key): render_store(front, history.column_days, DAY, COLLECTED_BY, pages.marking_none(),
                                                   next(iter(browse), None))
-                    for key, front in pages.fronts().items()},
+                    for key, front in fronts.items()},
                  **browse, **pieces(found)}
         for path, page in fixed.items():
             build._write(site, path, page)
