@@ -332,12 +332,17 @@ _NCR_ANSWER_BY_ANSWER = ("        length, fnames, total = _page_size(file_page),
                          "            yield from answer\n")
 
 # publish.sh's guard and its uploads, for the mutation that runs the guard after the upload (q22 publish); the uploads'
-# order, for the one that puts the pages first again (the final review's finding 8).
+# order, for the one that puts the pages first again (the final review's finding 8); the assets' three, for the one that
+# puts the stylesheet after the pages (q36 upload).
+_PUBLISH_ASSETS = ("upload --include 'assets/*.css' --content-type 'text/css; charset=utf-8' --size-only\n",
+                   "upload --include 'assets/*.woff2' --content-type 'font/woff2' --size-only\n",
+                   "upload --include 'assets/*.txt' --content-type 'text/plain; charset=utf-8' --size-only\n")
+_PUBLISH_PAGES = "upload --include '*.html' --content-type 'text/html; charset=utf-8'\n"
 _PUBLISH_ORDER = ("upload --include '*.csv.gz' --content-type 'application/gzip'\n"
                   "upload --include '*.csv' --content-type 'text/csv; charset=utf-8'\n"
                   "upload --include '*.json' --content-type 'application/json; charset=utf-8'\n"
                   "upload --include '*.js' --content-type 'text/javascript; charset=utf-8'\n"
-                  "upload --include '*.html' --content-type 'text/html; charset=utf-8'\n")
+                  + "".join(_PUBLISH_ASSETS) + _PUBLISH_PAGES)
 _PUBLISH_GUARD = ('if ! PYTHONPATH=src "$PYTHON" -m shopper.guard "$SITE" "$tmp/published" "$tmp/pages"; then\n'
                   '  echo "the publish guard failed; nothing uploaded" >&2\n'
                   '  exit 1\n'
@@ -348,10 +353,15 @@ _PUBLISH_UPLOAD = ('# One allowlisted sync per kind of file, its content type se
                    '# folder stay local. Browsers keep a file five minutes, so an upload shows within minutes of the invalidation. No\n'
                    '# sync here removes anything: a published file the build lacks stays (question H).\n'
                    '# The data files go up first and the pages last, as the site run puts them (basket.site.upload): the forecasts and\n'
-                   '# scores files, the ledger, the day and site-day files with the search pieces, search.js, then the pages; so a stop\n'
-                   '# part-way never leaves a live page naming a file not yet up. Each upload that fails stops the script by its own\n'
-                   "# test, never by set -e alone, before the next upload and the invalidation (the final review's finding 8). A rerun\n"
-                   '# then passes the guard: what went up is the build\'s own bytes.\n'
+                   '# scores files, the ledger, the day and site-day files with the search pieces, search.js, the shared files under\n'
+                   '# assets/ (the stylesheet, the fonts and their licences, which every page names), then the pages; so a stop part-way\n'
+                   "# never leaves a live page naming a file not yet up, a changed stylesheet's new name included. Each upload that fails\n"
+                   '# stops the script by its own test, never by set -e alone, before the next upload and the invalidation (the final\n'
+                   "# review's finding 8). A rerun then passes the guard: what went up is the build's own bytes.\n"
+                   '# The assets go by size alone (--size-only): sync puts a file whose size or time differs, and every build writes them\n'
+                   "# afresh. A stylesheet's or a font's name carries the hash of its bytes, so a name the bucket holds is the same file,\n"
+                   '# the same size, and is not put again, as the site run puts an asset only when the bucket lacks its name; the two\n'
+                   '# licences keep plain names and are put once all the same.\n'
                    'upload() {\n'
                    '  aws s3 sync "$SITE/" "s3://$bucket/" --exclude \'*\' "$@" --cache-control \'max-age=300\' --profile "$PROFILE" --region "$REGION" || {\n'
                    '    echo "the upload of $2 failed: the kinds before it went up, none after it, and nothing was invalidated; run it again" >&2\n'
@@ -2673,7 +2683,7 @@ MUTATIONS = {
     "site pages put as JSON": (SITE, 'CONTENT_TYPES = {".html": HTML,', 'CONTENT_TYPES = {".html": JSON,'),
     "site day file put as HTML": (SITE, '".json": JSON, ".js"', '".json": HTML, ".js"'),
     "site pages put before the data files": (SITE, "        return put + self.put_files(site_dir, [key for key in keys if key not in records])\n", "        return put + self.put_files(site_dir, [key for key in reversed(keys) if key not in records])\n"),
-    "site puts before every file is found": (SITE, "        self._checked(site_dir, keys)  # every file found and typed before any put\n", ""),
+    "site puts before every file is found": (SITE, "        self._checked(site_dir, [*keys, *assets])  # every file found and typed before any put\n", ""),
     "site key with more after .json read as a day": (SITE, r'\.json$")', r'\.json")'),
     "site impossible date stops the latest day": (SITE, "except ValueError:", "except TypeError:"),
     "site bare 404 read as an error": (SITE, "if error_code(err) in MISSING:", 'if error_code(err) == "NoSuchKey":'),
@@ -2931,6 +2941,19 @@ MUTATIONS = {
     "the pages uploaded before the data files (q22 publish)": (PUBLISH_SCRIPT, _PUBLISH_ORDER, "".join(reversed(_PUBLISH_ORDER.splitlines(keepends=True)))),
     "a failed upload stopped by set -e alone (q22 publish)": (PUBLISH_SCRIPT, ' --region "$REGION" || {\n    echo "the upload of $2 failed', ' --region "$REGION"\n  false && {\n    echo "the upload of $2 failed'),
     "a failed upload let through (q22 publish)": (PUBLISH_SCRIPT, ' --region "$REGION" || {\n    echo "the upload of $2 failed', ' --region "$REGION" || true || {\n    echo "the upload of $2 failed'),
+    # The site's look (q36, Task 4): the shared files under assets/ go up once each, before any page names them, in
+    # Lambda and by hand, and the role may put them.
+    "the assets put with the pages (q36 upload)": (SITE, "        put += self.put_files(site_dir, assets)  #", "        keys += assets  #"),
+    "an asset the bucket holds put again (q36 upload)": (SITE, '        held = set(self._keys(f"{ASSET_FOLDER}/"))\n', "        held = set()\n"),
+    "the assets put for an earlier day (q36 upload)": (SITE, "        assets = self._new_assets(site_dir) if with_pages else []\n", "        assets = self._new_assets(site_dir)\n"),
+    "a stylesheet served as text/plain (q36 upload)": (SITE, '".css": "text/css; charset=utf-8"', '".css": "text/plain; charset=utf-8"'),
+    "a font served as text/plain (q36 upload)": (SITE, '".woff2": "font/woff2"', '".woff2": "text/plain; charset=utf-8"'),
+    "an asset of no known type found after the records went up (q36 upload)": (SITE, "        self._checked(site_dir, [*keys, *assets])  #", "        self._checked(site_dir, keys)  #"),
+    "a failed asset put let the upload go on (q36 upload)": (SITE, "        put += self.put_files(site_dir, assets)  #", "        try:\n            put += self.put_files(site_dir, assets)\n        except Exception:\n            pass\n        #"),
+    "the stylesheet uploaded after the pages (q36 upload)": (PUBLISH_SCRIPT, "".join(_PUBLISH_ASSETS) + _PUBLISH_PAGES, "".join(_PUBLISH_ASSETS[1:]) + _PUBLISH_PAGES + _PUBLISH_ASSETS[0]),
+    "an asset synced by its time (q36 upload)": (PUBLISH_SCRIPT, "--content-type 'text/css; charset=utf-8' --size-only\n", "--content-type 'text/css; charset=utf-8'\n"),
+    "the fonts sent with no content type (q36 upload)": (PUBLISH_SCRIPT, "upload --include 'assets/*.woff2' --content-type 'font/woff2' --size-only\n", "upload --include 'assets/*.woff2' --size-only\n"),
+    "the role without assets/ (q36 upload)": (BASKET_TEMPLATE, '                - !Sub "arn:aws:s3:::${SiteBucketName}/assets/*"\n', ""),
     "the marker rewritten in place, through a hard link (q22 speed)": (TIME_SITE_RUN, "    (work / MADE).unlink(missing_ok=True)   # written anew, never through a hard link left in its place\n", ""),
     # (the fix wave's end)
     # The front page in plain words (the owner, 2026-11-10): each break undoes one of its rules.

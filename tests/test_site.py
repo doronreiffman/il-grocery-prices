@@ -1,7 +1,8 @@
 """The site side of the scheduled build (`basket.site`): the published files read back, the latest day on the site,
 the site run's upload (its data files always, the record files among them in a call of their own before the files that
-name them, its pages only for the site's latest day, the fixed pages among them), every site file put through the pool with the content type and cache-control `scripts/publish.sh` sets, one
-invalidation, and nothing deleted.
+name them, its pages only for the site's latest day, the fixed pages among them, and with the pages each shared file
+under `assets/` the bucket lacks, in a call of its own before anything that names one), every site file put through the
+pool with the content type and cache-control `scripts/publish.sh` sets, one invalidation, and nothing deleted.
 
 The rules run on MemorySite and on S3Site over test_store's FakeS3 and a fake CloudFront client, which must give
 the same outcomes. The Stubber test at the end runs S3Site against real boto3 clients, so the put's, the read's,
@@ -17,8 +18,8 @@ import pytest
 from botocore.exceptions import ClientError
 from botocore.stub import Stubber
 
-from basket.site import (CACHE_CONTROL, CONTENT_TYPES, FIXED_PAGES, HTML, JSON, UPLOAD_WORKERS, MemorySite,
-                         RecordsNotUploaded, S3Site, _Site, day_key, day_of, is_record)
+from basket.site import (ASSET_FOLDER, CACHE_CONTROL, CONTENT_TYPES, FIXED_PAGES, HTML, JSON, UPLOAD_WORKERS,
+                         MemorySite, RecordsNotUploaded, S3Site, _Site, day_key, day_of, is_record)
 from shopper.build import LEDGER
 from shopper.freeze import scores_site_key, site_key
 from test_store import FakeS3, client_error
@@ -29,9 +30,11 @@ EARLIER = date(2026, 11, 2)
 INDEX = b"<!doctype html><title>index</title>"
 REFERENCE = "113000Z-basket-ab12"
 ONE_PATH_ALL = {"Paths": {"Quantity": 1, "Items": ["/*"]}, "CallerReference": REFERENCE}
-# The design's content type of each kind of site file, by its last suffix (the plan's Task 22).
+# The design's content type of each kind of site file, by its last suffix (the plan's Task 22; the stylesheet, the
+# fonts and their licences: site-look.md, "The upload").
 TYPES = {".html": "text/html; charset=utf-8", ".json": "application/json; charset=utf-8",
-         ".js": "text/javascript; charset=utf-8", ".csv": "text/csv; charset=utf-8", ".gz": "application/gzip"}
+         ".js": "text/javascript; charset=utf-8", ".csv": "text/csv; charset=utf-8", ".gz": "application/gzip",
+         ".css": "text/css; charset=utf-8", ".woff2": "font/woff2", ".txt": "text/plain; charset=utf-8"}
 
 
 class FakeCloudFront:
@@ -87,13 +90,19 @@ NAMING = ["forecasts/ledger.csv", "site-days/2026-11-03.json", "days/2026-11-03.
 # Its pages under the page folders, in the order the upload takes them: by folder, then by name.
 FOLDER_PAGES = ["p/2000000000046.html", "p/2000000000053.html", "browse/05d0.html", "browse/other.html",
                 "search/05d0.json", "search/pieces.json"]
+# The shared files under assets/, one of each kind (the stylesheet, a font, a licence), in the order the upload takes
+# them: by name. The stylesheet's is the one the bucket may already hold.
+STYLESHEET = "assets/look.aaaaaaaaaa.css"
+ASSETS = ["assets/OFL-archivo.txt", "assets/archivo-text.bbbbbbbbbb.woff2", STYLESHEET]
 
 
 def built(folder: Path) -> Path:
-    """A site folder as the site run leaves it in Lambda: the fixed pages, the pages under the page folders, the day's
-    data files, the published copies of the day before's site-day file and of an earlier day's file, and the marker;
-    each file's bytes its own key, so a body put under another key shows. Only the files an upload names go up."""
-    for key in (*FIXED, *FOLDER_PAGES, *DATA, "site-days/2026-11-02.json", "days/2026-11-02.json", ".shopper-site"):
+    """A site folder as the site run leaves it in Lambda: the fixed pages, the pages under the page folders, the shared
+    files under assets/, the day's data files, the published copies of the day before's site-day file and of an earlier
+    day's file, and the marker; each file's bytes its own key, so a body put under another key shows. Only the files an
+    upload names go up."""
+    for key in (*FIXED, *FOLDER_PAGES, *ASSETS, *DATA, "site-days/2026-11-02.json", "days/2026-11-02.json",
+                ".shopper-site"):
         (folder / key).parent.mkdir(parents=True, exist_ok=True)
         (folder / key).write_bytes(key.encode())
     return folder
@@ -104,7 +113,8 @@ def shopper_files(folder: Path, count: int) -> list[str]:
     body put under another key shows); their keys, product pages last."""
     keys = ["index.html", "record.html", "search.js", "search/pieces.json", "search/05e9.json", "browse/index.html",
             "site-days/2026-11-03.json", "days/2026-11-03.json", "forecasts/ledger.csv", "forecasts/2026-11-03.csv.gz",
-            "scores/2026-10-20.csv.gz"]
+            "scores/2026-10-20.csv.gz", "assets/look.0123456789.css", "assets/archivo-text.0123456789.woff2",
+            "assets/OFL-archivo.txt"]
     keys += [f"p/{2000000000000 + n}.html" for n in range(count - len(keys))]
     for key in keys:
         (folder / key).parent.mkdir(parents=True, exist_ok=True)
@@ -139,10 +149,23 @@ def recorded_puts(site) -> list[str]:
     return puts
 
 
+def put_files_calls(site) -> list[list[str]]:
+    """The keys of each `put_files` call the site makes from now on, a list a call, in the order made."""
+    calls, put_files = [], site.put_files
+
+    def recorded(site_dir, keys):
+        calls.append(list(keys))
+        return put_files(site_dir, keys)
+
+    site.put_files = recorded
+    return calls
+
+
 def test_keys_and_the_upload_settings_are_those_publish_sh_uses():
     assert day_key(DAY) == "days/2026-11-03.json"
     assert (HTML, JSON, CACHE_CONTROL) == ("text/html; charset=utf-8", "application/json; charset=utf-8", "max-age=300")
     assert CONTENT_TYPES == TYPES
+    assert ASSET_FOLDER == "assets"
     assert UPLOAD_WORKERS == 16
     script = (ROOT / "scripts" / "publish.sh").read_text()
     for setting in (*(f"--content-type '{kind}'" for kind in TYPES.values()), f"--cache-control '{CACHE_CONTROL}'",
@@ -215,11 +238,11 @@ def test_s3_site_finds_the_latest_day_past_the_first_page():
 
 
 def test_upload_puts_the_data_files_then_every_page_with_its_content_type(site, tmp_path):
-    """The site's latest day: the data files the build lists new, then every file under `p/`, `browse/` and `search/`,
-    then the fixed pages, each with its content type by its last suffix and max-age=300; nothing else of the folder
-    (the published copies, the marker)."""
+    """The site's latest day: the record files, the shared files under `assets/`, the other data files the build lists
+    new, then every file under `p/`, `browse/` and `search/`, then the fixed pages, each with its content type by its
+    last suffix and max-age=300; nothing else of the folder (the published copies, the marker)."""
     keys = site.upload(built(tmp_path), DATA, with_pages=True)
-    assert keys == [*RECORDS, *NAMING, *FOLDER_PAGES, *FIXED]
+    assert keys == [*RECORDS, *ASSETS, *NAMING, *FOLDER_PAGES, *FIXED]
     assert held(site) == {key: (key.encode(), TYPES[Path(key).suffix], CACHE_CONTROL) for key in keys}
 
 
@@ -232,7 +255,7 @@ def test_store_pages_go_up_with_the_pages(site, tmp_path):
         (folder / key).parent.mkdir(parents=True, exist_ok=True)
         (folder / key).write_bytes(key.encode())
     keys = site.upload(folder, DATA, with_pages=True)
-    assert keys == [*RECORDS, *NAMING, *FOLDER_PAGES, *stores, *FIXED]
+    assert keys == [*RECORDS, *ASSETS, *NAMING, *FOLDER_PAGES, *stores, *FIXED]
     assert {key: held(site)[key] for key in stores} == {key: (key.encode(), TYPES[".html"], CACHE_CONTROL)
                                                         for key in stores}
 
@@ -264,7 +287,7 @@ def test_upload_for_an_earlier_day_puts_the_data_files_only(site, tmp_path):
     assert site.upload(site_dir, DATA, with_pages=False) == [*RECORDS, *NAMING]
     assert held(site)["index.html"] == (b"the later day's page", HTML, CACHE_CONTROL)
     assert sorted(held(site)) == sorted([*DATA, "index.html"])
-    for key in (*FIXED, *FOLDER_PAGES):
+    for key in (*FIXED, *FOLDER_PAGES, *ASSETS):
         (site_dir / key).unlink()
     assert site.upload(site_dir, DATA, with_pages=False) == [*RECORDS, *NAMING]
 
@@ -282,7 +305,7 @@ def test_upload_puts_the_record_files_before_the_files_that_name_them(site, tmp_
     """The task review's finding 1: the record files go up in a call of their own, every put of it ended before the
     ledger, the site-day and day files and the pages, which name them, are put."""
     puts = refused_puts(site, set())
-    assert site.upload(built(tmp_path), DATA, with_pages=True) == [*RECORDS, *NAMING, *FOLDER_PAGES, *FIXED]
+    assert site.upload(built(tmp_path), DATA, with_pages=True) == [*RECORDS, *ASSETS, *NAMING, *FOLDER_PAGES, *FIXED]
     assert sorted(puts[:len(RECORDS)]) == sorted(RECORDS)
 
 
@@ -302,7 +325,7 @@ def test_upload_puts_only_the_data_files_it_is_given(site, tmp_path):
     them, stay local; a data file it is not to put may be missing."""
     on_site(site, "days/2026-11-03.json", b"published")
     site_dir = built(tmp_path)
-    assert site.upload(site_dir, [], with_pages=True) == [*FOLDER_PAGES, *FIXED]
+    assert site.upload(site_dir, [], with_pages=True) == [*ASSETS, *FOLDER_PAGES, *FIXED]
     assert held(site)["days/2026-11-03.json"][0] == b"published"
     assert not [key for key in held(site) if key.startswith(("site-days/", "forecasts/", "scores/"))]
     (site_dir / "days" / "2026-11-03.json").unlink()
@@ -314,16 +337,77 @@ def test_upload_of_nothing_puts_nothing(site, tmp_path):
     assert held(site) == {}
 
 
-def test_upload_takes_the_page_folders_whole(site, tmp_path):
-    """Every file under the page folders, in sub-folders too, is a page to put; one of no known type stops the upload
-    before anything goes up, as `put_files` refuses it."""
+def test_upload_puts_each_asset_before_any_page(site, tmp_path):
+    """The plan's Review Focus 4: the shared files under `assets/` go up in a `put_files` call of their own, after the
+    record files' call and ended before the call that puts the data files and the pages, so no page is up naming a
+    stylesheet or a font the site lacks, a changed stylesheet's new name included."""
+    calls, puts = put_files_calls(site), recorded_puts(site)
+    assert site.upload(built(tmp_path), DATA, with_pages=True) == [*RECORDS, *ASSETS, *NAMING, *FOLDER_PAGES, *FIXED]
+    assert calls == [RECORDS, ASSETS, [*NAMING, *FOLDER_PAGES, *FIXED]]
+    assert sorted(puts[:2]) == sorted(RECORDS)
+    assert sorted(puts[2:5]) == sorted(ASSETS)  # every asset's put made before any data file's or page's starts
+
+
+def test_an_asset_the_bucket_holds_is_not_put_again(site, tmp_path):
+    """A hashed name carries its bytes' hash, so an asset the bucket holds by name is that same file: the upload puts
+    only the assets the bucket lacks (a changed stylesheet's new name), leaves the one it holds as it is, and leaves
+    it out of the keys it gives back; a later morning, or a rerun, puts none."""
+    on_site(site, STYLESHEET, b"as published")
+    others = [key for key in ASSETS if key != STYLESHEET]
+    puts = recorded_puts(site)
+    assert site.upload(built(tmp_path), DATA, with_pages=True) == [*RECORDS, *others, *NAMING, *FOLDER_PAGES, *FIXED]
+    assert STYLESHEET not in puts
+    assert held(site)[STYLESHEET][0] == b"as published"
+    assert {key: held(site)[key] for key in others} == {key: (key.encode(), TYPES[Path(key).suffix], CACHE_CONTROL)
+                                                        for key in others}
+    puts.clear()
+    assert site.upload(built(tmp_path), DATA, with_pages=True) == [*RECORDS, *NAMING, *FOLDER_PAGES, *FIXED]
+    assert not [key for key in puts if key.startswith("assets/")]
+
+
+def test_assets_go_up_only_with_the_pages(site, tmp_path):
+    """A run for an earlier day leaves every page as the later day's, so it puts no asset either: the later day's pages
+    name the assets the later day put."""
+    puts = recorded_puts(site)
+    assert site.upload(built(tmp_path), DATA, with_pages=False) == [*RECORDS, *NAMING]
+    assert not [key for key in puts if key.startswith("assets/")]
+    assert sorted(held(site)) == sorted(DATA)
+
+
+def test_each_asset_goes_up_with_its_content_type(site, tmp_path):
+    """The site sends nosniff, so a stylesheet or a font of another type would not be used: the stylesheet goes up as
+    CSS, the fonts as fonts and the licences as plain text, each with max-age=300, as every file."""
+    site.upload(built(tmp_path), [], with_pages=True)
+    assert {key: held(site)[key] for key in ASSETS} == {
+        "assets/OFL-archivo.txt": (b"assets/OFL-archivo.txt", "text/plain; charset=utf-8", "max-age=300"),
+        "assets/archivo-text.bbbbbbbbbb.woff2": (b"assets/archivo-text.bbbbbbbbbb.woff2", "font/woff2", "max-age=300"),
+        "assets/look.aaaaaaaaaa.css": (b"assets/look.aaaaaaaaaa.css", "text/css; charset=utf-8", "max-age=300")}
+
+
+@pytest.mark.parametrize("refused", ASSETS)
+def test_a_failed_asset_put_stops_the_upload_before_the_pages(site, tmp_path, refused):
+    """A put of an asset that fails is raised, and nothing after it is put: no data file and no page, so no page names
+    a file the site lacks. The record files, put before, stay up; a rerun puts the assets the bucket lacks."""
+    refused_puts(site, {refused})
+    with pytest.raises(OSError, match=re.escape(refused)):
+        site.upload(built(tmp_path), DATA, with_pages=True)
+    assert set(RECORDS) <= set(held(site)) <= {*RECORDS, *ASSETS} - {refused}
+
+
+@pytest.mark.parametrize("odd", ["search/notes.md", "assets/notes.md"])
+def test_upload_takes_the_page_folders_whole(site, tmp_path, odd):
+    """Every file under the page folders, in sub-folders too, is a page to put; one of no known type, there or under
+    assets/, stops the upload before anything goes up, the record files included, as `put_files` refuses it. (A `.txt`
+    file has a type since the licences go up: `.md` stands for a kind with none.)"""
     site_dir = built(tmp_path)
     (site_dir / "p" / "more").mkdir()
     (site_dir / "p" / "more" / "2000000000060.html").write_bytes(b"deeper")
     assert "p/more/2000000000060.html" in site.upload(site_dir, [], with_pages=True)
-    (site_dir / "search" / "notes.txt").write_bytes(b"")
-    with pytest.raises(ValueError, match="search/notes.txt: no content type"):
-        MemorySite().upload(site_dir, DATA, with_pages=True)
+    (site_dir / odd).write_bytes(b"")
+    fresh = MemorySite()
+    with pytest.raises(ValueError, match=f"{odd}: no content type"):
+        fresh.upload(site_dir, DATA, with_pages=True)
+    assert fresh.objects == {}
 
 
 @pytest.mark.parametrize("missing", ["method.html", "search.js", "days/2026-11-03.json"])
@@ -375,7 +459,7 @@ def test_put_files_refuses_a_missing_file_before_any_put(site, tmp_path):
     assert held(site) == {}
 
 
-@pytest.mark.parametrize("odd", [".shopper-site", "notes.txt", "p/2000000000046.htm", "forecasts/ledger"])
+@pytest.mark.parametrize("odd", [".shopper-site", "notes.md", "p/2000000000046.htm", "forecasts/ledger"])
 def test_put_files_refuses_a_file_of_no_known_type_before_any_put(site, tmp_path, odd):
     """The content type is set, never guessed (the site's headers send nosniff): a file of another kind stops the
     upload before anything goes up."""

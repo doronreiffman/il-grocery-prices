@@ -664,9 +664,11 @@ Resources:
                 - !Sub "arn:aws:s3:::${SiteBucketName}/scores/*"
             # What the build puts up and nothing else in the site bucket: the five fixed pages (named
             # one by one), the product, browse, search and store files under their folders (store/
-            # holds the store types' front pages), and the day files, forecasts, ledger and scores.
-            # Put, never delete: a page the build no longer writes stays, and the site bucket's
-            # lifecycle rule expires only old versions of the pages a morning rebuilds.
+            # holds the store types' front pages), the shared stylesheet, fonts and licences under
+            # assets/ (the site run puts each once, only when the bucket lacks its name), and the day
+            # files, forecasts, ledger and scores. Put, never delete: a page the build no longer
+            # writes stays, as does an old stylesheet or font, and the site bucket's lifecycle rule
+            # expires only old versions of the pages a morning rebuilds.
             - Sid: WriteSite
               Effect: Allow
               Action: s3:PutObject
@@ -680,6 +682,7 @@ Resources:
                 - !Sub "arn:aws:s3:::${SiteBucketName}/browse/*"
                 - !Sub "arn:aws:s3:::${SiteBucketName}/search/*"
                 - !Sub "arn:aws:s3:::${SiteBucketName}/store/*"
+                - !Sub "arn:aws:s3:::${SiteBucketName}/assets/*"
                 - !Sub "arn:aws:s3:::${SiteBucketName}/days/*"
                 - !Sub "arn:aws:s3:::${SiteBucketName}/site-days/*"
                 - !Sub "arn:aws:s3:::${SiteBucketName}/forecasts/*"
