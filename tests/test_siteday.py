@@ -24,7 +24,7 @@ from basket.record import comparable
 from shopper.columns import COLUMNS, columns_of
 from shopper.freeze import Frozen
 from shopper.items import ColumnReport, ItemsReport
-from shopper.pages import StoreFront, render_store
+from shopper.pages import StoreFront, render_root, render_store
 from shopper.promofile import PromotionFormatChanged
 from shopper.promotions import _reward_type
 from shopper.record import scorecard
@@ -222,7 +222,8 @@ def test_the_provenance_is_what_b12_leaves_out():
 
 
 def _row_cells(page: str, code: str) -> str:
-    return re.search(rf'<tr data-column="[^"]+"[^>]*><th scope="row"><a href="\.\./p/{code}\.html">.*?</tr>', page).group(0)
+    head = '<th scope="row" role="rowheader">'
+    return re.search(rf'<tr data-column="[^"]+"[^>]*>{head}<a href="\.\./p/{code}\.html">.*?</tr>', page).group(0)
 
 
 def test_every_number_on_each_store_page_is_in_the_site_day_file():
@@ -250,7 +251,7 @@ def test_every_number_on_each_store_page_is_in_the_site_day_file():
         else:
             assert f"lists {block['promotions']:,} promotions carried by at least half its stores, on {block['products']:,} " in page
         if block["ready"] and column.key != EXPRESS:
-            said = (f"today: {block['deals']:,} of {block['checked']:,} promotions" if block["checked"]
+            said = (f"today: <b>{block['deals']:,} of {block['checked']:,}</b> promotions" if block["checked"]
                     else "today: no promotions to check")
             assert said in page, column.key
         for row in block["rows"]:
@@ -261,6 +262,23 @@ def test_every_number_on_each_store_page_is_in_the_site_day_file():
     held = _site_day(fronts=many)["columns"]
     assert (held[SHELI]["front"]["deals"], len(held[SHELI]["front"]["rows"])) == (101, 100)
     assert (held[EXPRESS]["front"]["deals"], held[EXPRESS]["front"]["rows"]) == (1, [])
+
+
+def test_every_number_on_the_front_page_is_in_the_site_day_file():
+    """The site's look (q36): each store type's label on the root carries its count of promotions today, its column's
+    `front.promotions` in the site-day file; where that is null (Express, a hole; Carrefour Market, a promotion hole)
+    the label has no figure. No other number is on the root."""
+    days = _days(holes={(EXPRESS, DAY)}, promo_holes={("carrefour-market", DAY)})
+    fronts = _fronts()
+    found = _site_day(fronts=fronts, column_days=days)["columns"]
+    root = render_root(DAY, "11:48", fronts, days)
+    picker = re.search(r'<section id="pick" data-page="root">.*?</section>', root, re.S).group(0)
+    for column in COLUMNS:
+        promotions = found[column.key]["front"]["promotions"]
+        label = re.search(rf'<li><a href="store/{column.key}\.html">(.*?)</a></li>', root).group(1)
+        assert re.findall(r"\d[\d,]*", label) == ([] if promotions is None else [f"{promotions:,}"]), column.key
+    assert [found[key]["front"]["promotions"] for key in (EXPRESS, "carrefour-market")] == [None, None]
+    assert len(re.findall(r"\d[\d,]*", re.sub(r"<[^>]+>", " ", picker))) == len(COLUMNS) - 2     # the words alone
 
 
 @pytest.mark.parametrize("kind", ["hole", "promo_hole"])
