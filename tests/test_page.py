@@ -240,22 +240,32 @@ def test_every_page_has_noindex_credit_one_style_and_no_script():
     assert '<a href="index.html">' in method()
 
 
-def test_a_frame_with_a_script_writes_it_and_the_baskets_own_pages_keep_their_bytes():
-    """The shopper site's frame (store first, q33): a frame's script, given as its tag, goes in the head after the
-    style, once; a frame without one, and the basket's own pages, carry none, byte for byte as before (their SHA-256
-    at Task 16's commit)."""
-    tag = '<script src="search.js" defer></script>'
+def test_a_frame_with_a_head_writes_it_in_place_of_the_style_and_the_baskets_own_pages_keep_their_bytes():
+    """The shopper site's frame (store first, q33; the site's look, q36): a frame's head, given as HTML, is written
+    after the title in place of the style block, and its kind names the body; a frame without them, and the basket's
+    own pages, keep the style block and a bare body, byte for byte as before (their SHA-256 at Task 16's commit)."""
+    head = '<link rel="stylesheet" href="assets/look.0123456789.css">\n<script src="search.js" defer></script>'
     frame = Frame(band="<header>BAND</header>", credit="CREDIT", item_link=lambda code: None, method_href="M.html",
-                  script=tag)
+                  head=head, kind="basket")
     page = render_index(a_public(), BASKET, EXCLUSIONS, frame)
-    assert page.count("<script") == 1 and f"<style>{STYLE}</style>\n{tag}\n</head>" in page
+    assert f"<title>{TITLE}</title>\n{head}\n</head>\n<body class=\"t-basket\">\n<header>BAND</header>" in page
+    assert "<style" not in page and page.count("<script") == 1 and page.count("<link") == 1
     plain = render_index(a_public(), BASKET, EXCLUSIONS, Frame(band="<header>BAND</header>", credit="CREDIT",
                                                                item_link=lambda code: None, method_href="M.html"))
-    assert "<script" not in plain and f"<style>{STYLE}</style>\n</head>" in plain
+    assert "<script" not in plain and f"<style>{STYLE}</style>\n</head>\n<body>\n<header>BAND</header>" in plain
+    for own in (index(), method()):
+        assert f"<style>{STYLE}</style>\n</head>\n<body>\n" in own and "<body class" not in own
     assert hashlib.sha256(index().encode()).hexdigest() == (
         "1700a3aa625e52bc4a1cf1e77991bc34c83eb8c174eabceccb4d58f2c757eaf1")
     assert hashlib.sha256(method().encode()).hexdigest() == (
         "6c873ce3a1bb6100a5cbd51e4399e23a70f0027b9d609cd266e3c681b0e391c3")
+
+
+def test_the_baskets_own_style_keeps_its_bytes():
+    """The first pre-flight's S11, kept: `STYLE`, the basket's own pages' style block, is the block they carried before
+    the shopper site's pages took their rules from it (its SHA-256 then); those pages now link the site's stylesheet."""
+    assert hashlib.sha256(STYLE.encode()).hexdigest() == (
+        "8179d0e4d8567b8c1426100ab5f171aee6dd502f2d84fc87ae5848f83ce768b4")
 
 
 def test_lowest_marked_per_row():

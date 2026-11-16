@@ -1,10 +1,11 @@
 """The root, the store types' front pages, and the method, record and basket pages (docs/shopper-site.md, "What a
 visitor sees" 1, 4, 5 and 6, P1 to P10, F1 to F11, "Words" and Q1 to Q4, with "Changed after the survey", S1 and "The
 column"; the plan's Task 18, its questions A, K, M (c), (d) and (f) and O, and the second pre-flight's S1, S6 and S13;
-docs/store-first.md, "What a visitor sees" 1, 3 and 4, and the store-first plan's Tasks 5 to 7). Every page is on the
-site's shared shell (`shopper.shell`: the band with the site's name, the pick link and the date line, `noindex`, the
-base style, the one script, the credit line); every chain-supplied text (a product's name, a programme's, a store's) is
-escaped inside `CHAIN_SPAN`.
+docs/store-first.md, "What a visitor sees" 1, 3 and 4, and the store-first plan's Tasks 5 to 7; docs/site-look.md and
+the site-look plan's Task 6). Every page is on the site's shared shell (`shopper.shell`: the band with the site's name,
+the pick link and the date line, the chains' line on the root alone, `noindex`, the one stylesheet and the one script,
+the page's kind on its body, the credit line), and holds no style of its own; every chain-supplied text (a product's
+name, a programme's, a store's) is escaped inside `CHAIN_SPAN`.
 
 The root page, `index.html`, also the portfolio's landing page: the title question (`shopper.words.FRONT_TITLE`), one
 line on what the site does (ROOT_LINE), the picker, then the hiring line (question M (f)). The picker is
@@ -40,8 +41,8 @@ was not read (CONDITIONS_NOTE: the design's Always, the source of every conditio
 of today's deals" (its badge, reason, last this low and how often, the product page's words), the store type's
 promotions line (`shopper.words.store_promotions_line`), left out on a hole or a promotion hole, whose promotions the
 build does not count, one note carrying the four ALWAYS phrases (`shopper.words.ALWAYS_SENTENCE`), so the page
-carries them on any morning, and the method page. Every link leads up to the site's root. The badges' shades are
-`shopper.product.BADGE_STYLE`, the product pages' own, whose `[hidden]` rule hides only what the script hid.
+carries them on any morning, and the method page. Every link leads up to the site's root. The badges' shades, like
+every rule of the look, are the site's one stylesheet's (docs/site-look.md).
 
 The method page: what a column is and the nine, with how each one's stores are chosen and how many the day's store list
 includes; the stores left out by rule, which of them sit in a column's part of the store list, and store 779 (Task 15's
@@ -70,9 +71,10 @@ starts (the first day frozen on time, F6); every forecasts and scores file and t
 advice; and the days read with each column's days short of price files, of promotion files, or with no table.
 
 The basket page, `basket.html` (question M (c), (d)): the basket's index page (`basket.page.render_index`) in the site's
-frame: the site's band and credit line, an item linked to its product page only when the build has that page, and
-`formats_note()` under its table, since the basket keeps each chain's median (the amendment). Never ALWAYS_SENTENCE,
-which is the product pages'.
+frame: the site's head (the stylesheet and the script) in place of the basket's style block, its kind on the body, the
+site's band and credit line, an item linked to its product page only when the build has that page, and `formats_note()`
+under its table, since the basket keeps each chain's median (the amendment). Never ALWAYS_SENTENCE, which is the product
+pages'.
 
 Words. The sentences are `shopper.words`' and `basket.words`', and the method and record pages' own below; they state
 no more than the figures shown and the records support. Every page is a pure function of its inputs: the same bytes
@@ -88,7 +90,7 @@ from html import escape
 from basket.barcode import normalize
 from basket.basket_file import Basket
 from basket.chains import EXCLUDED, SLUGS
-from basket.page import BASKET_STYLE, Frame, method_parts, render_index
+from basket.page import Frame, method_parts, render_index
 from basket.stores import Store
 from basket.words import CHAIN_NAMES, TITLE as BASKET_TITLE, joined
 from shopper.columns import BY_KEY, COLUMNS, FIXED_ON, FLOOR, FORMATS_ON_FIXED_DAY, column_of, columns_of
@@ -97,9 +99,9 @@ from shopper.freeze import on_time
 from shopper.history import READ_DAYS, ColumnDay
 from shopper.items import HORIZON, by_number
 from shopper.measures import MIN_FRONT_DAYS, RECENT_DAYS, whole
-from shopper.product import BADGE_STYLE, CHAIN_SPAN, badge_class, page_path
+from shopper.product import CHAIN_SPAN, badge_class, page_path
 from shopper.record import BIN_OFF, BIN_SHARE, BLOCK, CAL_MAX, DRAWS, GATE_DAYS, LEVEL, MIN_DAYS, SEED, holds_share
-from shopper.shell import SCRIPT_TAG, band, page, text
+from shopper.shell import band, head, page, text
 from shopper.verdict import DEAL_MIN, FRONT_LIMIT, SHADES, DealRow
 from shopper.words import (ALWAYS_SENTENCE, BROWSE_LINK, ELSEWHERE, FINE_PRINT, FOLD_INTRO, FROM_FIELDS, FRONT_SUBTITLE,
                            FRONT_TITLE, HIRING, METHOD_TITLE, NEVER, NO_VERDICT, NONE_YET, NUMBER_WORDS, RECORD_TITLE,
@@ -152,51 +154,6 @@ FILES_LABEL = ("These files are this site's test records of its forecasts, publi
 # The method page: Shufersal's formats in no column on the fixed day, named where the design names them
 FORMAT_NAMES = {"shufersal": {"6": "Yesh Chesed"}}
 FOUR = 4                    # the digits of a figure on the record page
-PAGE_STYLE = """
-section h3 { font-size: 1rem; margin: var(--s4) 0 var(--s2); }
-section small { display: block; color: var(--text-3); font-size: .8125rem; }
-.lede { font-size: 1.0625rem; color: var(--text-2); }
-"""
-ROOT_STYLE = PAGE_STYLE + """
-#pick h3 { color: var(--text-2); }
-#pick ul { list-style: none; padding: 0; margin: 0 0 var(--s3); display: flex; flex-wrap: wrap; gap: var(--s2); }
-#pick li a { display: inline-block; padding: var(--s2) var(--s3); border: 1px solid var(--border-strong);
-             border-radius: var(--radius); background: var(--surface); font-weight: 600; text-decoration: none; }
-.hiring { margin-top: var(--s5); }
-"""
-STORE_STYLE = BADGE_STYLE + PAGE_STYLE + """
-.at { margin: 0; color: var(--accent); font-weight: 600; }
-.sub { color: var(--text-3); }
-.search label { display: block; font-weight: 600; margin-bottom: var(--s2); }
-.search input { width: 100%; max-width: 32rem; font: inherit; padding: var(--s2) var(--s3); border-radius: 6px;
-                border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); }
-.deals > input { margin: 0 var(--s1) var(--s3) 0; }
-.deals > label { margin-right: var(--s4); }
-table.front { min-width: 36rem; }
-table.front td .badge { white-space: nowrap; }
-details { margin: var(--s4) 0 0; }
-summary { cursor: pointer; color: var(--accent); font-weight: 600; }
-details ul { padding-left: 1.25rem; margin: var(--s3) 0; }
-details li { margin: 0 0 var(--s2); }
-details .note { color: var(--text-2); font-size: .9375rem; }
-.story-head { font-weight: 600; }
-#f-club:checked ~ .table tbody tr[data-club] { display: none; }
-#f-spend:checked ~ .table tbody tr[data-spend] { display: none; }
-"""
-METHOD_STYLE = PAGE_STYLE + f"""
-#{BASKET_SECTION} > section {{ margin: var(--s5) 0 0; }}
-table.columns {{ min-width: 36rem; }}
-"""
-RECORD_STYLE = PAGE_STYLE + """
-#scorecard > section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-                       box-shadow: var(--shadow); padding: var(--s5); margin: var(--s5) 0; }
-table.counts { min-width: 44rem; }
-table.scores { min-width: 52rem; }
-table.calibration { max-width: 32rem; }
-svg.calibration { display: block; width: 100%; max-width: 14rem; height: auto; margin: var(--s3) 0; }
-svg.calibration line { stroke: var(--axis); stroke-width: .5; }
-svg.calibration circle { fill: var(--accent); }
-"""
 _NINE = NUMBER_WORDS[len(COLUMNS)].lower()
 
 
@@ -335,7 +292,7 @@ def render_root(day: date, collected_by: str) -> str:
     parts = [f"<h1>{text(FRONT_TITLE)}</h1>", f'<p class="lede">{text(ROOT_LINE)}</p>', _picker()]
     parts.append(_hiring())
     links = [(BASKET_TITLE, "basket.html"), (RECORD_TITLE, "record.html"), (METHOD_TITLE, "method.html")]
-    return page(f"{FRONT_TITLE} - {SITE_NAME}", "\n".join(parts), day, collected_by, links, ROOT_STYLE, up="")
+    return page(f"{FRONT_TITLE} - {SITE_NAME}", "\n".join(parts), day, collected_by, links, "front", up="")
 
 
 def render_store(front: StoreFront, column_days: Mapping[tuple[str, date], ColumnDay], day: date, collected_by: str,
@@ -353,7 +310,7 @@ def render_store(front: StoreFront, column_days: Mapping[tuple[str, date], Colum
              _rules(front, today, shown, marking_none)]
     links = [(BROWSE_LINK, browse)] if browse else []
     links += [(BASKET_TITLE, "basket.html"), (RECORD_TITLE, "record.html"), (METHOD_TITLE, "method.html")]
-    return page(f"{name} - {SITE_NAME}", "\n".join(parts), day, collected_by, links, STORE_STYLE, up=UP, store=column)
+    return page(f"{name} - {SITE_NAME}", "\n".join(parts), day, collected_by, links, "store", up=UP, store=column)
 
 
 # The method page
@@ -748,8 +705,7 @@ def render_method(basket: Basket, exclusions: Mapping[str, Sequence[Store]], col
              f'<section id="{BASKET_SECTION}"><h2>{text(BASKET_TITLE)}</h2>'
              f'{"".join(method_parts(basket, exclusions, public, BASKET_PAGE))}</section>']
     links = ((RECORD_TITLE, "record.html"), (BASKET_TITLE, "basket.html"))
-    return page(f"{METHOD_TITLE} - {SITE_NAME}", "\n".join(parts), day, collected_by, links,
-                BASKET_STYLE + METHOD_STYLE, up="")
+    return page(f"{METHOD_TITLE} - {SITE_NAME}", "\n".join(parts), day, collected_by, links, "method", up="")
 
 
 # The record page
@@ -955,7 +911,7 @@ def render_record(scorecard: dict, ledger_days: Mapping[date, datetime], files: 
              _section("files", "The files: test records, not advice", f"<p>{text(FILES_LABEL)}</p>", _files(files)),
              _section("days", "The days read", _days_read(column_days))]
     links = ((METHOD_TITLE, "method.html"), (BASKET_TITLE, "basket.html"))
-    return page(f"{RECORD_TITLE} - {SITE_NAME}", "\n".join(parts), day, collected_by, links, RECORD_STYLE, up="")
+    return page(f"{RECORD_TITLE} - {SITE_NAME}", "\n".join(parts), day, collected_by, links, "record", up="")
 
 
 # The basket page
@@ -968,5 +924,5 @@ def render_basket(public: dict, basket: Basket, exclusions: Mapping[str, Sequenc
     frame = Frame(band=band(day, ""), credit=credit(day, collected_by),
                   item_link=lambda code: page_path(normalize(code)) if normalize(code) in product_pages else None,
                   method_href=f"method.html#{BASKET_SECTION}", note=formats_note(),
-                  script=SCRIPT_TAG.format(up=""))
+                  head=head(""), kind="basket")
     return render_index(public, basket, exclusions, frame)

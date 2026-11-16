@@ -177,9 +177,6 @@ SUBSET_FONTS = ("scripts/subset_fonts.py", ["tests/test_subset_fonts.py"])
 SHOP_PRODUCT = ("src/shopper/product.py", ["tests/test_product.py"])
 SHOP_SHELL = ("src/shopper/shell.py", ["tests/test_product.py"])
 SHELL_FOR_SHOP_SEARCH = ("src/shopper/shell.py", ["tests/test_search.py"])
-# The product pages carry basket.page's base style, cut from the basket's block in its old order (Task 16): the product
-# tests pin the split and the old block's bytes.
-PAGE_FOR_SHOP_PRODUCT = ("src/basket/page.py", ["tests/test_product.py"])
 # The front, method, record and basket pages (Task 18), and what they read from the modules beside them: the basket's
 # index in the site's frame and its method's parts (basket.page), the build without the basket's pages (basket.build),
 # the band (shopper.shell), the front page's test (shopper.measures), the shown gap (shopper.words), a promotion's day
@@ -2055,19 +2052,16 @@ MUTATIONS = {
     'a product page indexable (q22 product)': (SHOP_SHELL, '<meta name="robots" content="noindex">\n', ''),
     'a product page without the credit line (q22 product)': (SHOP_SHELL, '<footer><div class="wrap"><p>{text(credit(day, collected_by))} {footer}', '<footer><div class="wrap"><p>{footer}'),
     "a page's date line left off (q22 product)": (SHOP_SHELL, '<p class="dateline">{text(date_line(day))}</p>', '<p class="dateline"></p>'),
-    "the site's name linked from the page's own folder (q22 product)": (SHOP_SHELL, '<a href="{up}index.html">', '<a href="index.html">'),
+    "the site's name linked from the page's own folder (q22 product)": (SHOP_SHELL, '<a class="brand" href="{up}index.html">', '<a class="brand" href="index.html">'),
     "a footer link from the page's own folder (q22 product)": (SHOP_SHELL, '<a href="{up}{escape(path)}">', '<a href="{escape(path)}">'),
-    'a page without the base style (q22 product)': (SHOP_SHELL, '<style>{BASE_STYLE}{style}</style>', '<style>{style}</style>'),
-    "the base style without the footer's rules (q22 product)": (PAGE_FOR_SHOP_PRODUCT, 'BASE_STYLE = "\\n" + _TOP + _TABLES + _FOOTER', 'BASE_STYLE = "\\n" + _TOP + _TABLES'),
-    "the base style holding the basket's tables (q22 product)": (PAGE_FOR_SHOP_PRODUCT, 'BASE_STYLE = "\\n" + _TOP + _TABLES +', 'BASE_STYLE = "\\n" + _TOP + _TABLES + _BASKET_TABLES +'),
-    "the basket's style out of its old order (q22 product)": (PAGE_FOR_SHOP_PRODUCT, 'STYLE = ("\\n" + _TOP + _TILES_AND_BARS + _TABLES +', 'STYLE = ("\\n" + _TOP + _TABLES + _TILES_AND_BARS +'),
+    "the basket's style out of its old order (q22 product)": (PAGE, 'STYLE = ("\\n" + _TOP + _TILES_AND_BARS + _TABLES +', 'STYLE = ("\\n" + _TOP + _TABLES + _TILES_AND_BARS +'),
     'a weighed deal per unit in the words (q22 words)': (SHOP_WORDS, '"kg": "per kilogram"}', '"kg": "per unit"}'),
     'a listed price without before promotions (q22 words)': (SHOP_WORDS, 'return f"Listed price ₪{money(price)}, before promotions, as listed', 'return f"Listed price ₪{money(price)}, as listed'),
     "the stores' range labelled a listed price (q22 words)": (SHOP_WORDS, 'return f"stores\' deal prices ₪{money(low)}', 'return f"listed price ₪{money(low)}'),
     "the stores' deal prices labelled as the listed price's range (q22 words)": (SHOP_WORDS, 'return f"stores\' deal prices ₪{money(low)}', 'return f"stores ₪{money(low)}'),
     # shopper: the front, method, record and basket pages, and the basket's frame, parts and build (q22 pages)
     'a second script (q22 pages)': (SHOP_PAGES, '    parts.append(_hiring())\n', '    parts.append(_hiring() + \'<script src="other.js"></script>\')\n'),
-    'the shell without the one script (q22 pages)': (SHELL_FOR_SHOP_PAGES, '{SCRIPT_TAG.format(up=up)}\n</head>', '</head>'),
+    'the shell without the one script (q22 pages)': (SHELL_FOR_SHOP_PAGES, '">\\n{SCRIPT_TAG.format(up=up)}\'', '">\''),
     "a store type's promotion that starts tomorrow counted (q22 pages)": (PRODUCT_FOR_SHOP_BUILD, 'for struct in point.promotions if struct["start"] <= day <= struct["end"]]', 'for struct in point.promotions]'),
     'the club-only filter hiding nothing (q22 pages)': (SHOP_PAGES, '    marks = (\' data-club=""\' if struct["restrictions"] else "")', '    marks = ("")'),
     'the minimum-spend filter hiding nothing (q22 pages)': (SHOP_PAGES, '+ (\' data-spend=""\' if struct["min_spend"] is not None\n', '+ ("" if True\n'),
@@ -2106,7 +2100,7 @@ MUTATIONS = {
     "basket.html with the basket's own credit line (q22 pages)": (PAGE_FOR_SHOP_PAGES, "credit = f'<p>{_prose(frame.credit)} <a", 'credit = f\'<p>{_prose(words.credit(date.fromisoformat(public["day"]), public["collected_by"]))} <a'),
     "basket.html's method link to the basket's own page (q22 pages)": (PAGE_FOR_SHOP_PAGES, '<a href="{_escape(frame.method_href)}">', '<a href="method.html">'),
     "an item's page link ignored (q22 pages)": (PAGE_FOR_SHOP_PAGES, '        href = None if frame is None else frame.item_link(item.code)\n', '        href = None\n'),
-    "basket.html without the basket's title (q22 pages)": (PAGE_FOR_SHOP_PAGES, '[f"<h1>{_text(words.TITLE)}</h1>", *parts], credit, frame.script)', 'parts, credit, frame.script)'),
+    "basket.html without the basket's title (q22 pages)": (PAGE_FOR_SHOP_PAGES, '[f"<h1>{_text(words.TITLE)}</h1>", *parts], credit, frame.head, frame.kind)', 'parts, credit, frame.head, frame.kind)'),
     "the basket's method page short of its intro (q22 pages)": (PAGE_FOR_SHOP_PAGES, 'parts = [f"<h1>{_text(words.METHOD_TITLE)}</h1>", *method_parts(basket, exclusions, public)]', 'parts = [f"<h1>{_text(words.METHOD_TITLE)}</h1>", *method_parts(basket, exclusions, public)[1:]]'),
     "basket.html's band without the date line (q22 pages)": (SHELL_FOR_SHOP_PAGES, '<p class="dateline">{text(date_line(day))}</p></div></header>\')', '<p class="dateline"></p></div></header>\')'),
     "the basket's pages written when not asked (q22 pages)": (BUILD_FOR_SHOP_PAGES, '    if write_pages:\n', '    if True:\n'),
@@ -2587,7 +2581,7 @@ MUTATIONS = {
     "page lowest bar marked without a comparison": (PAGE, '"lowest" if compare and chain["rank"] == 1', '"lowest" if chain["rank"] == 1'),
     "page bars offset from zero": (PAGE, '<rect class="fill" width="{width:.2f}%"', '<rect class="fill" x="10%" width="{width:.2f}%"'),
     "page date line not in the header": (PAGE, '<p class="dateline">{_text(line)}</p>', '<p class="dateline"></p>'),
-    "page header after the main part": (PAGE, "<body>\n{band}\n<main>\n{body}\n</main>\n", "<body>\n<main>\n{body}\n</main>\n{band}\n"),
+    "page header after the main part": (PAGE, "{opening}\n{band}\n<main>\n{body}\n</main>\n", "{opening}\n<main>\n{body}\n</main>\n{band}\n"),
     "page table box named by no heading": (PAGE, '<h2 id="prices">', "<h2>"),
     "page no dark set": (PAGE, "@media (prefers-color-scheme: dark) {", "@media (prefers-color-scheme: light) {"),
     "page body without a background": (PAGE, "body { margin: 0; background: var(--bg);", "body { margin: 0;"),
@@ -3042,7 +3036,6 @@ MUTATIONS = {
     "the rules' condition without its source (q33 front)": (SHOP_WORDS, 'its condition {FROM_FIELDS} named beside it', 'its condition named beside it'),
     'a row without its condition (q33 front)': (SHOP_PAGES, '    said = f"<small>{text(\'; \'.join(named))}</small>" if named else ""\n', '    said = ""\n'),
     "a weighed row's prices without a kilogram (q33 front)": (SHOP_WORDS_FOR_SHOP_PAGES, '    return f"₪{price}{_per(found)}"\n', '    return f"₪{price}"\n'),
-    "the store pages without the badges' shades (q33 front)": (SHOP_PAGES, 'STORE_STYLE = BADGE_STYLE + PAGE_STYLE + """', 'STORE_STYLE = PAGE_STYLE + """'),
     'the story without its reason (q33 front)': (SHOP_PAGES, 'for line in (reason(found), last_low(found), how_often(found)) if line)', 'for line in (last_low(found), how_often(found)) if line)'),
     'the story without last this low (q33 front)': (SHOP_PAGES, 'for line in (reason(found), last_low(found), how_often(found)) if line)', 'for line in (reason(found), how_often(found)) if line)'),
     'the story without how often (q33 front)': (SHOP_PAGES, 'for line in (reason(found), last_low(found), how_often(found)) if line)', 'for line in (reason(found), last_low(found)) if line)'),
@@ -3110,7 +3103,6 @@ MUTATIONS = {
     "an empty badge row left out (q33 product)": (SHOP_PRODUCT, """f'<nav class="badges">{badges}</nav>']""", """*([f'<nav class="badges">{badges}</nav>'] if badges else [])]"""),
     "the fold-out without F10 (q33 product)": (SHOP_PRODUCT, """{''.join(parts)}</details>\"""", """{''.join(parts[:-1])}</details>{parts[-1]}\""""),
     "a section hidden in the HTML (q33 product)": (SHOP_PRODUCT, 'id="c-{key}" data-chain="{column.slug}">', 'id="c-{key}" data-chain="{column.slug}" hidden>'),
-    "the style without its hidden rule (q33 product)": (SHOP_PRODUCT, '[hidden]{display:none!important}\n', ''),
     "a coming sale on a hole morning (q33 product)": (SHOP_PRODUCT, 'next_start is not None and today.record:', 'next_start is not None and today.present:'),
     "a not-sold section without its last-seen day (q33 product)": (SHOP_PRODUCT, 'not_sold(key, covered.last_wide.get(key))', 'not_sold(key, None)'),
     "the reason line left out (q33 product)": (SHOP_PRODUCT, """,\n                f'<p class="reason">{text(reason(found))}</p>']""", ']'),
@@ -3188,13 +3180,13 @@ MUTATIONS = {
     "the summary's lowest from the listed prices alone (q33 chart)": (SHOP_WORDS, '"lowest": low,', '"lowest": min((day.listed for day in found.days), default=None),'),
     "the summary's highest the listed maximum (q33 chart)": (SHOP_WORDS, '"highest": high,', '"highest": max((day.listed for day in found.days), default=None),'),
     "the summary without today's price (q33 chart)": (SHOP_WORDS, '              "today": found.today_price}\n', '              "today": None}\n'),
-    "the script at the root's depth on every page (q33 picker)": (SHOP_SHELL, '{SCRIPT_TAG.format(up=up)}\n</head>', '{SCRIPT_TAG.format(up="")}\n</head>'),
+    "the script at the root's depth on every page (q33 picker)": (SHOP_SHELL, "{SCRIPT_TAG.format(up=up)}'", '{SCRIPT_TAG.format(up="")}\''),
     'the pick link without #pick (q33 picker)': (SHOP_SHELL, '<a id="pick-link" href="{up}index.html#pick">', '<a id="pick-link" href="{up}index.html">'),
     'a store page without data-store (q33 picker)': (SHOP_PAGES, 'up=UP, store=column)', 'up=UP)'),
     'the picker a store type short (q33 picker)': (SHOP_PAGES, '("carrefour", ("carrefour-city", "carrefour-market")),', '("carrefour", ("carrefour-city",)),'),
     'the picker in COLUMNS order (q33 picker)': (SHOP_PAGES, 'for slug, keys in PICK_GROUPS)', 'for slug, keys in ((column.slug, (column.key,)) for column in COLUMNS))'),
     "a store page listing every column's rows (q33 picker)": (SHOP_BUILD, 'rows=tuple(front_list(row for row in self.rows if row.column == column.key)),', 'rows=tuple(front_list(self.rows)),'),
-    "basket.html without the site's script (q33 picker)": (SHOP_PAGES, ',\n                  script=SCRIPT_TAG.format(up=""))', ')'),
+    "basket.html without the site's script (q33 picker)": (SHOP_PAGES, ',\n                  head=head(""), kind="basket")', ', kind="basket")'),
     'a script allowed at any depth (q33 picker)': (SHOP_CHECK, 'written.replace(flatten(script), " ")', 're.sub(r\'<script src="(\\.\\./)*search\\.js" defer></script>\', " ", written)'),
     'store pages not held to the always phrases (q33 picker)': (SHOP_CHECK, '    if STORE.fullmatch(name) or product:\n', '    if product:\n'),
     'the root held to the always phrases (q33 picker)': (SHOP_CHECK, '    if STORE.fullmatch(name) or product:\n', '    if name == INDEX or STORE.fullmatch(name) or product:\n'),
@@ -3202,8 +3194,19 @@ MUTATIONS = {
     'store/ pages not uploaded (q33 picker)': (SITE, 'PAGE_FOLDERS = ("p", "browse", "search", "store")', 'PAGE_FOLDERS = ("p", "browse", "search")'),
     'the role without store/* (q33 picker)': (BASKET_TEMPLATE, '                - !Sub "arn:aws:s3:::${SiteBucketName}/store/*"\n', ''),
     'no lifecycle rule for store/ (q33 picker)': (SITE_TEMPLATE, '          - {Id: old-store-pages, Status: Enabled, Prefix: store/, NoncurrentVersionExpiration: {NoncurrentDays: 30}}\n', ''),
-    "basket.html without the frame's script (q33 picker)": (PAGE, '    head = f"{script}\\n" if script else ""', '    head = ""'),
+    "basket.html without the frame's script (q33 picker)": (PAGE, 'credit, frame.head, frame.kind)', 'credit, "", frame.kind)'),
     'a store page not built (q33 picker)': (SHOP_BUILD, '           for key, front in fronts.items()},\n', '           for key, front in list(fronts.items())[1:]},\n'),
+    # the site's look (q36, Task 6): every page links the one shared stylesheet in place of its style block and names
+    # its kind on <body>; the brand's first word on its label; the chains' line on the front page alone; the build
+    # writes assets/
+    "the stylesheet linked from the page's own folder (q36 shell)": (SHOP_SHELL, '<link rel="stylesheet" href="{up}{STYLESHEET}">', '<link rel="stylesheet" href="{STYLESHEET}">'),
+    'the body without its kind (q36 shell)': (SHOP_SHELL, '<body class="t-{kind}">', '<body>'),
+    "the chains' line on every page (q36 shell)": (SHOP_SHELL, ' if front else ""\n', ' if True else ""\n'),
+    'the brand without its green box (q36 shell)': (SHOP_SHELL, '<b>{text(first)}</b> ', '{text(first)} '),
+    'a kind the shell does not know accepted (q36 shell)': (SHOP_SHELL, '    if kind not in KINDS:\n', '    if False:\n'),
+    "basket.html with the basket's own style (q36 shell)": (PAGE, '    style = head or f"<style>{STYLE}</style>"', '    style = f"<style>{STYLE}</style>"'),
+    "the basket's own pages with a body class (q36 shell)": (PAGE, 'f\'<body class="t-{kind}">\' if kind else "<body>"', 'f\'<body class="t-{kind}">\''),
+    'the shared files not written (q36 shell)': (SHOP_BUILD, '        **asset_files(),\n', ''),
 }
 
 
