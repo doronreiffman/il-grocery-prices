@@ -3170,6 +3170,8 @@ MUTATIONS = {
     "the usual label watching the whole span (q36 chart)": (SHOP_CHART, ' if 10 * (at + 1) > 7 * span]', ']'),
     "a single price given half-shekel steps (q36 chart)": (SHOP_CHART, 'if 0 < high - low < 1 else []', 'if high - low < 1 else []'),
     "a date at NEAR's edge hidden on a phone (q36 chart)": (SHOP_CHART, 'NEAR[0] <= share <= NEAR[1]', 'NEAR[0] < share < NEAR[1]'),
+    "every week's name on a phone at 28 days (q36 chart)": (SHOP_CHART, 'span >= ALTERNATE_WEEKS and', 'span > ALTERNATE_WEEKS and'),
+    "the even weeks' names hidden on a phone (q36 chart)": (SHOP_CHART, '(last - at) // 7 % 2:', '(last - at) // 7 % 2 == 0:'),
     # store first (q33): the price chart (shopper.chart)
     'an untracked day drawn across (q33 chart)': (SHOP_CHART, '        if runs and runs[-1][-1][0] + 1 == x:\n', '        if runs:\n'),
     'a sale stretch on a day off sale (q33 chart)': (SHOP_CHART, 'sold = [each for each in days if each.on_sale and each.price is not None]', 'sold = [each for each in days if each.price is not None]'),

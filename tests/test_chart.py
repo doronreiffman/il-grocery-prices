@@ -406,8 +406,9 @@ def test_the_usual_line_and_its_label():
     # ₪5.10 on the last days and today, 7 pixels above: below the line
     busy = ["6.00", "6.00", *["5.00"] * 5, "5.10", "5.10"]
     assert label(drawn(busy, "4.00", shelf_today="5.10"))[2] == 82
-    # ₪5.10 before the last 30% only (x 6): above
+    # ₪5.10 before the last 30% only (x 6): above; on its first day alone (x 7): below
     assert label(drawn(["6.00", "6.00", *["5.00"] * 4, "5.10", "5.00", "5.00"], "4.00"))[2] == 61
+    assert label(drawn(["6.00", "6.00", *["5.00"] * 5, "5.10", "5.00"], "4.00"))[2] == 82
     # busy below too, today's sale ₪4.85 15 pixels under it (axis (4, 6, 1), ₪5 at 100): above
     assert label(drawn(busy, "4.85", call="no_deal", shelf_today="5.10"))[2] == 94
     # at the axis's top (axis (3, 5, 1), ₪5 at 0) there is no room above: below
@@ -453,7 +454,8 @@ def test_the_dates_by_span():
 def test_a_name_never_runs_into_the_first_date_or_out_of_the_plot():
     """At every width, a date's name is written only within NAMED's share of the span, its mark always: nearer the
     first date it would run into the first date's words, nearer today out of the plot into the today column (fix
-    round 1, measured: the module's NAMED). An edge itself is written. Apart from it, the phone's near rule takes its
+    round 1, measured: the module's NAMED). An edge itself is written; the upper one only a span longer than the
+    window's 91 days can reach, so a synthetic 100-day span pins it. Apart from it, the phone's near rule takes its
     edges as shown too."""
     assert chart.NAMED == (Fraction(8, 100), Fraction(91, 100))
 
@@ -474,9 +476,37 @@ def test_a_name_never_runs_into_the_first_date_or_out_of_the_plot():
     # the upper edge, on 91 days: 90.11% is written, 91.21% is not
     assert dates(date(2026, 9, 10), 91)[-2:] == [("line", "90.11%"), ("Dec", "near", "90.11%")]
     assert dates(date(2026, 9, 9), 91)[-2:] == [("Nov", None, "58.24%"), ("line", "91.21%")]
+    # the upper edge itself, on a synthetic 100 days: 1 November at x 91 (91%) is written, at x 92 (92%) is not
+    assert dates(date(2026, 8, 2), 100)[-2:] == [("line", "91%"), ("Nov", "near", "91%")]
+    assert dates(date(2026, 8, 1), 100)[-2:] == [("Oct", None, "61%"), ("line", "92%")]
     # NEAR's edges are shown on a phone: 22% and 84% exactly carry no near class
     assert dates(date(2026, 10, 21), 50)[1:3] == [("line", "22%"), ("Nov", None, "22%")]
     assert dates(date(2026, 10, 20), 50)[-2:] == [("line", "84%"), ("Dec", None, "84%")]
+
+
+def test_a_phone_shows_every_other_weeks_name_from_28_days():
+    """On a weekly span of ALTERNATE_WEEKS (28) days or more, the names an odd number of weeks before today (7, 21, 35
+    days back) are hidden on a phone too (`class="near"`), so the names a 178-pixel plot shows are 14 days apart and
+    never touch (fix round 2); every mark stays, and a desktop shows every name as before. Under 28 days every week's
+    name is far enough apart already. Today is 30 November in each."""
+    assert chart.ALTERNATE_WEEKS == 28
+
+    def dates(span: int) -> list[tuple]:
+        today = date(2026, 11, 30)
+        found = _verdict(_daily(today - timedelta(days=span - 1), today), today="5.00", usual=None, call="no_sale")
+        return _dates(_read(chart.render_chart(found, today))["over"])
+
+    # 27 days: 7 days back (23 Nov) shown; 21 back hidden by NEAR alone (18.52%)
+    assert dates(27) == [("4 Nov", None, None), ("line", "18.52%"), ("9 Nov", "near", "18.52%"), ("line", "44.44%"),
+                         ("16 Nov", None, "44.44%"), ("line", "70.37%"), ("23 Nov", None, "70.37%")]
+    # 28 days: 7 days back hidden (71.43%, inside NEAR), 14 back shown
+    assert dates(28) == [("3 Nov", None, None), ("line", "21.43%"), ("9 Nov", "near", "21.43%"), ("line", "46.43%"),
+                         ("16 Nov", None, "46.43%"), ("line", "71.43%"), ("23 Nov", "near", "71.43%")]
+    # 45 days: 7, 21 and 35 back hidden, 14 and 28 back shown; 42 back (4.44%) a mark alone
+    assert dates(45) == [("17 Oct", None, None), ("line", "4.44%"), ("line", "20%"), ("26 Oct", "near", "20%"),
+                         ("line", "35.56%"), ("2 Nov", None, "35.56%"), ("line", "51.11%"),
+                         ("9 Nov", "near", "51.11%"), ("line", "66.67%"), ("16 Nov", None, "66.67%"),
+                         ("line", "82.22%"), ("23 Nov", "near", "82.22%")]
 
 
 def test_a_short_history_has_its_first_date_and_today():
