@@ -734,7 +734,8 @@ def test_the_one_pass_works_each_sections_verdict_once_and_the_page_says_it(tmp_
     assert all(column in sections[code] for column, code in paired)
     assert any(pair is None for _, _, pair in calls)                       # A's, beyond the read
     milk = _text(site / page_path(MILK))
-    assert "At Osher Ad: DEAL · ₪3.15 off" in milk and "Usually ₪6.15, sales included (40 days tracked)." in milk
+    assert '<p class="verdict">At Osher Ad: <b>DEAL · ₪3.15 off</b></p>' in milk                # the label (q36)
+    assert "Usually ₪6.15, sales included (40 days tracked)." in milk
     beyond = _text(site / page_path(A))
     assert f"Not sold at Osher Ad today, last seen {words.on_day(DAY - timedelta(days=200))}" in beyond
 
