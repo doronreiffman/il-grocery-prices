@@ -138,7 +138,7 @@ def assembled(code: str) -> str:
 
 
 @pytest.mark.parametrize("code", [
-    "0012345678905",    # parity row 0 (the UPC-A 012345678905 ... as 0 + 12 digits)
+    "0012345678905",    # parity row 0 (a UPC-A with its leading 0)
     "4006381333931",    # real codes
     "5901234123457",
     "9780201379624",
@@ -149,10 +149,23 @@ def test_every_parity_row_is_reached_by_a_pattern_built_from_the_literal_tables(
     assert bars.modules(code) == assembled(code)
 
 
-def test_all_ten_parity_rows_are_reached():
-    codes = [str(first) + "00123456789" + check_digit(str(first) + "00123456789") for first in range(10)]
-    assert sorted({PARITY.index("".join("L" if each in L_TABLE else "G" for each in
-                                        [bars.modules(code)[3 + 7 * i:10 + 7 * i] for i in range(6)])) for code in codes}) == list(range(10))
+def by_hand(code: str, parity: str) -> str:
+    """The pattern with the parity typed in from the standard's table, the pieces picked by that string alone."""
+    left = "".join((L_TABLE, G_TABLE)[kind == "G"][int(each)] for kind, each in zip(parity, code[1:7]))
+    return "101" + left + "01010" + "".join(R_TABLE[int(each)] for each in code[7:]) + "101"
+
+
+@pytest.mark.parametrize("code, parity", [
+    ("1234567890128", "LLGLGG"),    # row 1
+    ("3012345678902", "LLGGGL"),    # row 3
+    ("5901234123457", "LGGLLG"),    # row 5
+    ("6012345678909", "LGGGLL"),    # row 6
+    ("7290000144474", "LGLGLG"),    # row 7 (Israeli codes start 729)
+    ("8012345678907", "LGLGGL"),    # row 8
+    ("9780201379624", "LGGLGL"),    # row 9
+])
+def test_a_parity_row_typed_from_the_standard_gives_the_pattern(code, parity):
+    assert bars.modules(code) == by_hand(code, parity)
 
 
 def test_the_ean8_right_half_is_in_r_codes():

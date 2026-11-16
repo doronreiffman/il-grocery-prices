@@ -8,9 +8,9 @@ of 12 digits is drawn as the EAN-13 made of it with a leading 0. EAN-8 is `101`,
 `01010`, four R digits, `101` (67 modules).
 
 The input is a code as `basket.barcode.normalize` gives it, with no leading zeros (an EAN-8 that
-starts with 0 gets no bars). Nothing that looks like a barcode and is not one is ever drawn: a code with other than 8, 12 or 13
-ASCII digits, or whose GS1 check digit fails (`basket.barcode.is_gs1`), gets no bars at all, and
-every function here returns "".
+starts with 0 gets no bars). Nothing that looks like a barcode and is not one is ever drawn: a code
+with other than 8, 12 or 13 ASCII digits, or whose GS1 check digit fails (`basket.barcode.is_gs1`),
+gets no bars at all, and every function here returns "".
 
 The bars are always dark on a white plate (the stylesheet's `--bars` on `--plate`, in both themes):
 a scanner needs dark bars on a light ground, so the dark theme does not invert them.
