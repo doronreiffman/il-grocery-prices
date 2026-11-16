@@ -397,11 +397,13 @@ def test_each_no_verdict_line(call):
     assert f"<p>{words.NO_VERDICT[call]}</p>" in body
     assert 'class="badge' not in body and "DEAL ·" not in body and "NO DEAL" not in body
     assert "Usually ₪" not in body and "It's been" not in body and "Only ₪" not in body
-    # a sale whose price could not be read has no price today (the owner, 2026-11-11): no today mark or label on the
-    # chart and no "Last this low"; no sale and a sale at some stores take the listed price as today's
+    # a sale whose price could not be read has no price today (the owner, 2026-11-11): no Today in the chart's table,
+    # no today in its spoken summary, no dot at its right end, and no "Last this low"; no sale and a sale at some
+    # stores take the listed price as today's
     if call in ("unread_today", "price_unread", "no_sale", "some_stores"):
         known = call in ("no_sale", "some_stores")
-        assert ('<circle class="today"' in body, "today ₪" in body, "Last this low" in body) == (known,) * 3, call
+        assert ('<th scope="col">Today</th>' in body, "today ₪" in body, "Last this low" in body) == (known,) * 3, call
+        assert known or "<circle" not in body, call
 
 
 def test_an_unread_sale_price_counts_today_as_on_sale():
@@ -493,7 +495,7 @@ def test_a_not_sold_section_says_when_last_seen():
     page = _render(_covered({DEAL: "שם"}, last_wide={DEAL: date(2026, 11, 3)}), {DEAL: pair})
     body = _sections(page)[DEAL]
     assert '<p class="not-sold">Not sold at Shufersal Deal today, last seen 3 November</p>' in body
-    assert '<svg class="chart"' in body and "On sale on 0 of the 51 days tracked." in body
+    assert '<div class="history">' in body and "On sale on 0 of the 51 days tracked." in body
     assert 'class="badge' not in body and "Listed price" not in body
     bare = _sections(_render(_covered({DEAL: "שם"}, last_wide={}), {DEAL: pair}))[DEAL]
     assert '<p class="not-sold">Not sold at Shufersal Deal today</p>' in bare
@@ -689,9 +691,9 @@ def test_with_the_script_blocked_every_store_types_part_is_in_the_html():
         assert found.call == "deal"
         for said in (words.badge(found), words.reason(found), words.last_low(found), words.how_often(found)):
             assert said and f">{said}</p>" in body, (key, said)
-        assert f'aria-labelledby="chart-{key}"' in body
-        assert body.index(words.reason(found)) < body.index("<svg") < body.index(words.last_low(found)) < body.index(
-            words.how_often(found)) < body.index("<details>")
+        assert f'role="img" aria-label="{words.chart_summary(found)}"' in body
+        assert body.index(words.reason(found)) < body.index('<div class="history">') < body.index(
+            words.last_low(found)) < body.index(words.how_often(found)) < body.index("<details>")
 
 
 def test_nothing_is_hidden_without_the_script():
@@ -726,7 +728,7 @@ def test_a_product_sold_nowhere_today_has_no_badges_and_every_part():
     assert list(sections) == [RAMI, DEAL, SHELI]
     for key, body in sections.items():
         assert f"Not sold at {BY_KEY[key].name} today, last seen 10 November" in body
-        assert '<svg class="chart"' in body and "On sale on 0 of the 51 days tracked." in body
+        assert '<div class="history">' in body and "On sale on 0 of the 51 days tracked." in body
         assert no_odds_yet(key) in _fold(body)
     text = _visible(page)
     assert all(flatten(phrase) in text for phrase in ALWAYS)
@@ -735,13 +737,15 @@ def test_a_product_sold_nowhere_today_has_no_badges_and_every_part():
 
 def test_p7_p8_and_p9_are_gone():
     """Store first's "Changes to the shopper-site design": P7's sentences, P8's, the price-change text and P9's table
-    give way to the verdict, the chart, "Last this low", "How often on sale" and "Elsewhere today"."""
+    give way to the verdict, the chart, "Last this low", "How often on sale" and "Elsewhere today". The only table
+    left is each chart's own (the site look's: lowest, highest, usual and today)."""
     for page in (_render(*_largest()), _render(*_typical())):
         text = _visible(page)
         for gone in ("The deal against its listed prices", "How often it goes on promotion", "30-day median", "Today at each column",
                      "Run before today", "Runs before today", "The listed price did not change", "rose from",
-                     "On a promotion listed across", "<table", "Listed to start"):
+                     "On a promotion listed across", "Listed to start"):
             assert flatten(gone) not in text and gone not in page, gone
+        assert set(re.findall(r"<table[^>]*>", page)) == {'<table class="stats">'}
 
 
 # The shades and the chart's style

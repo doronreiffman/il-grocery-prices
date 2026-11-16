@@ -84,7 +84,8 @@ def _text(markup: str) -> str:
 
 
 def _section(page: str, column: str) -> str:
-    """A column's section of a page, its chart left out."""
+    """A column's section of a page, its SVGs left out: on a product page the chart's four drawings, its key and its
+    table kept."""
     found = re.search(rf'<section data-column="{column}"[^>]*>.*?</section>', page, re.S)
     assert found, column
     return re.sub(r"<svg.*?</svg>", "", found.group(0), flags=re.S)
