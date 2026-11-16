@@ -7,7 +7,8 @@ flipped. EAN-13 is `101`, the six left digits, `01010`, the six right digits in 
 of 12 digits is drawn as the EAN-13 made of it with a leading 0. EAN-8 is `101`, four L digits,
 `01010`, four R digits, `101` (67 modules).
 
-Nothing that looks like a barcode and is not one is ever drawn: a code with other than 8, 12 or 13
+The input is a code as `basket.barcode.normalize` gives it, with no leading zeros (an EAN-8 that
+starts with 0 gets no bars). Nothing that looks like a barcode and is not one is ever drawn: a code with other than 8, 12 or 13
 ASCII digits, or whose GS1 check digit fails (`basket.barcode.is_gs1`), gets no bars at all, and
 every function here returns "".
 
@@ -33,7 +34,7 @@ _CENTRE = "01010"
 
 def modules(code: str) -> str:
     """The bars as "1" (bar) and "0" (space): 95 for an EAN-13 or a UPC-A, 67 for an EAN-8, "" for any other code."""
-    if not (code.isascii() and code.isdigit() and is_gs1(code)):
+    if not (code.isdigit() and is_gs1(code)):
         return ""
     if len(code) == 8:
         digits = [int(each) for each in code]

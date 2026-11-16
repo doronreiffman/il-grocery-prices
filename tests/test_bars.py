@@ -51,7 +51,7 @@ def test_known_codes_give_their_modules(code, expected):
 
 def test_every_pattern_has_its_length_and_guards():
     rng = random.Random(36)
-    for length, size, centre in ((13, 95, 45), (8, 67, 31)):
+    for length, size, centre in ((13, 95, 45), (12, 95, 45), (8, 67, 31)):
         for _ in range(200):
             code = make(length, rng)
             pattern = bars.modules(code)
@@ -93,6 +93,8 @@ def test_each_pattern_decodes_to_its_digits():
     "",
     " ",
     " 2000000000046",
+    " 200000000004",     # 13 characters; only the digits-only guard refuses it
+    "200000000004 ",
 ])
 def test_a_code_that_is_not_a_barcode_gets_no_bars(code):
     assert bars.modules(code) == bars.drawing(code) == bars.mark(code) == ""
@@ -126,3 +128,33 @@ def test_each_label_shows_the_drawing_by_reference():
     assert bars.mark("20000004") == (
         '<div class="code" aria-hidden="true"><svg class="short" viewBox="0 0 67 1" preserveAspectRatio="none"><use href="#ean"/></svg><small>20000004</small></div>')
     assert bars.mark("200000000004").count("viewBox=\"0 0 95 1\"") == 1
+
+
+def assembled(code: str) -> str:
+    """The EAN-13 pattern built straight from the literal tables and the parity row, apart from the module."""
+    parity = PARITY[int(code[0])]
+    left = "".join((L_TABLE, G_TABLE)[kind == "G"][int(each)] for kind, each in zip(parity, code[1:7]))
+    return "101" + left + "01010" + "".join(R_TABLE[int(each)] for each in code[7:]) + "101"
+
+
+@pytest.mark.parametrize("code", [
+    "0012345678905",    # parity row 0 (the UPC-A 012345678905 ... as 0 + 12 digits)
+    "4006381333931",    # real codes
+    "5901234123457",
+    "9780201379624",
+    *(str(first) + "00123456789" + check_digit(str(first) + "00123456789") for first in range(10)),
+])
+def test_every_parity_row_is_reached_by_a_pattern_built_from_the_literal_tables(code):
+    assert check_digit(code[:-1]) == code[-1]
+    assert bars.modules(code) == assembled(code)
+
+
+def test_all_ten_parity_rows_are_reached():
+    codes = [str(first) + "00123456789" + check_digit(str(first) + "00123456789") for first in range(10)]
+    assert sorted({PARITY.index("".join("L" if each in L_TABLE else "G" for each in
+                                        [bars.modules(code)[3 + 7 * i:10 + 7 * i] for i in range(6)])) for code in codes}) == list(range(10))
+
+
+def test_the_ean8_right_half_is_in_r_codes():
+    pattern = bars.modules("20000004")
+    assert pattern[36:43] == R_TABLE[0] and pattern[57:64] == R_TABLE[4]
