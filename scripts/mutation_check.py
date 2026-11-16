@@ -166,6 +166,10 @@ SHOP_WORDS = ("src/shopper/words.py", ["tests/test_shop_words.py"])
 # pre-flight's N7).
 SHOP_SEARCH = ("src/shopper/search.py", ["tests/test_search.py"])
 SHOP_SEARCH_JS = ("src/shopper/static/search.js", ["tests/test_search_js.py"])
+# The site's look (q36): the stylesheet, the site's shared files made from it and the fonts, and the fonts' maker.
+LOOK = ("src/shopper/static/look.css", ["tests/test_look.py"])
+SHOP_ASSETS = ("src/shopper/assets.py", ["tests/test_assets.py"])
+SUBSET_FONTS = ("scripts/subset_fonts.py", ["tests/test_subset_fonts.py"])
 # The product pages (Task 16) and the shell every shopper page shares: the product tests catch a break of either, and
 # search's tests a break of the shell, which the browse pages are built on.
 SHOP_PRODUCT = ("src/shopper/product.py", ["tests/test_product.py"])
@@ -3036,6 +3040,27 @@ MUTATIONS = {
     'every badge said to write a verdict (q33 method)': (SHOP_PAGES, 'Every Deal and No deal badge writes its verdict in words', 'Every badge writes its verdict in words'),
     'S3 giving an unread sale price the listed price (q33 method)': (SHOP_PAGES, ' (S6), unless one "\n         "listed across the column runs with its price not read: then there is no price today."),', ' (S6)."),'),
     'S6 giving an unread sale price the listed price (q33 method)': (SHOP_PAGES, ', and none when one listed across "\n         "the column runs with its price not read (S3). The latest', '. The latest'),
+    # the site's look (q36): the stylesheet's tokens, contrast and rules; the shared files' hashed names; the fonts' maker
+    "the dark theme's first green too dark for its words (q36 look)": (LOOK, "--d1:#27995a", "--d1:#1f7a48"),
+    "the sale line too pale on paper (q36 look)": (LOOK, "--sale:#0b7a3b", "--sale:#2e9e57"),
+    "small print too pale on paper (q36 look)": (LOOK, "--ink-2:#555555", "--ink-2:#8a8a8a"),
+    "a green label's edge its fill on paper (q36 look)": (LOOK, "--edge:var(--ink)", "--edge:var(--fill)"),
+    "the dark NO DEAL edge in ink on the dark page (q36 look)": (LOOK, "--nd-edge:#ffd60a", "--nd-edge:#111111"),
+    "a colour written outside the tokens (q36 look)": (LOOK, ".chart text{fill:var(--ink-2)}", ".chart text{fill:#555555}"),
+    "an undefined token (q36 look)": (LOOK, ".chart .grid{stroke:var(--line)}", ".chart .grid{stroke:var(--lines)}"),
+    "the chart's words at 11 pixels (q36 look)": (LOOK, ".chart{display:flex;align-items:flex-start;margin-top:1.75rem;font-size:.78125rem", ".chart{display:flex;align-items:flex-start;margin-top:1.75rem;font-size:.6875rem"),
+    "a chart stroke that scales (q36 look)": (LOOK, ";vector-effect:non-scaling-stroke", ""),
+    "the hidden rule without !important (q36 look)": (LOOK, "[hidden]{display:none!important}", "[hidden]{display:none}"),
+    "a two-column rule without the script (q36 look)": (LOOK, ".js .t-product main{display:grid", ".t-product main{display:grid"),
+    "the phone's usual label not the table's head (q36 look)": (LOOK, 'content:"Usually ";', 'content:"Usual ";'),
+    "a transition (q36 look)": (LOOK, "a:hover{text-decoration-thickness:3px}", "a:hover{text-decoration-thickness:3px;transition:all .2s}"),
+    "a hash of nine hex digits (q36 assets)": (SHOP_ASSETS, "hexdigest()[:10]", "hexdigest()[:9]"),
+    "a font's url left unhashed (q36 assets)": (SHOP_ASSETS, 'f"url({names[url[1]]})"', 'f"url({url[1]})"'),
+    "a stylesheet naming another file accepted (q36 assets)": (SHOP_ASSETS, "    if named != set(FONTS):\n", "    if not set(FONTS) <= named:\n"),
+    "the stylesheet's name from its plain bytes (q36 assets)": (SHOP_ASSETS, "hashed(SHEET, sheet)", "hashed(SHEET, plain)"),
+    "the Latin subset without the dashes (q36 fonts)": (SUBSET_FONTS, "U+2013,U+2014,", ""),
+    "a source not checked against its SHA-256 (q36 fonts)": (SUBSET_FONTS, "    if found != sha256:\n", "    if False:\n"),
+    "another fonttools accepted (q36 fonts)": (SUBSET_FONTS, "    if (fonttools, brotli) != TOOLS:\n", "    if brotli != TOOLS[1]:\n"),
     # store first (q33): the product page's verdict, chart, fold-out and badge row (shopper.product, shopper.build)
     "the store type's name left out of the verdict (q33 product)": (SHOP_PRODUCT, 'text(badge(found))', 'text(badge(found).split(": ", 1)[1])'),
     "a no deal given a deal's shade (q33 product)": (SHOP_PRODUCT, '        return "no-deal"\n', '        return "deal-1"\n'),
