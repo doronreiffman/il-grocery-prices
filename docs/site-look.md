@@ -159,7 +159,7 @@ The chart's two line colours were also put through the dataviz palette validator
 **The label** (`div.tag`): the picked store's answer on a product page. A 2.5-pixel edge, corners of 5 pixels, two parts:
 
 - **the saying part**, at the left (on top on a phone): the small label "AT CARREFOUR MARKET:", the verdict in the narrow cut, the reason, then the conditions in bold ("When you buy 2", "Club members only") and a coming sale's line. Green, in the shade of its saving, with dark words for a Deal; yellow, with dark words, for No deal; paper for every line that is not a verdict.
-- **the price part**, at the right (below on a phone), always paper: "PRICE TODAY:" over the price, then the barcode with its digits under it. A weighed product's "a kilogram" follows the price in small print. With no price known today the part holds the barcode alone.
+- **the price part**, at the right (below on a phone), always paper: "PRICE TODAY:" over the price, then the barcode with its digits under it. A weighed product's "a kilogram" follows the price in small print when the promotion judged today prices it by the kilogram. With no price known today the part holds the barcode alone.
 
 A line that is not a verdict ("No sale today", "On sale at some stores only", "Sale prices could not be read today" and the rest of `NO_VERDICT`) is set in the narrow cut at the smaller size on a white label; the store's name then shows as a small label above it (it is the section's heading, hidden only where the label itself says "At <store>:").
 
@@ -205,7 +205,7 @@ A line that is not a verdict ("No sale today", "On sale at some stores only", "S
 |---|---|
 | Deal | the green label, in the shade of its saving; the price part; the chart with today's sale price in green at the right end |
 | No deal | the same label in yellow: "NO DEAL", its reason, its condition |
-| No sale today | a white label: "No sale today" and the price part; the chart's line in ink, today's price at its end in ink |
+| No sale today | a white label: "No sale today" and the price part; the chart's line ends in ink, today's price in ink |
 | On sale, price not read today; sale prices not read today | a white label with that line; no price; the warning above it when the chain's promotions could not be read; the chart still shows the days before |
 | Not sold at the picked store | the empty slot; under it "Elsewhere today"; when the store listed it before, the chart of those days and no price today |
 | A first visit, no store picked | the rows of all store types first, then the first one's label and chart |
@@ -235,9 +235,9 @@ As the owner redrew it on 2026-11-16, after reading the built pages ("What the o
 - **A day with no price** (no record that day, promotions not read, the product not listed, or a sale whose price could not be read): when seven or fewer such days lie in a row between two days with a price, the line goes on dotted at the last price, in the colour of the day it carries, and steps at the next day with a price. When more than seven, the line stops and starts again: a gap. Nothing is carried past the last day with a price. No number counts a carried day.
 - **A sale day whose price could not be read:** short ticks in the sale's green standing on the date line under that day, 7 pixels high, 2 on and 2 off.
 - **The date line and the dates' marks:** 1 pixel, the second ink. Never the line's colour or weight.
-- **The key,** only for marks that need words: "on sale" when a sale stretch is drawn, "on sale, price not read" when a tick is. A chart with neither has no key (on the real day, 96,073 of 133,372 charts).
+- **The key,** only for marks that need words: "on sale" when a sale stretch is drawn, "on sale, price not read" when a tick is. A chart with neither has no key (on the real day of 16 November, 60,347 of 93,249 charts).
 - **The table:** "Lowest" and "Highest", each over the latest day at that price ("today" when it is today's), and "Today". No "Usual" cell: the chart writes the usual price at its own height and the label's reason says it.
-- **No chart** when no tracked day has a price: there is no line to draw. On the real day that is 460 of 133,832 parts, 450 of them "On sale, but the sale price could not be read" with no sale price ever read.
+- **No chart** when no tracked day has a price: there is no line to draw. On the real day of 16 November that is 175 of 93,424 parts, 149 of them "On sale, but the sale price could not be read" with no sale price ever read.
 
 **Lowest and highest count today** (`shopper.verdict.extremes`; the design's call 3) and are exactly the line's lowest and highest points, so the table agrees with the line under it ("Lowest in the 83 days with a known price.") and never shows a "lowest" above today's price.
 
@@ -374,7 +374,7 @@ Drawn and measured, not only planned (`prefers-color-scheme: dark`; the preview'
 - **A green label keeps dark words** on its own three greens of the dark theme (5.21:1, 7.31:1 and 11.13:1) and loses its dark edge: on the dark page each green is its own edge (5.12:1, 7.19:1 and 10.95:1 against the page). The wordmark's "DEAL" and the headline's DEAL do the same.
 - **The price part** is the dark page inside the label's edge, its price in the light ink; the barcode sits on its white plate.
 - **NO DEAL**: the yellow stays, with dark words, and is its own edge (13.16:1 against the page).
-- **The chart**: the price line, its dotted stretch and today's price in the light ink, the sale stretch and today's sale price in `#4fe08c` (10.95:1), the axis words, the date line and its marks and the usual price's dashes in the second ink `#b4b4b0` (8.93:1), the grid `#3d3d3a`.
+- **The chart**: the price line, its dotted stretch after an ordinary day and today's price in the light ink; the sale stretch, its dotted stretch after a sale day, the ticks of an unread sale price and today's sale price in `#4fe08c` (10.95:1); the axis words, the date line and its marks and the usual price's dashes in the second ink `#b4b4b0` (8.93:1), the grid `#3d3d3a`.
 - The basket's lowest total is the light ink with dark words on it; the soft ground is `#222220`.
 
 ## The shared stylesheet and the font files
@@ -431,7 +431,7 @@ No function changes what it computes, but for the two counts under "Calls".
 - **`src/shopper/pages.py`:** the style constants go (`PAGE_STYLE`, `ROOT_STYLE`, `STORE_STYLE`, `METHOD_STYLE`, `RECORD_STYLE`). `render_root` writes the headline with DEAL and NO DEAL each in a `<span>` (`class="yes"`, `class="no"`), and a store page's title question has its last word in `<span class="yes">`. `_picker` wraps each chain in `<div class="chain">` and adds each store's count when it is known. `_hiring` drops the dots between its links. `_row` writes the badge without "At <store>:" (decided) and `_deals` gives the table its roles (`role="table"`, `rowgroup`, `row`, `columnheader`, `rowheader`, `cell`), which a phone's block layout would otherwise take away. `render_store` puts the headline's two numbers in a `<b>`. The method page gains its row of section links.
 - **`src/shopper/product.py`:** `BADGE_STYLE` and `PRODUCT_STYLE` go. `_section` builds the label: `<div class="tag <class>">` holding `<div class="say">` (the verdict as `<p class="verdict">At <store>: <b>DEAL · ₪5.00 off</b></p>`, or the plain line; the reason; the conditions; a coming sale) and `<div class="pay">` (the price line; the barcode's mark). `render_product` writes the barcode's drawing once after the barcode line. `_row` writes each badge as the name, a hidden separator and the verdict in a `<b>`. The chart, its key and its table go in `<div class="history">`; the two facts get `class="fact"`.
 - **`src/shopper/chart.py`:** rewritten to the markup above. `render_chart(found, day)` draws from the verdict and the day alone: the one line's last point is the verdict's today's price (2026-11-16; the first build also took today's listed price, for the shelf line). `DAY_WIDTH`, the label column and `_placed`'s labels go; the axis, the dates and the table come.
-- **A new module for the barcode**, for example `src/shopper/barcode.py`: the modules of a code, and its drawing.
+- **A new module for the barcode**, `src/shopper/bars.py` (not "barcode", since `basket.barcode` already exists): the modules of a code, and its drawing.
 - **`src/shopper/words.py`:** the front page's headline and its line (`FRONT_TITLE` stays the store pages'; the root page gets its own two constants); the price line ("Price today: ₪14.00", from `price_text`); the table's four heads; the short date ("13 Nov"); `chart_summary` and the table take lowest and highest over the tracked days and today; `reason` and `last_low` name "days with a known price" when `len(found.priced)` differs from `len(found.days)` ("Word changes", 3).
 - **`src/shopper/search.py`:** `BROWSE_STYLE` goes.
 - **`src/shopper/build.py`, `src/shopper/check.py`, `src/basket/site.py`, `scripts/publish.sh`:** as under "The shared stylesheet and the font files".
