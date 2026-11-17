@@ -2,9 +2,7 @@
 
 [![CI](https://github.com/doronreiffman/il-grocery-prices/actions/workflows/ci.yml/badge.svg)](https://github.com/doronreiffman/il-grocery-prices/actions/workflows/ci.yml) [![Mutation check](https://github.com/doronreiffman/il-grocery-prices/actions/workflows/mutations.yml/badge.svg)](https://github.com/doronreiffman/il-grocery-prices/actions/workflows/mutations.yml) ![Python 3.13](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white) ![DuckDB](https://img.shields.io/badge/DuckDB-Parquet-FFF000?logo=duckdb&logoColor=black) ![AWS SAM](https://img.shields.io/badge/AWS%20SAM-Lambda%20%C2%B7%20S3%20%C2%B7%20CloudFront-232F3E)
 
-A shopper in an Israeli supermarket sees a promotion and wants to know: is it actually a deal? This site, "Deal or No Deal", answers for the store they are in, one of nine store formats across five chains. It compares today's promotion price with what the product usually costs at that store format (the middle of its daily prices over the past 90 days, sales included) and, when it can judge, says "Deal", with the shekels saved, when the promotion is at least ₪1.00 lower, else "No deal". Beside the answer: a chart of the price paid each day, when it was last this low, and how often it goes on sale.
-
-The prices are the chains' own. Israel's food-competition law (section 30) makes the large supermarket chains publish their prices and promotions as files on the web, store by store. Every morning a collector on AWS (a Lambda function in Tel Aviv) downloads five chains' files and keeps them unchanged in a write-once archive; a second function then builds the whole site from the last 90 days and publishes it as static pages on S3 and CloudFront.
+A shopper sees a promotion in an Israeli supermarket and wants to know: is it actually a deal? This site answers for the store they are in, by checking today's price against what the product usually costs there. The prices come from the files the chains must publish by law, collected every morning on AWS.
 
 **Live site:** [d153udx05irk2f.cloudfront.net](https://d153udx05irk2f.cloudfront.net) · **Design notes:** [docs/](docs/README.md) · **Code:** [the collector](src/collector/), [the site](src/shopper/), [the basket](src/basket/), [the tests](tests/), the AWS templates ([functions and archive](template.yaml), [site](site-template.yaml)) · **Run it yourself:** [docs/operations.md](docs/operations.md)
 
@@ -17,9 +15,7 @@ Built by Doron Reiffman ([LinkedIn](https://www.linkedin.com/in/doronreiffman)).
   <img alt="A product page at desktop width. The product's label at Osher Ad reads DEAL · ₪1.10 off, usually ₪5.00, sales included (90 days tracked), with today's price, ₪3.90, beside its barcode. Under it, a step chart of the price paid each day from 20 January: ₪5.00, with four week-long sales drawn as green drops to ₪3.90 and today's drop at the end. Then the lowest, highest and today's prices, last this low on 5 April, and on sale on 28 of the 90 days before today. At the side, the same product's deal at six other store formats." src="docs/img/deal-page-light.png">
 </picture>
 
-*Built by the site's own code from invented prices: 16 sample products (each name has בדיקה, "test", in it) at the five chains, dated 1 January to 30 April 2026, from the test suite's run of the whole site a day at a time ([tests/shopper_golden.py](tests/shopper_golden.py)). The page is as of 20 April 2026, its chart the 90 days before it. The live site's history starts on 1 November 2026, so its charts are still short, and its store pages list deals once a product has 20 days of prices (from about 21 November 2026).*
-
-Beside the deals, a basket page prices the same 32 everyday products, matched by barcode, at each of the five chains (listed prices, before promotions).
+*The screenshot does not reflect current data.*
 
 ## At a glance
 
@@ -42,6 +38,8 @@ Under Israel's food-competition law, the big supermarket chains publish their pr
 This project collects them. It stores every morning's files exactly as published and turns them into what a visitor can check: what the same basket of everyday products costs at each chain, from that morning's files; and, for one product at the store the shopper is in, whether today's promotion is actually a deal against what the product usually costs there, sales included, and how often it goes on sale.
 
 ## What it does today
+
+The site, "Deal or No Deal", answers for the store a shopper is in, one of nine store formats across five chains. It compares today's promotion price with what the product usually costs at that store format (the middle of its daily prices over the past 90 days, sales included) and, when it can judge, says "Deal", with the shekels saved, when the promotion is at least ₪1.00 lower, else "No deal". Beside the answer: a chart of the price paid each day, when it was last this low, and how often it goes on sale.
 
 - **Collector**, live on AWS since 1 November 2026. A Lambda function in Tel Aviv runs 17 times each morning, between 06:30 and 11:48 Israel time: a main run per chain (Shufersal's split by file type), a retry run three hours later that fetches only what is still missing, and a check at 11:48. Through the day, once their own switch is on, 27 polls from 12:20 to 23:50 collect the update files Rami Levy, Osher Ad, Carrefour and Yochananof publish after the morning, and the next morning's check judges what they kept. The schedules are set in Israel time, so daylight saving needs no handling.
 - **Archive.** Shufersal, Rami Levy, Osher Ad, Carrefour and Yochananof, on three portals. For each chain: the day's store list and every store's full price and full promotions files. For Rami Levy, Osher Ad, Carrefour and Yochananof, also their update files (the `Price` and `Promo` files published through the day): those listed by the morning's runs and, while the polls are switched on, every one the day's polls list. Shufersal's update files wait for polls of their own. Every file is stored byte for byte as published, with a manifest per run of what was listed, stored and missing, all locked for ten years under S3 Object Lock (governance mode).
