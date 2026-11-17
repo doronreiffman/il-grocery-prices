@@ -111,7 +111,7 @@ def test_a_tracked_day_has_prices_and_promotions_read():
     column_days = _column_days(holes={back(10)}, promo_holes={back(20)}, missing={back(30)})
     found = tracked(_pair(points), column_days, DAY)
     assert [day.day for day in found] == [back(n) for n in range(READ_DAYS, 0, -1) if n not in (10, 20, 30, 40)]
-    assert {(day.listed, day.price, day.on_sale) for day in found} == {(D("5.00"), D("5.00"), False)}
+    assert {(day.price, day.on_sale) for day in found} == {(D("5.00"), False)}
     # today and a day before the 90 are never tracked
     older = _pair([_shelf(READ_DAYS + 1), _today()])
     assert tracked(older, _column_days(first=READ_DAYS + 1), DAY) == ()
@@ -140,9 +140,9 @@ def test_counts_today_is_wide_valid_with_a_kind_and_running():
 def test_a_sale_day_of_unknown_price_has_no_day_price_and_is_on_sale():
     """S1 and S7: on promotion with no price that counts is a sale day of unknown price."""
     found = tracked(_pair([_unknown(1)]), _column_days(), DAY)
-    assert found == (Day(day=back(1), listed=D("5.00"), price=None, on_sale=True),)
+    assert found == (Day(day=back(1), price=None, on_sale=True),)
     assert tracked(_pair([_sale(1, "4.00")]), _column_days(), DAY) == (
-        Day(day=back(1), listed=D("5.00"), price=D("4.00"), on_sale=True),)
+        Day(day=back(1), price=D("4.00"), on_sale=True),)
 
 
 # ---- S2 ----
@@ -357,7 +357,7 @@ def test_how_often_and_the_last_sale_before_this_one():
 def _priced(prices, today: str | None) -> Verdict:
     """A verdict over the days `prices` gives, each (day, day price), a day price None for a sale day of unknown price;
     `today` None when today's price is unknown."""
-    days = tuple(Day(found, D("24.90"), None if price is None else D(price), price is None) for found, price in prices)
+    days = tuple(Day(found, None if price is None else D(price), price is None) for found, price in prices)
     return Verdict(column=COLUMN, call="deal", days=days, today_price=None if today is None else D(today), struct=None,
                    usual=None, saving=None, last_low=None, last_sale=None, on_sale_today=False)
 
@@ -441,8 +441,7 @@ def test_random_histories_keep_the_rules():
         calls.add(found.call)
         read = promotion_points(pair, column_days, DAY)
         assert [day.day for day in found.days] == [point.day for point in read]
-        assert [day.listed for day in found.days] == [D(money(point.listed)) for point in read]
-        assert all(day.price is None or day.price <= day.listed for day in found.days)
+        assert all(day.price is None or day.price <= D(money(point.listed)) for day, point in zip(found.days, read))
         if found.call in ("deal", "no_deal"):
             assert found.usual in [day.price for day in found.priced]
             assert found.saving == found.usual - found.today_price

@@ -99,10 +99,9 @@ CALLS = ("deal", "no_deal", "too_few", "not_sold", "unread_today", "no_sale", "s
 
 @dataclass(frozen=True)
 class Day:
-    """One tracked day (S0) of the window: its listed price as shown, its day price (S1, None on a sale day of unknown
-    price) and whether it was on sale (S7: `Point.on_promotion`)."""
+    """One tracked day (S0) of the window: its day price (S1, None on a sale day of unknown price) and whether it was
+    on sale (S7: `Point.on_promotion`)."""
     day: date
-    listed: Decimal
     price: Decimal | None
     on_sale: bool
 
@@ -170,7 +169,7 @@ def day_price(point: Point, day: date) -> Decimal | None:
 
 def tracked(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: date) -> tuple[Day, ...]:
     """S0 and S1: the tracked days of the READ_DAYS before `day`, in day order, each with its day price."""
-    return tuple(Day(point.day, Decimal(money(point.listed)), day_price(point, point.day), bool(point.on_promotion))
+    return tuple(Day(point.day, day_price(point, point.day), bool(point.on_promotion))
                  for point in promotion_points(pair, column_days, day, READ_DAYS))
 
 

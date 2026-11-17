@@ -266,7 +266,7 @@ def _days_of(*prices, on=()):
     """Tracked days from 1 October, one a day: each price (None for a sale day of unknown price), on sale on the `on`
     indexes (an unknown price is always on sale)."""
     from shopper.verdict import Day
-    return tuple(Day(OCT + timedelta(days=n), Decimal("12.90"), None if price is None else Decimal(price),
+    return tuple(Day(OCT + timedelta(days=n), None if price is None else Decimal(price),
                      price is None or n in on) for n, price in enumerate(prices))
 
 
@@ -310,7 +310,7 @@ def test_the_verdicts_words_are_the_designs_verbatim():
     lowered = _verdict(days=found, today="9.90", low=found[-1])
     assert words.last_low(lowered) == "Last this low: 10 October, at ₪9.90."
     from shopper.verdict import Day
-    on_12 = Day(date(2026, 10, 12), Decimal("12.90"), Decimal("9.90"), False)
+    on_12 = Day(date(2026, 10, 12), Decimal("9.90"), False)
     assert [words.last_low(_verdict(days=(*_days_of(*["12.90"] * 9), on_12), today="9.90", low=on_12)),
             words.last_low(_verdict(days=_days_of(*["12.90"] * 10), today="9.90"))] == _table("Last this low")
     assert words.last_low(low) == "Lowest in the 3 days tracked."
@@ -323,7 +323,7 @@ def test_the_verdicts_words_are_the_designs_verbatim():
     assert [words.ELSEWHERE] == _table("Other store types")
     assert f'the fold-out "{words.WORKED_OUT}"' in STORE_FIRST
     # S7's example in the design's rules
-    sale = Day(date(2026, 10, 12), Decimal("12.90"), Decimal("9.90"), True)
+    sale = Day(date(2026, 10, 12), Decimal("9.90"), True)
     sixty = _verdict(days=_days_of(*["12.90"] * 48, *[None] * 12), sale=sale, on_sale=True)
     assert f'"{words.how_often(sixty)}"' in STORE_FIRST
 
@@ -387,8 +387,8 @@ def test_how_often_and_the_last_sale():
     tracked day."""
     from shopper.verdict import Day
     days = _days_of("9.90", None, "12.90", "12.90", on=[0])
-    ended = Day(date(2026, 10, 12), Decimal("12.90"), Decimal("9.90"), True)
-    unread = Day(date(2026, 10, 12), Decimal("12.90"), None, True)
+    ended = Day(date(2026, 10, 12), Decimal("9.90"), True)
+    unread = Day(date(2026, 10, 12), None, True)
     assert words.how_often(_verdict(days=days, sale=ended, on_sale=True)) == (
         "On sale on 2 of the 4 days before today. The last sale before this one ended 12 October, at ₪9.90.")
     assert words.how_often(_verdict(days=days, sale=ended, on_sale=False)) == (
@@ -470,7 +470,7 @@ def test_the_conditions_in_shopper_words():
 def test_the_store_first_words_say_no_never_phrase_or_we():
     """Every new word, over the calls and forms above: no NEVER phrase, no "we", "our" or "us", no odds word."""
     from shopper.verdict import Day
-    sale = Day(date(2026, 10, 12), Decimal("12.90"), Decimal("9.90"), True)
+    sale = Day(date(2026, 10, 12), Decimal("9.90"), True)
     verdicts = [_verdict(days=_days_of("11.90", None), today="9.90", usual="11.90", saving="2.00",
                          struct={"per": per}, low=sale, sale=sale, on_sale=on_sale)
                 for per in ("unit", "kg") for on_sale in (True, False)]
@@ -662,13 +662,15 @@ def test_promotions_today():
 def test_the_summary_counts_today():
     """The chart's spoken summary takes its lowest and highest over the tracked days' day prices and today's price
     (site-look.md, "Calls made in this design" 3), so a deal at a new low says it: the design's example (its chart,
-    "The chart"). One day was listed at ₪12.90 and on sale at ₪9.90, so the summary's figures are day prices, never
-    listed ones, as the one line draws them."""
+    "The chart"); and a price today above every day's says it as the highest. The figures are day prices, as the one
+    line draws them (a tracked day carries no listed price)."""
     from shopper.verdict import Day
-    days = (Day(date(2026, 11, 9), Decimal("9.90"), Decimal("9.90"), False),
-            Day(date(2026, 11, 10), Decimal("10.00"), Decimal("10.00"), False),
-            Day(date(2026, 11, 11), Decimal("12.90"), Decimal("9.90"), True),
-            Day(date(2026, 11, 12), Decimal("9.90"), Decimal("9.90"), False))
+    days = (Day(date(2026, 11, 9), Decimal("9.90"), False),
+            Day(date(2026, 11, 10), Decimal("10.00"), False),
+            Day(date(2026, 11, 11), Decimal("9.90"), True),
+            Day(date(2026, 11, 12), Decimal("9.90"), False))
     deal = _verdict(days=days, today="2.90", usual="9.90", saving="7.00", struct={"per": "unit"})
     assert words.chart_summary(deal) == "Price chart: usually ₪9.90, lowest ₪2.90, highest ₪10.00, today ₪2.90."
     assert f'aria-label="{words.chart_summary(deal)}"' in SITE_LOOK
+    dearer = _verdict("no_sale", days=days, today="11.50")
+    assert words.chart_summary(dearer) == "Price chart: lowest ₪9.90, highest ₪11.50, today ₪11.50."

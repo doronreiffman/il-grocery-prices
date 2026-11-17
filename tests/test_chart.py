@@ -38,17 +38,17 @@ def back(n: int) -> date:
 
 def _shelf(n: int, listed: str = "5.00") -> Day:
     """n days back at the listed price, not on sale."""
-    return Day(back(n), D(listed), D(listed), False)
+    return Day(back(n), D(listed), False)
 
 
-def _sale(n: int, price: str, listed: str = "5.00") -> Day:
+def _sale(n: int, price: str) -> Day:
     """n days back, on sale at the day price `price`."""
-    return Day(back(n), D(listed), D(price), True)
+    return Day(back(n), D(price), True)
 
 
-def _unknown(n: int, listed: str = "5.00") -> Day:
+def _unknown(n: int) -> Day:
     """n days back, a sale day of unknown price."""
-    return Day(back(n), D(listed), None, True)
+    return Day(back(n), None, True)
 
 
 def _verdict(days, today: str | None = "4.00", usual: str | None = "5.00", call: str = "deal",
@@ -65,7 +65,7 @@ def _verdict(days, today: str | None = "4.00", usual: str | None = "5.00", call:
 
 def _daily(first: date, today: date, listed: str = "5.00") -> list[Day]:
     """Every day from `first` to the day before `today` at the listed price, not on sale."""
-    return [Day(first + timedelta(days=n), D(listed), D(listed), False) for n in range((today - first).days)]
+    return [Day(first + timedelta(days=n), D(listed), False) for n in range((today - first).days)]
 
 
 # ---- verdicts through shopper.verdict ----
@@ -244,12 +244,11 @@ def test_no_price_sits_on_the_date_line():
 
 def test_the_axis_holds_the_prices_paid_today_included():
     """The axis runs over the prices drawn: each day's price, today's price and the usual price, so today's dot lies
-    on the plot; a sale day's listed price is drawn nowhere, so one above every price paid does not raise the axis. Its
-    words at the left, ₪ and whole shekels, top to bottom at each step's height; a gridline at each step above the
+    on the plot; a sale day's listed price is drawn nowhere (a tracked day carries none). Its words at the left, ₪ and whole shekels, top to bottom at each step's height; a gridline at each step above the
     bottom."""
-    days = [*(_shelf(n) for n in range(9, 1, -1)), _sale(1, "4.00", listed="9.00")]
+    days = [*(_shelf(n) for n in range(9, 1, -1)), _sale(1, "4.00")]
     parts = _read(chart.render_chart(_verdict(days, today="2.00", usual="5.00"), DAY))
-    # axis(2.00, 5.00) is (1, 5, 1): 50 pixels a shekel, ₪5 at 0, ₪4 at 50, ₪2 at 150; ₪9.00 would make it (0, 10, 2)
+    # axis(2.00, 5.00) is (1, 5, 1): 50 pixels a shekel, ₪5 at 0, ₪4 at 50, ₪2 at 150
     assert [(each.get("x"), each.get("y"), each.text) for each in parts["ax"]] == [
         ("40", "4", "₪5"), ("40", "54", "₪4"), ("40", "104", "₪3"), ("40", "154", "₪2"), ("40", "204", "₪1")]
     assert [entry for entry in _now(parts["now"]) if entry[0] == "circle"] == [("circle", "sale", 150)]
@@ -300,12 +299,12 @@ def test_a_day_is_one_unit_and_today_is_the_last():
 def test_one_line_the_price_paid_each_day():
     """The owner, 2026-11-16: one line. Every day with a price is in exactly one of `paid` (an ink step line) and
     `sale` (the sale's green, heavier), each at its day price; `sale` holds the days a promotion counted, with the
-    steps down into a sale and back out of it, so a sale reads as one notch. A sale day's listed price (₪6.00 here) is
-    at no height in any path, and no path is named `listed`."""
-    days = [_shelf(5), _sale(4, "4.00", "6.00"), _sale(3, "4.50", "6.00"), _shelf(2), _sale(1, "4.00", "6.00")]
+    steps down into a sale and back out of it, so a sale reads as one notch. A sale day's listed price is at no height
+    in any path (a tracked day carries none), and no path is named `listed`."""
+    days = [_shelf(5), _sale(4, "4.00"), _sale(3, "4.50"), _shelf(2), _sale(1, "4.00")]
     found = _verdict(days, today="4.00", usual="5.00")
     paths = _paths(_read(chart.render_chart(found, DAY))["lines"])
-    # axis(4.00, 5.00) is (3, 5, 1): ₪5 at 0, ₪4.50 at 50, ₪4 at 100; ₪6.00 would be above it
+    # axis(4.00, 5.00) is (3, 5, 1): ₪5 at 0, ₪4.50 at 50, ₪4 at 100
     assert paths["paid"] == "M0 0H1M3 0H4"
     assert paths["sale"] == "M1 0V100H2V50H3V0M4 0V100H6"
     assert "listed" not in paths and set(paths) == {"grid", "usual", "paid", "sale"}
@@ -655,10 +654,10 @@ def test_the_table_is_lowest_highest_and_today():
     """STATS_HEADS: Lowest and Highest over the tracked days' day prices and today's price (the design's call 3), each
     over the latest day at that price, "today" when it is today's, and Today with today's price; no Usual cell, since
     the chart writes the usual price at its own height. The design's example, a deal at a new low."""
-    days = [Day(date(2026, 11, 10), D("22.90"), D("22.90"), False),
-            Day(date(2026, 11, 11), D("26.90"), D("19.90"), True),
-            Day(date(2026, 11, 12), D("22.90"), D("22.90"), False),
-            Day(date(2026, 11, 13), D("24.90"), D("24.90"), False)]
+    days = [Day(date(2026, 11, 10), D("22.90"), False),
+            Day(date(2026, 11, 11), D("19.90"), True),
+            Day(date(2026, 11, 12), D("22.90"), False),
+            Day(date(2026, 11, 13), D("24.90"), False)]
     html = chart.render_chart(_verdict(days, today="17.90", usual="22.90"), date(2026, 11, 14))
     assert _table(_read(html)["table"]) == [("Lowest", "₪17.90", "today"), ("Highest", "₪24.90", "13 Nov"),
                                             ("Today", "₪17.90", None)]
@@ -722,7 +721,7 @@ def test_ninety_days_of_daily_changes_stay_small():
     days = []
     for n in range(READ_DAYS, 0, -1):
         listed = f"{10 + n % 7}.{n % 10}0"
-        days.append(_sale(n, f"{7 + n % 3}.{n % 9}5", listed) if n % 7 < 3 else _shelf(n, listed))
+        days.append(_sale(n, f"{7 + n % 3}.{n % 9}5") if n % 7 < 3 else _shelf(n, listed))
     drawn = chart.render_chart(_verdict(days, today="7.15", usual="12.40"), DAY)
     paths = _paths(_read(drawn)["lines"])
     assert [len(_covered(paths["paid"], x)) + len(_covered(paths["sale"], x)) for x in range(91)] == [1] * 91

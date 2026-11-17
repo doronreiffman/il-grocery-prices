@@ -3232,7 +3232,6 @@ MUTATIONS = {
     # the site's look (q36), the owner's read of 2026-11-16: the chart as one line, the price paid each day; its key and
     # table; its words, the method page's sentences and its stylesheet rules
     "a sale day drawn in ink (q36 chart)": (SHOP_CHART, '        pens["sale" if sale else "paid"].stroke((at, level), (at + 1, level))\n', '        pens["paid"].stroke((at, level), (at + 1, level))\n'),
-    "a sale day drawn at its listed price (q36 chart)": (SHOP_CHART, 'known = [(x(each.day), each.price, each.on_sale) for each in days if each.price is not None]', 'known = [(x(each.day), each.listed, each.on_sale) for each in days if each.price is not None]'),
     "today's point left out (q36 chart)": (SHOP_CHART, '    if found.today_price is not None:               # today\'s point: the label\'s "Price today"\n', '    if False:\n'),
     "today's sale point drawn in ink (q36 chart)": (SHOP_CHART, 'known.append((last, found.today_price, found.counting))', 'known.append((last, found.today_price, False))'),
     "today's sale price written in ink (q36 chart)": (SHOP_CHART, '        mark = "sale" if found.counting else "paid"\n', '        mark = "paid"\n'),
@@ -3284,7 +3283,7 @@ MUTATIONS = {
     # store first (q33): the price chart (shopper.chart)
     'an untracked day drawn across (q33 chart)': (SHOP_CHART, '        if runs and runs[-1][-1][0] + 1 == x:\n', '        if runs:\n'),
     'a sale stretch on a day off sale (q33 chart)': (SHOP_CHART, 'known = [(x(each.day), each.price, each.on_sale) for each in days if each.price is not None]', 'known = [(x(each.day), each.price, True) for each in days if each.price is not None]'),
-    "the unknown-price mark at the listed price's height (q33 chart)": (SHOP_CHART, 'unread = [(x(each.day), TICK) for each in days', 'unread = [(x(each.day), up(each.listed)) for each in days'),
+    "the unread ticks off the date line (q36 chart)": (SHOP_CHART, 'unread = [(x(each.day), TICK) for each in days', 'unread = [(x(each.day), TICK - 50) for each in days'),
     'the span a fixed 90 days (q33 chart)': (SHOP_CHART, '    first = days[0].day\n', '    first = day - timedelta(days=90)\n'),
     'the text alternative left out (q33 chart)': (SHOP_CHART, """role="img" aria-label="{escape(chart_summary(found))}" '""", """role="img" '"""),
     'a run of one price drawn day by day (q33 chart)': (SHOP_CHART, '        if level and start == self.at and self.parts[-1].startswith("H"):\n', '        if False:\n'),
@@ -3293,8 +3292,8 @@ MUTATIONS = {
     'the key naming every mark, drawn or not (q33 chart)': (SHOP_CHART, '*([("sale", CHART_KEY[0])] if pens["sale"].parts else []),\n             *([("unread", CHART_KEY[1])] if unread else [])]', '("sale", CHART_KEY[0]), ("unread", CHART_KEY[1])]'),
     "the key's entries run together (q33 chart)": (SHOP_CHART, 'key = " · ".join(', 'key = " ".join('),
     "the summary without the usual price (q33 chart)": (SHOP_WORDS, 'prices = {"usually": found.usual, "lowest"', 'prices = {"usually": None, "lowest"'),
-    "the summary's lowest from the listed prices alone (q33 chart)": (SHOP_WORDS, '"lowest": low,', '"lowest": min((day.listed for day in found.days), default=None),'),
-    "the summary's highest the listed maximum (q33 chart)": (SHOP_WORDS, '"highest": high,', '"highest": max((day.listed for day in found.days), default=None),'),
+    "the summary's lowest leaving today out (q36 words)": (SHOP_WORDS, '"lowest": low,', '"lowest": min((day.price for day in found.priced), default=None),'),
+    "the summary's highest leaving today out (q36 words)": (SHOP_WORDS, '"highest": high,', '"highest": max((day.price for day in found.priced), default=None),'),
     "the summary without today's price (q33 chart)": (SHOP_WORDS, '              "today": found.today_price}\n', '              "today": None}\n'),
     "the script at the root's depth on every page (q33 picker)": (SHOP_SHELL, "{SCRIPT_TAG.format(up=up)}'", '{SCRIPT_TAG.format(up="")}\''),
     'the pick link without #pick (q33 picker)': (SHOP_SHELL, '<a id="pick-link" href="{up}index.html#pick">', '<a id="pick-link" href="{up}index.html">'),
