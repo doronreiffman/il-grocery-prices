@@ -363,8 +363,8 @@ def test_the_shortcuts_arrow_is_not_read_aloud():
 # ---- the answer's colours and the marks that carry meaning, read from the rules (the whole-branch review, I3) ----
 
 VAR = re.compile(r"var\(--([\w-]+)\)")
-# The rules that set a ground and hold no words, each held by a test of its own below: a ticked filter's square, the
-# barcode's plate in the dark theme, and the key's swatch for an unread sale price (a pattern in the sale's green).
+# The rules that set a ground and hold no words: a ticked filter's square and the barcode's plate in the dark theme,
+# each held by a test of its own below, and the key's swatch for an unread sale price (a pattern in the sale's green).
 NO_WORDS = {".deals>input:checked+label::before", ".code svg", ".key .unread"}
 # Each label, by its rule: the ground it takes, as the tokens of every label it serves, and its words' token. A Deal is
 # green in the shade of its saving, No deal yellow, both with dark words (site-look.md, "The label", "Small labels",
@@ -504,3 +504,85 @@ def test_the_focus_and_a_ticked_filter_are_drawn_in_ink():
     assert _declared(".deals>input:focus-visible+label")["outline"] == "3px solid var(--ink)"
     assert _declared(".deals>input:checked+label::before")["background"] == "var(--ink)"
     assert all(contrast(tokens["ink"], tokens["bg"]) >= MARKS for tokens in themes().values())
+
+
+# ---- the whole-branch review's layout and access fixes (I1, I5, M9) ----
+
+TABLET = "@media (min-width:48rem)"
+DARK_TABLET = "@media (prefers-color-scheme:dark) and (min-width:48rem)"
+FORCED = "@media (forced-colors:active)"
+# CSS Color 4's system colours (section 6.2, "System Colors"; the W3C's published draft, read 2026-11-17), all 19.
+SYSTEM_COLOURS = frozenset(word.lower() for word in """
+AccentColor AccentColorText ActiveText ButtonBorder ButtonFace ButtonText Canvas CanvasText Field FieldText GrayText
+Highlight HighlightText LinkText Mark MarkText SelectedItem SelectedItemText VisitedText
+""".split())
+# The quiet zones a scanner needs beside the bars, in modules: 11 at the left of an EAN-13 and 7 at its right (an
+# EAN-8 asks 7 a side). GS1's figures as the whole-branch review gives them: not read here from GS1's own text.
+QUIET = {"left": 11, "right": 7}
+
+
+def _sides(declarations: list[tuple[str, str]], sides: dict[str, str]) -> dict[str, str]:
+    """The left and right padding `declarations` set, the shorthand and the longhands in order, over `sides`."""
+    found = dict(sides)
+    for name, value in declarations:
+        if name == "padding":
+            values = value.split()
+            right = values[1] if len(values) > 1 else values[0]
+            found = {"right": right, "left": values[3] if len(values) == 4 else right}
+        elif name in ("padding-left", "padding-right"):
+            found[name.removeprefix("padding-")] = value
+    return found
+
+
+def test_a_products_name_breaks_rather_than_run_off_the_screen():
+    """A product page's name (`.t-product h1`, 30 pixels on a phone) can be one unbroken run of letters, digits and
+    signs: the widest of the real day of 16 November is 398 pixels wide at 30, against a 358-pixel column at 390 pixels
+    wide and 288 at 320. It breaks anywhere rather than run off the screen. The same names set as the product page's
+    list of the chains' names (14 pixels), a store page's rows (15), a browse list and the search results (16) are at
+    most 213 pixels wide, inside every column they are set in, so they need no such rule."""
+    assert _declared(".t-product h1").get("overflow-wrap") == "anywhere"
+
+
+def test_the_dark_plate_leaves_the_bars_quiet_zones():
+    """In the dark theme the white plate is all the light ground the bars have, so its padding holds the quiet zones
+    (QUIET) at each width the label is drawn: a module is 1.5 pixels on a phone (95 modules in 8.90625rem, EAN-8's 67
+    in 6.28125rem) and 2 from 48rem (11.875rem and 8.375rem)."""
+    (phone,) = [rule for rule in _rules() if rule.media == DARK and rule.selector == ".code svg"]
+    plate = {"phone": _sides(phone.declarations, {})}
+    plate["desktop"] = plate["phone"]
+    for rule in _rules():
+        if rule.media == DARK_TABLET and rule.selector == ".code svg":
+            plate["desktop"] = _sides(rule.declarations, plate["desktop"])
+    short = []
+    for kind, modules in ((".code svg", 95), (".code svg.short", 67)):
+        (desktop,) = [dict(rule.declarations)["width"] for rule in _rules()
+                      if rule.media == TABLET and rule.selector == kind]
+        for width, size in (("phone", _declared(kind)["width"]), ("desktop", desktop)):
+            module = _pixels(size) / modules
+            for side, needed in QUIET.items():
+                held = _pixels(plate[width][side]) / module
+                if held < needed:
+                    short.append(f"{kind} on a {width}: {held:.2f} modules at the {side}, {needed} needed")
+    assert short == []
+
+
+def test_a_ticked_filter_shows_in_forced_colours():
+    """Forced colours (Windows' high contrast, `@media (forced-colors:active)`) replace a page's backgrounds with the
+    user's palette and drop its shadows, so a ticked filter's ink square would look like an empty one; a system colour
+    is kept (CSS Color Adjustment 1, "Properties Affected by Forced Colors Mode"), so there the ticked square fills
+    with the user's text colour, `CanvasText`. A system colour is written in that block alone."""
+    found = [rule for rule in _rules() if rule.media == FORCED and rule.selector == ".deals>input:checked+label::before"]
+    assert len(found) == 1 and dict(found[0].declarations).get("background") == "CanvasText"
+    outside = [f"{rule.selector}{{{name}:{value}}}" for rule in _rules() if rule.media != FORCED
+               for name, value in rule.declarations
+               if {word.lower() for word in WORD.findall(STRING.sub("", value))} & SYSTEM_COLOURS]
+    assert outside == [] and len(SYSTEM_COLOURS) == 19
+
+
+def test_the_warnings_bar_is_the_warning_lines_alone():
+    """A warning (site-look.md, "A warning") is bold text behind a 6-pixel ink bar: a chain's unread promotions
+    (`.warn`), a hole's too-few line in a store type's part (`p.few`) and a revised basket day (`.revised`). The
+    fold-out's own `<span class="few">`, a phrase inside a hole morning's listed price, takes neither."""
+    barred = [part for rule in _rules() for name, value in rule.declarations
+              if name == "border-left" and value == ".375rem solid var(--ink)" for part in split(rule.selector, ",")]
+    assert sorted(barred) == [".revised", ".warn", "p.few"]

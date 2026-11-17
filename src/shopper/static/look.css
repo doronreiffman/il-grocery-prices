@@ -55,7 +55,7 @@ details h3{margin-top:1rem}
 span.badge,nav .badge b{display:inline-block;padding:.28em .55em .22em;border:1.5px solid var(--ink);border-radius:3px;font:700 .8125rem/1.2 var(--text);white-space:nowrap}
 span.badge:is(.deal-1,.deal-2,.deal-3),nav :is(.deal-1,.deal-2,.deal-3) b{border-color:var(--edge);background:var(--fill);color:var(--on-deal)}
 span.badge.no-deal,nav .no-deal b{border-color:var(--nd-edge);background:var(--nd);color:var(--on-nd)}
-.warn,.few{margin-top:1.25rem;padding:.35rem 0 .35rem .875rem;border-left:.375rem solid var(--ink);font-weight:600}
+.warn,p.few{margin-top:1.25rem;padding:.35rem 0 .35rem .875rem;border-left:.375rem solid var(--ink);font-weight:600}
 .hero{padding:2.25rem 0 2.25rem}
 .hero h1{font-size:4.4rem;line-height:.88}
 h1 .yes,h1 .no{display:inline-block;margin:.04em 0 0 -.06em;padding:.07em .14em 0;border:3px solid var(--ink);border-radius:6px}
@@ -107,7 +107,7 @@ table.front th{font-weight:400}
 table.front th a{padding:0 0 .15rem}
 table.front td+td{font-weight:700}
 table.front td+td+td{color:var(--ink-2);font-weight:400}
-.t-product h1{font:700 1.875rem/1.15 var(--text);letter-spacing:0;text-transform:none}
+.t-product h1{font:700 1.875rem/1.15 var(--text);letter-spacing:0;text-transform:none;overflow-wrap:anywhere}
 .t-product .names{margin-top:.6rem;padding:0;list-style:none;color:var(--ink-2);font-size:.875rem;line-height:1.55}
 .names .as-listed{color:var(--ink);font-weight:500}
 .names+p{margin-top:.5rem;color:var(--ink-2);font-size:.875rem;font-variant-numeric:tabular-nums}
@@ -139,7 +139,8 @@ section[data-column]:has(.verdict b)>h2+.tag{margin-top:1.5rem}
 .code svg.short{width:6.28125rem}
 #ean{fill:none;stroke:var(--bars);stroke-width:1}
 .code small{margin-top:.2rem;color:var(--ink);font-size:.6875rem;letter-spacing:.3em;font-variant-numeric:tabular-nums}
-@media (prefers-color-scheme:dark){.code svg{box-sizing:content-box;padding:.4rem .6rem .4rem .95rem;border-radius:3px;background:var(--plate)}}
+@media (prefers-color-scheme:dark){.code svg{box-sizing:content-box;padding:.4rem .6875rem .4rem 1.0625rem;border-radius:3px;background:var(--plate)}}
+@media (prefers-color-scheme:dark) and (min-width:48rem){.code svg{padding-right:.9375rem;padding-left:1.4375rem}}
 .not-sold{max-width:none;margin-top:1.5rem;padding:1.1rem;border:2.5px dashed var(--ink);border-radius:5px;font:800 1.875rem/1.05 var(--narrow)}
 section .not-sold{margin-top:.5rem}
 .chart{display:flex;align-items:flex-start;margin-top:1.75rem;font-size:.78125rem;font-weight:500;font-variant-numeric:tabular-nums}
@@ -307,3 +308,4 @@ ol.rules li{grid-template-columns:11rem minmax(0,1fr);gap:1rem}
 .js .verdict b{font-size:clamp(3rem,4.9vw,4rem)}
 }
 @media print{.store,.search,.letters,.toc,.deals>input,.deals>label,.yours{display:none}}
+@media (forced-colors:active){.deals>input:checked+label::before{background:CanvasText}}

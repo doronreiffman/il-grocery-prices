@@ -865,11 +865,12 @@ def test_the_method_page_states_the_rules_with_the_codes_constants(monkeypatch):
                                           "the chain's price files, before promotions: the median of the product's "
                                           "price across the column's included stores")
     assert "shelf price" not in page and "the lowest and highest store prices are shown beside it. A column" in rules
-    # S0: a day not tracked has no price in the chart, joined when seven or fewer in a row (the owner, 2026-11-16)
+    # S0: a day not tracked has no price in the chart; between two days with a price, seven or fewer in a row with
+    # none are joined (the owner, 2026-11-16; shopper.chart's BRIDGE, which counts a sale day of unknown price too)
     assert _rule(rules, "S0 ").endswith(
         'A day not tracked is left out of the usual price, "Last this low", "How often on sale" and every count of '
-        "days tracked. In the price chart it has no price: the line goes on dotted over seven such days or fewer in a "
-        "row, and stops for more.")
+        "days tracked. In the price chart it has no price: between two days with a price, the line goes on dotted "
+        "over seven days or fewer in a row with none, and stops for more.")
     assert "gap in the price chart" not in rules
     # S7 quotes "How often on sale" as the page says it: out of the days before today (the owner, 2026-11-16)
     assert '("On sale on 12 of the 60 days before today.")' in _rule(rules, "S7 ")

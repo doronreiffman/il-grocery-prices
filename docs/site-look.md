@@ -379,19 +379,19 @@ Drawn and measured, not only planned (`prefers-color-scheme: dark`; the preview'
 
 ## The shared stylesheet and the font files
 
-Today each page carries its style inline: 6,244 bytes of the largest of the 14 product pages measured. This design's style is 20,928 bytes (5,316 gzipped), too much to repeat in about 25,000 pages, and fonts cannot be inline at all. So the site gains one folder of files that pages share.
+Today each page carries its style inline: 6,244 bytes of the largest of the 14 product pages measured. This design's style is 21,744 bytes as published (5,498 gzipped at level 6; 20,928 and 5,316 as approved), too much to repeat in about 25,000 pages, and fonts cannot be inline at all. So the site gains one folder of files that pages share.
 
 **In the site** (`assets/`):
 
 | File | Bytes | What |
 |---|---|---|
-| `look.<hash>.css` | 20,928 | the stylesheet; every page links it and nothing else |
+| `look.<hash>.css` | 21,744 | the stylesheet; every page links it and nothing else |
 | `archivo-text.<hash>.woff2` | 25,660 | Archivo, normal width, weights 400 to 700 |
 | `archivo-narrow.<hash>.woff2` | 11,420 | Archivo, width 70, weight 800 |
 | `heebo-hebrew.<hash>.woff2` | 6,072 | Heebo: the Hebrew block and ₪, weights 400 to 800 |
 | `OFL-archivo.txt`, `OFL-heebo.txt` | 4,388 and 4,474 | each family's licence, as its makers ship it |
 
-Each `<hash>` is the first ten hex digits of the SHA-256 of the file's bytes, so a file's name changes when its bytes do. The stylesheet names the fonts by bare file name (`url(archivo-text.<hash>.woff2)`), resolved beside it. A first product page fetches the stylesheet and three fonts, 64,080 bytes in all beside the page; every later page fetches nothing but itself.
+Each `<hash>` is the first ten hex digits of the SHA-256 of the file's bytes, so a file's name changes when its bytes do. The stylesheet names the fonts by bare file name (`url(archivo-text.<hash>.woff2)`), resolved beside it. A first product page fetches the stylesheet and three fonts, 64,896 bytes in all beside the page; every later page fetches nothing but itself.
 
 **In the repository:**
 
@@ -420,7 +420,7 @@ Both are under the SIL Open Font License 1.1. A subset is a modified version, an
 
 **The upload.** `src/basket/site.py` refuses a file with no content type, so `CONTENT_TYPES` gains `.css` (`text/css; charset=utf-8`), `.woff2` (`font/woff2`) and `.txt` (`text/plain; charset=utf-8`), and `upload` sends `assets/` before any page. An asset is put only when the bucket has no object of that name: the name carries the hash of the bytes, so one that is there is the same file, and no morning piles up a new version of a file that did not change. `scripts/publish.sh` gains three allowlisted syncs before its `*.html` one, each with its content type.
 
-**Nothing in the code deletes, so old hashed files stay** in the site bucket: about 21 KB for each change of the stylesheet and 43 KB if the fonts are ever remade. A page cached for its five minutes still finds the stylesheet it names. Every file is sent with `max-age=300` today; the assets could be kept for a year, since a name never changes its bytes, which needs its own `Cache-Control` at upload and is left as a later step.
+**Nothing in the code deletes, so old hashed files stay** in the site bucket: about 22 KB for each change of the stylesheet and 43 KB if the fonts are ever remade. A page cached for its five minutes still finds the stylesheet it names. Every file is sent with `max-age=300` today; the assets could be kept for a year, since a name never changes its bytes, which needs its own `Cache-Control` at upload and is left as a later step.
 
 ## What changes in the code
 
@@ -467,7 +467,7 @@ Measured on the live pages of 14 November 2026 and on the same pages in this des
 | Method page | 63,174 | 54,895 | -8,279 | 17,809 | 15,547 |
 | Record page | 15,240 | 10,782 | -4,458 | 3,459 | 2,035 |
 | Basket page | 38,438 | 29,876 | -8,562 | 7,819 | 5,468 |
-| The stylesheet (new, once) | | 20,928 | | | 5,316 |
+| The stylesheet (new, once) | | 21,744 | | | 5,498 |
 | The three fonts (new, once) | | 43,152 | | | (already compressed) |
 
 - **A product page grows** by 1,689 to 3,871 bytes on the 14 measured, though its inline style goes: the label, the price line, the barcode and the richer chart cost more than the style block saved. A store type's part costs: the chart 632 bytes on average (568 to 874) against 565 for today's chart with its key; its key 59; its table 222; the barcode's mark 146; and the barcode's drawing 222 once a page. Sent gzipped, the same pages shrink, from 4,474 to 3,113 bytes on average.
@@ -478,9 +478,9 @@ Measured on the live pages of 14 November 2026 and on the same pages in this des
 
 Rates are the ones shopper-site.md's "Cost" uses for il-central-1 ($0.025 a GB-month of storage, $0.0055 for 1,000 writes); UNVERIFIED: not read from AWS's price list for this design.
 
-- **Storage.** About 2,159 bytes more on each product page, by the 14 measured (the heaviest kind, so an upper figure), on about 25,000 pages (shopper-site.md's "about 22,000 to 25,000") is 54 MB more a morning. Over the 30 days of old versions the site bucket keeps, 1.62 GB more held: **about $0.04 a month more**. The assets are 73 KB, once.
+- **Storage.** About 2,159 bytes more on each product page, by the 14 measured (the heaviest kind, so an upper figure), on about 25,000 pages (shopper-site.md's "about 22,000 to 25,000") is 54 MB more a morning. Over the 30 days of old versions the site bucket keeps, 1.62 GB more held: **about $0.04 a month more**. The assets are 74 KB, once.
 - **Writes.** The six assets are put only when new: nothing a month.
-- **Transfer.** A first visit fetches 64 KB more (the stylesheet and three fonts), then nothing. Inside CloudFront's free tier as before.
+- **Transfer.** A first visit fetches 65 KB more (the stylesheet and three fonts), then nothing. Inside CloudFront's free tier as before.
 - **Lambda.** The same pages and 54 MB more to upload each morning; the run's time was not measured for this design and is read on the first morning.
 - **Total: about $0.04 a month more.**
 
@@ -546,7 +546,7 @@ The one line's, after the owner's read of 2026-11-16 ("The chart"):
 - The site run's time and memory on the first morning.
 - A look in Safari on an iPhone, in Firefox, on Windows and on Android before the owner's read. The preview was drawn in Chrome on macOS only. What to look at: the lines' SVG as a stretching flex item; `vector-effect: non-scaling-stroke` and the dashes under it; `<use>` of the barcode from a part that is hidden; `size-adjust`; `:has()` (it only hides a heading the label repeats, so a browser without it shows the store's name twice); `text-wrap: balance` on a long verdict; the variable font's weights.
 - A real scan of a drawn barcode from a phone's screen, light and dark.
-- Windows' high-contrast mode (`forced-colors`): not designed. Verdicts say everything in words; the filters' checked state and the chart's strokes should be checked.
+- Windows' high-contrast mode (`forced-colors`): not designed. Verdicts say everything in words; a ticked filter's square fills with `CanvasText` there (2026-11-17, the whole-branch review); the chart's strokes should be checked.
 - States the live site did not show on 14 November and the preview draws from examples: a store's table with rows; a 90-day chart; "Not sold ... today"; "days with a known price". States not drawn at all: a weighed product's label ("a kilogram"); "New today"; too few files; a revised basket day; the record page once a forecast is scored.
 - The assets' own `Cache-Control`, if wanted.
 
@@ -562,7 +562,7 @@ The one line's, after the owner's read of 2026-11-16 ("The chart"):
 
 ## Appendix: the stylesheet
 
-`src/shopper/static/look.css` as built, written with the yellow NO DEAL's three tokens, the one line's chart rules, and the rules of the owner's read of 2026-11-16 for the header's name and the front page's "Your store": 21,466 bytes as written here, 21,510 once the build has written the fonts' hashed names into its four `url(...)` (20,884 and 20,928 as approved).
+`src/shopper/static/look.css` as built, written with the yellow NO DEAL's three tokens, the one line's chart rules, the rules of the owner's read of 2026-11-16 for the header's name and the front page's "Your store", and those of the whole-branch review (2026-11-17: a long product name breaks; the dark theme's plate keeps the bars' quiet zones; a ticked filter shows in forced colours; the warning's bar on the warning lines alone): 21,700 bytes as written here, 21,744 once the build has written the fonts' hashed names into its four `url(...)` (20,884 and 20,928 as approved).
 
 ```css
 @font-face{font-family:Shelf;src:url(archivo-text.woff2) format("woff2");font-weight:400 700;font-display:swap;unicode-range:U+0020-007E,U+00A0-00FF,U+2013-2014,U+2018-2019,U+201C-201D,U+2022,U+2026,U+2190,U+2192,U+2212}
@@ -622,7 +622,7 @@ details h3{margin-top:1rem}
 span.badge,nav .badge b{display:inline-block;padding:.28em .55em .22em;border:1.5px solid var(--ink);border-radius:3px;font:700 .8125rem/1.2 var(--text);white-space:nowrap}
 span.badge:is(.deal-1,.deal-2,.deal-3),nav :is(.deal-1,.deal-2,.deal-3) b{border-color:var(--edge);background:var(--fill);color:var(--on-deal)}
 span.badge.no-deal,nav .no-deal b{border-color:var(--nd-edge);background:var(--nd);color:var(--on-nd)}
-.warn,.few{margin-top:1.25rem;padding:.35rem 0 .35rem .875rem;border-left:.375rem solid var(--ink);font-weight:600}
+.warn,p.few{margin-top:1.25rem;padding:.35rem 0 .35rem .875rem;border-left:.375rem solid var(--ink);font-weight:600}
 .hero{padding:2.25rem 0 2.25rem}
 .hero h1{font-size:4.4rem;line-height:.88}
 h1 .yes,h1 .no{display:inline-block;margin:.04em 0 0 -.06em;padding:.07em .14em 0;border:3px solid var(--ink);border-radius:6px}
@@ -674,7 +674,7 @@ table.front th{font-weight:400}
 table.front th a{padding:0 0 .15rem}
 table.front td+td{font-weight:700}
 table.front td+td+td{color:var(--ink-2);font-weight:400}
-.t-product h1{font:700 1.875rem/1.15 var(--text);letter-spacing:0;text-transform:none}
+.t-product h1{font:700 1.875rem/1.15 var(--text);letter-spacing:0;text-transform:none;overflow-wrap:anywhere}
 .t-product .names{margin-top:.6rem;padding:0;list-style:none;color:var(--ink-2);font-size:.875rem;line-height:1.55}
 .names .as-listed{color:var(--ink);font-weight:500}
 .names+p{margin-top:.5rem;color:var(--ink-2);font-size:.875rem;font-variant-numeric:tabular-nums}
@@ -706,7 +706,8 @@ section[data-column]:has(.verdict b)>h2+.tag{margin-top:1.5rem}
 .code svg.short{width:6.28125rem}
 #ean{fill:none;stroke:var(--bars);stroke-width:1}
 .code small{margin-top:.2rem;color:var(--ink);font-size:.6875rem;letter-spacing:.3em;font-variant-numeric:tabular-nums}
-@media (prefers-color-scheme:dark){.code svg{box-sizing:content-box;padding:.4rem .6rem .4rem .95rem;border-radius:3px;background:var(--plate)}}
+@media (prefers-color-scheme:dark){.code svg{box-sizing:content-box;padding:.4rem .6875rem .4rem 1.0625rem;border-radius:3px;background:var(--plate)}}
+@media (prefers-color-scheme:dark) and (min-width:48rem){.code svg{padding-right:.9375rem;padding-left:1.4375rem}}
 .not-sold{max-width:none;margin-top:1.5rem;padding:1.1rem;border:2.5px dashed var(--ink);border-radius:5px;font:800 1.875rem/1.05 var(--narrow)}
 section .not-sold{margin-top:.5rem}
 .chart{display:flex;align-items:flex-start;margin-top:1.75rem;font-size:.78125rem;font-weight:500;font-variant-numeric:tabular-nums}
@@ -874,4 +875,5 @@ ol.rules li{grid-template-columns:11rem minmax(0,1fr);gap:1rem}
 .js .verdict b{font-size:clamp(3rem,4.9vw,4rem)}
 }
 @media print{.store,.search,.letters,.toc,.deals>input,.deals>label,.yours{display:none}}
+@media (forced-colors:active){.deals>input:checked+label::before{background:CanvasText}}
 ```

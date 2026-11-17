@@ -556,7 +556,8 @@ def store_rules() -> tuple[tuple[str, str], ...]:
          "column has a record (P2), its promotions were read (the chain's files read, P10, and promotion files from at "
          "least half its counted stores) and the product has a listed price there. A day not tracked is left out of "
          "the usual price, \"Last this low\", \"How often on sale\" and every count of days tracked. In the price "
-         "chart it has no price: the line goes on dotted over seven such days or fewer in a row, and stops for more."),
+         "chart it has no price: between two days with a price, the line goes on dotted over seven days or fewer in "
+         "a row with none, and stops for more."),
         ("S1 Day price.",
          "On a day tracked, the lower of the listed price and the lowest price among the promotions that count that "
          "day (S3), each as shown, to the agora. A day on a promotion listed across the column (P3) of which none "
