@@ -118,8 +118,8 @@ by saving, under a headline counting them of the products checked (a promotion c
 verdicts are worked under "The verdicts" below.
 - 16 March (day 75), G3 at Sheli: ₪3.00 off its usual 10.90, the one deal on any store page, the bar passed (days 45
   to 74, 30 days with records): "1 of 1 promotions is actually a deal.", its story its reason over 74 days, "Lowest in
-  the 74 days tracked." and "On sale on 0 of the 74 days tracked."; the promotions line: one promotion (Shufersal's 30)
-  on one product at Sheli. Deal's 9.90, with no promotion, has no row.
+  the 74 days tracked." and "On sale on 0 of the 74 days before today."; the promotions line: one promotion
+  (Shufersal's 30) on one product at Sheli. Deal's 9.90, with no promotion, has no row.
 - 26 March (day 85), G4 at Rami Levy: 75.00/1.5 = 50.00 a kilogram, "When you buy 1.5 kilograms", 19.90 off its usual
   69.90, the bar passed (days 55 to 84, 30 days); G3 at Sheli again, its usual 10.90 over days 1 to 84 (59 at 10.90, 15
   at 11.90, 10 on sale at 7.90: the 43rd of 84, index 42, is 10.90), 3.00 off.

@@ -12,10 +12,13 @@
    The picker. The site's root is read from the header's pick link (#pick-link, whose href is <root>index.html#pick), so
    the script works from a page in a folder. With a pick, the header reads "<store type> \u00b7 change" (a middle dot):
    the name links to the store type's front page (store/<key>.html), "change" to the picker (index.html#pick). A store
-   type's front page (main[data-store]) sets the pick. The root page (#pick[data-page="root"]) sends a remembered pick
-   on to its store type's front page with location.replace, unless its hash is #pick, which is how "change" reaches the
-   picker. A product page (nav.badges: a badge per store type selling it today, each linking to that store type's part,
-   section[data-column] with id c-<key>; the row's heading h2.elsewhere, "Elsewhere today", hidden in the HTML):
+   type's front page (main[data-store]) sets the pick. The root page (#pick[data-page="root"]) never sends anyone on
+   (the owner, 2026-11-16), and "change" is an ordinary link to its picker: with a pick, the script adds a shortcut to
+   the store type's front page first on the page, <p class="yours"> right before the headline's block (div.hero),
+   "Your store" (YOURS) and the store type's name, and hides the header's store line (the pick link's paragraph),
+   leaving it as the build wrote it. A product page (nav.badges: a badge per store type selling it today, each linking
+   to that store type's part, section[data-column] with id c-<key>; the row's heading h2.elsewhere, "Elsewhere today",
+   hidden in the HTML):
    - with a pick it has a part for: that part shown and the others hidden, the row without the pick's own badge and,
      when another badge is left in it, moved after the part under its heading;
    - with a pick it has no part for: every part hidden, "Not sold at <store type> today" before the heading and the row;
@@ -68,6 +71,7 @@ const NAMES = /*COLUMNS*/[
 const PICK_KEY = "store";
 const PICKER = "index.html#pick";   // the picker, from the site's root
 const CHANGE = "change";
+const YOURS = "Your store";          // the root's shortcut to the picked store type, before its name
 
 // search
 
@@ -159,11 +163,6 @@ function rootOf(href) {
   return href.endsWith(PICKER) ? href.slice(0, href.length - PICKER.length) : "";
 }
 
-function redirectFor(pick, hash) {
-  if (pick === null || hash === "#pick") return null;
-  return "store/" + pick + ".html";
-}
-
 function headerFor(pick, root) {
   const name = nameOf(pick);
   if (name === null) return null;
@@ -206,6 +205,20 @@ function showHeader(pickLink, header) {
   pickLink.before(name, " \u00b7 ");
   pickLink.setAttribute("href", header.change);
   pickLink.textContent = CHANGE;
+}
+
+function showShortcut(hero, pickLink, header) {
+  if (hero === null || pickLink === null || header === null) return;
+  const words = document.createElement("small");
+  words.textContent = YOURS;
+  const link = document.createElement("a");
+  link.setAttribute("href", header.href);
+  link.append(words, " " + header.name);
+  const line = document.createElement("p");
+  line.className = "yours";
+  line.append(link);
+  hero.before(line);
+  pickLink.parentElement.hidden = true;   // the header's store line: the shortcut and the picker stand in for it here
 }
 
 function arrangeProduct(nav, pick, storage) {
@@ -301,12 +314,10 @@ function start() {
     pick = store.getAttribute("data-store");   // this page is the store type's, remembered or not
     writePick(storage, pick);
   }
-  showHeader(pickLink, headerFor(pick, root));
   const picker = document.getElementById("pick");
-  if (picker !== null && picker.getAttribute("data-page") === "root") {
-    const target = redirectFor(pick, window.location.hash);
-    if (target !== null) window.location.replace(root + target);
-  }
+  const atRoot = picker !== null && picker.getAttribute("data-page") === "root";
+  if (atRoot) showShortcut(document.querySelector(".hero"), pickLink, headerFor(pick, root));
+  else showHeader(pickLink, headerFor(pick, root));
   const nav = document.querySelector("nav.badges");
   if (nav !== null) arrangeProduct(nav, pick, storage);
   const box = document.getElementById("q");
@@ -316,7 +327,7 @@ function start() {
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     normalize, pieceFor, matches, barcodeOf,
-    NAMES, PICK_KEY, readPick, writePick, rootOf, redirectFor, headerFor, arrange, notSoldLine, onBadge,
+    NAMES, PICK_KEY, readPick, writePick, rootOf, headerFor, arrange, notSoldLine, onBadge,
   };
 }
 if (typeof document !== "undefined") {

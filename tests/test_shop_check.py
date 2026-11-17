@@ -23,6 +23,7 @@ from basket.chains import SLUGS
 from basket.check import NOT_ADVICE, NoPages, flatten, strip_tags
 from basket.page import HE_SPAN
 from basket.words import REVISED
+from shopper.assets import FOLDER, FONTS, LICENCES, STYLESHEET, asset_files, hashed
 from shopper.build import LEDGER, MARKER, build_site
 from shopper.check import check_site, main
 from shopper.extract import extract_chain_day
@@ -49,6 +50,9 @@ BODY = _frozen_file(((OSHER, EGGS),))
 FROZEN = [Frozen(day=day, body=BODY, sha256=_sha(BODY), frozen_at=at, on_time=True, status="same")   # as published
           for day, at in ((EARLIER, datetime(2025, 12, 12, 10, 33, 7, tzinfo=timezone.utc)), (DAY, STAMP))]
 ONLINE = "\u05e9\u05d5\u05e4\u05e8\u05e1\u05dc ONLINE"          # store 413's name in the tree's store list
+FONT_FILES = dict(zip(FONTS, [key for key in asset_files() if key.endswith(".woff2")]))   # font to assets/<hashed>
+LICENCE_FILES = [f"{FOLDER}/{licence}" for licence in LICENCES]
+STRAY = "in assets/, which holds only the stylesheet, the fonts it names and their licences"
 
 
 def build(data: Path, site: Path) -> Path:
@@ -380,6 +384,167 @@ def test_a_link_to_another_site_is_allowed(site):
     assert check_site(site) == []
 
 
+# ---- the one stylesheet and no inline style (the site's look, q36) ----
+
+def sheet_tag(up: str) -> str:
+    """The link to the site's one stylesheet from a page `up` from the root ("" or "../")."""
+    return f'<link rel="stylesheet" href="{up}{STYLESHEET}">'
+
+
+@pytest.mark.parametrize("name", ["index.html", MILK_PAGE])
+@pytest.mark.parametrize("second, problem", [
+    ("{tag}", "the stylesheet linked 2 times"),
+    ('<link rel="stylesheet" href="{up}' + STYLESHEET + '" media="print">', "a link other than {tag}"),
+])
+def test_a_second_stylesheet_fails(site, name, second, problem):
+    up = "../" * name.count("/")
+    tag = sheet_tag(up)
+    add(site, name, second.format(tag=tag, up=up))
+    assert check_site(site) == [f"{name}: {problem.format(tag=tag)}"]
+
+
+@pytest.mark.parametrize("name, up, wrong, link", [
+    (MILK_PAGE, "../", "", f"a link to '{STYLESHEET}' reaches no file in the build"),
+    ("index.html", "", "../", f"a link to '../{STYLESHEET}' leaves the build"),
+])
+def test_a_stylesheet_at_the_wrong_depth_fails(site, name, up, wrong, link):
+    """The stylesheet only at the page's own depth; the link rule names where the wrong one leads."""
+    replace(site, name, sheet_tag(up), sheet_tag(wrong))
+    assert check_site(site) == [f"{name}: a link other than {sheet_tag(up)}", f"{name}: {link}"]
+
+
+@pytest.mark.parametrize("name", ["index.html", MILK_PAGE, STORE, "browse/05d1.html", "basket.html", "method.html"])
+def test_a_page_without_the_stylesheet_fails(site, name):
+    tag = sheet_tag("../" * name.count("/"))
+    replace(site, name, tag + "\n", "")
+    assert check_site(site) == [f"{name}: missing {tag}"]
+
+
+@pytest.mark.parametrize("markup", ['<link rel="icon" href="search.js">', "<LINK rel=preload href=search.js>",
+                                    "<link>"])
+def test_another_link_fails(site, markup):
+    add(site, "index.html", markup)
+    assert check_site(site) == [f"index.html: a link other than {sheet_tag('')}"]
+
+
+@pytest.mark.parametrize("markup", ["<style>p{color:red}</style>", "<STYLE media=print>p{}</STYLE>"])
+def test_a_style_block_fails(site, markup):
+    add(site, MILK_PAGE, markup)
+    assert check_site(site) == [f"{MILK_PAGE}: a <style> block"]
+
+
+@pytest.mark.parametrize("markup, tag", [('<p style="color:red">x</p>', "p"), ("<svg STYLE='x'></svg>", "svg"),
+                                         ("<span data-x=1 style=color:red>x</span>", "span")])
+def test_a_style_attribute_fails(site, markup, tag):
+    add(site, "index.html", markup)
+    assert check_site(site) == [f"index.html: a style attribute on <{tag}>"]
+
+
+# ---- assets/: the stylesheet, the fonts it names and their licences, each named by its hash (q36) ----
+
+def sheet_with(site: Path, before: str = "", after: str = "") -> str:
+    """The built stylesheet with `before` and `after` written around it; the hash rule's line it then brings."""
+    path = site / STYLESHEET
+    data = before.encode() + path.read_bytes() + after.encode()
+    path.write_bytes(data)
+    return renamed(STYLESHEET, f"{FOLDER}/look.css", data)
+
+
+def renamed(key: str, plain: str, data: bytes) -> str:
+    """The hash rule's line for the asset `key`, plainly `plain`, whose bytes are now `data`."""
+    return f"{key}: not named by its bytes' hash, which names it {hashed(plain, data)}"
+
+
+def test_the_build_writes_the_stylesheet_the_fonts_and_their_licences(built):
+    assert sorted(path.relative_to(built).as_posix() for path in (built / FOLDER).iterdir()) == sorted(
+        [STYLESHEET, *FONT_FILES.values(), *LICENCE_FILES])
+
+
+def test_a_stray_file_in_assets_fails(site):
+    (site / FOLDER / "notes.txt").write_text("x", encoding="utf-8")
+    assert check_site(site) == [f"{FOLDER}/notes.txt: {STRAY}"]
+
+
+@pytest.mark.parametrize("key", [*FONT_FILES.values(), *LICENCE_FILES])
+def test_a_missing_font_or_licence_fails(site, key):
+    """A licence missing is the folder rule's; a font missing, the stylesheet's own rule's (a url to a file not in
+    assets/), named once though the stylesheet names it twice (Heebo)."""
+    (site / key).unlink()
+    name = key.removeprefix(f"{FOLDER}/")
+    assert check_site(site) == [f"{STYLESHEET}: a url to a file not in assets/: {name!r}" if name.endswith(".woff2")
+                                else f"{key}: missing"]
+
+
+def test_a_missing_stylesheet_fails(site):
+    """Every page's link to it reaches nothing, the folder rule names it missing, and with no stylesheet to name them
+    the fonts are strays."""
+    (site / STYLESHEET).unlink()
+    pages = [path.relative_to(site).as_posix() for path in sorted(site.rglob("*.html"))]
+    links = [f"{name}: a link to '{'../' * name.count('/')}{STYLESHEET}' reaches no file in the build" for name in pages]
+    assert check_site(site) == [*links, f"{STYLESHEET}: missing",
+                                *(f"{key}: {STRAY}" for key in sorted(FONT_FILES.values()))]
+
+
+def test_a_second_stylesheet_in_assets_fails(site):
+    data = (site / STYLESHEET).read_bytes() + b"\n"
+    key = hashed(f"{FOLDER}/look.css", data)
+    (site / key).write_bytes(data)
+    assert check_site(site) == [f"{key}: {STRAY}"]
+
+
+@pytest.mark.parametrize("css", ['@import "a.css";\n', "@IMPORT 'a.css';\n"])
+def test_an_import_in_the_stylesheet_fails(site, css):
+    line = sheet_with(site, before=css)
+    assert check_site(site) == [f"{STYLESHEET}: an @import", line]
+
+
+@pytest.mark.parametrize("call, url", [
+    ("url", "https://example.org/a.woff2"), ("url", "//example.org/a.woff2"), ("url", "/a.woff2"),
+    ("url", "../p/a.woff2"), ("url", '"a.woff2"'), ("URL", "https://example.org/a.woff2")])
+def test_a_font_url_from_elsewhere_fails(site, call, url):
+    line = sheet_with(site, after=f"@font-face{{font-family:X;src:{call}({url})}}")
+    assert check_site(site) == [f"{STYLESHEET}: a url that is not a bare file name: {url!r}", line]
+
+
+def test_a_url_to_a_file_not_in_assets_fails(site):
+    """The font's plain name, as the repository's stylesheet writes it, is not in assets/: the build names it by its
+    hash."""
+    line = sheet_with(site, after="@font-face{font-family:X;src:url(archivo-text.woff2)}")
+    assert check_site(site) == [f"{STYLESHEET}: a url to a file not in assets/: 'archivo-text.woff2'", line]
+
+
+def test_a_url_to_a_file_that_is_not_a_font_fails(site):
+    line = sheet_with(site, after=".x{background:url(OFL-heebo.txt)}")
+    assert check_site(site) == [f"{STYLESHEET}: a url to a file that is not a font: 'OFL-heebo.txt'", line]
+
+
+@pytest.mark.parametrize("font", FONTS)
+def test_an_asset_whose_name_is_not_its_hash_fails(site, font):
+    key = FONT_FILES[font]
+    data = (site / key).read_bytes() + b"\0"
+    (site / key).write_bytes(data)
+    assert check_site(site) == [renamed(key, f"{FOLDER}/{font}", data)]
+
+
+def test_a_font_under_its_plain_name_fails(site):
+    """A build that named a font plainly, in assets/ and in the stylesheet alike: the line gives the name its bytes
+    give it."""
+    key, plain = FONT_FILES["archivo-text.woff2"], f"{FOLDER}/archivo-text.woff2"
+    (site / key).rename(site / plain)
+    replace(site, STYLESHEET, f"url({key.removeprefix(f'{FOLDER}/')})", "url(archivo-text.woff2)")
+    font, sheet = (site / plain).read_bytes(), (site / STYLESHEET).read_bytes()
+    assert hashed(plain, font) == key
+    assert check_site(site) == [renamed(STYLESHEET, f"{FOLDER}/look.css", sheet), renamed(plain, plain, font)]
+
+
+def test_a_stylesheet_that_is_not_utf8_is_still_read_not_a_crash(site):
+    """Bytes the build never writes, so the hash rule names them, and the rest is read as ever."""
+    path = site / STYLESHEET
+    data = path.read_bytes() + b"\xff@import 'a.css';"
+    path.write_bytes(data)
+    assert check_site(site) == [f"{STYLESHEET}: an @import", renamed(STYLESHEET, f"{FOLDER}/look.css", data)]
+
+
 # ---- product pages: sizes, F10 and P10 by column ----
 
 @pytest.mark.parametrize("size, problems", [
@@ -500,13 +665,15 @@ def test_a_page_that_is_not_utf8_is_named_not_a_crash(site):
 
 
 def test_a_link_with_a_fragment_resolves_to_the_id(site):
-    """Task 18's carry: basket.html's method link holds a fragment; the file must exist and hold that id."""
+    """Task 18's carry: basket.html's method link holds a fragment; the file must exist and hold that id. So does each
+    link of the method page's row to its own sections (the site look's Task 10), held to the ids on its own page."""
     assert 'href="method.html#headline-basket"' in (site / "basket.html").read_text(encoding="utf-8")
     add(site, MILK_PAGE, f'<a href="#c-{OSHER}">x</a> <a href="../method.html?x=1#headline-basket">y</a>')
     assert check_site(site) == []
     replace(site, "method.html", '<section id="headline-basket">', '<section id="basket-method">')
     assert check_site(site) == ["basket.html: a link to 'method.html#headline-basket': method.html holds no id "
                                 "'headline-basket'",
+                                "method.html: a link to '#headline-basket': method.html holds no id 'headline-basket'",
                                 f"{MILK_PAGE}: a link to '../method.html?x=1#headline-basket': method.html holds no id "
                                 "'headline-basket'"]
 

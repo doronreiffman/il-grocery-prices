@@ -1,12 +1,14 @@
 """The site bucket's side of the scheduled build: the published files read back, the latest day on the site, the
 build's files put up, and one CloudFront invalidation. It does in the Lambda what `scripts/publish.sh` does on the
 Mac, with the same settings. A file's content type is set by its last suffix, never guessed (the site's response
-headers send nosniff), so a forecasts file `.csv.gz` goes up as gzip, not as text; and browsers keep a file five
-minutes, so an upload shows within minutes of the invalidation:
+headers send nosniff: a browser uses no stylesheet sent as another type), so a forecasts file `.csv.gz` goes
+up as gzip, not as text; and browsers keep a file five minutes, so an upload shows within minutes of the invalidation:
 
-    .html   text/html; charset=utf-8          .csv   text/csv; charset=utf-8
-    .json   application/json; charset=utf-8   .gz    application/gzip
-    .js     text/javascript; charset=utf-8    every file: max-age=300
+    .html   text/html; charset=utf-8          .csv    text/csv; charset=utf-8
+    .json   application/json; charset=utf-8   .gz     application/gzip
+    .js     text/javascript; charset=utf-8    .css    text/css; charset=utf-8
+    .woff2  font/woff2                        .txt    text/plain; charset=utf-8
+    every file: max-age=300
 
 The invalidation covers every path (`/*`), as publish.sh's does. Its CallerReference is the caller's, one per run (the
 run's id): CloudFront answers a second request with the same reference and the same paths with the first one's
@@ -17,16 +19,22 @@ build lists new: the day's forecasts file, the ledger, each scored day's scores 
 not unchanged); then, only when `with_pages` (the day is the site's latest, so a run for an earlier day leaves every
 page as the later day's), every file under the page folders `p/`, `browse/`, `search/` and `store/` (the store types'
 front pages, store first) (`PAGE_FOLDERS`), and the fixed pages, `FIXED_PAGES`: `index.html`, `method.html`,
-`record.html`, `basket.html` and `search.js`, rebuilt every morning from the code (the shopper plan's question H). Every
-file is checked first, before any put. The record files (`is_record`: each day's forecasts file and scores file, never
-the ledger) go up in a `put_files` call of their own, ended before anything else is put; a record put that fails stops
-the upload there (RecordsNotUploaded), so the ledger, the site-day and day files and the pages, which name the records,
-never name a file the site lacks (the task review's finding 1: a rerun lists the day's forecasts file only when the
-ledger gains its line). Then the rest in a second call, started in the order above, the data files before the pages; the
-pool ends them in no fixed order, so the pages are started after the data files, not held until those are up (the Task
-23 review's point 4). Each file takes its content type by its last suffix: `search.js` goes up as JavaScript, never as
-HTML (the second pre-flight's B3). Anything else in the folder (the marker, the published copies the build compared
-with) stays local.
+`record.html`, `basket.html` and `search.js`, rebuilt every morning from the code (the shopper plan's question H); and,
+with the pages too, each shared file under `assets/` (`ASSET_FOLDER`: the stylesheet, the fonts and their licences,
+which every page names) that the bucket's listing of `assets/` lacks. An asset is put once: a stylesheet's or a font's
+name carries the hash of its bytes, so a name the bucket holds is that same file, and a morning that changed nothing
+piles up no new version of it (the licences keep plain names and are put once all the same; site-look.md, "The
+upload"). Every file is checked first, before any put. The record files (`is_record`: each day's forecasts file and
+scores file, never the ledger) go up in a `put_files` call of their own, ended before anything else is put; a record put
+that fails stops the upload there (RecordsNotUploaded), so the ledger, the site-day and day files and the pages, which
+name the records, never name a file the site lacks (the task review's finding 1: a rerun lists the day's forecasts file
+only when the ledger gains its line). Then the assets the bucket lacks, in a call of their own, ended before anything
+else starts; a failed asset put is raised as it is, nothing after it is put, and so no page goes up naming a stylesheet
+or a font the site lacks, a changed stylesheet's new name included. Then the rest in a last call, started in the order
+above, the data files before the pages; the pool ends them in no fixed order, so the pages are started after the data
+files, not held until those are up (the Task 23 review's point 4). Each file takes its content type by its last suffix:
+`search.js` goes up as JavaScript, never as HTML (the second pre-flight's B3). Anything else in the folder (the marker,
+the published copies the build compared with) stays local.
 
 `put_files` puts the shopper site's files, any number of them, each once (a key given twice goes up once): it checks
 first that every file is in the site folder and has a content type above, and refuses (FileNotFoundError, ValueError)
@@ -36,8 +44,9 @@ started in the order given. A put that fails is raised: the puts made before it 
 started when it is raised are not made. The latest day on the site is the greatest of the basket's day files (`days/`)
 and the shopper site's (`site-days/`), which go up together; `day_of` reads the day such a key names.
 
-Nothing here ever deletes. `days/`, `site-days/` and the data files are append-only, as on the Mac; and a page the
-build no longer writes stays on the site, since the hand upload deletes nothing either (the shopper plan's question H).
+Nothing here ever deletes. `days/`, `site-days/` and the data files are append-only, as on the Mac; a page the build
+no longer writes stays on the site, since the hand upload deletes nothing either (the shopper plan's question H); and an
+old stylesheet or font stays under its own name, so a page cached for its five minutes still finds the one it names.
 
 S3Site works through boto3's S3 and CloudFront clients; MemorySite keeps the same rules in a dict, for other
 modules' tests. Every rule above the bare operations lives in _Site, which both share.
@@ -54,12 +63,14 @@ from collector.store import MISSING, error_code
 
 FIXED_PAGES = ("index.html", "method.html", "record.html", "basket.html", "search.js")   # the pre-flight's S14
 PAGE_FOLDERS = ("p", "browse", "search", "store")   # the product, browse and store pages, the search pieces
+ASSET_FOLDER = "assets"   # the shared stylesheet, fonts and licences (shopper.assets.FOLDER), each put once
 RECORD_FOLDERS = ("forecasts/", "scores/")   # the record files: each day's forecasts and scores files, as .csv.gz
 UPLOAD_WORKERS = 16
 HTML = "text/html; charset=utf-8"
 JSON = "application/json; charset=utf-8"
 CONTENT_TYPES = {".html": HTML, ".json": JSON, ".js": "text/javascript; charset=utf-8", ".csv": "text/csv; charset=utf-8",
-                 ".gz": "application/gzip"}
+                 ".gz": "application/gzip", ".css": "text/css; charset=utf-8", ".woff2": "font/woff2",
+                 ".txt": "text/plain; charset=utf-8"}
 CACHE_CONTROL = "max-age=300"
 _DAY_FILE = re.compile(r"^(?:site-)?days/(\d{4}-\d{2}-\d{2})\.json$")
 
@@ -118,22 +129,34 @@ class _Site:
 
     def upload(self, site_dir: Path, data: Sequence[str], with_pages: bool) -> list[str]:
         """Put the data files `data` from `site_dir`, then, when `with_pages`, every file under PAGE_FOLDERS and the
-        FIXED_PAGES: the record files among them first, in a `put_files` call of their own, then the rest; their keys,
-        in that order. Refuses, putting nothing, when one of them is not in the folder (FileNotFoundError) or has no
-        content type (ValueError); RecordsNotUploaded, with nothing else put, when a record put fails."""
+        FIXED_PAGES, and each file under ASSET_FOLDER the bucket lacks: the record files among them first, in a
+        `put_files` call of their own, then those assets, in a call of their own, then the rest; their keys, in that
+        order. Refuses, putting nothing, when one of them is not in the folder (FileNotFoundError) or has no content
+        type (ValueError); RecordsNotUploaded, with nothing else put, when a record put fails; a failed asset put is
+        raised, the record files up and nothing after it put: not the ledger, the day files or any page."""
         keys = list(data)
         if with_pages:
             keys += [path.relative_to(site_dir).as_posix() for folder in PAGE_FOLDERS
                      for path in sorted((site_dir / folder).rglob("*")) if path.is_file()]
             keys += FIXED_PAGES
-        self._checked(site_dir, keys)  # every file found and typed before any put
+        assets = self._new_assets(site_dir) if with_pages else []
+        self._checked(site_dir, [*keys, *assets])  # every file found and typed before any put
         records = [key for key in keys if is_record(key)]
         try:
             put = self.put_files(site_dir, records)
         except Exception as error:  # a put failed: the files were checked above
             raise RecordsNotUploaded(f"a record file did not go up, so nothing that names it was put: "
                                      f"{type(error).__name__}: {error}") from error
+        put += self.put_files(site_dir, assets)  # every asset up before a data file or a page is started
         return put + self.put_files(site_dir, [key for key in keys if key not in records])
+
+    def _new_assets(self, site_dir: Path) -> list[str]:
+        """The key of each file under ASSET_FOLDER, by name, that the bucket's listing of ASSET_FOLDER lacks: a hashed
+        name carries its bytes' hash, so a name the bucket holds is that same file (the module's docstring)."""
+        held = set(self._keys(f"{ASSET_FOLDER}/"))
+        found = sorted(path.relative_to(site_dir).as_posix() for path in (site_dir / ASSET_FOLDER).rglob("*")
+                       if path.is_file())
+        return [key for key in found if key not in held]
 
     def _checked(self, site_dir: Path, keys: Sequence[str]) -> list[tuple[str, Path, str]]:
         """Each file `site_dir / key` once, with its path and content type; FileNotFoundError for a file not in the

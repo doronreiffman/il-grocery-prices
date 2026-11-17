@@ -13,6 +13,8 @@ from dataclasses import replace
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from fractions import Fraction
+from html import unescape
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -24,22 +26,25 @@ from basket.stores import Store
 from basket.words import ALWAYS as BASKET_ALWAYS, CHAIN_NAMES, METHOD_INTRO, TITLE as BASKET_TITLE, joined
 from shopper.columns import BY_KEY, COLUMNS, FLOOR
 import shopper.pages as pages_module
+import shopper.words as words_module
 from shopper.history import READ_DAYS, ColumnDay
-from shopper.pages import (BASKET_PAGE, BASKET_SECTION, CONDITIONS, CONDITIONS_NOTE, NO_DEALS, PICK_GROUPS, PICK_TITLE,
-                           ROOT_LINE, SCORED_SO_FAR, ColumnsToday, StoreFront, column_ready, render_basket,
-                           render_method, render_record, render_root, render_store, scorecard_section, shown_rows,
-                           store_path)
-from shopper.product import BADGE_STYLE, CHAIN_SPAN, page_path
+from shopper.check import _link_problem, _tags
+from shopper.pages import (BASKET_PAGE, BASKET_SECTION, CONDITIONS, CONDITIONS_NOTE, NO_DEALS, ON_THIS_PAGE,
+                           PICK_GROUPS, PICK_TITLE, SCORED_SO_FAR, ColumnsToday, StoreFront, column_ready,
+                           promotions_shown, render_basket, render_method, render_record, render_root, render_store,
+                           scorecard_section, shown_rows, store_path)
+from shopper.assets import STYLESHEET, asset_files
+from shopper.product import CHAIN_SPAN, page_path
 from shopper.search import browse_pages
-from shopper.shell import SCRIPT_TAG
+from shopper.shell import SCRIPT_TAG, band, head
 from shopper.items import HORIZON
 from shopper.record import scorecard
 from shopper.measures import MIN_FRONT_DAYS, RECENT_DAYS
 from shopper.verdict import DEAL_MIN, FRONT_LIMIT, SHADES, DealRow, checked, front_list, on_list, verdict
 from shopper.words import (ALWAYS, ALWAYS_SENTENCE, CHAINS_LINE, CREDIT_START, FINE_PRINT, FOLD_INTRO, FROM_FIELDS,
-                           FRONT_SUBTITLE, FRONT_TITLE, HIRING, NEVER, NO_VERDICT, NONE_YET, SEARCH_LABEL, SITE_NAME,
-                           STORE_RULES, columns_tested, date_line, formats_note, headline, how_often, last_low,
-                           no_odds_yet, reason, unreadable)
+                           FRONT_SUBTITLE, FRONT_TITLE, HIRING, NEVER, NO_VERDICT, NONE_YET, ROOT_LINE, ROOT_TITLE,
+                           SEARCH_LABEL, SITE_NAME, STORE_RULES, badge, columns_tested, date_line, formats_note,
+                           headline, how_often, last_low, no_odds_yet, reason, store_lead, unreadable, verdict_words)
 from test_build import NOW, LATER, PAST, build_at, day_file, golden_tree
 from test_page import BASKET, EXCLUSIONS, a_public
 from test_product import CODE, DAY, SPAN, _days, _listed, _pair, _render, _struct, _typical, back
@@ -76,8 +81,30 @@ PICK_ORDER = ["shufersal-deal", "shufersal-express", "shufersal-sheli", "shufers
 PICK_LINK = '<p class="store"><a id="pick-link" href="{up}index.html#pick">Pick your store</a></p>'
 
 
-def _root() -> str:
-    return render_root(DAY, "12:03")
+# Each store type's promotions today, as the build counts them: Carrefour Market's the design's 1,347, Rami Levy's one,
+# every other its own
+ROOT_PROMOTIONS = {column.key: 100 + n for n, column in enumerate(COLUMNS)} | {MARKET: 1347, RAMI: 1}
+
+
+def _root_fronts(counts: dict[str, int] | None = None) -> dict[str, StoreFront]:
+    """Each store type's front as the build hands it to the root: no rows, its promotions today `ROOT_PROMOTIONS`'
+    unless `counts` says otherwise."""
+    counts = ROOT_PROMOTIONS | (counts or {})
+    return {key: _front(key, rows=[], checked=0, promotions=count, products=2 * count) for key, count in counts.items()}
+
+
+def _root(fronts=None, days=None) -> str:
+    return render_root(DAY, "12:03", _root_fronts() if fronts is None else fronts, _days() if days is None else days)
+
+
+def _read(markup: str) -> str:
+    """Markup as it reads: tags dropped, entities read, spaces collapsed."""
+    return " ".join(unescape(re.sub(r"<[^>]+>", "", markup)).split())
+
+
+def _label(page: str, key: str) -> str:
+    """A store type's label in the root's picker: what its link holds."""
+    return re.search(rf'<li><a href="store/{key}\.html">(.*?)</a></li>', page).group(1)
 
 
 def _header(page: str) -> str:
@@ -85,12 +112,11 @@ def _header(page: str) -> str:
 
 
 def test_the_root_is_the_picker_grouped_by_chain():
-    """The design's "What a visitor sees" 1 and 3: the title question, the line on what the site does, the picker
-    ("Which store are you in?", the nine store types grouped by chain, each a link to its front page), and the hiring
-    line kept from the old front page; no deal, no table, no search box, and the one script."""
+    """The design's "What a visitor sees" 1 and 3, in the site's look (q36): the headline and the owner's line, the
+    picker ("Which store are you in?", the nine store types grouped by chain, each a label linking to its front page),
+    and the hiring line kept from the old front page; no deal, no table, no search box, and the one script. The same
+    bytes whatever order the fronts and the column-days come in."""
     assert PICK_TITLE == "Which store are you in?"
-    assert ROOT_LINE == ("Pick the store you're in, then look up a product: each sale is checked against what it "
-                         "usually costs there.")
     assert PICK_GROUPS == (("shufersal", ("shufersal-deal", "shufersal-express", "shufersal-sheli",
                                           "shufersal-universe")),
                            ("carrefour", ("carrefour-city", "carrefour-market")), ("ramilevy", ("ramilevy",)),
@@ -98,22 +124,97 @@ def test_the_root_is_the_picker_grouped_by_chain():
     assert [store_path(key) for key in PICK_ORDER] == [f"store/{key}.html" for key in PICK_ORDER]
     page = _root()
     picker = re.search(r'<section id="pick" data-page="root">(.*?)</section>', page, re.DOTALL).group(1)
-    assert picker.startswith(f"<h2>{PICK_TITLE}</h2><h3>Shufersal</h3><ul>")
-    assert re.findall(r"<h3>([^<]+)</h3>", picker) == ["Shufersal", "Carrefour", "Rami Levy", "Osher Ad", "Yochananof"]
-    links = re.findall(r'<li><a href="([^"]+)">([^<]+)</a></li>', picker)
+    assert picker.startswith(f'<h2>{PICK_TITLE}</h2><div class="chain"><h3>Shufersal</h3><ul>')
+    links = re.findall(r'<li><a href="([^"]+)">([^<]+?)(?: <small>.*?</small>)?</a></li>', picker)
     assert links == [(f"store/{key}.html", BY_KEY[key].name) for key in PICK_ORDER]
     assert sorted(PICK_ORDER) == sorted(column.key for column in COLUMNS)              # each of the nine, once
-    assert (f'<h1>{FRONT_TITLE}</h1>\n<p class="lede">{ROOT_LINE}</p>\n<section id="pick" data-page="root">') in page
-    assert f"<title>{FRONT_TITLE} - {SITE_NAME}</title>" in page
-    hiring = re.search(r'<p class="hiring">(.*?)</p>', page).group(1)
-    assert [(label, href) for href, label in re.findall(r'<a href="([^"]+)">([^<]+)</a>', hiring)] == list(HIRING)
+    assert '</p></div>\n<section id="pick" data-page="root">' in page                 # the hero, then the picker
     for absent in ("<table", "<tr", 'class="deals"', '<input id="q"', "data-store", "data-column", "<details"):
         assert absent not in page, absent
     assert page.count("<script") == 1 and SCRIPT in page
     footer = re.search(r"<footer>(.*?)</footer>", page, re.DOTALL).group(1)
     assert re.findall(r'<a href="([^"]+)">', footer) == ["basket.html", "record.html", "method.html"]
     _no_never_phrase_and_no_pronoun(page)
-    assert _root() == render_root(DAY, "12:03")
+    assert page == _root(dict(reversed(list(_root_fronts().items()))), dict(reversed(list(_days().items()))))
+
+
+def test_the_front_headline_is_deal_or_no_deal():
+    """The owner's words (2026-11-15, site-look.md "Word changes" 1 and 2) and the design's front page: the headline
+    "DEAL OR NO DEAL?" (ROOT_TITLE, set in capitals by the stylesheet), DEAL on the green label and NO DEAL on the
+    yellow one, "or" and the question mark plain; the owner's line under it, after a line break; the tab title the
+    site's name alone. The store pages' question is not on the root."""
+    assert ROOT_TITLE == "Deal or No Deal?" and SITE_NAME == "Deal or No Deal"
+    assert ROOT_LINE == ("Find out if a sale is actually a deal: pick the store you're in, then look up the product. "
+                         "Each sale is checked against what it usually costs there.")
+    page = _root()
+    hero, = re.findall(r'<div class="hero">(.*?)</div>', page, re.DOTALL)
+    h1, = re.findall(r"<h1>(.*?)</h1>", page)
+    assert h1 == '<span class="yes">Deal</span> or <span class="no">No Deal</span>?' and _read(h1) == ROOT_TITLE
+    assert hero == f'<h1>{h1}</h1>\n<p class="lede">{ROOT_LINE}</p>'
+    assert page.count("<title>") == 1 and "<title>Deal or No Deal</title>" in page
+    assert FRONT_TITLE not in page
+
+
+def test_each_store_label_carries_its_promotions_today():
+    """Review Focus 3 and the owner's words (2026-11-15, "Word changes" 4): each store type's label carries its count
+    of promotions today, the figure in bold, then "promotions today", one "promotion today"; on a hole and on a
+    promotion hole, whose promotions the build does not count, the label is the name alone: no figure, no "0", nothing
+    in its place. A day read with none says 0, as its store page does."""
+    page = _root()
+    assert _label(page, MARKET) == "Carrefour Market <small><b>1,347</b> promotions today</small>"
+    assert _label(page, RAMI) == "Rami Levy <small><b>1</b> promotion today</small>"
+    for days in (_days(holes={(MARKET, DAY)}), _days(promo_holes={(MARKET, DAY)})):
+        for fronts in (_root_fronts(), _root_fronts({MARKET: 0})):        # the build's front of a day not read: 0
+            unread = _root(fronts, days)
+            assert _label(unread, MARKET) == "Carrefour Market" and "<b>0</b>" not in unread
+            assert _label(unread, RAMI) == "Rami Levy <small><b>1</b> promotion today</small>"   # another's day read
+    none = _root(_root_fronts({MARKET: 0}))
+    assert _label(none, MARKET) == "Carrefour Market <small><b>0</b> promotions today</small>"
+    assert promotions_shown(_root_fronts()[MARKET], _days()[(MARKET, DAY)]) == 1347
+    for days in (_days(holes={(MARKET, DAY)}), _days(promo_holes={(MARKET, DAY)})):
+        assert promotions_shown(_root_fronts()[MARKET], days[(MARKET, DAY)]) is None
+
+
+def test_the_labels_number_is_the_store_pages_own():
+    """The plan's "The front page's counts": each label's figure is the number its store page's promotions line
+    states (`promotions_shown`, read by both), at every store type, a hole and a promotion hole among them: where the
+    store page has no promotions line the label has no figure."""
+    days = _days(holes={(EXPRESS, DAY)}, promo_holes={(OSHER, DAY)})
+    fronts = _root_fronts()
+    root = _root(fronts, days)
+    for column in COLUMNS:
+        store = render_store(fronts[column.key], days, DAY, "12:03", (), None)
+        line = re.search(rf"<p>Today {column.name} lists ([\d,]+) promotions? carried by", store)
+        figure = re.search(r"<small><b>([\d,]+)</b>", _label(root, column.key))
+        assert (line and line.group(1)) == (figure and figure.group(1)), column.key
+        assert (figure is None) == (column.key in (EXPRESS, OSHER)), column.key
+
+
+def test_the_chains_headings_stay_for_screen_readers():
+    """The design's store picker: each chain a `<div class="chain">` holding its heading and its store types' list, in
+    PICK_GROUPS' order, the picker nothing else; the stylesheet hides the headings from sight alone, every label
+    already carrying its chain's name."""
+    picker, = re.findall(r'<section id="pick" data-page="root"><h2>[^<]+</h2>(.*?)</section>', _root(), re.DOTALL)
+    chains = re.findall(r'<div class="chain"><h3>([^<]+)</h3><ul>(.*?)</ul></div>', picker)
+    assert "".join(f'<div class="chain"><h3>{name}</h3><ul>{items}</ul></div>' for name, items in chains) == picker
+    assert [name for name, _ in chains] == [CHAIN_NAMES[slug] for slug, _ in PICK_GROUPS] == [
+        "Shufersal", "Carrefour", "Rami Levy", "Osher Ad", "Yochananof"]
+    assert [tuple(re.findall(r'href="store/([^"]+)\.html"', items)) for _, items in chains] == [
+        keys for _, keys in PICK_GROUPS]
+    assert ("#pick h3{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}"
+            in asset_files()[STYLESHEET].decode("utf-8"))
+
+
+def test_the_hiring_links_stand_alone():
+    """The design's front page: the four links ("Built by ...", "How this is made", "Track record", "Code on GitHub")
+    side by side, no dot between them; the stylesheet spaces them. A single space parts them (Task 10's ruling): the
+    line is a flex row, which draws no text of white space alone, so the look is the same, and without the stylesheet
+    (reader mode, copied text) the four do not run together."""
+    hiring = re.search(r'<p class="hiring">(.*?)</p>', _root()).group(1)
+    assert hiring == " ".join(f'<a href="{href}">{label}</a>' for label, href in HIRING)
+    assert len(HIRING) == 4 and "·" not in hiring
+    assert _read(hiring) == " ".join(label for label, _ in HIRING)
+    assert ".hiring{display:flex;" in asset_files()[STYLESHEET].decode("utf-8")
 
 
 # ---- a store type's front page: its deals by saving, the top 100, under a headline (store first, q33) ----
@@ -143,12 +244,14 @@ def _storepage(front=None, days=None, marking=("shufersal",), browse="browse/05d
 
 
 def _lede(page: str) -> str:
-    return re.search(r'<p class="lede">(.*?)</p>', page).group(1)
+    """The lead line's words, as it reads (the headline's numbers are set in bold)."""
+    return _read(re.search(r'<p class="lede">(.*?)</p>', page).group(1))
 
 
 def _table_rows(page: str) -> list[str]:
     """The table's rows: each one's barcode, from its product link."""
-    return re.findall(r'<tr data-column="[^"]+"[^>]*><th scope="row"><a href="\.\./p/([^"]+)\.html">', page)
+    return re.findall(r'<tr data-column="[^"]+"[^>]*><th scope="row" role="rowheader"><a href="\.\./p/([^"]+)\.html">',
+                      page)
 
 
 def test_each_store_page_names_its_store_and_puts_search_first():
@@ -164,7 +267,8 @@ def test_each_store_page_names_its_store_and_puts_search_first():
         assert f"<title>{column.name} - {SITE_NAME}</title>" in page
         main = page[page.index("<main"):]
         assert main.startswith(f'<main data-store="{column.key}">\n<p class="at">{column.name}</p>\n'
-                               f'<h1 id="deals">{FRONT_TITLE}</h1>\n<p class="sub">{subtitle}</p>\n'
+                               '<h1 id="deals">Is it actually a <span class="yes">deal?</span></h1>\n'
+                               f'<p class="sub">{subtitle}</p>\n'
                                '<section class="search">')
         assert main.index('<section class="search">') < main.index('<p class="lede">') < main.index(
             '<section class="deals">') < main.index("<details>")
@@ -193,17 +297,20 @@ def test_a_store_page_has_the_always_phrases_and_the_search_box():
         assert flatten(date_line(DAY)) in text and flatten(CREDIT_START) in text and "not shopping advice." in text
         _no_never_phrase_and_no_pronoun(page)
     # the owner's plain words (2026-11-10): the empty table repeats nothing of the lead line above it
-    assert '<td colspan="4">No deals to show.</td>' in _storepage(_front(rows=[])) and NO_DEALS not in _storepage()
+    assert ('<td colspan="4" role="cell">No deals to show.</td>' in _storepage(_front(rows=[]))
+            and NO_DEALS not in _storepage())
     assert '<input id="q" type="search" autocomplete="off"></section>' in _storepage(browse=None)
 
 
-def test_every_page_header_names_the_site_the_chains_and_the_day():
-    """The owner's plain words (2026-11-10): the site's name, the pick link (store first, q33), the five chains in slug
-    order on one line, and the date line, "Prices of" the day."""
-    for page, up in ((_storepage(), "../"), (_root(), "")):
-        assert (f'<header class="band"><div class="wrap"><a href="{up}index.html">Deal or No Deal</a>'
-                f'{PICK_LINK.format(up=up)}'
-                '<p class="dateline">Shufersal · Rami Levy · Osher Ad · Carrefour · Yochananof</p>'
+def test_every_page_header_names_the_site_and_the_day():
+    """The owner's plain words (2026-11-10) and the site's look (q36): the site's name as the brand, drawn as the front
+    page's headline ("Deal" on the green label, "No Deal" on the yellow one: the owner, 2026-11-16), the pick link
+    (store first, q33), on the front page alone the five chains in slug order on one line, and the date line, "Prices
+    of" the day."""
+    chains = '<p class="dateline">Shufersal · Rami Levy · Osher Ad · Carrefour · Yochananof</p>'
+    for page, up, line in ((_storepage(), "../", ""), (_root(), "", chains)):
+        assert (f'<header class="band"><div class="wrap"><a class="brand" href="{up}index.html"><b>Deal</b> or '
+                f'<b class="no">No Deal</b></a>{PICK_LINK.format(up=up)}{line}'
                 '<p class="dateline">Prices of Friday 20 November 2026</p></div></header>') in page
 
 
@@ -225,8 +332,8 @@ def test_a_store_types_list_is_its_deals_passing_the_bar_by_saving():
     assert _table_rows(page) == ["300", "200", "1000"]
     assert _lede(page) == "At Shufersal Sheli today: 3 of 4 promotions are actually deals."
     badges = re.findall(r'<span class="badge ([^"]+)">([^<]+)</span>', page)
-    assert badges == [("deal-2", "At Shufersal Sheli: DEAL · ₪3.00 off"), ("deal-1", "At Shufersal Sheli: DEAL · ₪1.50 off"),
-                      ("deal-1", "At Shufersal Sheli: DEAL · ₪1.50 off")]
+    assert badges == [("deal-2", "DEAL · ₪3.00 off"), ("deal-1", "DEAL · ₪1.50 off"),
+                      ("deal-1", "DEAL · ₪1.50 off")]
 
 
 def test_the_list_shows_the_top_100():
@@ -313,38 +420,42 @@ def test_a_row_shows_the_badge_its_condition_todays_price_and_the_usual_price():
     """The design's list: the product (its link, its name in the chain's span, its barcode), the deal badge with its
     shade and the condition beside it when there is one, today's price and the usual price, each as shown; a weighed
     product's a kilogram's. "2 for ₪7.00" for club members, against 6.50 every day: ₪3.50 a unit, ₪3.00 off."""
-    heads = "".join(f'<th scope="col">{head}</th>' for head in ("Product", "Deal", "Price today", "Usually"))
+    heads = "".join(f'<th scope="col" role="columnheader">{head}</th>'
+                    for head in ("Product", "Deal", "Price today", "Usually"))
     two = _deal_row(listed="6.50", price=Fraction(7, 2), kind="n_for_m", buy="2", restrictions=["club"])
     page = _storepage(_front(rows=[two]))
-    assert f"<thead><tr>{heads}</tr></thead>" in page
+    assert f'<thead role="rowgroup"><tr role="row">{heads}</tr></thead>' in page
     row = re.search(r"<tr data-column[^>]*>(.*?)</tr>", page).group(1)
-    assert row == (f'<th scope="row"><a href="../{page_path(CODE)}">{CHAIN_SPAN.format(TITLE)}</a><small>{CODE}</small>'
-                   '</th><td><span class="badge deal-2">At Shufersal Sheli: DEAL · ₪3.00 off</span>'
-                   "<small>Club members only; When you buy 2</small></td><td>₪3.50</td><td>₪6.50</td>")
+    assert row == (f'<th scope="row" role="rowheader"><a href="../{page_path(CODE)}">{CHAIN_SPAN.format(TITLE)}</a>'
+                   f'<small>{CODE}</small></th><td role="cell"><span class="badge deal-2">DEAL · ₪3.00 off</span>'
+                   '<small>Club members only; When you buy 2</small></td><td role="cell">₪3.50</td>'
+                   '<td role="cell">₪6.50</td>')
     kg = _deal_row(RAMI, listed="69.90", price="50.00", per="kg", buy="1.5", kind="n_for_m")
     cells = re.search(r"<tr data-column[^>]*>(.*?)</tr>", _storepage(_front(RAMI, rows=[kg]))).group(1)
-    assert ('<span class="badge deal-3">At Rami Levy: DEAL · ₪19.90 off a kilogram</span><small>When you buy 1.5 '
-            "kilograms</small></td><td>₪50.00 a kilogram</td><td>₪69.90 a kilogram</td>") in cells
+    assert ('<span class="badge deal-3">DEAL · ₪19.90 off a kilogram</span><small>When you buy 1.5 kilograms</small>'
+            '</td><td role="cell">₪50.00 a kilogram</td><td role="cell">₪69.90 a kilogram</td>') in cells
     plain = re.search(r"<tr data-column[^>]*>(.*?)</tr>", _storepage()).group(1)
-    assert '<span class="badge deal-2">At Shufersal Sheli: DEAL · ₪3.00 off</span></td>' in plain     # no condition
-    assert BADGE_STYLE in page
+    assert '<span class="badge deal-2">DEAL · ₪3.00 off</span></td>' in plain     # no condition
 
 
 def test_the_filters_need_no_script():
     """The club-only and minimum-spend checkboxes, each ruled by CSS alone (`:checked` and the sibling combinator); a
     row carries what the filters read from the promotion its verdict judges (`data-club` for any restriction,
     `data-spend` for a minimum spend). No store radio: the page is one store type's. The labels are the owner's plain
-    words (2026-11-10); their caveats are the fold-out's."""
+    words (2026-11-10); their caveats are the fold-out's. The rule is the site's one stylesheet's (the site's look,
+    q36), which the page links."""
     restricted = _deal_row(DEAL, code="1", restrictions=["chain_card"])
     spend = _deal_row(DEAL, code="2", price="8.00", min_spend="200")
     page = _storepage(_front(DEAL, rows=[restricted, spend, _deal_row(DEAL, code="3", price="9.00")]))
     assert ('<section class="deals"><input type="checkbox" id="f-club"><label for="f-club">Hide club-only deals</label>'
             '<input type="checkbox" id="f-spend"><label for="f-spend">Hide deals with a minimum spend</label>'
             '<div class="table"') in page
-    assert "#f-club:checked ~ .table tbody tr[data-club] { display: none; }" in page
-    assert "#f-spend:checked ~ .table tbody tr[data-spend] { display: none; }" in page
+    assert f'<link rel="stylesheet" href="../{STYLESHEET}">' in page
+    assert ("#f-club:checked~.table tbody tr[data-club],#f-spend:checked~.table tbody tr[data-spend]{display:none}"
+            in asset_files()[STYLESHEET].decode("utf-8"))
     assert 'type="radio"' not in page and not re.search(r"#f-(?!club|spend)", page)
-    assert re.findall(r"<tr data-column=\"shufersal-deal\"( [^>]*)?>", page) == [' data-club=""', ' data-spend=""', ""]
+    assert re.findall(r'<tr data-column="shufersal-deal"( [^>]*)? role="row">', page) == [
+        ' data-club=""', ' data-spend=""', ""]
 
 
 def test_the_fold_out_says_how_a_deal_passes_for_that_store_type():
@@ -391,7 +502,7 @@ def test_the_story_is_the_top_rows_verdict():
             f'{CHAIN_SPAN.format(TITLE)}</a></p><p class="badge deal-2">At Shufersal Sheli: DEAL · ₪3.00 off</p>'
             f"{said}") in page
     assert said == ("<p>Usually ₪10.00, sales included (90 days tracked).</p><p>Lowest in the 90 days tracked.</p>"
-                    "<p>On sale on 0 of the 90 days tracked.</p>")
+                    "<p>On sale on 0 of the 90 days before today.</p>")
 
 
 def test_a_store_pages_links_lead_up_to_the_root():
@@ -414,6 +525,67 @@ def test_the_store_page_is_the_same_bytes_whatever_the_rows_order():
     assert page == _storepage(_front(rows=rows), days=dict(reversed(list(_days().items()))), marking=("osherad", "shufersal"))
 
 
+# ---- a store page in the site's look (q36) ----
+
+def test_a_store_pages_title_puts_its_last_word_on_the_deal_label():
+    """The design's store page: the title question, FRONT_TITLE, with its last word on the full green label, on each of
+    the nine."""
+    for column in COLUMNS:
+        h1, = re.findall(r'<h1 id="deals">(.*?)</h1>', _storepage(_front(column.key, rows=[])))
+        assert h1 == 'Is it actually a <span class="yes">deal?</span>' and _read(h1) == FRONT_TITLE, column.key
+
+
+def test_the_headlines_two_numbers_are_bold():
+    """The design's store page: the headline's two numbers in the narrow cut, `<b>` (the stylesheet's
+    `.t-store .lede b`), its words `store_lead`'s. The lines that are not the headline ("None yet", a hole's, a
+    promotion hole's) and the headline with no promotions to check have no numbers to set and no `<b>`, even a hole's
+    line whose figures are the front's own."""
+    front = _front(MARKET, rows=[_deal_row(MARKET, code=str(1000 + n)) for n in range(14)], checked=4196)
+    lede = re.search(r'<p class="lede">(.*?)</p>', _storepage(front)).group(1)
+    assert lede == "At Carrefour Market today: <b>14 of 4,196</b> promotions are actually deals."
+    assert _read(lede) == store_lead(front, _days()[(MARKET, DAY)])
+    one = re.search(r'<p class="lede">(.*?)</p>', _storepage(_front(checked=3))).group(1)
+    assert one == "At Shufersal Sheli today: <b>1 of 3</b> promotions is actually a deal."
+    five = _front(rows=[_deal_row(code=str(n)) for n in range(5)], checked=20)      # the hole's line says 5 of 20
+    plain = [_storepage(_front(rows=[], checked=3, ready=False)), _storepage(_front(rows=[], checked=0)),
+             _storepage(five, days=_days(holes={(SHELI, DAY)})), _storepage(days=_days(promo_holes={(SHELI, DAY)}))]
+    leads = [re.search(r'<p class="lede">(.*?)</p>', page).group(1) for page in plain]
+    assert leads == [NONE_YET, "At Shufersal Sheli today: no promotions to check.",
+                     "too few files today: 5 of 20 stores", "Sale prices could not be read today."]
+
+
+def test_a_store_row_badge_is_the_verdict_alone():
+    """The owner's words (2026-11-15, "Word changes" 8): a store page's row badge is the verdict alone
+    (`verdict_words`), the page being the store type's own; no "At " anywhere in the table. The story under "One of
+    today's deals" keeps `badge`, naming the store type."""
+    row = _deal_row(listed="10.00", price="8.10")
+    page = _storepage(_front(rows=[row]))
+    table = re.search(r'<table class="front".*?</table>', page, re.DOTALL).group(0)
+    assert verdict_words(row.verdict) == "DEAL · ₪1.90 off"
+    assert '<span class="badge deal-1">DEAL · ₪1.90 off</span>' in table and "At " not in table
+    assert badge(row.verdict) == "At Shufersal Sheli: DEAL · ₪1.90 off"
+    assert '<p class="badge deal-1">At Shufersal Sheli: DEAL · ₪1.90 off</p>' in page            # the story's
+
+
+def test_the_store_table_keeps_its_roles():
+    """The design's store page: on a phone each row is a block, which takes a table's roles away, so the table writes
+    them: `table` on the table, `rowgroup` on its head and body, `row` on every row, `columnheader` on every column
+    head, `rowheader` on every row head and `cell` on every cell, the "No deals to show." row's included."""
+    rows = [_deal_row(code="1"), _deal_row(code="2", price="8.00", restrictions=["club"], min_spend="100")]
+    empty = _storepage(_front(rows=[]))
+    for page, count in ((_storepage(_front(rows=rows)), 2), (empty, 1)):
+        table = re.search(r'<table class="front".*?</table>', page, re.DOTALL).group(0)
+        tags = re.findall(r"<(table|thead|tbody|tr|th|td)\b([^>]*)>", table)
+        roles = {"table": "table", "thead": "rowgroup", "tbody": "rowgroup", "tr": "row", "td": "cell",
+                 ' scope="col"': "columnheader", ' scope="row"': "rowheader"}
+        for tag, attributes in tags:
+            role = roles[tag] if tag != "th" else roles[re.match(r' scope="(?:col|row)"', attributes).group(0)]
+            assert attributes.endswith(f' role="{role}"') and attributes.count("role=") == 1, (tag, attributes)
+        assert [tag for tag, _ in tags].count("tr") == 1 + count
+    assert ('<tbody role="rowgroup"><tr role="row"><td colspan="4" role="cell">No deals to show.</td></tr></tbody>'
+            in empty)
+
+
 # ---- every page: the header and the one script (store first, q33) ----
 
 def _every_page() -> list[tuple[str, str]]:
@@ -425,25 +597,48 @@ def _every_page() -> list[tuple[str, str]]:
             (_render(covered, pairs), "../"), (next(iter(browse.values())), "../")]
 
 
-def test_every_page_carries_the_one_script_at_its_depth():
-    """Q2's one script (store-first.md): `search.js` in every page's head, at the page's own depth ("../" for p/,
-    browse/ and store/ pages), and no other."""
+def test_every_page_links_the_one_stylesheet_at_its_depth():
+    """Q2's one script (store-first.md) and the site's look (q36): every page's head ends with the one shared
+    stylesheet and `search.js`, each at the page's own depth ("../" for p/, browse/ and store/ pages), in place of a
+    style block; no other stylesheet or script, no style block and no style attribute."""
     for page, up in _every_page():
-        assert page.count("<script") == 1, up
-        assert f"</style>\n{SCRIPT_TAG.format(up=up)}\n</head>" in page, up
+        assert page.count("<link") == 1 and page.count("<script") == 1, up
+        assert (f'</title>\n<link rel="stylesheet" href="{up}{STYLESHEET}">\n<script src="{up}search.js" defer>'
+                "</script>\n</head>") in page, up
+        assert "<style" not in page and "style=" not in page, up
+
+
+def test_every_page_names_its_kind_on_its_body():
+    """The site's look (q36): each page's body names its kind, which the stylesheet reads (`t-<kind>`)."""
+    kinds = ["front", "store", "method", "record", "basket", "product", "browse"]
+    for (page, _), kind in zip(_every_page(), kinds, strict=True):
+        assert page.count("<body") == 1 and f'</head>\n<body class="t-{kind}">\n<header class="band">' in page, kind
+
+
+def test_the_chains_line_is_on_the_front_page_only():
+    """The owner's words (2026-11-15, site-look.md): the chains' line in the front page's header, and in no other's."""
+    (root, _), *others = _every_page()
+    assert f'<p class="dateline">{CHAINS_LINE}</p>' in _header(root)
+    for page, up in others:
+        assert CHAINS_LINE not in _header(page), up
 
 
 def test_the_header_says_pick_your_store_before_a_pick():
     """The design's header before a pick, on every page, store pages included (the controller's ruling: search.js
     names the remembered pick); its pick link leads up to the picker, `#pick` on the root, whose section is the
-    script's (`data-page="root"`); no page but a product page has the badge row, which the script arranges."""
+    script's (`data-page="root"`); no page but a product page has the badge row, which the script arranges, and the only
+    other row of links, the method page's to its own sections (Task 10), is a `nav` of another class, which the script
+    does not read (`nav.badges`)."""
     for page, up in _every_page():
         header = _header(page)
         assert PICK_LINK.format(up=up) in header and header.count("<a ") == 2, up
         assert "store/" not in header and "change" not in header
     assert '<section id="pick" data-page="root">' in _root()
     for page, _ in _every_page()[:5]:
-        assert '<nav class="badges">' not in page and "<nav" not in page
+        assert '<nav class="badges">' not in page
+        assert re.findall(r"<nav\b[^>]*>", page) == ([f'<nav class="toc" aria-label="{ON_THIS_PAGE}">']
+                                                      if page == _method() else [])
+    assert 'document.querySelector("nav.badges")' in SEARCH_JS
 
 
 # ---- the method page ----
@@ -467,6 +662,96 @@ def _columns(**more) -> ColumnsToday:
 
 def _method(columns: ColumnsToday | None = None, exclusions=METHOD_EXCLUSIONS) -> str:
     return render_method(BASKET, exclusions, columns or _columns(), BASKET_DAY, "12:03", "0123456789ab", a_public())
+
+
+class _TopSections(HTMLParser):
+    """The ids of a page's top-level sections, in order: a section inside another (the basket's method parts) is not
+    one."""
+
+    def __init__(self):
+        super().__init__()
+        self.depth, self.ids = 0, []
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "section":
+            self.depth += 1
+            if self.depth == 1:
+                self.ids.append(dict(attrs).get("id"))
+
+    def handle_endtag(self, tag):
+        if tag == "section":
+            self.depth -= 1
+
+
+def test_the_method_page_lists_its_own_sections():
+    """The site's look (q36, Task 10; docs/site-look.md, "Page by page" and "What the owner has decided"): right after
+    the lead, a row of links to the page's own sections, spoken as ON_THIS_PAGE ("On this page", for screen readers,
+    not shown), its links the page's top-level sections in order, each once, each link's words that section's heading
+    as it stands; and every link's fragment resolves, as the site check's rule holds it, to an id on the page."""
+    page = _method()
+    assert ON_THIS_PAGE == "On this page"
+    row = re.search(r'<nav class="toc" aria-label="([^"]*)"><ol>(.*?)</ol></nav>', page)
+    assert row.group(1) == ON_THIS_PAGE and page.count('<nav class="toc"') == 1
+    lede = re.search(r'<p class="lede">.*?</p>\n', page)
+    assert lede.end() == row.start()                                      # right after the lead
+    links = re.findall(r'<li><a href="#([^"]+)">(.*?)</a></li>', row.group(2))
+    assert "".join(f'<li><a href="#{id_}">{words}</a></li>' for id_, words in links) == row.group(2)
+    top = _TopSections()
+    top.feed(page)
+    assert top.ids == ["columns", "carrefour", "outside", "floor", "rules", "never", "measured", "law", "reproduce",
+                       BASKET_SECTION]
+    assert [id_ for id_, _ in links] == top.ids                           # every section, in order, each once
+    for id_, words in links:
+        assert re.search(rf'<section id="{id_}"><h2>(.*?)</h2>', page).group(1) == words
+    assert dict(links)["headline-basket"] == BASKET_TITLE and dict(links)["rules"] == "The rules"
+    ids = {found["id"] for _, found in _tags(page) if "id" in found}
+    for id_, _ in links:
+        assert _link_problem("method.html", f"#{id_}", {"method.html"}, set(), {"method.html": ids}) is None
+    assert _link_problem("method.html", "#nowhere", {"method.html"}, set(), {"method.html": ids})   # the rule bites
+    assert ".toc ol{display:flex;" in asset_files()[STYLESHEET].decode("utf-8")
+
+
+def test_the_method_page_says_a_no_deal_is_yellow():
+    """Task 10's ruling 1 (the owner's choice, docs/site-look.md, "NO DEAL: the yellow label"): S5 says a No deal's
+    badge is yellow, the rest of the sentence as before; no grey on the method page's rules."""
+    rules = _rules_of(_method())
+    s5 = _rule(rules, "S5 ")
+    assert f"one for each band: {joined(_bands(SHADES))}; a No deal's badge is yellow. Every Deal and No deal" in s5
+    assert "grey" not in rules and "neutral" not in rules
+    assert "--nd:#ffd60a;" in asset_files()[STYLESHEET].decode("utf-8")   # the stylesheet's yellow
+
+
+def test_the_method_pages_s4_says_where_a_badge_names_the_store_type():
+    """Task 10's fix round 1 (the controller's ruling): since Task 9 a store page's rows show the verdict alone, so S4
+    no longer says every badge names the store type; it says which do, each example the words the pages show: a
+    product page's badge (`badge`) and its "Elsewhere today" row (`short_badge`), a store page's "One of today's deals"
+    (`badge`), and a store page's rows (`verdict_words`)."""
+    s4 = _rule(_rules_of(_method()), "S4 ")
+    found = replace(_deal_row(MARKET).verdict, saving=Decimal("1.90"))
+    assert badge(found) == "At Carrefour Market: DEAL · ₪1.90 off" and verdict_words(found) == "DEAL · ₪1.90 off"
+    assert words_module.short_badge(replace(found, column=RAMI)) == "Rami Levy · DEAL · ₪1.90 off"
+    assert (words_module.ELSEWHERE, words_module.STORY_HEADING) == ("Elsewhere today", "One of today's deals")
+    assert ('A product page\'s badge names the store type ("At Carrefour Market: DEAL · ₪1.90 off", and under '
+            '"Elsewhere today" "Rami Levy · DEAL · ₪1.90 off"), as does a store page\'s "One of today\'s deals"; a '
+            'store page\'s rows leave it out ("DEAL · ₪1.90 off"), the page being that store type\'s.') in s4
+    assert "The badge names the store type" not in s4
+
+
+def test_the_method_page_names_the_reasons_other_count():
+    """Task 10's ruling 2 (the owner, 2026-11-15: docs/site-look.md, "Word changes" 3): S8 says a reason names "days
+    tracked" when every day tracked has a day price, and its own count, "days with a known price", when a sale day of
+    unknown price has none, so a page never shows two different numbers both called days tracked; S6 says the same of
+    "Lowest in the ...". The examples are the code's own words (`shopper.words._counted`)."""
+    rules = _rules_of(_method())
+    s6, s8 = _rule(rules, "S6 "), _rule(rules, "S8 ")
+    assert words_module._counted(9, 9) == "9 days tracked" and words_module._counted(83, 86) == (
+        "83 days with a known price")
+    assert ('names the days it rests on, the days tracked with a day price: "days tracked" when every day tracked has '
+            'one ("Usually ₪11.90, sales included (9 days tracked)."), else their own count, since a sale day of '
+            'unknown price (S1) has none ("Usually ₪22.90, sales included (83 days with a known price)."), so a page '
+            "never shows two different numbers both called days tracked.") in s8
+    assert ('"Lowest in the 10 days tracked.", counting the days tracked with a day price, named as days with a known '
+            'price when some have none ("Lowest in the 83 days with a known price.").') in s6
 
 
 def test_the_method_pages_never_list_is_the_words_list():
@@ -574,11 +859,21 @@ def test_the_method_page_states_the_rules_with_the_codes_constants(monkeypatch):
                    "at least 90 scored days", "at most 0.03", "more than 4 holes", "d + 1 to d + 14"):
         assert figure in rules, figure
     assert unreadable("carrefour") in rules and no_odds_yet(DEAL).split(".")[0] in rules
-    # "listed price" with its definition (store-first.md, "Words"), and the chart's name for it
+    # "listed price" with its definition (store-first.md, "Words"); the chart names no listed price (the owner,
+    # 2026-11-16: one line, the price paid each day), and no shopper text says "shelf price"
     assert _rule(rules, "P2 ").startswith("A column's listed price for a product on a day is its price as listed in "
                                           "the chain's price files, before promotions: the median of the product's "
                                           "price across the column's included stores")
-    assert "The price chart calls it the shelf price." in _rule(rules, "P2 ")
+    assert "shelf price" not in page and "the lowest and highest store prices are shown beside it. A column" in rules
+    # S0: a day not tracked has no price in the chart; between two days with a price, seven or fewer in a row with
+    # none are joined (the owner, 2026-11-16; shopper.chart's BRIDGE, which counts a sale day of unknown price too)
+    assert _rule(rules, "S0 ").endswith(
+        'A day not tracked is left out of the usual price, "Last this low", "How often on sale" and every count of '
+        "days tracked. In the price chart it has no price: between two days with a price, the line goes on dotted "
+        "over seven days or fewer in a row with none, and stops for more.")
+    assert "gap in the price chart" not in rules
+    # S7 quotes "How often on sale" as the page says it: out of the days before today (the owner, 2026-11-16)
+    assert '("On sale on 12 of the 60 days before today.")' in _rule(rules, "S7 ")
     assert ('no listed price is claimed, every promotion that day is shown "at some stores", with no verdict (S4), no '
             "promotion is said to be listed to start, and the day counts in no window, front page or "
             "forecast.") in rules                                                                   # deploy prep
@@ -627,6 +922,10 @@ def test_the_method_page_states_the_rules_with_the_codes_constants(monkeypatch):
     key = re.search(r'const PICK_KEY = "([^"]+)";', SEARCH_JS).group(1)
     assert f'kept in this browser\'s local storage, under the one key "{key}", and sent nowhere' in pick
     assert f'"{PICK_TITLE}"' in pick and "nine" in pick
+    # the owner (2026-11-16): the root no longer opens the picked front page; it offers it first, in search.js's words
+    yours = re.search(r'const YOURS = "([^"]+)";', SEARCH_JS).group(1)
+    assert f'reads it only to offer the picked front page first on the root page ("{yours}"), to name it' in pick
+    assert "open the picked front page" not in pick
     _no_never_phrase_and_no_pronoun(page)
     assert "0123456789ab" in page and 'href="site-days/2026-11-02.json"' in page
     reproduce = re.search(r'<section id="reproduce">(.*?)</section>', page, re.DOTALL).group(1)
@@ -934,12 +1233,22 @@ def test_basket_html_keeps_the_baskets_always_phrases_links_covered_items_only_a
     assert prices.endswith(f"</table></div><p>{formats_note()}</p></section>")
     assert flatten(ALWAYS_SENTENCE) not in text
     assert flatten(CREDIT_START) in text and flatten(date_line(BASKET_DAY)) in text
-    assert (f'<a href="index.html">Deal or No Deal</a>{PICK_LINK.format(up="")}<p class="dateline">{CHAINS_LINE}</p>'
-            in page)
+    assert ('<a class="brand" href="index.html"><b>Deal</b> or <b class="no">No Deal</b></a>'
+            f'{PICK_LINK.format(up="")}') in page
     assert f'<a href="method.html#{BASKET_SECTION}">' in page
     assert f"<h1>{BASKET_TITLE}</h1>" in page and page.count("<script") == 1
-    assert f'</style>\n{SCRIPT}\n</head>' in page
+    assert f'{SCRIPT}\n</head>' in page
     assert 'href="p/' not in _basket_page(pages=())
+
+
+def test_basket_html_takes_the_sites_frame_whole():
+    """The site's look (q36): basket.html is the basket's index in the site's frame whole: the site's head (the shared
+    stylesheet and the one script, from the root) in place of the basket's style block, its body named "t-basket",
+    and the site's band, with no chains' line."""
+    page = _basket_page()
+    assert (f"<title>{BASKET_TITLE}</title>\n{head('')}\n</head>\n<body class=\"t-basket\">\n"
+            f"{band(BASKET_DAY, '')}\n<main>") in page
+    assert "<style" not in page and CHAINS_LINE not in page
 
 
 def test_basket_html_links_an_item_whose_code_has_leading_zeros():

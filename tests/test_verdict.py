@@ -16,8 +16,8 @@ from basket.record import money
 from shopper.deals import to_agora
 from shopper.history import READ_DAYS, ColumnDay, Pair, Point
 from shopper.measures import promotion_points
-from shopper.verdict import (CALLS, DEAL_MIN, Day, DealRow, Verdict, checked, counts_today, day_price, front_list,
-                             on_list, passes_bar, tracked, usual_price, verdict)
+from shopper.verdict import (CALLS, DEAL_MIN, Day, DealRow, Verdict, checked, counts_today, day_price, extremes,
+                             front_list, on_list, passes_bar, tracked, usual_price, verdict)
 
 DAY = date(2026, 11, 20)
 COLUMN = "shufersal-deal"
@@ -111,7 +111,7 @@ def test_a_tracked_day_has_prices_and_promotions_read():
     column_days = _column_days(holes={back(10)}, promo_holes={back(20)}, missing={back(30)})
     found = tracked(_pair(points), column_days, DAY)
     assert [day.day for day in found] == [back(n) for n in range(READ_DAYS, 0, -1) if n not in (10, 20, 30, 40)]
-    assert {(day.listed, day.price, day.on_sale) for day in found} == {(D("5.00"), D("5.00"), False)}
+    assert {(day.price, day.on_sale) for day in found} == {(D("5.00"), False)}
     # today and a day before the 90 are never tracked
     older = _pair([_shelf(READ_DAYS + 1), _today()])
     assert tracked(older, _column_days(first=READ_DAYS + 1), DAY) == ()
@@ -140,9 +140,9 @@ def test_counts_today_is_wide_valid_with_a_kind_and_running():
 def test_a_sale_day_of_unknown_price_has_no_day_price_and_is_on_sale():
     """S1 and S7: on promotion with no price that counts is a sale day of unknown price."""
     found = tracked(_pair([_unknown(1)]), _column_days(), DAY)
-    assert found == (Day(day=back(1), listed=D("5.00"), price=None, on_sale=True),)
+    assert found == (Day(day=back(1), price=None, on_sale=True),)
     assert tracked(_pair([_sale(1, "4.00")]), _column_days(), DAY) == (
-        Day(day=back(1), listed=D("5.00"), price=D("4.00"), on_sale=True),)
+        Day(day=back(1), price=D("4.00"), on_sale=True),)
 
 
 # ---- S2 ----
@@ -352,6 +352,45 @@ def test_how_often_and_the_last_sale_before_this_one():
     assert _judge([*_history(), _today()]).last_sale is None
 
 
+# ---- lowest and highest (the site look's call 3) ----
+
+def _priced(prices, today: str | None) -> Verdict:
+    """A verdict over the days `prices` gives, each (day, day price), a day price None for a sale day of unknown price;
+    `today` None when today's price is unknown."""
+    days = tuple(Day(found, None if price is None else D(price), price is None) for found, price in prices)
+    return Verdict(column=COLUMN, call="deal", days=days, today_price=None if today is None else D(today), struct=None,
+                   usual=None, saving=None, last_low=None, last_sale=None, on_sale_today=False)
+
+
+def test_lowest_and_highest_count_today():
+    """docs/site-look.md, "Calls made in this design" 3: the lowest and the highest over the tracked days' day prices
+    and today's price, each with the latest day at that price, None for that day when today's price is it (today is
+    the latest); a sale day of unknown price has no price to count; None when no price is known."""
+    def nov(n: int) -> date:
+        return date(2026, 11, n)
+
+    assert extremes(_priced([(nov(13), "24.90"), (nov(14), "19.90")], "17.90")) == (
+        (D("17.90"), None), (D("24.90"), date(2026, 11, 13)))
+    # today's price equal to an earlier lowest: today is the latest day at that price; and so for the highest
+    assert extremes(_priced([(nov(12), "19.90"), (nov(13), "24.90"), (nov(14), "21.90")], "19.90")) == (
+        (D("19.90"), None), (D("24.90"), nov(13)))
+    assert extremes(_priced([(nov(12), "4.00"), (nov(13), "5.00")], "5.00")) == (
+        (D("4.00"), nov(12)), (D("5.00"), None))
+    # today above every day price: the highest is today's
+    assert extremes(_priced([(nov(13), "4.00"), (nov(14), "4.50"), (nov(15), None)], "5.00")) == (
+        (D("4.00"), nov(13)), (D("5.00"), None))
+    # no today's price: a tie is dated by its later day, in whatever order the days come
+    ties = [(nov(12), "4.00"), (nov(13), "5.00"), (nov(14), "4.00"), (nov(15), "5.00"), (nov(16), None)]
+    for given in (ties, ties[::-1]):
+        assert extremes(_priced(given, None)) == ((D("4.00"), nov(14)), (D("5.00"), nov(15)))
+    # nothing known: no day price and no today's price
+    assert extremes(_priced([(nov(13), None)], None)) is None
+    assert extremes(_priced([], None)) is None
+    # today's price alone: both, today's
+    assert extremes(_priced([(nov(13), None)], "3.00")) == ((D("3.00"), None), (D("3.00"), None))
+    assert extremes(_priced([], "3.00")) == ((D("3.00"), None), (D("3.00"), None))
+
+
 # ---- the front list ----
 
 def test_the_bar_is_twenty_days_with_records_in_the_thirty():
@@ -402,8 +441,7 @@ def test_random_histories_keep_the_rules():
         calls.add(found.call)
         read = promotion_points(pair, column_days, DAY)
         assert [day.day for day in found.days] == [point.day for point in read]
-        assert [day.listed for day in found.days] == [D(money(point.listed)) for point in read]
-        assert all(day.price is None or day.price <= day.listed for day in found.days)
+        assert all(day.price is None or day.price <= D(money(point.listed)) for day, point in zip(found.days, read))
         if found.call in ("deal", "no_deal"):
             assert found.usual in [day.price for day in found.priced]
             assert found.saving == found.usual - found.today_price

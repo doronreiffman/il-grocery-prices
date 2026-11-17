@@ -1,23 +1,28 @@
 """The product pages (`shopper.product`; the plan's Task 16, then store first, q33: docs/store-first.md, "What a visitor
-sees" 5 to 8, "The chart", "Words" and "Testing"; the store-first plan's Task 3): the badge row, a section per store type
-(a column) with its verdict, reason, conditions, coming sale, chart, last this low, how often and the fold-out "How this
-is worked out", on the shared shell (`shopper.shell`) with the base style (`basket.page.BASE_STYLE`, split from the
-basket's block, the first pre-flight's S11). Pairs, points and column-days are built by hand, as tests/test_measures.py
-builds them; names, barcodes and programmes are synthetic. Each page's verdicts are worked by `shopper.verdict`, as the
+sees" 5 to 8, "The chart", "Words" and "Testing"; the store-first plan's Task 3; then the site's look, q36:
+docs/site-look.md, "The label", "A product page", "The barcode", and the site-look plan's Task 8): the badge row, a
+section per store type (a column) with its verdict as a shelf label (the reason, the conditions, a coming sale, and the
+price part with today's price and the product's barcode), its chart, last this low, how often and the fold-out "How
+this is worked out", on the shared shell (`shopper.shell`), which links the site's one stylesheet (`shopper.assets`; its
+rules are tests/test_look.py's). Pairs, points and column-days are built by hand, as tests/test_measures.py builds them;
+names, barcodes and programmes are synthetic. Each page's verdicts are worked by `shopper.verdict`, as the
 build works them."""
-import hashlib
 import re
 from dataclasses import replace
 from datetime import date, timedelta
 from decimal import Decimal
 from fractions import Fraction
+from html import unescape
 
 import pytest
 
 from basket.check import PRONOUNS, flatten, strip_tags
-from basket.page import BASE_STYLE, BASKET_STYLE, STYLE
+from basket.record import money
 from basket.words import too_few
-from shopper import product, words
+from shopper import product, shell, words
+from shopper.assets import STYLESHEET
+from shopper.bars import drawing, mark
+from shopper.chart import render_chart
 from shopper.columns import BY_KEY, COLUMNS
 from shopper.deals import to_agora
 from shopper.history import ColumnDay, Covered, Pair, Point
@@ -38,7 +43,10 @@ SPAN = re.compile(r'<span class="as-listed" lang="he" dir="rtl">.*?</span>', re.
 SECTION = re.compile(r'<section data-column="([^"]+)" id="c-([^"]+)" data-chain="([^"]+)">(.*?)</section>', re.DOTALL)
 FOLD = re.compile(r"<details><summary>([^<]*)</summary>(.*?)</details>", re.DOTALL)
 NAV = re.compile(r'<nav class="badges">(.*?)</nav>', re.DOTALL)
-BADGE = re.compile(r'<a data-column="([^"]+)" href="#c-([^"]+)" class="badge ([^"]+)">([^<]*)</a>')
+BADGE = re.compile(r'<a data-column="([^"]+)" href="#c-([^"]+)" class="badge ([^"]+)">(.*?)</a>')
+TAG = re.compile(r'<div class="tag ([^"]+)"><div class="say">(.*?)</div>(?:<div class="pay">(.*?)</div>)?</div>'
+                 r'(?=<div class="history">|<p class="fact">|<details>)', re.DOTALL)
+NO_BARS = "12345678901"          # 11 digits: no barcode can be drawn (Review Focus 1)
 
 
 def back(days: int) -> date:
@@ -132,8 +140,29 @@ def _visible(page: str) -> str:
     return flatten(strip_tags(SPAN.sub(" ", page)))
 
 
+def _read(markup: str) -> str:
+    """Markup as a reader reads it: its tags removed, nothing put in their place, its entities read."""
+    return unescape(re.sub(r"<[^>]*>", "", markup))
+
+
 def _paragraphs(body: str) -> list[str]:
-    return re.findall(r"<p(?: class=\"[^\"]*\")?>(.*?)</p>", body)
+    """A section's paragraphs as read (`_read`)."""
+    return [_read(said) for said in re.findall(r"<p(?: class=\"[^\"]*\")?>(.*?)</p>", body)]
+
+
+def _label(body: str) -> tuple[str, str, str | None]:
+    """A section's shelf label: its class, its saying part and its price part (None when it has none)."""
+    (shade, say, pay), = TAG.findall(body)
+    return shade, say, (pay if '<div class="pay">' in body else None)
+
+
+def _history(body: str) -> str:
+    """A section's chart, its key and its table: from `<div class="history">` to the facts or the fold-out."""
+    start = body.find('<div class="history">')
+    if start < 0:
+        return ""
+    ends = (body.find('<p class="fact">', start), body.find("<details>", start))
+    return body[start:min(at for at in ends if at >= 0)]
 
 
 def _typical() -> tuple[Covered, dict[str, Pair]]:
@@ -236,7 +265,7 @@ def test_a_programmes_name_is_escaped_in_the_chains_span():
     page = _render(*_one("10.00", deal))
     assert CHAIN_SPAN.format('&lt;i&gt;תו "זהב"&lt;/i&gt;') in page
     assert CHAIN_SPAN.format("FAKE &amp; co") in page
-    assert "<i>" not in page
+    assert "<i>תו" not in page                 # the page's own <i> are the badge's separator and the price's ₪
     deals = re.search(r'<ul class="deals">(.*?)</ul>', _fold(_sections(page)[DEAL]), re.DOTALL).group(1)
     assert (f"some customers only ({CHAIN_SPAN.format('&lt;i&gt;תו \"זהב\"&lt;/i&gt;')}, "
             f"{CHAIN_SPAN.format('FAKE &amp; co')}), {FROM_FIELDS}") in deals
@@ -244,12 +273,14 @@ def test_a_programmes_name_is_escaped_in_the_chains_span():
 
 
 def test_a_weighed_deal_is_per_kilogram():
-    """P4: a weighed link's deal price is a kilogram's: the saving and the usual price beside the verdict say so, the
-    condition is in kilograms, and the fold-out lists the deal per kilogram."""
+    """P4: a weighed link's deal price is a kilogram's: the saving, the usual price and today's price on the label say
+    so, the condition is in kilograms, and the fold-out lists the deal per kilogram."""
     deal = _struct("50.00", per="kg", kind="n_for_m", buy="1.5")
     body = _sections(_render(*_one("69.90", deal)))[DEAL]
-    assert '<p class="badge deal-3">At Shufersal Deal: DEAL · ₪19.90 off a kilogram</p>' in body
+    assert ('<div class="tag deal-3"><div class="say"><p class="verdict">At Shufersal Deal: <b>DEAL · ₪19.90 off a '
+            'kilogram</b></p>') in body
     assert "<p class=\"reason\">Usually ₪69.90 a kilogram, sales included (90 days tracked).</p>" in body
+    assert '<p class="price">Price today: <b><i>₪</i>50<sup>.00</sup></b><small> a kilogram</small></p>' in body
     assert "When you buy 1.5 kilograms" in body
     fold = _fold(body)
     assert fold.count("Deal price ₪50.00 per kilogram") == 1 and "buy 1.5" in fold
@@ -283,6 +314,7 @@ def test_a_product_beyond_the_read_says_when_last_seen_at_each_column():
     for column, body in sections.items():
         assert no_odds_yet(column) in _fold(body)
         assert "<svg" not in body and "days tracked" not in body and 'class="badge' not in body
+        assert 'class="tag' not in body and 'class="pay"' not in body
 
 
 def test_a_column_not_wide_today_says_when_last_listed_across():
@@ -297,8 +329,9 @@ def test_a_column_not_wide_today_says_when_last_listed_across():
 
 def test_the_largest_page_is_under_60_kb():
     """Nine columns, each with 90 days of a daily price change, weekly sale runs, three promotions, 40-character
-    names (the plan's Step 1)."""
+    names (the plan's Step 1), each part a label with its price part and the product's barcode (the site look's)."""
     page = _render(*_largest())
+    assert page.count('<use href="#ean"/>') == 9 and page.count('<p class="price">') == 9
     assert len(page.encode("utf-8")) <= MAX_PAGE, len(page.encode("utf-8"))
 
 
@@ -331,20 +364,34 @@ def test_a_section_per_column_listing_it_or_with_its_history_in_name_order():
 def test_each_section_says_the_verdict_with_the_store_types_name():
     """Anti-goal 1: the store type's name is inside every verdict, so a pick left over from last week shows itself."""
     body = _sections(_render(*_one("6.00", _struct("4.50"), on=[DAY])))[DEAL]
-    assert '<p class="badge deal-1">At Shufersal Deal: DEAL · ₪1.50 off</p>' in body
+    assert '<p class="verdict">At Shufersal Deal: <b>DEAL · ₪1.50 off</b></p>' in body
     market = _sections(_render(*_one("6.00", _struct("4.50"), column=MARKET)))[MARKET]
-    assert "At Carrefour Market: DEAL · ₪1.50 off" in market
+    assert '<p class="verdict">At Carrefour Market: <b>DEAL · ₪1.50 off</b></p>' in market
 
 
-def test_a_no_deal_badge_is_grey_and_writes_its_words():
-    """S5 and anti-goal 5: a no deal is said in words, "NO DEAL", in a neutral grey in both themes, never red."""
+def test_a_deal_is_a_green_label_in_its_shade():
+    """The site look's label: a deal's verdict on a label in the shade of its saving (S5's class; its greens are the
+    stylesheet's), the store type's name over the verdict in bold, then the reason; read as text, it is `badge`."""
+    covered, pairs = _typical()
+    found = _verdicts(pairs, _days())[DEAL]
+    body = _sections(_render(covered, pairs))[DEAL]
+    assert ('<div class="tag deal-2"><div class="say"><p class="verdict">At Shufersal Deal: <b>DEAL · ₪3.00 off</b>'
+            '</p><p class="reason">') in body
+    (verdict_line,) = re.findall(r'<p class="verdict">(.*?)</p>', body)
+    assert _read(verdict_line) == words.badge(found) == "At Shufersal Deal: DEAL · ₪3.00 off"
+    shades = {}
+    for usual, price in (("5.00", "4.00"), ("5.00", "2.00"), ("10.00", "5.00")):
+        shades[usual, price] = _label(_sections(_render(*_one(usual, _struct(price))))[DEAL])[0]
+    assert shades == {("5.00", "4.00"): "deal-1", ("5.00", "2.00"): "deal-2", ("10.00", "5.00"): "deal-3"}
+
+
+def test_no_deal_is_the_yellow_label():
+    """S5 and anti-goal 5: a no deal is said in words, "NO DEAL", on the yellow label (`no-deal`: its colours are the
+    stylesheet's `--nd` tokens, tests/test_look.py), so colour is never the only signal; then its reason."""
     body = _sections(_render(*_one("5.00", _struct("4.50"))))[DEAL]
-    assert '<p class="badge no-deal">At Shufersal Deal: NO DEAL</p>' in body
-    assert '<p class="reason">Only ₪0.50 below its usual ₪5.00 (90 days tracked).</p>' in body
-    for shades in _themes():
-        for token in ("--no-deal-bg", "--no-deal-text"):
-            red, green, blue = _rgb(shades[token])
-            assert max(red, green, blue) - min(red, green, blue) <= 0x10, (token, shades[token])
+    assert ('<div class="tag no-deal"><div class="say"><p class="verdict">At Shufersal Deal: <b>NO DEAL</b></p>'
+            '<p class="reason">Only ₪0.50 below its usual ₪5.00 (90 days tracked).</p></div>') in body
+    assert body.count("NO DEAL") == 1
 
 
 def test_the_reason_line_names_its_days():
@@ -352,15 +399,16 @@ def test_the_reason_line_names_its_days():
     sale at a price not read), right after the badge."""
     body = _sections(_render(*_typical()))[DEAL]
     paragraphs = _paragraphs(body)
-    assert paragraphs[:2] == ["At Shufersal Deal: DEAL · ₪3.00 off", "Usually ₪10.90, sales included (84 days tracked)."]
-    assert "At Shufersal Deal: DEAL · ₪3.00 off" in body and '<p class="badge deal-2">' in body
+    assert paragraphs[:2] == ["At Shufersal Deal: DEAL · ₪3.00 off",
+                             "Usually ₪10.90, sales included (84 days with a known price)."]
+    assert '<div class="tag deal-2">' in body
     # a short history says how short; an always-on sale says how often it has been at today's price
     short = _render(_covered({DEAL: "שם"}), {DEAL: _pair(DEAL, _listed("6.00", 0, 5), promotions=[_struct("4.50")])})
     assert "Usually ₪6.00, sales included (5 days tracked)." in short
     always = {day: (_sale("7.90", day),) for day in _listed("9.90", 1, 90)}
     page = _render(_covered({DEAL: "שם"}), {DEAL: _pair(DEAL, _listed("9.90"), on=list(_listed("9.90")),
                                                         promotions=[_struct("7.90")], sales=always)})
-    assert '<p class="badge no-deal">At Shufersal Deal: NO DEAL</p>' in page
+    assert '<p class="verdict">At Shufersal Deal: <b>NO DEAL</b></p>' in page
     assert "It's been ₪7.90 or less on 90 of the 90 days tracked." in page
 
 
@@ -380,27 +428,181 @@ def _no_verdict_case(call: str):
         return (_covered({DEAL: "שם"}), {DEAL: _pair(DEAL, {DAY: "10.00"}, promotions=[_struct("7.90")])}), days
     if call == "mostly_unknown":
         return _one("10.00", _struct("7.90"), on=[back(n) for n in range(0, 61)]), days
+    if call == "too_few":                # a hole today: files from 5 of the column's 20 stores
+        return _one("10.00", _struct("7.90")), _days(holes={(DEAL, DAY)})
+    if call == "not_sold":               # listed until 10 days ago
+        pair = _pair(DEAL, _listed("10.00", 10, 60))
+        return (_covered({DEAL: "שם"}, last_wide={DEAL: back(10)}), {DEAL: pair}), days
     assert call == "no_history"          # seen before today only on days whose promotions were not read
     unread = _days(promo_holes={(DEAL, back(n)) for n in range(1, 91)})
     return (_covered({DEAL: "שם"}), {DEAL: _pair(DEAL, listed, promotions=[_struct("7.90")])}), unread
 
 
-@pytest.mark.parametrize("call", ["unread_today", "no_sale", "some_stores", "price_unread", "new", "mostly_unknown",
-                                  "no_history"])
-def test_each_no_verdict_line(call):
-    """S4: no verdict, a plain line instead, verbatim, and no badge (the plan's order of the calls)."""
+@pytest.mark.parametrize("call", list(words.NO_VERDICT))
+def test_each_line_that_is_not_a_verdict_is_a_plain_label(call):
+    """S4 and the site look's label: no verdict, NO_VERDICT's line instead, verbatim, as the verdict of a plain label
+    (`none`), with no deal's words; then its price part (`test_the_price_part_sets_todays_price_as_on_a_shelf_edge`)."""
     (covered, pairs), days = _no_verdict_case(call)
     found = _verdicts(pairs, days)[DEAL]
     assert found.call == call
     body = _sections(_render(covered, pairs, column_days=days))[DEAL]
-    assert f"<p>{words.NO_VERDICT[call]}</p>" in body
+    assert f'<div class="tag none"><div class="say"><p class="verdict">{words.NO_VERDICT[call]}</p>' in body
+    assert _label(body)[0] == "none" and body.count('<div class="tag') == 1
     assert 'class="badge' not in body and "DEAL ·" not in body and "NO DEAL" not in body
     assert "Usually ₪" not in body and "It's been" not in body and "Only ₪" not in body
-    # a sale whose price could not be read has no price today (the owner, 2026-11-11): no today mark or label on the
-    # chart and no "Last this low"; no sale and a sale at some stores take the listed price as today's
+    # a sale whose price could not be read has no price today (the owner, 2026-11-11): no Today in the chart's table,
+    # no today in its spoken summary, no dot at its right end, and no "Last this low"; no sale and a sale at some
+    # stores take the listed price as today's
     if call in ("unread_today", "price_unread", "no_sale", "some_stores"):
         known = call in ("no_sale", "some_stores")
-        assert ('<circle class="today"' in body, "today ₪" in body, "Last this low" in body) == (known,) * 3, call
+        said = ('<th scope="col">Today</th>' in body, "today ₪" in body, "Last this low" in body)
+        assert said == (known,) * 3, call
+        assert known or "<circle" not in body, call
+
+
+@pytest.mark.parametrize("call", ["too_few", "not_sold"])
+def test_too_few_files_and_not_sold_have_no_label(call):
+    """The site look's label, call by call: a hole's too-few-files line and the not-sold slot stand alone, with no
+    label and no price part; the chart, when there is one, follows."""
+    (covered, pairs), days = _no_verdict_case(call)
+    assert _verdicts(pairs, days)[DEAL].call == call
+    body = _sections(_render(covered, pairs, column_days=days))[DEAL]
+    line = (f'<p class="few">{too_few(5, STORES)}</p>' if call == "too_few"
+            else '<p class="not-sold">Not sold at Shufersal Deal today, last seen 10 November</p>')
+    assert body.startswith(f"<h2>Shufersal Deal</h2>{line}")
+    assert 'class="tag' not in body and 'class="pay"' not in body and 'class="verdict"' not in body
+    assert body.index(line) < body.index('<div class="history">')
+
+
+def test_the_price_part_sets_todays_price_as_on_a_shelf_edge():
+    """The site look's price part: today's price as on a shelf edge, as `price_line` shows it, the shekels large and
+    the point and the agorot raised; read as text it is `price_line`. A weighed deal's price is a kilogram's, its unit
+    in small print after it. With no price today (an unread sale price, sale prices not read today) there is no price
+    line, and a hole's line and the not-sold slot have no price part at all."""
+    covered, pairs = _one("14.00")
+    found = _verdicts(pairs, _days())[DEAL]
+    assert found.call == "no_sale"
+    price = '<p class="price">Price today: <b><i>₪</i>14<sup>.00</sup></b></p>'
+    assert _label(_sections(_render(covered, pairs))[DEAL])[2] == price + mark(CODE)
+    assert _read(price) == words.price_line(found) == "Price today: ₪14.00"
+    for listed, offer, figure in (("6.00", "4.50", "4<sup>.50</sup>"), ("1299.90", "1234.05", "1234<sup>.05</sup>")):
+        body = _sections(_render(*_one(listed, _struct(offer))))[DEAL]
+        assert f'<p class="price">Price today: <b><i>₪</i>{figure}</b></p>' in body, offer
+    weighed_covered, weighed_pairs = _one("69.90", _struct("50.00", per="kg", kind="n_for_m", buy="1.5"))
+    weighed = _sections(_render(weighed_covered, weighed_pairs))[DEAL]
+    line = '<p class="price">Price today: <b><i>₪</i>50<sup>.00</sup></b><small> a kilogram</small></p>'
+    assert line in weighed
+    assert _read(line) == words.price_line(_verdicts(weighed_pairs, _days())[DEAL]) == "Price today: ₪50.00 a kilogram"
+    for call in ("unread_today", "price_unread", "too_few", "not_sold"):
+        (covered, pairs), days = _no_verdict_case(call)
+        body = _sections(_render(covered, pairs, column_days=days))[DEAL]
+        assert 'class="price"' not in body and "Price today" not in body, call
+        assert ('class="pay"' in body) is (call in ("unread_today", "price_unread")), call
+
+
+def test_the_label_carries_the_products_barcode():
+    """The site look's barcode: drawn once a page, right after the barcode line (`drawing`, so `id="ean"` once), and
+    shown by reference at the end of every label's price part (`mark`); an unread sale price's part holds the mark
+    alone."""
+    assert drawing(CODE) and mark(CODE)
+    covered, pairs = _largest()
+    page = _render(covered, pairs)
+    (line,) = re.findall(r"<p>Barcode [^<]*</p>", page)
+    assert f'{line}\n{drawing(CODE)}\n<h2 class="elsewhere" hidden>' in page
+    assert page.count(drawing(CODE)) == 1 and page.count('id="ean"') == 1 and page.count('<svg class="defs"') == 1
+    sections = _sections(page)
+    for key, body in sections.items():
+        pay = _label(body)[2]
+        assert pay.endswith(mark(CODE)) and body.count(mark(CODE)) == 1 and body.count("<use") == 1, key
+    assert page.count(mark(CODE)) == len(sections) == 9
+    (covered, pairs), days = _no_verdict_case("price_unread")
+    assert _label(_sections(_render(covered, pairs, column_days=days))[DEAL])[2] == mark(CODE)
+
+
+def test_a_product_with_no_bars_has_no_drawing_and_no_mark():
+    """Review Focus 1: a code no barcode can be drawn for (here 11 digits) has no drawing and no mark: its price part
+    holds the price alone, or is left out with no price today, and the barcode line still gives its digits."""
+    assert drawing(NO_BARS) == mark(NO_BARS) == ""
+    covered, pairs = _one("14.00")
+    page = _render(replace(covered, code=NO_BARS), pairs)
+    assert '<svg class="defs"' not in page and 'id="ean"' not in page and "<use" not in page and "<svg" in page
+    assert f"<p>Barcode {NO_BARS}</p>" in page
+    assert _label(_sections(page)[DEAL])[2] == '<p class="price">Price today: <b><i>₪</i>14<sup>.00</sup></b></p>'
+    (covered, pairs), days = _no_verdict_case("price_unread")
+    body = _sections(_render(replace(covered, code=NO_BARS), pairs, column_days=days))[DEAL]
+    assert _label(body)[2] is None and 'class="pay"' not in body
+    assert '<div class="tag none"><div class="say">' in body and "</p></div></div>" in body
+
+
+def test_a_page_with_no_label_carries_no_drawing():
+    """The barcode's drawing goes on a page only when a part shows its mark (the controller's ruling of 2026-11-16: no
+    dead bytes): a page whose every part is a hole's line or the not-sold slot carries neither; one label is enough for
+    the drawing, once."""
+    names = {DEAL: "שם", RAMI: "שם"}
+    pairs = {DEAL: _pair(DEAL, _listed("10.00")), RAMI: _pair(RAMI, _listed("10.00", 10, 60))}
+    covered = _covered(names, last_wide={DEAL: DAY, RAMI: back(10)})
+    days = _days(holes={(DEAL, DAY)})
+    verdicts = _verdicts(pairs, days)
+    assert (verdicts[DEAL].call, verdicts[RAMI].call) == ("too_few", "not_sold")
+    page = _render(covered, pairs, column_days=days)
+    assert '<svg class="defs"' not in page and 'id="ean"' not in page and "<use" not in page
+    assert f"<p>Barcode {CODE}</p>\n<h2 " in page
+    selling = {**pairs, RAMI: _pair(RAMI, _listed("10.00"))}                  # Rami Levy sells it today
+    page = _render(covered, selling, column_days=days)
+    assert page.count(drawing(CODE)) == 1 and page.count(mark(CODE)) == 1
+
+
+def test_the_charts_today_is_the_labels_price_today():
+    """The one line (the owner, 2026-11-16): a section's chart is drawn from its verdict and the day alone, so the
+    figure at its right end is the label's "Price today" in every part, call by call; with no price today (a hole, not
+    sold, an unread sale price, sale prices not read today: the owner's rulings of 2026-11-11 and 2026-11-16) its today
+    column holds "today" alone. No product page names a "shelf price"."""
+    calls = (*words.NO_VERDICT, "too_few", "not_sold")
+    for (covered, pairs), days in [(_typical(), _days()), *(_no_verdict_case(call) for call in calls)]:
+        found = _verdicts(pairs, days)[DEAL]
+        page = _render(covered, pairs, column_days=days)
+        body = _sections(page)[DEAL]
+        history = _history(body)
+        assert history == render_chart(found, DAY), found.call
+        assert "shelf price" not in page, found.call
+        if not found.priced:                                       # new, no_history: no line to draw
+            assert history == "" and found.call in ("new", "no_history"), found.call
+            continue
+        (now,) = re.findall(r'<svg class="now" aria-hidden="true">(.*?)</svg>', history)
+        line = words.price_line(found)
+        assert re.findall(r"₪[\d.]+", now) == ([] if line is None else re.findall(r"₪[\d.]+", line)), found.call
+        if line is None:
+            assert found.call in ("too_few", "not_sold", "price_unread", "unread_today"), found.call
+            assert "<circle" not in now and _read(now) == "today", found.call
+    assert "shelf price" not in _render(*_largest())
+
+
+def test_no_chart_when_no_day_has_a_price_and_the_facts_still_stand():
+    """No tracked day with a price, no line to draw, so no chart (the owner, 2026-11-16): a sale whose price could not
+    be read on every tracked day and today; "How often on sale" still says so, before the fold-out."""
+    unread = _struct(None, valid=False, why="no price in the fields")
+    pairs = {DEAL: _pair(DEAL, _listed("10.00"), on=[back(n) for n in range(91)], promotions=[unread])}
+    found = _verdicts(pairs, _days())[DEAL]
+    assert (found.call, len(found.days), found.priced) == ("price_unread", 90, ())
+    body = _sections(_render(_covered({DEAL: "שם"}), pairs))[DEAL]
+    assert '<div class="history">' not in body and '<svg class="lines"' not in body
+    assert '</div></div><p class="fact">On sale on 90 of the 90 days before today.</p><details>' in body
+
+
+def test_the_facts_follow_the_history():
+    """The site look's product page: the label, then the history (the chart, its key and its table), then "Last this
+    low" and "How often on sale" as two ruled facts, then the fold-out."""
+    sales = {back(n): (_sale("6.90", back(n)),) for n in (12, 11, 10)}
+    pairs = {DEAL: _pair(DEAL, _listed("10.00"), on=[*sales, DAY], promotions=[_struct("7.00")], sales=sales)}
+    found = _verdicts(pairs, _days())[DEAL]
+    body = _sections(_render(_covered({DEAL: "שם"}), pairs))[DEAL]
+    low, often = (f'<p class="fact">{said}</p>' for said in (words.last_low(found), words.how_often(found)))
+    assert low == '<p class="fact">Last this low: 10 November, at ₪6.90.</p>'
+    assert often.startswith('<p class="fact">On sale on 3 of the 90 days before today.')
+    history = _history(body)
+    assert history.startswith('<div class="history"><div class="chart">')
+    assert f"</div></div>{history}{low}{often}<details>" in body
+    assert body.index('<div class="tag deal-2">') < body.index(history)
 
 
 def test_an_unread_sale_price_counts_today_as_on_sale():
@@ -411,9 +613,9 @@ def test_an_unread_sale_price_counts_today_as_on_sale():
     page = _render(_covered({DEAL: "שם"}), {DEAL: _pair(DEAL, _listed("10.00"), on=[*sales, back(2), back(1), DAY],
                                                         promotions=[unread], sales=sales)})
     body = _sections(page)[DEAL]
-    assert f"<p>{words.NO_VERDICT['price_unread']}</p>" in body
+    assert f"<p class=\"verdict\">{words.NO_VERDICT['price_unread']}</p>" in body
     assert "The last sale before this one ended 10 November, at ₪7.90." in body
-    assert '<circle class="today"' not in body and "Last this low" not in body and "Lowest in the" not in body
+    assert "<circle" not in body and "Last this low" not in body and "Lowest in the" not in body
 
 
 def test_a_hole_day_shows_too_few_files_and_no_listed_price_claim():
@@ -492,7 +694,7 @@ def test_a_not_sold_section_says_when_last_seen():
     page = _render(_covered({DEAL: "שם"}, last_wide={DEAL: date(2026, 11, 3)}), {DEAL: pair})
     body = _sections(page)[DEAL]
     assert '<p class="not-sold">Not sold at Shufersal Deal today, last seen 3 November</p>' in body
-    assert '<svg class="chart"' in body and "On sale on 0 of the 51 days tracked." in body
+    assert '<div class="history">' in body and "On sale on 0 of the 51 days before today." in body
     assert 'class="badge' not in body and "Listed price" not in body
     bare = _sections(_render(_covered({DEAL: "שם"}, last_wide={}), {DEAL: pair}))[DEAL]
     assert '<p class="not-sold">Not sold at Shufersal Deal today</p>' in bare
@@ -505,6 +707,7 @@ def test_the_condition_beside_the_verdict():
     paragraphs = _paragraphs(body)
     assert paragraphs[:3] == ["At Shufersal Deal: DEAL · ₪3.00 off", "Usually ₪6.00, sales included (90 days tracked).",
                               "Club members only; When you buy 2"]
+    assert _label(body)[1].endswith('<p class="conditions">Club members only; When you buy 2</p>')
     assert "Club members only" not in _sections(_render(*_one("6.00", _struct("3.00"))))[DEAL]
 
 
@@ -512,7 +715,7 @@ def test_a_coming_sale_line():
     """F2 in shopper words: an item listing a wide promotion to start within 14 days; none on a hole morning."""
     start = DAY + timedelta(days=9)
     body = _sections(_render(*_one("10.00", next_start=start)))[DEAL]
-    assert "<p>A sale starts on 29 November</p>" in body
+    assert _label(body)[1].endswith("<p>A sale starts on 29 November</p>")          # the label's last line
     assert "A sale starts" not in _render(*_one("10.00"))
     holed = _render(*_one("10.00", next_start=start), column_days=_days(holes=[(DEAL, DAY)]))
     assert "A sale starts" not in holed
@@ -592,7 +795,7 @@ def test_an_invalid_deal_shows_price_not_read_only():
     body = _sections(page)[DEAL]
     assert f"<b>{PRICE_NOT_READ}</b><small>" in _fold(body)
     assert "₪25.00" not in page and "₪24.00" not in page and "twice" not in page
-    assert f"<p>{words.NO_VERDICT['price_unread']}</p>" in body
+    assert f"<p class=\"verdict\">{words.NO_VERDICT['price_unread']}</p>" in body
 
 
 def test_names_each_with_the_columns_listing_it():
@@ -635,7 +838,7 @@ def test_elsewhere_today_has_a_badge_per_store_type_selling_it_by_saving():
     (row,) = NAV.findall(page)
     badges = BADGE.findall(row)
     assert [key for key, _, _, _ in badges] == [DEAL, YOCHANANOF, RAMI, SHELI, OSHER, MARKET]
-    assert [(shade, said) for _, _, shade, said in badges] == [
+    assert [(shade, _read(said)) for _, _, shade, said in badges] == [
         ("deal-2", "Shufersal Deal · DEAL · ₪3.00 off"), ("deal-2", "Yochananof · DEAL · ₪3.00 off"),
         ("deal-1", "Rami Levy · DEAL · ₪1.00 off"), ("no-deal", "Shufersal Sheli · NO DEAL"),
         ("no-deal", "Osher Ad · NO DEAL"), ("none", "Carrefour Market · no sale today")]
@@ -674,9 +877,27 @@ def test_the_markup_search_js_reads():
     assert '<nav class="badges"></nav>' in nowhere
 
 
+def test_elsewhere_badges_read_as_their_words():
+    """The site look's small labels: each badge is the store type's name, a separator the stylesheet hides, and the
+    verdict, or the line of a call without one, in bold; read as text it is `short_badge`, so the name and the verdict
+    never run together."""
+    covered, pairs = _shops()
+    verdicts = _verdicts(pairs, _days())
+    (row,) = NAV.findall(_render(covered, pairs))
+    badges = re.findall(r'<a data-column="([^"]+)".*?</a>', row)
+    assert len(badges) == 6
+    for key, markup in zip(badges, re.findall(r'<a data-column=".*?</a>', row)):
+        found = verdicts[key]
+        assert markup == (f'<a data-column="{key}" href="#c-{key}" class="badge {product.badge_class(found)}">'
+                          f'{BY_KEY[key].name}<i> · </i><b>{words.short_verdict(found)}</b></a>'), key
+        assert _read(markup) == words.short_badge(found), key
+    assert ('<a data-column="carrefour-market" href="#c-carrefour-market" class="badge none">Carrefour Market<i> · </i>'
+            '<b>no sale today</b></a>') in row
+
+
 def test_with_the_script_blocked_every_store_types_part_is_in_the_html():
     """The design's "Testing": with the script blocked, every store type's part is in the page, in COLUMNS order, with
-    its verdict words, its reason, its chart, last this low and how often."""
+    its label (its verdict words and its reason), its chart, last this low and how often."""
     covered, pairs = _largest()
     days = _days()
     verdicts = _verdicts(pairs, days)
@@ -686,31 +907,22 @@ def test_with_the_script_blocked_every_store_types_part_is_in_the_html():
     for key, body in sections.items():
         found = verdicts[key]
         assert found.call == "deal"
-        for said in (words.badge(found), words.reason(found), words.last_low(found), words.how_often(found)):
-            assert said and f">{said}</p>" in body, (key, said)
-        assert f'aria-labelledby="chart-{key}"' in body
-        assert body.index(words.reason(found)) < body.index("<svg") < body.index(words.last_low(found)) < body.index(
+        assert _paragraphs(_label(body)[1])[:2] == [words.badge(found), words.reason(found)], key
+        for said in (words.last_low(found), words.how_often(found)):
+            assert said and f'<p class="fact">{said}</p>' in body, (key, said)
+        assert f'role="img" aria-label="{words.chart_summary(found)}"' in body
+        assert body.index('<div class="tag') < body.index(words.reason(found)) < body.index(
+            '<div class="history">') < body.index(words.last_low(found)) < body.index(
             words.how_often(found)) < body.index("<details>")
 
 
 def test_nothing_is_hidden_without_the_script():
     """"Nothing is hidden without the script" (the plan), as the script hides parts with its own `hidden` attribute
-    (Task 4): the only `hidden` in the HTML is the Elsewhere heading's; the style's only hiding rule is
-    `[hidden]{display:none!important}`, so no display rule of the page's shows a part the script hid; and no rule sets
-    `display` on a part, a badge or the heading (the controller's ruling, in place of the brief's ".js" rules)."""
+    (Task 4): the only `hidden` in the HTML is the Elsewhere heading's. What the style hides is the stylesheet's
+    (tests/test_look.py's `test_nothing_is_hidden_but_by_a_named_rule`)."""
     for covered, pairs in (_typical(), _largest(), _shops()):
         page = _render(covered, pairs)
         assert re.findall(r"<[^>]*\shidden(?=[\s>=])[^>]*>", page) == ['<h2 class="elsewhere" hidden>']
-        (style,) = re.findall(r"<style>(.*?)</style>", page, re.DOTALL)
-        rules = [(selector.strip(), body) for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", style)]
-        hiding = [(selector, body) for selector, body in rules
-                  if re.search(r"display\s*:\s*none|visibility\s*:\s*hidden", body)]
-        assert hiding == [("[hidden]", "display:none!important")]
-        for selector, body in rules:
-            if re.search(r"(^|;|\s)display\s*:", body):
-                for each in selector.split(","):
-                    assert not re.search(r"(section|h2|\.elsewhere|\.badge|nav\.badges\s+a)$", each.strip()), each
-    assert "[hidden]{display:none!important}" in product.BADGE_STYLE
 
 
 def test_a_product_sold_nowhere_today_has_no_badges_and_every_part():
@@ -725,7 +937,7 @@ def test_a_product_sold_nowhere_today_has_no_badges_and_every_part():
     assert list(sections) == [RAMI, DEAL, SHELI]
     for key, body in sections.items():
         assert f"Not sold at {BY_KEY[key].name} today, last seen 10 November" in body
-        assert '<svg class="chart"' in body and "On sale on 0 of the 51 days tracked." in body
+        assert '<div class="history">' in body and "On sale on 0 of the 51 days before today." in body
         assert no_odds_yet(key) in _fold(body)
     text = _visible(page)
     assert all(flatten(phrase) in text for phrase in ALWAYS)
@@ -734,58 +946,21 @@ def test_a_product_sold_nowhere_today_has_no_badges_and_every_part():
 
 def test_p7_p8_and_p9_are_gone():
     """Store first's "Changes to the shopper-site design": P7's sentences, P8's, the price-change text and P9's table
-    give way to the verdict, the chart, "Last this low", "How often on sale" and "Elsewhere today"."""
+    give way to the verdict, the chart, "Last this low", "How often on sale" and "Elsewhere today". The only table
+    left is each chart's own (the site look's: lowest, highest, usual and today)."""
     for page in (_render(*_largest()), _render(*_typical())):
         text = _visible(page)
         for gone in ("The deal against its listed prices", "How often it goes on promotion", "30-day median", "Today at each column",
                      "Run before today", "Runs before today", "The listed price did not change", "rose from",
-                     "On a promotion listed across", "<table", "Listed to start"):
+                     "On a promotion listed across", "Listed to start"):
             assert flatten(gone) not in text and gone not in page, gone
+        assert set(re.findall(r"<table[^>]*>", page)) == {'<table class="stats">'}
 
 
-# The shades and the chart's style
-
-def _rgb(colour: str) -> tuple[int, int, int]:
-    return int(colour[1:3], 16), int(colour[3:5], 16), int(colour[5:7], 16)
-
-
-def _themes() -> list[dict[str, str]]:
-    """BADGE_STYLE's tokens: the light set, then the dark set (the one under prefers-color-scheme: dark)."""
-    light, dark = re.findall(r":root \{([^{}]*)\}", product.BADGE_STYLE)
-    assert product.BADGE_STYLE.index("@media (prefers-color-scheme: dark)") < product.BADGE_STYLE.index(dark)
-    return [dict(re.findall(r"(--[a-z0-9-]+):\s*(#[0-9a-f]{6})", found)) for found in (light, dark)]
-
-
-def _luminance(colour: str) -> float:
-    linear = [part / 12.92 if part <= 0.04045 else ((part + 0.055) / 1.055) ** 2.4
-              for part in (value / 255 for value in _rgb(colour))]
-    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
-
-
-def _contrast(one: str, other: str) -> float:
-    high, low = sorted((_luminance(one), _luminance(other)), reverse=True)
-    return (high + 0.05) / (low + 0.05)
-
-
-def test_every_shade_reads_in_both_themes():
-    """S5: each badge's text contrasts at least 4.5:1 with its background (WCAG AA for normal text) in the light and
-    the dark set; the three deal greens differ; each class's rule draws its own two tokens."""
-    classes = ("deal-1", "deal-2", "deal-3", "no-deal", "none")
-    for shades in _themes():
-        for name in classes:
-            assert _contrast(shades[f"--{name}-bg"], shades[f"--{name}-text"]) >= 4.5, (name, shades)
-        assert len({shades[f"--deal-{n}-bg"] for n in (1, 2, 3)}) == 3
-        for n in (1, 2, 3):
-            red, green, blue = _rgb(shades[f"--deal-{n}-bg"])
-            assert green > red and green > blue, n                       # a green
-    assert set(_themes()[0]) == set(_themes()[1])
-    for name in classes:
-        assert re.search(rf"\.badge\.{name} \{{[^}}]*background: var\(--{name}-bg\); color: var\(--{name}-text\)",
-                         product.BADGE_STYLE), name
-
+# The badge's class
 
 def test_the_badge_class():
-    """S5's shade of a deal, no deal's grey, and none for every call without a verdict."""
+    """S5's shade of a deal, no deal's class, and none for every call without a verdict."""
     days = _days()
     shades = {}
     for usual, price in (("5.00", "4.00"), ("5.00", "2.01"), ("5.00", "2.00"), ("10.00", "5.00"), ("5.00", "4.01")):
@@ -798,34 +973,22 @@ def test_the_badge_class():
         assert product.badge_class(_verdicts(pairs, column_days)[DEAL]) == "none"
 
 
-def test_the_charts_style():
-    """Task 2's SVG draws no fill or stroke of its own and states its size: the page's style keeps a short history
-    short (a maximum width, never a full width), sets no font size on its text, draws no path filled, the shelf price
-    grey, the sale days green and today's line dashed, in tokens the base style sets in both themes."""
-    style = product.PRODUCT_STYLE
-    rules = {selector.strip(): body for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", style)}
-    assert "max-width: 100%" in rules[".chart"] and "height: auto" in rules[".chart"]
-    assert not re.search(r"(^|[^-])width: 100%", rules[".chart"])
-    assert not [selector for selector, body in rules.items() if ".chart" in selector and "font-size" in body]
-    assert "fill: none" in rules[".chart path"]
-    assert "stroke: var(--bar)" in rules[".chart .listed"] and "stroke: var(--accent)" in rules[".chart .sale"]
-    assert "stroke: var(--accent)" in rules[".chart .unread"]
-    assert "stroke-dasharray" in rules[".chart line.today"] and "fill:" in rules[".chart circle.today"]
-    assert "background: var(--bar)" in rules[".key .listed"] and "background: var(--accent)" in rules[".key .sale"]
-    light, dark = re.findall(r":root \{([^{}]*)\}", BASE_STYLE)
-    for token in ("--bar", "--accent", "--text-2", "--text-3"):
-        assert f"{token}:" in light and f"{token}:" in dark, token
+# The shell
 
+HEAD = f'<link rel="stylesheet" href="../{STYLESHEET}">\n<script src="../search.js" defer></script>'
 
-# The shell and the style
 
 def test_the_shell_band_and_footer():
+    """The site's look (q36): a product page names its kind on its body, and its band is the brand, the pick link and
+    the date line, with no chains' line (the front page's alone); the footer, the credit line and the page's links."""
     covered, pairs = _typical()
     page = _render(covered, pairs)
     assert page.startswith("<!doctype html>") and '<meta name="robots" content="noindex">' in page
-    assert (f'<header class="band"><div class="wrap"><a href="../index.html">{SITE_NAME}</a>'
+    assert ('</head>\n<body class="t-product">\n<header class="band"><div class="wrap">'
+            '<a class="brand" href="../index.html"><b>Deal</b> or <b class="no">No Deal</b></a>'
             '<p class="store"><a id="pick-link" href="../index.html#pick">Pick your store</a></p>'
-            f'<p class="dateline">{CHAINS_LINE}</p><p class="dateline">{date_line(DAY)}</p></div></header>') in page
+            f'<p class="dateline">{date_line(DAY)}</p></div></header>\n<main>') in page
+    assert CHAINS_LINE not in page
     footer = re.search(r"<footer>(.*?)</footer>", page, re.DOTALL).group(1)
     assert credit(DAY, "12:03") in footer
     links = re.findall(r'<a href="([^"]+)">([^<]+)</a>', footer)
@@ -833,45 +996,52 @@ def test_the_shell_band_and_footer():
                      ("../method.html", "How this is made")]
 
 
-def test_a_product_page_carries_the_one_script_and_the_pick_link():
-    """S12 (b), Q2 as store-first.md changes it: `search.js`, the site's one script, in the head from the site's root
-    (`../`), and nothing else loaded; the header's pick link up to the picker (`#pick`), which search.js reads the
-    site's root from."""
+def test_the_brand_is_drawn_as_the_headline():
+    """The site look's header: the site's name as its wordmark, linking up to the root, drawn as the front page's
+    headline (the owner, 2026-11-16: "the home icon should match the image at the top of the homepage, green &
+    yellow"): "Deal" in `<b>` (the green label), " or ", "No Deal" in `<b class="no">` (the yellow one), no question
+    mark; read as text it is the site's name."""
+    page = _render(*_typical())
+    (brand,) = re.findall(r'<a class="brand" href="\.\./index\.html">(.*?)</a>', page)
+    assert brand == '<b>Deal</b> or <b class="no">No Deal</b>'
+    assert re.sub(r"<[^>]*>", "", brand) == SITE_NAME
+
+
+def test_a_product_page_links_the_stylesheet_and_the_one_script():
+    """S12 (b), Q2 as store-first.md changes it, and the site's look (q36): the one shared stylesheet and `search.js`,
+    the site's one script, end the head, each from the site's root (`../`), and nothing else is loaded; the header's
+    pick link up to the picker (`#pick`), which search.js reads the site's root from."""
     for page in (_render(*_typical()), _render(*_largest())):
-        assert page.count("<script") == 1 and "javascript:" not in page.lower()
-        assert '</style>\n<script src="../search.js" defer></script>\n</head>' in page
+        assert page.count("<link") == 1 and page.count("<script") == 1 and "javascript:" not in page.lower()
+        assert f"</title>\n{HEAD}\n</head>" in page
+        assert "<style" not in page and "style=" not in page
         assert '<a id="pick-link" href="../index.html#pick">Pick your store</a>' in page
         assert not re.search(r"\son\w+=", page)                                  # no inline handler either
-        rest = page.replace('<script src="../search.js" defer></script>', "")
+        rest = page.replace(HEAD, "")
         assert not re.search(r"https?:|//|@import|url\(|<link|<img|<iframe|src=", rest.lower())
 
 
+def test_page_refuses_a_kind_it_does_not_know():
+    """The body's class names the page's kind, one of the shell's seven; any other kind is refused."""
+    assert shell.KINDS == ("front", "store", "product", "browse", "method", "record", "basket")
+    for kind in shell.KINDS:
+        assert f'</head>\n<body class="t-{kind}">\n' in shell.page("T", "<p>M</p>", DAY, "12:03", (), kind)
+    for kind in ("", "shop", "t-product", "Product"):
+        with pytest.raises(ValueError, match="kind"):
+            shell.page("T", "<p>M</p>", DAY, "12:03", (), kind)
+
+
 def test_the_product_page_and_the_browse_pages_share_one_shell():
-    """Task 17's carry: one shell for browse, product and the root pages: the same head, band and footer frame."""
+    """Task 17's carry: one shell for browse, product and the root pages: the same head, band and footer frame, the
+    title and the body's kind aside."""
     covered, pairs = _typical()
     product_page = _render(covered, pairs)
     browse = browse_pages({CODE: covered}, DAY, "12:03")[browse_path(covered.title)]
 
     def frame(page: str) -> tuple[str, str]:
-        """The head and band with the title and style taken out, and the footer up to its first link."""
-        head = re.sub(r"<title>.*?</title>|<style>.*?</style>", "", page[:page.index("<main>")], flags=re.DOTALL)
-        return head, page[page.index("</main>"):page.index("<a ", page.index("<footer>"))]
+        """The head and band with the title and the body's kind taken out, and the footer up to its first link."""
+        top = re.sub(r'<title>.*?</title>|<body class="t-[a-z]+">', "", page[:page.index("<main>")], flags=re.DOTALL)
+        return top, page[page.index("</main>"):page.index("<a ", page.index("<footer>"))]
     assert frame(product_page) == frame(browse)
-    for page in (product_page, browse):
-        assert f"<style>{BASE_STYLE}" in page and BASKET_STYLE not in page
-    assert f"<style>{BASE_STYLE}{product.PRODUCT_STYLE}</style>" in product_page
-    assert product.PRODUCT_STYLE.startswith(product.BADGE_STYLE)
-
-
-def test_the_style_split_keeps_the_baskets_block_byte_for_byte():
-    """The first pre-flight's S11: `STYLE` is the block the basket's pages carried before the split (its SHA-256 then),
-    cut into the base rules and the basket's own, each a whole set of rules."""
-    assert hashlib.sha256(STYLE.encode()).hexdigest() == (
-        "8179d0e4d8567b8c1426100ab5f171aee6dd502f2d84fc87ae5848f83ce768b4")
-    for part in (BASE_STYLE, BASKET_STYLE):
-        assert part.count("{") == part.count("}")
-    assert len(BASE_STYLE) + len(BASKET_STYLE) == len(STYLE) + len("@media (max-width: 37.5rem) {\n}\n")
-    for rule in ("--bg:", "@media (prefers-color-scheme: dark)", ".band {", "main > section {", "th, td {", "footer {"):
-        assert rule in BASE_STYLE and rule not in BASKET_STYLE, rule
-    for rule in (".tiles {", "ol.bars li {", "table.prices {", "table.basket {", "ol.rules li {", "details {"):
-        assert rule in BASKET_STYLE and rule not in BASE_STYLE, rule
+    assert f"</title>\n{HEAD}\n</head>" in product_page and f"</title>\n{HEAD}\n</head>" in browse
+    assert '<body class="t-product">' in product_page and '<body class="t-browse">' in browse

@@ -84,7 +84,8 @@ def _text(markup: str) -> str:
 
 
 def _section(page: str, column: str) -> str:
-    """A column's section of a page, its chart left out."""
+    """A column's section of a page, its SVGs left out: on a product page the chart's four drawings, its key and its
+    table kept."""
     found = re.search(rf'<section data-column="{column}"[^>]*>.*?</section>', page, re.S)
     assert found, column
     return re.sub(r"<svg.*?</svg>", "", found.group(0), flags=re.S)
@@ -92,8 +93,8 @@ def _section(page: str, column: str) -> str:
 
 def _front_rows(page: str) -> list[tuple[str, str]]:
     """A store page's rows: each one's barcode and its cells' words."""
-    return [(code, _text(cells)) for code, cells in
-            re.findall(r'<tr data-column="[^"]+"[^>]*><th scope="row"><a href="\.\./p/([^"]+)\.html">(.*?)</tr>', page)]
+    row = r'<tr data-column="[^"]+"[^>]*><th scope="row" role="rowheader"><a href="\.\./p/([^"]+)\.html">(.*?)</tr>'
+    return [(code, _text(cells)) for code, cells in re.findall(row, page)]
 
 
 def _fronts(golden, n: int) -> dict[str, list[str]]:
@@ -125,7 +126,7 @@ def _summaries(golden) -> list:
 # ---- the pages: the store types' front pages, the product pages' verdicts, the holes ----
 
 G3_STORY = ("At Shufersal Sheli: DEAL · ₪3.00 off", "Usually ₪10.90, sales included (74 days tracked).",
-            "Lowest in the 74 days tracked.", "On sale on 0 of the 74 days tracked.")      # under its name
+            "Lowest in the 74 days tracked.", "On sale on 0 of the 74 days before today.")      # under its name
 
 
 def test_the_golden_pages_windows_and_gaps(golden):
@@ -135,8 +136,9 @@ def test_the_golden_pages_windows_and_gaps(golden):
     assert _fronts(golden, 75) == {"shufersal-sheli": [G3]}
     index = golden.page(75, "store/shufersal-sheli.html")
     (_, row), = _front_rows(index)
-    assert "DEAL · ₪3.00 off" in row and "₪7.90" in row and "₪10.90" in row
+    assert "DEAL · ₪3.00 off" in row and "₪7.90" in row and "₪10.90" in row and "At " not in row
     assert _lede(index) == "At Shufersal Sheli today: 1 of 1 promotions is actually a deal."
+    assert '<p class="lede">At Shufersal Sheli today: <b>1 of 1</b> promotions is actually a deal.</p>' in index
     story = re.search(r"<h3>One of today's deals</h3>(.*?)<p>Today ", index).group(1)
     assert [_text(said) for said in re.findall(r"<p[^>]*>(.*?)</p>", story)][1:] == list(G3_STORY)
     assert f'href="../p/{G3}.html"' in story
@@ -144,15 +146,30 @@ def test_the_golden_pages_windows_and_gaps(golden):
     page = golden.page(75, f"p/{G3}.html")
     sheli, deal = _text(_section(page, "shufersal-sheli")), _text(_section(page, "shufersal-deal"))
     for said in ("At Shufersal Sheli: DEAL · ₪3.00 off", "Usually ₪10.90, sales included (74 days tracked).",
-                 "Lowest in the 74 days tracked.", "On sale on 0 of the 74 days tracked."):
+                 "Lowest in the 74 days tracked.", "On sale on 0 of the 74 days before today."):
         assert said in sheli, said
     assert "No sale today" in deal and "Listed price ₪9.90, before promotions" in deal and "Deal price" not in deal
+    # the site look's label (Task 8): the deal on its green label in the shade of ₪3.00, today's price as on a shelf
+    # edge and the product's barcode, the chart, then the two facts; no sale at Deal on a plain label with its price
+    marked = _section(page, "shufersal-sheli")
+    assert ('<div class="tag deal-2"><div class="say"><p class="verdict">At Shufersal Sheli: <b>DEAL · ₪3.00 off</b>'
+            '</p><p class="reason">Usually ₪10.90, sales included (74 days tracked).</p></div><div class="pay">'
+            '<p class="price">Price today: <b><i>₪</i>7<sup>.90</sup></b></p><div class="code" aria-hidden="true">'
+            f'<small>{G3}</small></div></div></div><div class="history">') in marked
+    assert ('<p class="fact">Lowest in the 74 days tracked.</p><p class="fact">On sale on 0 of the 74 days before '
+            'today.</p><details>') in marked
+    assert ('<div class="tag none"><div class="say"><p class="verdict">No sale today</p></div><div class="pay">'
+            '<p class="price">Price today: <b><i>₪</i>9<sup>.90</sup></b></p>') in _section(page, "shufersal-deal")
+    assert page.count('<path id="ean" ') == 1 and page.count('<use href="#ean"/>') == page.count('<div class="tag ')
     # G1 on the last day (30 April) at Osher Ad, a whole chain with a record every day: no sale today, last this low the
     # day before, and its sale days counted, the last sale's end and price said
     osher = _text(_section(golden.page(DAYS, f"p/{G1}.html"), "osherad"))
     for said in ("No sale today", "Last this low: 29 April, at ₪5.00.",
-                 "On sale on 31 of the 90 days tracked. The last sale ended 26 April, at ₪3.90."):
+                 "On sale on 31 of the 90 days before today. The last sale ended 26 April, at ₪3.90."):
         assert said in osher, said
+    assert ('<p class="fact">Last this low: 29 April, at ₪5.00.</p><p class="fact">On sale on 31 of the 90 days '
+            'before today. The last sale ended 26 April, at ₪3.90.</p>') in _section(golden.page(DAYS, f"p/{G1}.html"),
+                                                                                  "osherad")
     # G4 at Rami Levy alone, weighed: "2 for ₪100" stored as 1.5 for ₪75.00, ₪50.00 a kilogram; its chain's holes of 9
     # and 10 February skipped in every window
     assert _fronts(golden, 85) == {"ramilevy": [G4], "shufersal-sheli": [G3]}
@@ -162,6 +179,10 @@ def test_the_golden_pages_windows_and_gaps(golden):
     section = _text(_section(golden.page(85, f"p/{G4}.html"), "ramilevy"))
     assert "At Rami Levy: DEAL · ₪19.90 off a kilogram" in section
     assert "Usually ₪69.90 a kilogram, sales included (82 days tracked)." in section
+    marked = _section(golden.page(85, f"p/{G4}.html"), "ramilevy")
+    assert '<p class="verdict">At Rami Levy: <b>DEAL · ₪19.90 off a kilogram</b></p>' in marked
+    assert '<p class="price">Price today: <b><i>₪</i>50<sup>.00</sup></b><small> a kilogram</small></p>' in marked
+    assert "Price today: ₪50.00 a kilogram" in section
     # G5 on 9 April (day 99): on promotion at Deal alone, carried by store 21 alone that day, half Deal's two counted
     # stores, so listed across Deal; at ₪4.50 it equals Deal's 90-day low, so the old rule listed none, but its usual
     # price is ₪6.00, so it is a deal and on Deal's store page
@@ -172,7 +193,7 @@ def test_the_golden_pages_windows_and_gaps(golden):
     assert "Deal price" not in sheli and "No sale today" in sheli
     assert _fronts(golden, 99) == {"shufersal-deal": [G5], "shufersal-sheli": [G3]}
     (_, row), = _front_rows(golden.page(99, "store/shufersal-deal.html"))
-    assert all(said in row for said in ("At Shufersal Deal: DEAL · ₪1.50 off", "₪4.50", "₪6.00")), row
+    assert all(said in row for said in ("DEAL · ₪1.50 off", "₪4.50", "₪6.00")) and "At " not in row, row
     # Deal's holes of 19 and 20 February (days 50 and 51): Deal's files missing, Sheli's and Yesh Chesed's there. On 19
     # February every store type with a record lists its G1 deal, ₪1.10 off; Deal says it has too few files and lists
     # none; G1's Deal section has too few files and no price
@@ -185,6 +206,8 @@ def test_the_golden_pages_windows_and_gaps(golden):
     assert _lede(deal_store) == "too few files today: 0 of 2 stores" and "No deals to show." in deal_store
     page = golden.page(50, f"p/{G1}.html")
     assert "too few files today: 0 of 2 stores" in _text(_section(page, "shufersal-deal"))
+    assert ('<h2>Shufersal Deal</h2><p class="few">too few files today: 0 of 2 stores</p>'
+            '<div class="history">') in _section(page, "shufersal-deal")
     assert "Listed price" not in _text(_section(page, "shufersal-deal"))
     assert "Listed price ₪5.00, before promotions" in _text(_section(page, "shufersal-sheli"))
     for n in (50, 51):
@@ -202,22 +225,36 @@ def test_the_golden_pages_windows_and_gaps(golden):
     assert shown["Shufersal Express"] == ["0", "30 January to 30 April 2026", "none", "none"]   # no store: a hole
     # Shufersal Universe on the last day, 27 days tracked from 2 April: each verdict's or no-verdict's words
     universe = {U1: "It's been ₪9.90 or less on 27 of the 27 days tracked.",
-                U2: "On sale on 10 of the 27 days tracked. The last sale before this one ended 11 April, at ₪6.90.",
+                U2: ("On sale on 10 of the 27 days before today. The last sale before this one ended 11 April, at "
+                     "₪6.90."),
                 U5: "New today: no price history yet.", U6: "Only ₪0.99 below its usual ₪5.00 (27 days tracked).",
                 U7: "DEAL · ₪1.00 off", U8: "When you buy 2", U9: "On sale at some stores only",
                 U10: "On sale, but the sale price could not be read"}
     for code, said in universe.items():
         assert said in _text(_section(golden.page(DAYS, f"p/{code}.html"), "shufersal-universe")), (code, said)
+    # an unread sale price: its line on a plain label, whose price part holds the barcode alone, no price today
+    unread = _section(golden.page(DAYS, f"p/{U10}.html"), "shufersal-universe")
+    assert ('<div class="tag none"><div class="say"><p class="verdict">On sale, but the sale price could not be read</p>'
+            '</div><div class="pay"><div class="code" aria-hidden="true">'
+            f'<small>{U10}</small></div></div></div>') in unread
+    assert "Price today" not in unread
     # Universe's store page on the last day: its deals passing the bar by saving, then barcode (U4 under the bar), and
     # the headline counting the same set
     store = golden.page(DAYS, "store/shufersal-universe.html")
     assert [code for code, _ in _front_rows(store)] == [U2, U3, U8, U7]
     assert _lede(store) == "At Shufersal Universe today: 4 of 6 promotions are actually deals."
+    assert "today: <b>4 of 6</b> promotions" in store
+    assert re.findall(r'<span class="badge ([^"]+)">([^<]+)</span>', store) == [
+        ("deal-1", "DEAL · ₪2.00 off"), ("deal-1", "DEAL · ₪2.00 off"), ("deal-1", "DEAL · ₪1.50 off"),
+        ("deal-1", "DEAL · ₪1.00 off")]
 
 
 def test_the_golden_root_is_the_picker(golden):
     """Store first (q33): on every day kept and on the last, `index.html` is the picker, its nine links each to a store
-    type's front page the day's build wrote, and lists no deal; every page carries the one script."""
+    type's front page the day's build wrote, and lists no deal; every page carries the one script. The site's look
+    (q36): each label carries its store type's promotions today, the site-day file's count, the one its store page
+    states; on the last day Shufersal Universe's nine (promotions 60, 62 to 68 and 70 run at its three stores, 69 at
+    store 81 alone), Sheli's one (G3's), and Shufersal Express, a hole every day, its name alone."""
     for n in (*KEEP, DAYS):
         root = golden.page(n, "index.html")
         assert '<section id="pick" data-page="root">' in root and "<tr" not in root and "<table" not in root
@@ -227,6 +264,20 @@ def test_the_golden_root_is_the_picker(golden):
             page = golden.page(n, link)
             assert page.count("<script") == 1 and '<script src="../search.js" defer></script>' in page
         assert root.count("<script") == 1 and '<script src="search.js" defer></script>' in root
+        columns = json.loads((golden.site / "site-days" / f"{day_of(n).isoformat()}.json").read_text())["columns"]
+        labels = dict(re.findall(r'<li><a href="store/([^"]+)\.html">(.*?)</a></li>', root))
+        for column in COLUMNS:
+            promotions = columns[column.key]["front"]["promotions"]
+            store = _text(golden.page(n, f"store/{column.key}.html"))
+            line = re.search(r"Today .*? lists ([\d,]+) promotions? carried", store)
+            figure = re.search(r"<b>([\d,]+)</b>", labels[column.key])
+            assert (figure and figure.group(1)) == (line and line.group(1)), (n, column.key)
+            assert (figure and figure.group(1)) == (None if promotions is None else f"{promotions:,}"), (n, column.key)
+    root = golden.page(DAYS, "index.html")
+    labels = dict(re.findall(r'<li><a href="store/([^"]+)\.html">(.*?)</a></li>', root))
+    assert labels["shufersal-universe"] == "Shufersal Universe <small><b>9</b> promotions today</small>"
+    assert labels["shufersal-sheli"] == "Shufersal Sheli <small><b>1</b> promotion today</small>"
+    assert labels["shufersal-express"] == "Shufersal Express"
 
 
 # ---- the verdicts (S0 to S8) and the front list, by hand ----
@@ -579,6 +630,17 @@ def test_the_gates_conditions_each_fail_alone(golden):
         found = gate(edited, key)
         assert found.conditions == {name: name != failing for name in ("days", "brier", "calibration")}, failing
         assert found.open is False
+
+
+def test_every_golden_product_page_is_under_45_000_bytes(golden):
+    """The site look's design test 10 (store-first.md's line): every product page of the golden build, the last day's
+    and the kept days', is under 45,000 bytes."""
+    sizes = {f"{day_of(DAYS)}/p/{path.name}": path.stat().st_size for path in (golden.site / "p").glob("*.html")}
+    for day, kept in golden.kept.items():
+        sizes.update({f"{day}/{path}": len(body) for path, body in kept.items() if path.startswith("p/")})
+    assert len(sizes) > 16
+    largest = max(sizes, key=lambda name: (sizes[name], name))
+    assert sizes[largest] < 45_000, (largest, sizes[largest])
 
 
 # ---- the pinned bytes ----

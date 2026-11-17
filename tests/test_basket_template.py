@@ -21,7 +21,7 @@ from basket.archive import COVERED, SCORED, TABLES, kind_key, record_key, table_
 from basket.chains import SLUGS
 from basket.duck import MEMORY_LIMIT_VAR, TEMP_DIRECTORY_VAR
 from basket.handler import REQUIRED, SITE_BUCKET_PREFIX, Config, Deps, run
-from basket.site import FIXED_PAGES, day_key
+from basket.site import ASSET_FOLDER, FIXED_PAGES, day_key
 from collector.store import RETENTION_DAYS, manifest_key, raw_key
 from shopper.build import LEDGER
 from shopper.freeze import archive_key, scores_archive_key, scores_site_key, site_key
@@ -172,7 +172,8 @@ def test_role_grants_exactly_what_the_code_does(basket_statements):
     tables; locked puts of the records, forecasts and scores (each sets its retain-until date, which needs
     s3:PutObjectRetention); a list of the archive, which is all the check-record gate needs; reads of the site's
     published day files, forecasts and scores for the guard; puts of its fixed pages, product, browse, search and store
-    files, day files, forecasts and scores, a list of it; one distribution's invalidation."""
+    files, the shared files under assets/, day files, forecasts and scores, a list of it; one distribution's
+    invalidation."""
     archive = [{"Fn::Sub": "${ArchiveBucket.Arn}/" + folder + "/*"}
                for folder in ("raw", "manifests", "tables", "basket", "forecasts", "scores")]
     locked = [{"Fn::Sub": "${ArchiveBucket.Arn}/" + folder + "/*"} for folder in ("basket", "forecasts", "scores")]
@@ -186,7 +187,8 @@ def test_role_grants_exactly_what_the_code_does(basket_statements):
         "ListArchive": (["s3:ListBucket"], [{"Fn::GetAtt": ["ArchiveBucket", "Arn"]}]),
         "ReadPublished": (["s3:GetObject"], published),
         "WriteSite": (["s3:PutObject"],
-                      pages + [_site(folder + "/*") for folder in ("p", "browse", "search", "store")] + published),
+                      pages + [_site(folder + "/*") for folder in ("p", "browse", "search", "store", "assets")]
+                      + published),
         "ListSite": (["s3:ListBucket"], [{"Fn::Sub": SITE}]),
         "Invalidate": (["cloudfront:CreateInvalidation"],
                        [{"Fn::Sub": "arn:aws:cloudfront::${AWS::AccountId}:distribution/${SiteDistributionId}"}]),
@@ -214,7 +216,8 @@ def test_role_prefixes_are_the_codes_keys(basket_statements):
     assert _site_prefix(LEDGER) == _site_prefix(site_key(day))  # the ledger is a forecasts/ file
     assert by_sid["ReadPublished"] == published
     built = [page_path("2000000000046"), browse_path("\u05d0"), *pieces({}), store_path("osherad")]
-    assert by_sid["WriteSite"] == [_site(page) for page in FIXED_PAGES] + [_site_prefix(key) for key in built] + published
+    assert by_sid["WriteSite"] == ([_site(page) for page in FIXED_PAGES] + [_site_prefix(key) for key in built]
+                                   + [_site(f"{ASSET_FOLDER}/*")] + published)
 
 
 # --- the parameters ---

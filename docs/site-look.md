@@ -2,7 +2,7 @@
 
 **Grade (the owner's, 2026-11-15):** a portfolio piece for job applications at production quality: professional, elegant and impressive at first glance; accessible (WCAG 2.2 AA in both themes); fast; light and dark; phone and desktop.
 
-**Status:** approved 2026-11-15, not built. The owner saw three directions as mockups and chose this one, "Shelf label", on 2026-11-15 ("I actually prefer A"), read its full design the same day and changed three things: deals are green, not yellow; the front page's headline is "DEAL OR NO DEAL?"; and the line under it is new. The owner also settled the questions that design left open ("go with your recommendations on the open questions"). Last, the owner chose NO DEAL's look by eye from two drawn variants: the yellow label ("Yellow"; "NO DEAL: the yellow label"). This document replaces two earlier versions, both rejected: a careful clean-up ("nothing really changed - I want a widespread redesign to make it look professional and impressive") and a redesign in navy and indigo with cards, pills and a shaded chart ("better but I don't think it looks very elegant. And the chart is just too confusing for the layperson ... I don't want it to look AI-y either").
+**Status:** approved 2026-11-15, built on branch q36-site-look (2026-11-16; "Deviations" in site-look-plan.md for what changed), not yet merged. The owner saw three directions as mockups and chose this one, "Shelf label", on 2026-11-15 ("I actually prefer A"), read its full design the same day and changed three things: deals are green, not yellow; the front page's headline is "DEAL OR NO DEAL?"; and the line under it is new. The owner also settled the questions that design left open ("go with your recommendations on the open questions"). Last, the owner chose NO DEAL's look by eye from two drawn variants: the yellow label ("Yellow"; "NO DEAL: the yellow label"). This document replaces two earlier versions, both rejected: a careful clean-up ("nothing really changed - I want a widespread redesign to make it look professional and impressive") and a redesign in navy and indigo with cards, pills and a shaded chart ("better but I don't think it looks very elegant. And the chart is just too confusing for the layperson ... I don't want it to look AI-y either").
 
 It restyles the shopper site of [shopper-site.md](shopper-site.md) and [store-first.md](store-first.md). What the rules compute does not change. What a page says changes only where "Word changes" and "Calls made in this design" say so.
 
@@ -13,19 +13,22 @@ It restyles the shopper site of [shopper-site.md](shopper-site.md) and [store-fi
 
 ## What the owner has decided
 
-All on 2026-11-15. Five of them were this design's recommendations, which the owner took as a whole ("go with your recommendations on the open questions"); each is marked.
+All on 2026-11-15, but those dated 2026-11-16, after the owner read the built pages. Five of the first were this design's recommendations, which the owner took as a whole ("go with your recommendations on the open questions"); each is marked.
 
 - **The direction: "Shelf label"**: the shelf label's shape and type: a coloured sale label for a deal, the price set as on a shelf edge, the barcode on the label.
 - **Deals are green, throughout** ("let's do green. I want to see what it looks like. I don't think the yellow on its own is such a strong idea anyway."): the verdict's label, the small labels of "Elsewhere today" and of a store's table, the box in the header's wordmark, the chart's sale line.
 - **The front page's headline is "DEAL OR NO DEAL?"**, in place of "Is it actually a deal?": DEAL set as the green deal label, NO DEAL as the no-deal label. **The nine store pages keep "Is it actually a deal?"** as their headline (recommended to the owner; the owner's go).
 - **The line under the front page's headline:** "Find out if a sale is actually a deal: pick the store you're in, then look up the product. Each sale is checked against what it usually costs there."
-- **The chart reads like a familiar price-history chart** (after the owner showed camelcamelcamel's and asked "why can't it look more like this?"): a price axis at the left with a few round ₪ values and light gridlines; dates along the bottom; the shelf price as a step line and the sale price as a second step line in a second colour; today's price written at the right end of its line, in the line's colour; a small plain table under it; a key in words; no shaded areas and no bands; a day with no record is a gap. With it, its words: the table's heads "Lowest", "Highest", "Usual", "Today", and short dates ("16 Aug", "13 Nov", "Sep") (recommended to the owner; the owner's go).
+- **The chart reads like a familiar price-history chart** (after the owner showed camelcamelcamel's and asked "why can't it look more like this?"; as redrawn on 2026-11-16, below): a price axis at the left with a few round ₪ values and light gridlines; dates along the bottom; one step line of the price paid each day, a sale a drop in it in the sale's green; today's price written at the line's end, in the line's colour; a small plain table under it; a key in words for the marks that need them; no shaded areas and no bands. With it, its words: the table's heads "Lowest", "Highest", "Today", and short dates ("16 Aug", "13 Nov", "Sep") (recommended to the owner; the owner's go).
 - **A short history is not drawn narrow.** (This replaces store-first.md's "a short history makes a short chart".)
 - **A page never shows two different numbers both called "days tracked"** (recommended to the owner; the owner's go; the rule under "Word changes").
 - **Each store's label on the front page carries its count of promotions today** ("1,347 promotions today"; recommended to the owner; the owner's go).
 - **The method page's row of links is named "On this page"** for screen readers (recommended to the owner; the owner's go).
-- **Four earlier word changes:** "Price today: ₪14.00" under the verdict on a product page; the first tracked day's date and "today" along the chart's bottom; the chains' line ("Shufersal · Rami Levy · ...") in the front page's header only; on a store's own page, the table's badge without "At <store>:".
+- **Four earlier word changes:** "Price today: ₪14.00" under the verdict on a product page; the first tracked day's date along the chart's bottom and "today" at its right end; the chains' line ("Shufersal · Rami Levy · ...") in the front page's header only; on a store's own page, the table's badge without "At <store>:".
 - **NO DEAL is a yellow label** (the owner's choice by eye between two drawn variants, 2026-11-15: "Yellow").
+- **The chart is one line, the price paid each day** (2026-11-16, after reading the built pages, where the shelf line and the sale line together were "absolutely unreadable": "yes - one line. obviously. what does 'shelf price' even mean in this context?"; "exactly. I gave an example of what I wanted with camelcamelcamel"). It replaces "the shelf price as a step line and the sale price as a second step line in a second colour". With it, this design's recommendations on its open questions, which the owner took ("go with your recommendations on all five"): the chart's table is "Lowest", "Highest", "Today", without "Usual"; up to seven days in a row with no price are joined by a dotted stretch, longer runs left open (in place of "a day with no record is a gap"); no chart when no tracked day has a price; and "How often on sale" counts out of the days before today ("On sale on 12 of the 60 days before today."), since today is not a tracked day and beside a Deal today "On sale on 0 of the 13 days tracked" read wrong. ("The chart", "Word changes".) The owner's rulings stand: no price at today on an unread sale price or on a day whose sale prices were not read.
+- **The header's name is drawn as the front page's headline**, "Deal" on the green label and "No Deal" on the yellow one (the owner, 2026-11-16, after reading the built pages: "the home icon should match the image at the top of the homepage, green & yellow"; "The header's name: green and yellow").
+- **The front page stays the front page, with a shortcut to the remembered store** (the owner, 2026-11-16: "make clicking the homepage icon in the top right take you to the homepage. it's too confusing. then maybe on the homepage we can have something at the top that will take you to your selected store, some kind of shortcut."): the root no longer sends a remembered pick on; "Your store", then the store type's name, stands above the headline (the owner's answer on its words, the same day; "The front page stays put, with a shortcut to your store").
 
 ## Why: what was measured on the live pages
 
@@ -107,8 +110,8 @@ Ink, paper and green, as tokens; every rule of the stylesheet names a token, nev
 | Token | Light | Dark | Job |
 |---|---|---|---|
 | `--bg` | `#ffffff` | `#131313` | the page |
-| `--ink` | `#111111` | `#f2f2ef` | words, rules, a label's edge, the chart's shelf line |
-| `--ink-2` | `#555555` | `#b4b4b0` | small print, table heads, the chart's axis words and its dotted usual line |
+| `--ink` | `#111111` | `#f2f2ef` | words, rules, a label's edge, the chart's price line |
+| `--ink-2` | `#555555` | `#b4b4b0` | small print, table heads, the chart's axis words, its date line and marks, and its dashed usual line |
 | `--line` | `#d6d6d6` | `#3d3d3a` | hairlines between rows, the chart's grid (decoration) |
 | `--soft` | `#f1f1ee` | `#222220` | a quiet ground: the basket table's lowest price in a row |
 | `--d1` | `#c8f1d5` | `#27995a` | a Deal's label, a saving of ₪1.00 to ₪2.99 |
@@ -116,7 +119,7 @@ Ink, paper and green, as tokens; every rule of the stylesheet names a token, nev
 | `--d3` | `#22b35e` | `#4fe08c` | a Deal's label, ₪5.00 or more; the wordmark's box; the headline's DEAL and a store page's "DEAL?" |
 | `--on-deal` | `#111111` | `#111111` | words on any green label, in both themes |
 | `--nd`, `--on-nd`, `--nd-edge` | `#ffd60a`, `#111111`, `#111111` | `#ffd60a`, `#111111`, `#ffd60a` | the NO DEAL label's fill, words and edge ("NO DEAL: the yellow label") |
-| `--sale` | `#0b7a3b` | `#4fe08c` | the chart's sale line and today's sale price beside it |
+| `--sale` | `#0b7a3b` | `#4fe08c` | the chart's sale stretch and today's sale price beside it |
 | `--plate`, `--bars` | `#ffffff`, `#111111` | the same | the barcode: dark bars on a white plate in both themes, so a scanner reads it |
 
 Green means one thing, a deal: a label's fill, and in the chart the sale price. Nothing else is green. A green label's edge is ink on paper, where the palest green is close to the page (1.24:1), and the label's own green on the dark page. Links are ink, underlined; there is no link colour.
@@ -133,15 +136,15 @@ Computed by a script that reads the tokens out of the stylesheet in both themes,
 | Words on the green label, ₪3.00 to ₪4.99 | `#111111` on `#6fdc9b` | 11.14 | `#111111` on `#34b76a` | 7.31 | 4.5 |
 | Words on the green label, ₪5.00 or more; the wordmark and the headline's DEAL | `#111111` on `#22b35e` | 6.90 | `#111111` on `#4fe08c` | 11.13 | 4.5 |
 | Words on the NO DEAL label | `#111111` on `#ffd60a` | 13.38 | `#111111` on `#ffd60a` | 13.38 | 4.5 |
-| Today's sale price and the chart's green sale line | `#0b7a3b` on `#ffffff` | 5.44 | `#4fe08c` on `#131313` | 10.95 | 4.5 |
-| The chart's shelf line, the axis, the date marks | `#111111` on `#ffffff` | 18.88 | `#f2f2ef` on `#131313` | 16.57 | 3 |
-| The chart's dotted usual line | `#555555` on `#ffffff` | 7.46 | `#b4b4b0` on `#131313` | 8.93 | 3 |
+| Today's sale price and the chart's green sale stretch, its dotted stretch and the ticks | `#0b7a3b` on `#ffffff` | 5.44 | `#4fe08c` on `#131313` | 10.95 | 4.5 |
+| The chart's price line, its dotted stretch, today's price and dot | `#111111` on `#ffffff` | 18.88 | `#f2f2ef` on `#131313` | 16.57 | 3 (4.5 for the figure) |
+| The chart's dashed usual line, its date line and the dates' marks, the axis words | `#555555` on `#ffffff` | 7.46 | `#b4b4b0` on `#131313` | 8.93 | 3 (4.5 for words) |
 | A green label against its edge or the page (light: its ink edge on the page; dark: its fill on the page), ₪1.00 to ₪2.99 | `#111111` on `#ffffff` | 18.88 | `#27995a` on `#131313` | 5.12 | 3 |
 | The same, ₪3.00 to ₪4.99 | `#111111` on `#ffffff` | 18.88 | `#34b76a` on `#131313` | 7.19 | 3 |
 | The same, ₪5.00 or more | `#111111` on `#ffffff` | 18.88 | `#4fe08c` on `#131313` | 10.95 | 3 |
 | The NO DEAL label's edge against the page | `#111111` on `#ffffff` | 18.88 | `#ffd60a` on `#131313` | 13.16 | 3 |
 | A plain label's edge, a search box's and a checkbox's edge, the focus ring | `#111111` on `#ffffff` | 18.88 | `#f2f2ef` on `#131313` | 16.57 | 3 |
-| Words on the inverse label (the basket's lowest total, the current letter, a store's label under the pointer) | `#ffffff` on `#111111` | 18.88 | `#131313` on `#f2f2ef` | 16.57 | 4.5 |
+| Words on the inverse label (the basket's lowest total, the current letter, a store's label and "Your store" under the pointer) | `#ffffff` on `#111111` | 18.88 | `#131313` on `#f2f2ef` | 16.57 | 4.5 |
 | Words on the soft ground (the basket's lowest price in a row) | `#111111` on `#f1f1ee` | 16.69 | `#f2f2ef` on `#222220` | 14.21 | 4.5 |
 | Small print on the soft ground | `#555555` on `#f1f1ee` | 6.59 | `#b4b4b0` on `#222220` | 7.66 | 4.5 |
 | The barcode's bars on their plate | `#111111` on `#ffffff` | 18.88 | `#111111` on `#ffffff` | 18.88 | 4.5 |
@@ -151,12 +154,12 @@ The chart's two line colours were also put through the dataviz palette validator
 
 ## Components
 
-**Header.** A paper band with a 2.5-pixel ink rule under it. At the left the name as a wordmark in the narrow cut, capitals: "DEAL" on a small green label, then "OR NO DEAL". At the right the date line, then the store line ("Carrefour Market · change", or "Pick your store"); the chains' line before the date on the front page only. On a phone the date and the store line drop to rows of their own. The store line's links are 43 pixels high.
+**Header.** A paper band with a 2.5-pixel ink rule under it. At the left the name as a wordmark in the narrow cut, capitals: "DEAL" on a small green label, "OR", then "NO DEAL" on a small yellow one ("The header's name: green and yellow"). At the right the date line, then the store line ("Carrefour Market · change", or "Pick your store"; on the front page, hidden while "Your store" shows); the chains' line before the date on the front page only. On a phone the date and the store line drop to rows of their own. The store line's links are 43 pixels high.
 
 **The label** (`div.tag`): the picked store's answer on a product page. A 2.5-pixel edge, corners of 5 pixels, two parts:
 
 - **the saying part**, at the left (on top on a phone): the small label "AT CARREFOUR MARKET:", the verdict in the narrow cut, the reason, then the conditions in bold ("When you buy 2", "Club members only") and a coming sale's line. Green, in the shade of its saving, with dark words for a Deal; yellow, with dark words, for No deal; paper for every line that is not a verdict.
-- **the price part**, at the right (below on a phone), always paper: "PRICE TODAY:" over the price, then the barcode with its digits under it. A weighed product's "a kilogram" follows the price in small print. With no price known today the part holds the barcode alone.
+- **the price part**, at the right (below on a phone), always paper: "PRICE TODAY:" over the price, then the barcode with its digits under it. A weighed product's "a kilogram" follows the price in small print when the promotion judged today prices it by the kilogram. With no price known today the part holds the barcode alone.
 
 A line that is not a verdict ("No sale today", "On sale at some stores only", "Sale prices could not be read today" and the rest of `NO_VERDICT`) is set in the narrow cut at the smaller size on a white label; the store's name then shows as a small label above it (it is the section's heading, hidden only where the label itself says "At <store>:").
 
@@ -184,11 +187,11 @@ A line that is not a verdict ("No sale today", "On sale at some stores only", "S
 
 **Motion.** None: no transition, no animation.
 
-**Print.** The store line, the search box, the filters, a browse page's letters and the method page's row of links are left out. Browsers print no backgrounds by default, so a coloured label prints as its outline, which still reads.
+**Print.** The store line, the search box, the filters, a browse page's letters, the method page's row of links and the front page's "Your store" are left out. Browsers print no backgrounds by default, so a coloured label prints as its outline, which still reads.
 
 ## Page by page
 
-**The front page.** The headline "DEAL OR NO DEAL?" in the narrow cut, capitals, at 132 pixels on a desktop (one line there, two on a phone): DEAL on the full green label, NO DEAL on the yellow no-deal label, "OR" and the question mark plain. The owner's line under it; a rule; "WHICH STORE ARE YOU IN?" and the nine labels; then the four links ("Built by ...", "How this is made", "Track record", "Code on GitHub") as small capitals, underlined.
+**The front page.** With a store remembered, "YOUR STORE Shufersal Deal →" first, above the headline (the script's; "The front page stays put, with a shortcut to your store"). The headline "DEAL OR NO DEAL?" in the narrow cut, capitals, at 132 pixels on a desktop (one line there, two on a phone): DEAL on the full green label, NO DEAL on the yellow no-deal label, "OR" and the question mark plain. The owner's line under it; a rule; "WHICH STORE ARE YOU IN?" and the nine labels; then the four links ("Built by ...", "How this is made", "Track record", "Code on GitHub") as small capitals, underlined.
 
 **A store page.** The store's name as a small label; the title question "IS IT ACTUALLY A DEAL?", smaller, on one line on a desktop, its last word on the full green label; the subtitle; the search box and "Browse by first letter"; a rule; the headline in bold with its two numbers in the narrow cut ("At Carrefour Market today: **14 of 4,196** promotions are actually deals."); the two filters; the table.
 
@@ -196,13 +199,13 @@ A line that is not a verdict ("No sale today", "On sale at some stores only", "S
 - **On a phone** each row is a block: the name and barcode; under them the label at the left with its condition, and at the right the price today in bold over "Usually ₪26.80". Nothing scrolls sideways. The table keeps its table roles for screen readers.
 - With no row to show, the line the page already has ("None yet: a product needs 20 days of price history first.") stands as the headline and the table says "No deals to show."
 
-**A product page.** The name; the names as each chain lists it; the barcode and size line. Then, for the picked store type, the label, the chart with its key and its table, "Last this low" and "How often" as two ruled lines, and the fold-out. On a desktop (64rem and up, while the script runs) the page is two columns of a 12-column grid: the label, chart and facts in eight, "Elsewhere today" in four, level with the label. The states:
+**A product page.** The name; the names as each chain lists it; the barcode and size line. Then, for the picked store type, the label, the chart with its table (and its key when a sale or an unread sale price is drawn), "Last this low" and "How often" as two ruled lines, and the fold-out. On a desktop (64rem and up, while the script runs) the page is two columns of a 12-column grid: the label, chart and facts in eight, "Elsewhere today" in four, level with the label. The states:
 
 | State | What shows |
 |---|---|
 | Deal | the green label, in the shade of its saving; the price part; the chart with today's sale price in green at the right end |
 | No deal | the same label in yellow: "NO DEAL", its reason, its condition |
-| No sale today | a white label: "No sale today" and the price part; a chart with the shelf line alone |
+| No sale today | a white label: "No sale today" and the price part; the chart's line ends in ink, today's price in ink |
 | On sale, price not read today; sale prices not read today | a white label with that line; no price; the warning above it when the chain's promotions could not be read; the chart still shows the days before |
 | Not sold at the picked store | the empty slot; under it "Elsewhere today"; when the store listed it before, the chart of those days and no price today |
 | A first visit, no store picked | the rows of all store types first, then the first one's label and chart |
@@ -220,47 +223,48 @@ A line that is not a verdict ("No sale today", "On sale at some stores only", "S
 
 ## The chart
 
-One per store type, in that store type's part of the product page. What it shows is store-first's ("The rules", S0 to S8); how it is drawn is new.
+As the owner redrew it on 2026-11-16, after reading the built pages ("What the owner has decided"). One per store type, in that store type's part of the product page. What it shows is store-first's ("The rules", S0 to S8). It reads like a familiar price-history chart: one line of the price, a sale a drop in it, today's price written at its end.
 
 **What is drawn.**
 
-- **Up:** the price, on an axis of round ₪ values with a light gridline at each. The axis takes the smallest step of 1, 2, 5, 10, 20, 50 ... shekels that holds every drawn price in at most five steps and at least two; no price sits on the bottom line (the axis starts a step lower when the lowest price would be within 8% of it). Prices less than a shekel apart take a step of half a shekel. Not from zero: a shelf price moves by a shekel or two, which a zero-based axis would flatten.
-- **Across:** each calendar day from the first tracked day to today, today included as a day like any other. Along the bottom: the first tracked day's date at the left ("16 Aug"); "today" at the right, under today's prices; between them a mark and a name at each month's first day when the span is 46 days or more ("Sep", "Oct", "Nov"), or a mark and a date every seventh day back from today when it is shorter ("7 Nov"). A name that would crowd either end (nearer than 22% of the span to the first date, or 16% to today) is left out on a phone; its mark stays.
-- **The shelf price:** a 2-pixel ink step line over every tracked day, through today when today's listed price is known.
-- **The sale price:** a 3.5-pixel step line in `--sale` over the days a counting promotion ran with a price read, today's included.
-- **Today's prices:** at the right end of each line a dot, and beside it in a column of its own the price in the line's colour: the shelf price in ink, the sale price in green; the lower of the two (what the shopper pays) in bold. Two labels that would touch are moved apart, 17 pixels between their centres.
-- **The usual price** (S2, with a Deal or No deal): a dotted line in the second ink across the tracked days, with "usually ₪22.90" written on it at the right, above the line unless the shelf or sale line runs there, then below.
-- **A day with no record:** a gap in every line, the usual line too, so a gap never looks bridged.
-- **A sale day whose price could not be read:** a row of short ticks in `--sale` standing on the date line under that day, 7 pixels high, 2 on and 2 off. The key names it.
-- **The key,** in words after a swatch of each mark drawn, as today: "shelf price · on sale · on sale, price not read".
-- **The table,** under the key: up to four cells, a small-capitals head over a figure in the narrow cut: "Lowest ₪17.90 today", "Highest ₪24.90 13 Nov", "Usual ₪22.90", "Today ₪17.90". Lowest and Highest carry the date of the latest day at that price, "today" when it is today's. Usual shows with a Deal or No deal; Today when today's price is known.
+- **Up:** the price, on an axis of round ₪ values with a light gridline at each: the smallest step of 1, 2, 5, 10, 20, 50 ... shekels that holds every drawn price in at most five steps and at least two; half a shekel for prices less than a shekel apart; no price on the bottom line; not from zero. The prices drawn are the days' prices, today's price and the usual price. A sale day's listed price is not drawn, so it does not stretch the axis.
+- **Across:** each calendar day from the first tracked day to today, today the last; the first tracked day's date at the left; a mark and a name each week under 46 days, each month from 46; a name written only between 8% and 91% of the span, a phone hiding those outside 22% to 84% and, from 28 days, every other week's.
+- **The line:** what the product cost each day. A tracked day's price is its day price (S1: the lower of the listed price and the lowest promotion that counts that day). Today's is the verdict's price today (S3), the same figure as the label's "Price today". A 2-pixel ink step line on the days with no sale; on the days a promotion counted, the same line in the sale's green at 3.5 pixels, with the steps down into the sale and back out of it, so a sale reads as one notch.
+- **Today:** one dot at the line's end, at today's price; beside it, in a column of its own, the price in the line's colour there (green when a promotion counts today) and "today" under the price. With no price today (an unread sale price, sale prices not read today, not sold, too few files) the line ends at its last day with a price, and "today" stands alone on the dates' line; an unread sale price keeps its tick under today.
+- **The usual price** (S2, with a Deal or No deal): dashes in the second ink at its height, on every day of the span except those on which the line runs within 6 pixels of that height. Its words, "usually ₪9.90", are always written, at the right, 8 pixels above the level; below it instead when the line runs just above in the last 30% of the days (a point, a dotted stretch, or a step crossing that band) and below is free. At the very top of the plot the words stand in the chart's top margin.
+- **A day with no price** (no record that day, promotions not read, the product not listed, or a sale whose price could not be read): when seven or fewer such days lie in a row between two days with a price, the line goes on dotted at the last price, in the colour of the day it carries, and steps at the next day with a price. When more than seven, the line stops and starts again: a gap. Nothing is carried past the last day with a price. No number counts a carried day.
+- **A sale day whose price could not be read:** short ticks in the sale's green standing on the date line under that day, 7 pixels high, 2 on and 2 off.
+- **The date line and the dates' marks:** 1 pixel, the second ink. Never the line's colour or weight.
+- **The key,** only for marks that need words: "on sale" when a sale stretch is drawn, "on sale, price not read" when a tick is. A chart with neither has no key (on the real day of 16 November, 60,347 of 93,249 charts).
+- **The table:** "Lowest" and "Highest", each over the latest day at that price ("today" when it is today's), and "Today". No "Usual" cell: the chart writes the usual price at its own height and the label's reason says it.
+- **No chart** when no tracked day has a price: there is no line to draw. On the real day of 16 November that is 175 of 93,424 parts, 149 of them "On sale, but the sale price could not be read" with no sale price ever read.
 
-**Lowest and highest count today** (a call; see "Calls"). Today the chart's labels and its text alternative leave today out of "lowest" (`min(priced)` over the tracked days before today: `src/shopper/chart.py` line 139 and `words.chart_summary`, `src/shopper/words.py` lines 254 to 256), so a deal at a new low reads "lowest ₪19.90 ... today ₪17.90". The table and the text alternative both take the lowest and the highest over the tracked days' day prices and today's price, so the table agrees with the line under it ("Lowest in the 83 days with a known price.") and never shows a "lowest" above today's price.
+**Lowest and highest count today** (`shopper.verdict.extremes`; the design's call 3) and are exactly the line's lowest and highest points, so the table agrees with the line under it ("Lowest in the 83 days with a known price.") and never shows a "lowest" above today's price.
 
-**The two counts of days.** Today one page can say "Usually ₪22.90, sales included (83 days tracked)." beside "On sale on 21 of the 86 days tracked.": both are right and they can meet on a real page, since the reason and "Lowest in the ..." count the days with a day price (`len(found.priced)`: `src/shopper/words.py` lines 361 and 394, in `reason` and `last_low`) and "On sale on ..." counts every tracked day (`len(found.days)`: line 403, in `how_often`); they differ by the sale days whose price could not be read. Decided: a page never shows two different numbers both called "days tracked"; the first two lines name their own count when it differs ("Word changes", 3).
-
-**How it is drawn, so no word ever shrinks.** Four SVGs in a row, none of which scales text:
+**How it is drawn, so no word ever shrinks:** four SVGs in a row, only the lines' one with a `viewBox` and `preserveAspectRatio="none"`, every stroke `vector-effect: non-scaling-stroke`, no text in it, its text alternative an `aria-label`; the axis 46 pixels wide, today's column 64, the plot the rest; 200 pixels high, 224 with the dates; no `style` attribute.
 
 ```html
-<div class="chart">
-<svg class="ax" aria-hidden="true"><text x="40" y="4">₪26</text> ... </svg>
+<div class="history"><div class="chart">
+<svg class="ax" aria-hidden="true"><text x="40" y="4">₪10</text> ... <text x="40" y="204">₪2</text></svg>
 <div class="plot">
-<svg class="lines" role="img" aria-label="Price chart: usually ₪22.90, lowest ₪17.90, highest ₪24.90, today ₪17.90."
-     viewBox="0 0 91 200" preserveAspectRatio="none">
-<path class="grid" d="M0 160H91M0 120H91 ..."/><path class="usual" d="M0 62H33M36 62H70M71 62H91"/>
-<path class="listed" d="M0 62H33M36 62H42V22H70M71 22H91"/><path class="sale" d="M21 122H28 ... M90 162H91"/>
-<path class="unread" d="M55 196.5H58"/></svg>
-<svg class="over" aria-hidden="true"><text class="usually" x="100%" dx="-12" y="56">usually ₪22.90</text>
-<text y="217">16 Aug</text><line x1="17.58%" x2="17.58%" y1="200" y2="206"/><text class="near" x="17.58%" dx="5" y="217">Sep</text> ... </svg>
+<svg class="lines" role="img" aria-label="Price chart: usually ₪9.90, lowest ₪2.90, highest ₪10.00, today ₪2.90."
+     viewBox="0 0 16 200" preserveAspectRatio="none">
+<path class="grid" d="M0 150H16M0 100H16M0 50H16M0 0H16"/>
+<path class="usual" d="M15 3H16"/>
+<path class="gap" d="M5 3H6M7 3H8"/>
+<path class="paid" d="M0 3H5M6 3H7M8 3H9V0H10V3H15"/>
+<path class="sale" d="M15 3V178H16"/></svg>
+<svg class="over" aria-hidden="true"><text class="usually" x="100%" dx="-12" y="-5">usually ₪9.90</text>
+<text y="217">1 Nov</text><line x1="6.25%" x2="6.25%" y1="200" y2="206"/> ... </svg>
 </div>
-<svg class="now" aria-hidden="true"><circle class="listed" cy="22" r="4.5"/><text class="listed" x="12" y="27">₪24.90</text>
-<circle class="sale" cy="162" r="4.5"/><text class="sale now" x="12" y="167">₪17.90</text><text class="end" x="12" y="217">today</text></svg>
+<svg class="now" aria-hidden="true"><circle class="sale" cy="178" r="4.5"/>
+<text class="sale" x="12" y="183">₪2.90</text><text class="end" x="12" y="197">today</text></svg>
 </div>
+<p class="key"><i class="sale"></i>on sale</p>
+<table class="stats"> Lowest ₪2.90 today · Highest ₪10.00 10 Nov · Today ₪2.90 </table></div>
 ```
 
-- **The lines** are the only SVG with a `viewBox`: one unit a day across and one a pixel up, `preserveAspectRatio="none"`, so it stretches sideways to the room it has while its height stays 200 pixels; every stroke has `vector-effect: non-scaling-stroke`. It holds no text. Its text alternative is an `aria-label` (about 50 to 75 bytes shorter a chart than today's `<title>` with `aria-labelledby`, by the store type's key).
-- **The axis, the overlay and the today column** have no `viewBox`, so one unit is one pixel at every width and their words are always the size the stylesheet gives. The overlay lies over the plot and places the dates by percentage (`x="17.58%"`), which needs no `style` attribute; the usual line's label has a halo in the page's colour so the grid does not run through it.
-- No page carries a `style` attribute or a `<style>` block: positions are SVG attributes, sizes are the stylesheet's.
+That is the owner's screenshot (p/7290000000053.html at Shufersal Universe), whole. The paths, in order: `grid`; `usual`; `gap` and `gap sale` (the dotted stretch after an ordinary day and after a sale day); `paid`; `sale`; `unread`. The class is `paid`, not `price`: `.price` is the label's own class in the stylesheet.
 
 **Width** (the owner's "not drawn narrow"). The plot always takes the whole width its column has, whatever the number of days: there is no pixels-a-day rule any more, so a 14-day history is drawn as wide as a 90-day one. Measured in the preview: 248 pixels at a 390-pixel phone and 602 at 1,280, the same on the 13-day pages and the 90-day example; the axis column is 46 pixels and the today column 64. On a 320-pixel phone the plot has 178 pixels (measured on one page), and there the label's barcode drops under its price and the table's figures are set smaller. The chart never scrolls sideways. Its height is 200 pixels at every width, 224 with the dates.
 
@@ -310,7 +314,48 @@ What each gives:
 - **Y** gives three states three looks: a deal is green, a sale that is not a deal is yellow, no sale is white. The case the site exists to catch, "on sale, but not actually a deal", has a colour of its own. Its price: a second loud colour, and a product that is No deal at seven store types shows seven yellow labels.
 - **W** keeps green the only colour on the site, which is the calmer and more formal page. Its price: NO DEAL and "No sale today" then differ only in their words.
 
-The header's wordmark is the same in both: DEAL in the green box, "OR NO DEAL" plain.
+The header's wordmark was the same in both: DEAL in the green box, "OR NO DEAL" plain. The owner then dressed its NO DEAL too (2026-11-16; next section).
+
+## The header's name: green and yellow
+
+The owner, 2026-11-16, after reading the built pages: "the home icon should match the image at the top of the homepage, green & yellow."
+
+The header's name is drawn as the front page's headline, at header size: "Deal" on the green label, "or" plain, "No Deal" on the yellow label. No question mark: the site's name has none. This overturns call 16 ("The header's wordmark keeps "OR NO DEAL" plain").
+
+```html
+<a class="brand" href="{up}index.html"><b>Deal</b> or <b class="no">No Deal</b></a>
+```
+
+`shell.band` writes it from `SITE_NAME`: the words before " or " in `<b>`, " or ", the words after it in `<b class="no">`. The text read is still "Deal or No Deal". One rule draws the yellow label, `.brand .no`, with the tokens the headline's NO DEAL takes (`--nd`, `--on-nd`, `--nd-edge`), so light and dark follow: an ink edge on paper, the yellow its own edge on the dark page. The name still links to the front page, which now stays put (next section). Measured in headless Chrome on the mockups before the build: the name is 197.8 pixels wide on a phone (177.5 before) and 215 at 1,280 (193.3); its height does not change (43.1 and 45.8); on a 320-pixel screen nothing scrolls sideways. It adds 18 bytes to every page.
+
+**Tests.** The brand's markup, exactly the line above, its text "Deal or No Deal" (`tests/test_product.py`, `tests/test_shop_pages.py`); `.brand .no` takes `--nd`, `--on-nd` and `--nd-edge` (`tests/test_look.py`).
+
+## The front page stays put, with a shortcut to your store
+
+The owner, 2026-11-16: "make clicking the homepage icon in the top right take you to the homepage. it's too confusing. then maybe on the homepage we can have something at the top that will take you to your selected store, some kind of shortcut."
+
+Until then the front page sent a shopper with a remembered store straight on to that store's page (`search.js`, with `location.replace`), unless the address ended `#pick`; so the site's name, which links to the front page, landed on a store page.
+
+- **The front page never sends anyone on.** The site's name takes a shopper to the front page and they stay there.
+- **With a remembered store, the script adds one shortcut, first on the page, above the headline:** the remembered store's own label, as in the picker, one line high.
+
+  ```html
+  <p class="yours"><a href="store/shufersal-deal.html"><small>Your store</small> Shufersal Deal</a></p>
+  ```
+
+  It reads "YOUR STORE  Shufersal Deal  →": small capitals in the second ink, the name in bold, an arrow at the right, a 2-pixel ink edge with 5-pixel corners; the whole label is the link and turns to ink under the pointer, as the picker's labels do. On a phone it takes the column's width; from 48rem it is as wide as its words. Measured in headless Chrome on the mockups before the build: 48 pixels high; 358 pixels wide at 390 and 288 at 320; 279 at 1,280 for "Shufersal Deal". The arrow is the stylesheet's (`::after`, with empty alternative text), so a screen reader says "Your store Shufersal Deal, link", and the script stays plain ASCII. Print leaves it out.
+- **Words: "Your store", then the store type's name** (the owner's answer, 2026-11-16). The other choice drawn up was "Back to Shufersal Deal": a shopper who came from a product page by the site's name was never on the store's page, so "back" would be wrong for them; "Your store" is true for everyone and is what the header already calls it ("Pick your store").
+- **Place: above the headline**, the owner's "at the top". A returning shopper's first tap is the first thing on the page; a first visitor, and so the hiring reader, never sees it, and the headline keeps the top.
+- **The header's store line on the front page** is hidden while the shortcut shows (call 19), and left as the build wrote it: otherwise a phone shows "Shufersal Deal · change" and, 60 pixels under it, "YOUR STORE Shufersal Deal". Changing the store there is the picker itself, right under the headline. With no store remembered, or storage blocked, there is no shortcut and the header says "Pick your store", as before. On every other page the store line is unchanged: "Pick your store", or "Shufersal Deal · change".
+- **`index.html#pick`** is still the header's "change" on every other page, and now an ordinary link to the picker's heading: it scrolls there, past the shortcut. The script no longer reads the address.
+- **Without the script** nothing changes: the page is static and says "Pick your store".
+- **The picker does not mark the remembered store's own label** (call 20); the shortcut is enough.
+
+No new colour: the shortcut's name and edge are ink on paper, "YOUR STORE" the second ink, and under the pointer paper on ink, three pairs the "Contrast" table already holds.
+
+**In `search.js`.** `redirectFor` and its `location.replace` are gone. On the root page (`#pick[data-page="root"]`) the script calls `showShortcut` in place of `showHeader`: it builds the paragraph above with `createElement` and `textContent` (never HTML text), its address from the site's root as the header's is (`headerFor`), puts it right before the headline's block (`div.hero`), and hides the pick link's paragraph (`p.store`). One new constant, `YOURS = "Your store"`.
+
+**Tests.** `tests/test_search_js.py`: the root never calls `location.replace` and never writes the pick, with a remembered store, none, one that no longer fits, or storage blocked, each with and without `#pick`; with each of the nine store types remembered, the shortcut's exact markup directly before `<div class="hero">` and the store line hidden and untouched; with none, a stale one or storage blocked, no shortcut and "Pick your store"; on a root page in a folder, the shortcut and a search both start from the site's root; on a store page and a product page, no shortcut and the header names the store. `tests/test_look.py`: print leaves out `.yours`; `.yours a::after` has both `content` forms, the second with empty alternative text. `tests/test_shop_pages.py`: the method page's "The store you pick." says the script offers the picked front page first on the root page, in the script's own words.
 
 ## Hebrew names in English pages
 
@@ -329,24 +374,24 @@ Drawn and measured, not only planned (`prefers-color-scheme: dark`; the preview'
 - **A green label keeps dark words** on its own three greens of the dark theme (5.21:1, 7.31:1 and 11.13:1) and loses its dark edge: on the dark page each green is its own edge (5.12:1, 7.19:1 and 10.95:1 against the page). The wordmark's "DEAL" and the headline's DEAL do the same.
 - **The price part** is the dark page inside the label's edge, its price in the light ink; the barcode sits on its white plate.
 - **NO DEAL**: the yellow stays, with dark words, and is its own edge (13.16:1 against the page).
-- **The chart**: the shelf line and the axis in the light ink, the sale line and today's sale price in `#4fe08c` (10.95:1), the grid `#3d3d3a`.
+- **The chart**: the price line, its dotted stretch after an ordinary day and today's price in the light ink; the sale stretch, its dotted stretch after a sale day, the ticks of an unread sale price and today's sale price in `#4fe08c` (10.95:1); the axis words, the date line and its marks and the usual price's dashes in the second ink `#b4b4b0` (8.93:1), the grid `#3d3d3a`.
 - The basket's lowest total is the light ink with dark words on it; the soft ground is `#222220`.
 
 ## The shared stylesheet and the font files
 
-Today each page carries its style inline: 6,244 bytes of the largest of the 14 product pages measured. This design's style is 20,928 bytes (5,316 gzipped), too much to repeat in about 25,000 pages, and fonts cannot be inline at all. So the site gains one folder of files that pages share.
+Today each page carries its style inline: 6,244 bytes of the largest of the 14 product pages measured. This design's style is 21,744 bytes as published (5,498 gzipped at level 6; 20,928 and 5,316 as approved), too much to repeat in about 25,000 pages, and fonts cannot be inline at all. So the site gains one folder of files that pages share.
 
 **In the site** (`assets/`):
 
 | File | Bytes | What |
 |---|---|---|
-| `look.<hash>.css` | 20,928 | the stylesheet; every page links it and nothing else |
+| `look.<hash>.css` | 21,744 | the stylesheet; every page links it and nothing else |
 | `archivo-text.<hash>.woff2` | 25,660 | Archivo, normal width, weights 400 to 700 |
 | `archivo-narrow.<hash>.woff2` | 11,420 | Archivo, width 70, weight 800 |
 | `heebo-hebrew.<hash>.woff2` | 6,072 | Heebo: the Hebrew block and ₪, weights 400 to 800 |
 | `OFL-archivo.txt`, `OFL-heebo.txt` | 4,388 and 4,474 | each family's licence, as its makers ship it |
 
-Each `<hash>` is the first ten hex digits of the SHA-256 of the file's bytes, so a file's name changes when its bytes do. The stylesheet names the fonts by bare file name (`url(archivo-text.<hash>.woff2)`), resolved beside it. A first product page fetches the stylesheet and three fonts, 64,080 bytes in all beside the page; every later page fetches nothing but itself.
+Each `<hash>` is the first ten hex digits of the SHA-256 of the file's bytes, so a file's name changes when its bytes do. The stylesheet names the fonts by bare file name (`url(archivo-text.<hash>.woff2)`), resolved beside it. A first product page fetches the stylesheet and three fonts, 64,896 bytes in all beside the page; every later page fetches nothing but itself.
 
 **In the repository:**
 
@@ -375,22 +420,22 @@ Both are under the SIL Open Font License 1.1. A subset is a modified version, an
 
 **The upload.** `src/basket/site.py` refuses a file with no content type, so `CONTENT_TYPES` gains `.css` (`text/css; charset=utf-8`), `.woff2` (`font/woff2`) and `.txt` (`text/plain; charset=utf-8`), and `upload` sends `assets/` before any page. An asset is put only when the bucket has no object of that name: the name carries the hash of the bytes, so one that is there is the same file, and no morning piles up a new version of a file that did not change. `scripts/publish.sh` gains three allowlisted syncs before its `*.html` one, each with its content type.
 
-**Nothing in the code deletes, so old hashed files stay** in the site bucket: about 21 KB for each change of the stylesheet and 43 KB if the fonts are ever remade. A page cached for its five minutes still finds the stylesheet it names. Every file is sent with `max-age=300` today; the assets could be kept for a year, since a name never changes its bytes, which needs its own `Cache-Control` at upload and is left as a later step.
+**Nothing in the code deletes, so old hashed files stay** in the site bucket: about 22 KB for each change of the stylesheet and 43 KB if the fonts are ever remade. A page cached for its five minutes still finds the stylesheet it names. Every file is sent with `max-age=300` today; the assets could be kept for a year, since a name never changes its bytes, which needs its own `Cache-Control` at upload and is left as a later step.
 
 ## What changes in the code
 
 No function changes what it computes, but for the two counts under "Calls".
 
-- **`src/shopper/shell.py`:** `page` links the stylesheet in place of the `<style>` block and takes the page's kind, written as a class on `<body>` (`t-front`, `t-store`, `t-product`, `t-browse`, `t-method`, `t-record`, `t-basket`); its `style` argument goes. `band` gives the name's link `class="brand"` and writes it as `<b>Deal</b> or No Deal` (the green box around the first word), and writes the chains' line on the front page only.
+- **`src/shopper/shell.py`:** `page` links the stylesheet in place of the `<style>` block and takes the page's kind, written as a class on `<body>` (`t-front`, `t-store`, `t-product`, `t-browse`, `t-method`, `t-record`, `t-basket`); its `style` argument goes. `band` gives the name's link `class="brand"` and writes it as `<b>Deal</b> or <b class="no">No Deal</b>` (the green label around the first word, the yellow one around the last two: the owner, 2026-11-16), and writes the chains' line on the front page only.
 - **`src/basket/page.py`:** `Frame` carries the stylesheet's link and the body's class, so `basket.html` takes the frame's head; the stand-alone pages keep `STYLE`.
 - **`src/shopper/pages.py`:** the style constants go (`PAGE_STYLE`, `ROOT_STYLE`, `STORE_STYLE`, `METHOD_STYLE`, `RECORD_STYLE`). `render_root` writes the headline with DEAL and NO DEAL each in a `<span>` (`class="yes"`, `class="no"`), and a store page's title question has its last word in `<span class="yes">`. `_picker` wraps each chain in `<div class="chain">` and adds each store's count when it is known. `_hiring` drops the dots between its links. `_row` writes the badge without "At <store>:" (decided) and `_deals` gives the table its roles (`role="table"`, `rowgroup`, `row`, `columnheader`, `rowheader`, `cell`), which a phone's block layout would otherwise take away. `render_store` puts the headline's two numbers in a `<b>`. The method page gains its row of section links.
 - **`src/shopper/product.py`:** `BADGE_STYLE` and `PRODUCT_STYLE` go. `_section` builds the label: `<div class="tag <class>">` holding `<div class="say">` (the verdict as `<p class="verdict">At <store>: <b>DEAL · ₪5.00 off</b></p>`, or the plain line; the reason; the conditions; a coming sale) and `<div class="pay">` (the price line; the barcode's mark). `render_product` writes the barcode's drawing once after the barcode line. `_row` writes each badge as the name, a hidden separator and the verdict in a `<b>`. The chart, its key and its table go in `<div class="history">`; the two facts get `class="fact"`.
-- **`src/shopper/chart.py`:** rewritten to the markup above. `render_chart` also takes today's listed price (`point.listed`, which `_today` already reads), to draw the shelf line through today. `DAY_WIDTH`, the label column and `_placed`'s labels go; the axis, the dates and the table come.
-- **A new module for the barcode**, for example `src/shopper/barcode.py`: the modules of a code, and its drawing.
+- **`src/shopper/chart.py`:** rewritten to the markup above. `render_chart(found, day)` draws from the verdict and the day alone: the one line's last point is the verdict's today's price (2026-11-16; the first build also took today's listed price, for the shelf line). `DAY_WIDTH`, the label column and `_placed`'s labels go; the axis, the dates and the table come.
+- **A new module for the barcode**, `src/shopper/bars.py` (not "barcode", since `basket.barcode` already exists): the modules of a code, and its drawing.
 - **`src/shopper/words.py`:** the front page's headline and its line (`FRONT_TITLE` stays the store pages'; the root page gets its own two constants); the price line ("Price today: ₪14.00", from `price_text`); the table's four heads; the short date ("13 Nov"); `chart_summary` and the table take lowest and highest over the tracked days and today; `reason` and `last_low` name "days with a known price" when `len(found.priced)` differs from `len(found.days)` ("Word changes", 3).
 - **`src/shopper/search.py`:** `BROWSE_STYLE` goes.
 - **`src/shopper/build.py`, `src/shopper/check.py`, `src/basket/site.py`, `scripts/publish.sh`:** as under "The shared stylesheet and the font files".
-- **`src/shopper/static/search.js`: no change.** Its hooks stay as they are: `#pick-link` inside `p.store`, `#pick` with `data-page`, `main[data-store]`, `nav.badges`, `a[data-column]`, `section[data-column]`, `h2.elsewhere`, `.not-sold`, `#q`, `#results`, and the `js` class it puts on `<html>`. The preview runs the live script unchanged against the new markup.
+- **`src/shopper/static/search.js`:** no change in the build; one after the owner's read of it (2026-11-16): the root no longer sends a remembered pick on, and shows "Your store" above the headline ("The front page stays put, with a shortcut to your store"). Its hooks stay as they are, with `div.hero` added: `#pick-link` inside `p.store`, `#pick` with `data-page`, `main[data-store]`, `nav.badges`, `a[data-column]`, `section[data-column]`, `h2.elsewhere`, `.not-sold`, `#q`, `#results`, and the `js` class it puts on `<html>`. The preview runs the live script unchanged against the new markup.
 
 ## What the tests should pin
 
@@ -398,7 +443,7 @@ No function changes what it computes, but for the two counts under "Calls".
 2. **No colour outside the tokens.** No colour is written in the stylesheet outside the two `:root` blocks; every `var(--x)` used is defined.
 3. **Nothing from outside.** The check's new rules, each with a page or a stylesheet that breaks it: a second stylesheet, a `<style` block, a `style=`, an `@import`, a `url(` with a scheme, a slash or a name not in `assets/`.
 4. **The chart cannot shrink its words.** The only SVG of a chart with a `viewBox` is the lines' one, and it holds no `<text>`; it has `preserveAspectRatio="none"`; the stylesheet gives every stroke under `.chart` `vector-effect:non-scaling-stroke`; the stylesheet's chart sizes are at least 12 pixels.
-5. **The chart's rules:** the axis (round steps, two to five, no price on the bottom line); a gap for a day with no record in the shelf, sale and usual lines alike; the dates by span; the today column's labels apart; lowest and highest counting today; the table's cells by call.
+5. **The chart's rules:** the axis (round steps, two to five, no price on the bottom line); one line of the price paid each day, a sale its green stretch; seven days or fewer with no price dotted, more left open; the usual price's dashes only where the line is not; the dates by span; today's price at the line's end, or "today" alone; lowest and highest counting today; the table's cells by call.
 6. **The barcode:** as under "The barcode".
 7. **The words:** the label's text is `badge(found)`; the front page's headline and line, the price line and the chart's dates are the decided words; `reason` and `last_low` in both forms, with equal counts ("days tracked") and unequal ("days with a known price"); a store row's badge is the verdict without the store's name; the stylesheet's phone label for the usual price is `FRONT_HEADS[3]`.
 8. **The table's roles**; **the hidden rule** (`[hidden]`); every two-column rule under `.js`.
@@ -422,7 +467,7 @@ Measured on the live pages of 14 November 2026 and on the same pages in this des
 | Method page | 63,174 | 54,895 | -8,279 | 17,809 | 15,547 |
 | Record page | 15,240 | 10,782 | -4,458 | 3,459 | 2,035 |
 | Basket page | 38,438 | 29,876 | -8,562 | 7,819 | 5,468 |
-| The stylesheet (new, once) | | 20,928 | | | 5,316 |
+| The stylesheet (new, once) | | 21,744 | | | 5,498 |
 | The three fonts (new, once) | | 43,152 | | | (already compressed) |
 
 - **A product page grows** by 1,689 to 3,871 bytes on the 14 measured, though its inline style goes: the label, the price line, the barcode and the richer chart cost more than the style block saved. A store type's part costs: the chart 632 bytes on average (568 to 874) against 565 for today's chart with its key; its key 59; its table 222; the barcode's mark 146; and the barcode's drawing 222 once a page. Sent gzipped, the same pages shrink, from 4,474 to 3,113 bytes on average.
@@ -433,9 +478,9 @@ Measured on the live pages of 14 November 2026 and on the same pages in this des
 
 Rates are the ones shopper-site.md's "Cost" uses for il-central-1 ($0.025 a GB-month of storage, $0.0055 for 1,000 writes); UNVERIFIED: not read from AWS's price list for this design.
 
-- **Storage.** About 2,159 bytes more on each product page, by the 14 measured (the heaviest kind, so an upper figure), on about 25,000 pages (shopper-site.md's "about 22,000 to 25,000") is 54 MB more a morning. Over the 30 days of old versions the site bucket keeps, 1.62 GB more held: **about $0.04 a month more**. The assets are 73 KB, once.
+- **Storage.** About 2,159 bytes more on each product page, by the 14 measured (the heaviest kind, so an upper figure), on about 25,000 pages (shopper-site.md's "about 22,000 to 25,000") is 54 MB more a morning. Over the 30 days of old versions the site bucket keeps, 1.62 GB more held: **about $0.04 a month more**. The assets are 74 KB, once.
 - **Writes.** The six assets are put only when new: nothing a month.
-- **Transfer.** A first visit fetches 64 KB more (the stylesheet and three fonts), then nothing. Inside CloudFront's free tier as before.
+- **Transfer.** A first visit fetches 65 KB more (the stylesheet and three fonts), then nothing. Inside CloudFront's free tier as before.
 - **Lambda.** The same pages and 54 MB more to upload each morning; the run's time was not measured for this design and is read on the first morning.
 - **Total: about $0.04 a month more.**
 
@@ -445,15 +490,16 @@ All decided (the owner, 2026-11-15); none is waiting.
 
 1. **The front page's headline: "DEAL OR NO DEAL?"** (written "Deal or No Deal?", set in capitals), in place of "Is it actually a deal?" there. The nine store pages keep "Is it actually a deal?".
 2. **The line under it:** "Find out if a sale is actually a deal: pick the store you're in, then look up the product. Each sale is checked against what it usually costs there."
-3. **One "days tracked" on a page.** "Days tracked" stays every tracked day, sale days of unknown price included (S7's count): "On sale on 21 of the 86 days tracked." does not change (`how_often`, `src/shopper/words.py` line 403). A line that rests only on the days with a known price says "days tracked" when the two counts are equal, as today, and names its own count when they differ:
+3. **One "days tracked" on a page.** "Days tracked" stays every tracked day, sale days of unknown price included (S7's count), which "How often on sale" counts: since 2026-11-16 it says them as the days before today, "On sale on 21 of the 86 days before today." (`how_often`; the owner: today is not a tracked day, so beside a Deal today "On sale on 0 of the 13 days tracked" read wrong). A line that rests only on the days with a known price says "days tracked" when the two counts are equal, as today, and names its own count when they differ:
    - `reason` (line 361, all three of its forms): "Usually ₪22.90, sales included (83 days with a known price)."; "It's been ₪10.90 or less on 9 of the 9 days with a known price."; "Only ₪0.40 below its usual ₪3.20 (12 days with a known price)."
    - `last_low` (line 394): "Lowest in the 83 days with a known price."
    - One day is "1 day with a known price". The two counts are `len(found.priced)` and `len(found.days)`; they differ by the sale days whose price could not be read (three in the preview's example). Tests pin both forms of each line: equal counts and unequal.
 4. **Each store's label on the front page carries its count: "1,347 promotions today"**, the number the store's own page already states ("Today Carrefour Market lists 1,347 promotions ..."). A store whose promotions could not be read that day shows its name alone, with no figure and nothing in its place (Osher Ad on 14 November).
-5. **The chart's table heads: "Lowest", "Highest", "Usual", "Today".** They replace the chart's side labels ("highest ₪24.90", "lowest ₪19.90", "today ₪17.90"); "usually ₪22.90" stays, written on its line.
+5. **The chart's table heads: "Lowest", "Highest", "Today".** They replace the chart's side labels ("highest ₪24.90", "lowest ₪19.90", "today ₪17.90"); "usually ₪22.90" stays, written at its height. "Usual" was a fourth head until 2026-11-16: the chart writes the usual price at its own height and the label's reason says it.
 6. **Short dates in the chart and its table: "16 Aug", "13 Nov", and month names "Sep", "Oct", "Nov"**; "today" as the date of a lowest or highest that is today's. Sentences keep the long form ("ended 11 November").
 7. **A spoken label for the method page's row of links: "On this page"** (`aria-label`, read by screen readers, not shown).
-8. **The four earlier ones**: "Price today: ₪14.00"; the chart's first date and "today"; the chains' line on the front page only; a store row's badge without "At <store>:".
+8. **The four earlier ones**: "Price today: ₪14.00"; the first date along the chart's bottom, and "today" under today's price at the line's end (on the dates' line only when today has no price); the chains' line on the front page only; a store row's badge without "At <store>:".
+9. **The chart's key says "on sale" and "on sale, price not read", and nothing else** (2026-11-16): the plain line needs no name, so "shelf price" is gone from the product pages and the method page; the fold-out and the method page say "listed price" with its definition.
 
 Following from these, not new words: the chart's spoken summary changes its numbers where today is a new low or high ("lowest ₪17.90" for "lowest ₪19.90"); "Usually" stands before the usual price in a phone's store row (the column's own head, written by the stylesheet); the product's barcode digits show a second time, under the bars; the front page's tab title becomes "Deal or No Deal".
 
@@ -463,9 +509,9 @@ Following from these, not new words: the chart's spoken summary changes its numb
 2. **The chart's sale line is green**, the deal's colour, and today's sale price beside it. (The yellow draft had it red.)
 3. **Lowest and highest count today's price**, in the table and in the chart's spoken summary. ("The chart".)
 4. **The barcode is kept**, as a true EAN-13 or EAN-8 made by the build and pinned by a test; a code that is neither gets no bars. ("The barcode".)
-5. **The chart's side labels become a table**, and today's dashed line across the chart goes: today's prices are written at the right ends of their lines.
-6. **Today is drawn as a day**: the shelf line runs through today and a sale that starts today shows as a short green line ending in its dot.
-7. **The usual line has the data's own gaps.**
+5. **The chart's side labels become a table**, and today's dashed line across the chart goes: today's price is written at the line's end.
+6. **Today is drawn as a day**: the line runs through today's price, and a sale that starts today is the step down and one green day ending in its dot.
+7. **The usual price is dashes wherever the line is not** (call 22; until 2026-11-16 a dotted line with the data's own gaps).
 8. **The chart has no pixels-a-day rule**: it takes its column's width.
 9. **A self-hosted typeface** in three files, 43,152 bytes, and with it a shared `assets/` folder. The earlier design took none; this look is its type.
 10. **No link colour**: links are ink, underlined.
@@ -474,9 +520,23 @@ Following from these, not new words: the chart's spoken summary changes its numb
 13. **A not-sold line is drawn as an empty slot**, a dashed outline.
 14. **The product page in two columns on a desktop**, laid out by the stylesheet alone, only while the script runs.
 15. **The basket's lowest total in ink, not green**: green stays the mark of a deal. A store's label on the front page turns to ink under the pointer for the same reason.
-16. **The header's wordmark keeps "OR NO DEAL" plain**; only the big headline dresses NO DEAL.
+16. **The header's wordmark keeps "OR NO DEAL" plain**; only the big headline dresses NO DEAL. Overturned by the owner on 2026-11-16: the header's NO DEAL is on the yellow label too ("The header's name: green and yellow").
 17. **The price part of a label stays paper**; only its edge takes the label's colour.
 18. **Hebrew names keep `dir="rtl"` and stay left-aligned.**
+19. **The header's store line is hidden on the front page while "Your store" shows** (2026-11-16): one link to the remembered store at the top of the page, not two.
+20. **The picker does not mark the remembered store's own label** (2026-11-16); the shortcut is enough.
+
+The one line's, after the owner's read of 2026-11-16 ("The chart"):
+
+19. **Sale days are the line itself in green, heavier, with green steps**; not a segment over an ink line.
+20. **The listed price of a sale day is drawn nowhere**; the axis fits the prices paid.
+21. **"today" moves from the dates' line to under today's price**, and stays on the dates' line only when today has no price.
+22. **The usual price's dashes are left out where the line runs within 6 pixels of them**; its words stand 8 pixels above the level (6 in the first build, where a "y" and its halo nicked a line running along the level) and may stand in the chart's top margin.
+23. **The dotted stretch takes the colour of the day it carries**, so a sale with a missing morning in it stays one green notch.
+24. **A sale day that cost the regular price** (a promotion counted and was no cheaper) is green at the regular price's height: on sale, no lower.
+25. **The key has no entry for the plain line**, and no key at all when nothing needs words.
+26. **`chart_summary` keeps its words.**
+27. **The date line and the dates' marks take the second ink at 1 pixel.**
 
 ## Left to the builder
 
@@ -486,7 +546,7 @@ Following from these, not new words: the chart's spoken summary changes its numb
 - The site run's time and memory on the first morning.
 - A look in Safari on an iPhone, in Firefox, on Windows and on Android before the owner's read. The preview was drawn in Chrome on macOS only. What to look at: the lines' SVG as a stretching flex item; `vector-effect: non-scaling-stroke` and the dashes under it; `<use>` of the barcode from a part that is hidden; `size-adjust`; `:has()` (it only hides a heading the label repeats, so a browser without it shows the store's name twice); `text-wrap: balance` on a long verdict; the variable font's weights.
 - A real scan of a drawn barcode from a phone's screen, light and dark.
-- Windows' high-contrast mode (`forced-colors`): not designed. Verdicts say everything in words; the filters' checked state and the chart's strokes should be checked.
+- Windows' high-contrast mode (`forced-colors`): not designed. Verdicts say everything in words; a ticked filter's square fills with `CanvasText` there (2026-11-17, the whole-branch review); the chart's strokes should be checked.
 - States the live site did not show on 14 November and the preview draws from examples: a store's table with rows; a 90-day chart; "Not sold ... today"; "days with a known price". States not drawn at all: a weighed product's label ("a kilogram"); "New today"; too few files; a revised basket day; the record page once a forecast is scored.
 - The assets' own `Cache-Control`, if wanted.
 
@@ -502,7 +562,7 @@ Following from these, not new words: the chart's spoken summary changes its numb
 
 ## Appendix: the stylesheet
 
-`src/shopper/static/look.css` as proposed, written with the yellow NO DEAL's three tokens: 20,884 bytes as written here, 20,928 once the build has written the fonts' hashed names into its four `url(...)`.
+`src/shopper/static/look.css` as built, written with the yellow NO DEAL's three tokens, the one line's chart rules, the rules of the owner's read of 2026-11-16 for the header's name and the front page's "Your store", and those of the whole-branch review (2026-11-17: a long product name breaks; the dark theme's plate keeps the bars' quiet zones; a ticked filter shows in forced colours; the warning's bar on the warning lines alone): 21,700 bytes as written here, 21,744 once the build has written the fonts' hashed names into its four `url(...)` (20,884 and 20,928 as approved).
 
 ```css
 @font-face{font-family:Shelf;src:url(archivo-text.woff2) format("woff2");font-weight:400 700;font-display:swap;unicode-range:U+0020-007E,U+00A0-00FF,U+2013-2014,U+2018-2019,U+201C-201D,U+2022,U+2026,U+2190,U+2192,U+2212}
@@ -527,7 +587,7 @@ a:hover{text-decoration-thickness:3px}
 h1,h2,h3,p,ul,ol,dl,dd{margin:0}
 h1{font:800 2.5rem/.95 var(--narrow);letter-spacing:-.005em;text-transform:uppercase}
 h2{font:800 1.375rem/1.05 var(--narrow);letter-spacing:.02em;text-transform:uppercase}
-h3,.at,.verdict,.price,thead th,.stats th,.tile dt{font:600 .75rem/1.35 var(--text);letter-spacing:.09em;text-transform:uppercase}
+h3,.at,.verdict,.price,thead th,.stats th,.tile dt,.yours small{font:600 .75rem/1.35 var(--text);letter-spacing:.09em;text-transform:uppercase}
 main p,main li{max-width:44rem}
 small{font-size:.8125rem}
 main{padding-top:2rem;padding-bottom:1rem}
@@ -536,6 +596,7 @@ main{padding-top:2rem;padding-bottom:1rem}
 .band .wrap{display:flex;flex-wrap:wrap;align-items:center;gap:0 1.5rem;padding-top:.5rem;padding-bottom:.5rem}
 .brand{margin-right:auto;padding:.3rem 0;font:800 1.375rem/1 var(--narrow);letter-spacing:.02em;text-transform:uppercase;text-decoration:none;white-space:nowrap}
 .brand b{display:inline-block;margin-right:.1em;padding:.2em .32em .14em;border:2px solid var(--edge);border-radius:3px;background:var(--fill);color:var(--on-deal)}
+.brand .no{margin:0 0 0 .1em;border-color:var(--nd-edge);background:var(--nd);color:var(--on-nd)}
 .dateline{flex-basis:100%;color:var(--ink-2);font-size:.8125rem}
 .store{order:3;font-size:.9375rem;font-weight:600}
 .store a{display:inline-block;padding:.65rem 0}
@@ -561,13 +622,18 @@ details h3{margin-top:1rem}
 span.badge,nav .badge b{display:inline-block;padding:.28em .55em .22em;border:1.5px solid var(--ink);border-radius:3px;font:700 .8125rem/1.2 var(--text);white-space:nowrap}
 span.badge:is(.deal-1,.deal-2,.deal-3),nav :is(.deal-1,.deal-2,.deal-3) b{border-color:var(--edge);background:var(--fill);color:var(--on-deal)}
 span.badge.no-deal,nav .no-deal b{border-color:var(--nd-edge);background:var(--nd);color:var(--on-nd)}
-.warn,.few{margin-top:1.25rem;padding:.35rem 0 .35rem .875rem;border-left:.375rem solid var(--ink);font-weight:600}
+.warn,p.few{margin-top:1.25rem;padding:.35rem 0 .35rem .875rem;border-left:.375rem solid var(--ink);font-weight:600}
 .hero{padding:2.25rem 0 2.25rem}
 .hero h1{font-size:4.4rem;line-height:.88}
 h1 .yes,h1 .no{display:inline-block;margin:.04em 0 0 -.06em;padding:.07em .14em 0;border:3px solid var(--ink);border-radius:6px}
 h1 .yes{border-color:var(--edge);background:var(--fill);color:var(--on-deal)}
 h1 .no{margin-left:0;border-color:var(--nd-edge);background:var(--nd);color:var(--on-nd)}
 .hero .lede{max-width:31rem;margin-top:1.4rem}
+.yours{max-width:none}
+.yours a{display:flex;align-items:center;gap:.7rem;min-height:3rem;padding:.4rem .9rem;border:2px solid var(--ink);border-radius:5px;font-weight:700;text-decoration:none}
+.yours a::after{content:"\2192";content:"\2192"/"";margin-left:auto;padding-left:.5rem}
+.yours small{color:var(--ink-2)}
+.yours+.hero{padding-top:1.5rem}
 #pick{padding-top:.9rem;border-top:var(--rule)}
 #pick h2{font-size:1.625rem}
 #pick h3{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
@@ -576,10 +642,10 @@ h1 .no{margin-left:0;border-color:var(--nd-edge);background:var(--nd);color:var(
 #pick .chain,#pick ul{display:contents}
 #pick li{display:block;max-width:none}
 #pick a{display:flex;flex-direction:column;justify-content:space-between;height:100%;min-height:6.4rem;padding:.7rem .8rem .6rem;border:2px solid var(--ink);border-radius:5px;font-weight:700;line-height:1.2;text-decoration:none}
-#pick a:hover{background:var(--ink);color:var(--bg)}
+#pick a:hover,.yours a:hover{background:var(--ink);color:var(--bg)}
 #pick small{margin-top:.8rem;color:var(--ink-2);font-size:.6875rem;font-weight:600;letter-spacing:.07em;text-transform:uppercase;white-space:nowrap}
 #pick small b{display:block;color:var(--ink);font:800 2.125rem/.95 var(--narrow);letter-spacing:0;font-variant-numeric:tabular-nums}
-#pick a:hover small,#pick a:hover b{color:var(--bg)}
+#pick a:hover small,#pick a:hover b,.yours a:hover small{color:var(--bg)}
 .hiring{display:flex;flex-wrap:wrap;gap:.25rem 1.75rem;max-width:none;margin-top:1.75rem}
 .hiring a{padding:.5rem 0;font-size:.875rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;text-decoration-thickness:2px;text-underline-offset:.3em}
 .at{color:var(--ink-2)}
@@ -608,7 +674,7 @@ table.front th{font-weight:400}
 table.front th a{padding:0 0 .15rem}
 table.front td+td{font-weight:700}
 table.front td+td+td{color:var(--ink-2);font-weight:400}
-.t-product h1{font:700 1.875rem/1.15 var(--text);letter-spacing:0;text-transform:none}
+.t-product h1{font:700 1.875rem/1.15 var(--text);letter-spacing:0;text-transform:none;overflow-wrap:anywhere}
 .t-product .names{margin-top:.6rem;padding:0;list-style:none;color:var(--ink-2);font-size:.875rem;line-height:1.55}
 .names .as-listed{color:var(--ink);font-weight:500}
 .names+p{margin-top:.5rem;color:var(--ink-2);font-size:.875rem;font-variant-numeric:tabular-nums}
@@ -640,7 +706,8 @@ section[data-column]:has(.verdict b)>h2+.tag{margin-top:1.5rem}
 .code svg.short{width:6.28125rem}
 #ean{fill:none;stroke:var(--bars);stroke-width:1}
 .code small{margin-top:.2rem;color:var(--ink);font-size:.6875rem;letter-spacing:.3em;font-variant-numeric:tabular-nums}
-@media (prefers-color-scheme:dark){.code svg{box-sizing:content-box;padding:.4rem .6rem .4rem .95rem;border-radius:3px;background:var(--plate)}}
+@media (prefers-color-scheme:dark){.code svg{box-sizing:content-box;padding:.4rem .6875rem .4rem 1.0625rem;border-radius:3px;background:var(--plate)}}
+@media (prefers-color-scheme:dark) and (min-width:48rem){.code svg{padding-right:.9375rem;padding-left:1.4375rem}}
 .not-sold{max-width:none;margin-top:1.5rem;padding:1.1rem;border:2.5px dashed var(--ink);border-radius:5px;font:800 1.875rem/1.05 var(--narrow)}
 section .not-sold{margin-top:.5rem}
 .chart{display:flex;align-items:flex-start;margin-top:1.75rem;font-size:.78125rem;font-weight:500;font-variant-numeric:tabular-nums}
@@ -649,27 +716,27 @@ section .not-sold{margin-top:.5rem}
 .chart .ax{width:46px;text-anchor:end}
 .chart .now{width:64px}
 .chart .plot{position:relative;flex:1 1 auto;min-width:0}
-.chart .lines{width:100%;height:200px;border-bottom:1.5px solid var(--ink)}
+.chart .lines{width:100%;height:200px;border-bottom:1px solid var(--ink-2)}
 .chart .over{position:absolute;left:0;top:0;width:100%;pointer-events:none}
 .chart path,.chart line{fill:none;vector-effect:non-scaling-stroke}
 .chart text{fill:var(--ink-2)}
 .chart .grid{stroke:var(--line)}
-.chart .usual{stroke:var(--ink-2);stroke-dasharray:2 4}
-.chart path.listed{stroke:var(--ink);stroke-width:2}
+.chart .usual{stroke:var(--ink-2);stroke-dasharray:6 4}
+.chart .gap{stroke:var(--ink);stroke-width:2;stroke-dasharray:2 3}
+.chart path.paid{stroke:var(--ink);stroke-width:2}
 .chart path.sale{stroke:var(--sale);stroke-width:3.5}
 .chart .unread{stroke:var(--sale);stroke-width:7;stroke-dasharray:2 2}
-.chart line{stroke:var(--ink)}
-.chart circle.listed{fill:var(--ink)}
+.chart line{stroke:var(--ink-2)}
+.chart circle.paid{fill:var(--ink)}
 .chart circle.sale{fill:var(--sale)}
-.chart text.listed,.chart text.sale{font-size:.9375rem}
-.chart text.listed{fill:var(--ink)}
+.chart text.paid,.chart text.sale{font-size:.9375rem}
+.chart text.paid{fill:var(--ink)}
 .chart text.sale{fill:var(--sale)}
 .chart .now,.chart text.end{font-weight:700}
 .chart text.usually,.chart text.end{fill:var(--ink)}
 .chart text.usually{text-anchor:end;font-weight:600;paint-order:stroke;stroke:var(--bg);stroke-width:5px;stroke-linejoin:round}
 .key{margin-top:.9rem;color:var(--ink-2);font-size:.8125rem;font-weight:500}
-.key i{display:inline-block;width:1.4em;margin-right:.45em;border-top:2px solid var(--ink);vertical-align:middle}
-.key .sale{border-top:3.5px solid var(--sale)}
+.key i{display:inline-block;width:1.4em;margin-right:.45em;border-top:3.5px solid var(--sale);vertical-align:middle}
 .key .unread{height:7px;border:0;background:repeating-linear-gradient(90deg,var(--sale) 0 2px,transparent 2px 4px)}
 .stats{margin-top:1.4rem;border-top:var(--rule)}
 .stats th,.stats td{padding:0;border:0}
@@ -763,6 +830,8 @@ h1{font-size:3.75rem}
 .hero{padding:4rem 0 3.5rem}
 .hero h1{font-size:8.25rem}
 .hero .lede{max-width:34rem;margin-top:2rem;font-size:1.3125rem}
+.yours a{display:inline-flex}
+.yours+.hero{padding-top:2.5rem}
 #pick{grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem;padding-top:1.1rem}
 #pick h2{font-size:2rem}
 #pick a{min-height:8.2rem;padding:1rem 1.2rem .9rem;font-size:1.3125rem}
@@ -805,5 +874,6 @@ ol.rules li{grid-template-columns:11rem minmax(0,1fr);gap:1rem}
 .js .t-product main>.elsewhere:not([hidden])+nav.badges{margin-top:4.2rem}
 .js .verdict b{font-size:clamp(3rem,4.9vw,4rem)}
 }
-@media print{.store,.search,.letters,.toc,.deals>input,.deals>label{display:none}}
+@media print{.store,.search,.letters,.toc,.deals>input,.deals>label,.yours{display:none}}
+@media (forced-colors:active){.deals>input:checked+label::before{background:CanvasText}}
 ```

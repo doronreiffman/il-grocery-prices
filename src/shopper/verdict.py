@@ -59,6 +59,12 @@ sale; the last sale before it is the latest earlier run. The verdict gives that 
 S8 Days tracked. Every verdict carries its tracked days (`days`) and those with a day price (`priced`), so every reason
 can name the number of days it rests on.
 
+Lowest and highest (the site look's call 3: docs/site-look.md, "Calls made in this design" 3 and "The chart"). The
+lowest and the highest price count today: they are taken over the tracked days' day prices and today's price, each with
+the latest day at that price, a day None when today's price is that price (today being the latest), and none when no
+price is known (`extremes`). The chart's table and its spoken summary both read them, so neither shows a "lowest" above
+today's price.
+
 The calls before today's promotions (too_few, not_sold, unread_today) know no price today: no struct, no today's price,
 no last this low, no last sale, and not on sale today. Their tracked days are given all the same. price_unread knows
 no price today either (S3), so it has no last this low; but today is on sale, so S7 reads its last sale as the one
@@ -93,10 +99,9 @@ CALLS = ("deal", "no_deal", "too_few", "not_sold", "unread_today", "no_sale", "s
 
 @dataclass(frozen=True)
 class Day:
-    """One tracked day (S0) of the window: its listed price as shown, its day price (S1, None on a sale day of unknown
-    price) and whether it was on sale (S7: `Point.on_promotion`)."""
+    """One tracked day (S0) of the window: its day price (S1, None on a sale day of unknown price) and whether it was
+    on sale (S7: `Point.on_promotion`)."""
     day: date
-    listed: Decimal
     price: Decimal | None
     on_sale: bool
 
@@ -164,7 +169,7 @@ def day_price(point: Point, day: date) -> Decimal | None:
 
 def tracked(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: date) -> tuple[Day, ...]:
     """S0 and S1: the tracked days of the READ_DAYS before `day`, in day order, each with its day price."""
-    return tuple(Day(point.day, Decimal(money(point.listed)), day_price(point, point.day), bool(point.on_promotion))
+    return tuple(Day(point.day, day_price(point, point.day), bool(point.on_promotion))
                  for point in promotion_points(pair, column_days, day, READ_DAYS))
 
 
@@ -235,6 +240,27 @@ def verdict(pair: Pair | None, column: str, column_days: Mapping[tuple[str, date
     saving = usual - today_price
     call = "deal" if saving >= DEAL_MIN else "no_deal"
     return _judged(call, column, days, today_price, best, on_sale_today, usual, saving)
+
+
+def _latest(found: Verdict, price: Decimal) -> date | None:
+    """The latest day at `price` (the module's docstring): None when today's price is that price, else the latest
+    tracked day with that day price."""
+    if price == found.today_price:
+        return None
+    return max(day.day for day in found.priced if day.price == price)
+
+
+def extremes(found: Verdict) -> tuple[tuple[Decimal, date | None], tuple[Decimal, date | None]] | None:
+    """The site look's call 3: (lowest, highest) over the tracked days' day prices and today's price, each with the
+    latest day at that price, None for that day when it is today's; None when no price is known."""
+    prices = [day.price for day in found.priced]
+    if found.today_price is not None:
+        prices.append(found.today_price)
+    if not prices:
+        return None
+    lowest = min(prices)
+    highest = max(prices)
+    return (lowest, _latest(found, lowest)), (highest, _latest(found, highest))
 
 
 def passes_bar(pair: Pair, column_days: Mapping[tuple[str, date], ColumnDay], day: date) -> bool:

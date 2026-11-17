@@ -92,10 +92,15 @@ fi
 # folder stay local. Browsers keep a file five minutes, so an upload shows within minutes of the invalidation. No
 # sync here removes anything: a published file the build lacks stays (question H).
 # The data files go up first and the pages last, as the site run puts them (basket.site.upload): the forecasts and
-# scores files, the ledger, the day and site-day files with the search pieces, search.js, then the pages; so a stop
-# part-way never leaves a live page naming a file not yet up. Each upload that fails stops the script by its own
-# test, never by set -e alone, before the next upload and the invalidation (the final review's finding 8). A rerun
-# then passes the guard: what went up is the build's own bytes.
+# scores files, the ledger, the day and site-day files with the search pieces, search.js, the shared files under
+# assets/ (the stylesheet, the fonts and their licences, which every page names), then the pages; so a stop part-way
+# never leaves a live page naming a file not yet up, a changed stylesheet's new name included. Each upload that fails
+# stops the script by its own test, never by set -e alone, before the next upload and the invalidation (the final
+# review's finding 8). A rerun then passes the guard: what went up is the build's own bytes.
+# The assets go by size alone (--size-only): sync puts a file whose size or time differs, and every build writes them
+# afresh. A stylesheet's or a font's name carries the hash of its bytes, so a name the bucket holds is the same file,
+# the same size, and is not put again, as the site run puts an asset only when the bucket lacks its name; the two
+# licences keep plain names and are put once all the same.
 upload() {
   aws s3 sync "$SITE/" "s3://$bucket/" --exclude '*' "$@" --cache-control 'max-age=300' --profile "$PROFILE" --region "$REGION" || {
     echo "the upload of $2 failed: the kinds before it went up, none after it, and nothing was invalidated; run it again" >&2
@@ -106,6 +111,9 @@ upload --include '*.csv.gz' --content-type 'application/gzip'
 upload --include '*.csv' --content-type 'text/csv; charset=utf-8'
 upload --include '*.json' --content-type 'application/json; charset=utf-8'
 upload --include '*.js' --content-type 'text/javascript; charset=utf-8'
+upload --include 'assets/*.css' --content-type 'text/css; charset=utf-8' --size-only
+upload --include 'assets/*.woff2' --content-type 'font/woff2' --size-only
+upload --include 'assets/*.txt' --content-type 'text/plain; charset=utf-8' --size-only
 upload --include '*.html' --content-type 'text/html; charset=utf-8'
 aws cloudfront create-invalidation --distribution-id "$distribution" --paths '/*' \
   --profile "$PROFILE" --query Invalidation.Id --output text

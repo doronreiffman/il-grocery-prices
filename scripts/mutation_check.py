@@ -43,9 +43,10 @@ ROOT = Path(__file__).resolve().parent.parent
 # Seconds a mutation's pytest run may take (q25), and the same tests' run unmutated after a time-out. The slowest target
 # tests are tests/test_golden_90.py: 417 to 552 s run alone on the Mac (docs/shopper-site-plan.md, Task 25 and its
 # speed-ups; 448 s on 2026-11-11) and about 689 s for its two big tests inside a full run beside another copy's (the
-# same doc). The other 87 target sets took at most 57 s each unmutated (tests/test_basket_handler.py, 2026-11-11). CI's
-# runner is about as fast: the whole suite in 914 s (CI run 42925889780's pytest step) against 750 to 933 s on the Mac
-# (749.7 s in this change's own full run on 2026-11-11; 933 s in the same doc, at Task 25).
+# same doc). The other 92 target sets (each distinct list of target tests in MUTATIONS) took at most 57 s each unmutated
+# (tests/test_basket_handler.py, 2026-11-11; the five added since, at most 3 s each, 2026-11-16; the appendix's, under
+# 1 s, 2026-11-17). CI's runner is about as fast: the whole suite in 914 s (CI run 42925889780's pytest step) against
+# 750 to 933 s on the Mac (749.7 s in this change's own full run on 2026-11-11; 933 s in the same doc, at Task 25).
 # 1,400 s is twice the loaded run; the clean run has the same limit, so a clean golden run under load reads as passing.
 # A run that hangs costs the check this long, and its tests' clean run after it.
 TIME_LIMIT = 1400
@@ -158,22 +159,27 @@ SHOP_MEASURES = ("src/shopper/measures.py", ["tests/test_measures.py"])
 SHOP_VERDICT = ("src/shopper/verdict.py", ["tests/test_verdict.py"])
 # The price chart drawn from a verdict (store first, q33).
 SHOP_CHART = ("src/shopper/chart.py", ["tests/test_chart.py"])
-# The chart's words: chart_summary's own copy of the labels' choice, which tests/test_shop_words.py never tests.
-WORDS_FOR_SHOP_CHART = ("src/shopper/words.py", ["tests/test_chart.py"])
+# The product label's barcode, EAN-13, UPC-A and EAN-8 (the site look, q36).
+SHOP_BARS = ("src/shopper/bars.py", ["tests/test_bars.py"])
+# The site's words, the chart's spoken summary among them: tests/test_shop_words.py pins the summary's whole sentence
+# (q36), so its mutations run there.
 SHOP_WORDS = ("src/shopper/words.py", ["tests/test_shop_words.py"])
 # Search and browse (Task 17): shopper/search.py with its Python tests, and the one script with its Node tests (Node is a CI
 # tool for this file; a machine without it errs every SHOP_SEARCH_JS mutation to exit 1, a vacuous catch: the first
 # pre-flight's N7).
 SHOP_SEARCH = ("src/shopper/search.py", ["tests/test_search.py"])
 SHOP_SEARCH_JS = ("src/shopper/static/search.js", ["tests/test_search_js.py"])
+# The site's look (q36): the stylesheet, the site's shared files made from it and the fonts, and the fonts' maker.
+LOOK = ("src/shopper/static/look.css", ["tests/test_look.py"])
+# The stylesheet is the design's appendix byte for byte: a test of its own, which no other stylesheet mutation runs.
+LOOK_FOR_APPENDIX = ("src/shopper/static/look.css", ["tests/test_look_appendix.py"])
+SHOP_ASSETS = ("src/shopper/assets.py", ["tests/test_assets.py"])
+SUBSET_FONTS = ("scripts/subset_fonts.py", ["tests/test_subset_fonts.py"])
 # The product pages (Task 16) and the shell every shopper page shares: the product tests catch a break of either, and
 # search's tests a break of the shell, which the browse pages are built on.
 SHOP_PRODUCT = ("src/shopper/product.py", ["tests/test_product.py"])
 SHOP_SHELL = ("src/shopper/shell.py", ["tests/test_product.py"])
 SHELL_FOR_SHOP_SEARCH = ("src/shopper/shell.py", ["tests/test_search.py"])
-# The product pages carry basket.page's base style, cut from the basket's block in its old order (Task 16): the product
-# tests pin the split and the old block's bytes.
-PAGE_FOR_SHOP_PRODUCT = ("src/basket/page.py", ["tests/test_product.py"])
 # The front, method, record and basket pages (Task 18), and what they read from the modules beside them: the basket's
 # index in the site's frame and its method's parts (basket.page), the build without the basket's pages (basket.build),
 # the band (shopper.shell), the front page's test (shopper.measures), the shown gap (shopper.words), a promotion's day
@@ -332,12 +338,17 @@ _NCR_ANSWER_BY_ANSWER = ("        length, fnames, total = _page_size(file_page),
                          "            yield from answer\n")
 
 # publish.sh's guard and its uploads, for the mutation that runs the guard after the upload (q22 publish); the uploads'
-# order, for the one that puts the pages first again (the final review's finding 8).
+# order, for the one that puts the pages first again (the final review's finding 8); the assets' three, for the one that
+# puts the stylesheet after the pages (q36 upload).
+_PUBLISH_ASSETS = ("upload --include 'assets/*.css' --content-type 'text/css; charset=utf-8' --size-only\n",
+                   "upload --include 'assets/*.woff2' --content-type 'font/woff2' --size-only\n",
+                   "upload --include 'assets/*.txt' --content-type 'text/plain; charset=utf-8' --size-only\n")
+_PUBLISH_PAGES = "upload --include '*.html' --content-type 'text/html; charset=utf-8'\n"
 _PUBLISH_ORDER = ("upload --include '*.csv.gz' --content-type 'application/gzip'\n"
                   "upload --include '*.csv' --content-type 'text/csv; charset=utf-8'\n"
                   "upload --include '*.json' --content-type 'application/json; charset=utf-8'\n"
                   "upload --include '*.js' --content-type 'text/javascript; charset=utf-8'\n"
-                  "upload --include '*.html' --content-type 'text/html; charset=utf-8'\n")
+                  + "".join(_PUBLISH_ASSETS) + _PUBLISH_PAGES)
 _PUBLISH_GUARD = ('if ! PYTHONPATH=src "$PYTHON" -m shopper.guard "$SITE" "$tmp/published" "$tmp/pages"; then\n'
                   '  echo "the publish guard failed; nothing uploaded" >&2\n'
                   '  exit 1\n'
@@ -348,10 +359,15 @@ _PUBLISH_UPLOAD = ('# One allowlisted sync per kind of file, its content type se
                    '# folder stay local. Browsers keep a file five minutes, so an upload shows within minutes of the invalidation. No\n'
                    '# sync here removes anything: a published file the build lacks stays (question H).\n'
                    '# The data files go up first and the pages last, as the site run puts them (basket.site.upload): the forecasts and\n'
-                   '# scores files, the ledger, the day and site-day files with the search pieces, search.js, then the pages; so a stop\n'
-                   '# part-way never leaves a live page naming a file not yet up. Each upload that fails stops the script by its own\n'
-                   "# test, never by set -e alone, before the next upload and the invalidation (the final review's finding 8). A rerun\n"
-                   '# then passes the guard: what went up is the build\'s own bytes.\n'
+                   '# scores files, the ledger, the day and site-day files with the search pieces, search.js, the shared files under\n'
+                   '# assets/ (the stylesheet, the fonts and their licences, which every page names), then the pages; so a stop part-way\n'
+                   "# never leaves a live page naming a file not yet up, a changed stylesheet's new name included. Each upload that fails\n"
+                   '# stops the script by its own test, never by set -e alone, before the next upload and the invalidation (the final\n'
+                   "# review's finding 8). A rerun then passes the guard: what went up is the build's own bytes.\n"
+                   '# The assets go by size alone (--size-only): sync puts a file whose size or time differs, and every build writes them\n'
+                   "# afresh. A stylesheet's or a font's name carries the hash of its bytes, so a name the bucket holds is the same file,\n"
+                   '# the same size, and is not put again, as the site run puts an asset only when the bucket lacks its name; the two\n'
+                   '# licences keep plain names and are put once all the same.\n'
                    'upload() {\n'
                    '  aws s3 sync "$SITE/" "s3://$bucket/" --exclude \'*\' "$@" --cache-control \'max-age=300\' --profile "$PROFILE" --region "$REGION" || {\n'
                    '    echo "the upload of $2 failed: the kinds before it went up, none after it, and nothing was invalidated; run it again" >&2\n'
@@ -1763,8 +1779,7 @@ MUTATIONS = {
     "a throwing getItem stopping the script (q33 script)": (SHOP_SEARCH_JS, "  let value;\n  try {\n    value = storage.getItem(PICK_KEY);   // no storage (null) throws here too\n  } catch (error) {\n    return null;\n  }\n", "  const value = storage.getItem(PICK_KEY);\n"),
     "a throwing setItem stopping the script (q33 script)": (SHOP_SEARCH_JS, "  try {\n    storage.setItem(PICK_KEY, key);\n  } catch (error) {\n    // blocked, full or none: the site forgets the pick\n  }\n", "  storage.setItem(PICK_KEY, key);\n"),
     "the pick kept under another key (q33 script)": (SHOP_SEARCH_JS, 'const PICK_KEY = "store";', 'const PICK_KEY = "pick";'),
-    "the root redirect ignoring #pick (q33 script)": (SHOP_SEARCH_JS, '  if (pick === null || hash === "#pick") return null;', "  if (pick === null) return null;"),
-    "a redirect from a page that is not the root (q33 script)": (SHOP_SEARCH_JS, '  if (picker !== null && picker.getAttribute("data-page") === "root") {', "  if (true) {"),
+    "the shortcut on a page that is not the root (q33 script)": (SHOP_SEARCH_JS, '  const atRoot = picker !== null && picker.getAttribute("data-page") === "root";', "  const atRoot = true;"),
     "a badge tap with a pick changing it (q33 script)": (SHOP_SEARCH_JS, "setPick: pick === null ? key : null", "setPick: key"),
     "a badge tap with no pick not setting it (q33 script)": (SHOP_SEARCH_JS, "        writePick(storage, tap.setPick);\n", ""),
     "a second tap changing the pick the first set (q33 script)": (SHOP_SEARCH_JS, "        current = tap.setPick;\n", ""),
@@ -1784,13 +1799,25 @@ MUTATIONS = {
     "nothing marked js (q33 script)": (SHOP_SEARCH_JS, '  document.documentElement.classList.add("js");\n', ""),
     "with no pick, the first part opened over the first badge (q33 script)": (SHOP_SEARCH_JS, "open: badges[0] ?? parts[0] ?? null", "open: parts[0] ?? null"),
     "with no pick and no badges, no part opened (q33 script)": (SHOP_SEARCH_JS, "open: badges[0] ?? parts[0] ?? null", "open: badges[0] ?? null"),
-    "a redirect with no pick (q33 script)": (SHOP_SEARCH_JS, '  if (pick === null || hash === "#pick") return null;', '  if (hash === "#pick") return null;'),
     "the root always the page's folder (q33 script)": (SHOP_SEARCH_JS, '  return href.endsWith(PICKER) ? href.slice(0, href.length - PICKER.length) : "";', '  return "";'),
     "a link that is not the picker's taken as the root (q33 script)": (SHOP_SEARCH_JS, 'href.slice(0, href.length - PICKER.length) : "";', "href.slice(0, href.length - PICKER.length) : href;"),
     "the header's store link not from the root (q33 script)": (SHOP_SEARCH_JS, 'href: root + "store/" + pick + ".html"', 'href: "store/" + pick + ".html"'),
     "the header's change link not from the root (q33 script)": (SHOP_SEARCH_JS, "change: root + PICKER", "change: PICKER"),
     "a pick link with no href stopping the script (q33 script)": (SHOP_SEARCH_JS, 'rootOf(pickLink.getAttribute("href") || "")', 'rootOf(pickLink.getAttribute("href"))'),
     'Elsewhere today over an empty row (q33 script)': (SHOP_SEARCH_JS, 'heading: layout.elsewhere.length > 0 }', 'heading: true }'),
+    # the owner's read of the site's look (q36, 2026-11-16): the root never sends the shopper on and offers the
+    # remembered store type first, "Your store" above the headline; the header's name drawn as the headline
+    "the root sending a remembered store on (q33 script)": (SHOP_SEARCH_JS, '  if (atRoot) showShortcut(', '  if (atRoot && pick !== null) window.location.replace(root + "store/" + pick + ".html");\n  if (atRoot) showShortcut('),
+    "the shortcut after the headline (q33 script)": (SHOP_SEARCH_JS, "  hero.before(line);\n", "  hero.after(line);\n"),
+    "the shortcut with no store remembered (q33 script)": (SHOP_SEARCH_JS, "pickLink, headerFor(pick, root));\n  else", "pickLink, headerFor(pick ?? NAMES[0][0], root));\n  else"),
+    "the header's store line left showing beside the shortcut (q33 script)": (SHOP_SEARCH_JS, "  pickLink.parentElement.hidden = true;", "  pickLink.parentElement.hidden = false;"),
+    "the header rewritten on the root (q33 script)": (SHOP_SEARCH_JS, "  else showHeader(pickLink, headerFor(pick, root));\n", "  showHeader(pickLink, headerFor(pick, root));\n"),
+    'the shortcut without "Your store" (q33 script)': (SHOP_SEARCH_JS, "  words.textContent = YOURS;\n", ""),
+    "the shortcut's arrow read aloud (q36 look)": (LOOK, r'content:"\2192";content:"\2192"/"";', r'content:"\2192";'),
+    "the shortcut printed (q36 look)": (LOOK, ".deals>label,.yours{display:none}", ".deals>label{display:none}"),
+    "the header's No Deal on the green (q36 look)": (LOOK, ".brand .no{margin:0 0 0 .1em;border-color:var(--nd-edge);background:var(--nd);color:var(--on-nd)}\n", ""),
+    "No Deal written outside its label (q36 shell)": (SHOP_SHELL, '<b class="no">{text(no)}</b></a>', "{text(no)}</a>"),
+    "the method page saying the root opens the pick (q36 method)": (SHOP_PAGES, 'only to offer the picked front page first on the root page (\\"Your store\\"), to name it', "only to open the picked front page from the root, to name it"),
     # shopper: the forecast's target per column, who gets a forecast, inputs pinned to the day (q22 F1, F2, F3)
     'the horizon fifteen days (q22 F1)': (SHOP_FORECAST, 'AHEAD = range(1, HORIZON + 1) ', 'AHEAD = range(1, HORIZON + 2) '),
     'the day itself in the window (q22 F1)': (SHOP_FORECAST, 'AHEAD = range(1, HORIZON + 1) ', 'AHEAD = range(0, HORIZON + 1) '),
@@ -2004,15 +2031,15 @@ MUTATIONS = {
     "the promotions error on the first of the chain's columns only (q22 product)": (SHOP_PRODUCT, '    if column.slug in promotions_errors:\n', '    if column.slug in promotions_errors and key == next(c.key for c in COLUMNS if c.slug == column.slug):\n'),
     'a deal per unit when weighed (q22 product)': (SHOP_PRODUCT, 'head = f"<b>{text(deal_price(deal.price, deal.per))}</b>"', 'head = f"<b>{text(deal_price(deal.price, \'unit\'))}</b>"'),
     'a script tag (q22 product)': (SHOP_PRODUCT, '    return page(f"{covered.code} - {SITE_NAME}", main, day,', '    return page(f"{covered.code} - {SITE_NAME}", "<script></script>" + main, day,'),
-    'the start date left off (q22 product)': (SHOP_PRODUCT, '    if point is not None and point.next_start is not None and today.record:', '    if False:'),
-    'a start date on a hole morning (q22 product)': (SHOP_PRODUCT, 'point.next_start is not None and today.record:', 'point.next_start is not None:'),
+    'the start date left off (q22 product)': (SHOP_PRODUCT, '    if point is not None and point.next_start is not None:', '    if False:'),
+    'a start date on a hole morning (q22 product)': (SHOP_PRODUCT, """            return f'<p class="few">{text(too_few(today.with_file, today.included))}</p>'\n""", """            return f'<p class="few">{text(too_few(today.with_file, today.included))}</p>' + (f"<p>{text(coming_sale(point.next_start))}</p>" if point is not None and point.next_start is not None else "")\n"""),
     "the front list's bar on the method page said over the 90 (q22 pages)": (SHOP_PAGES, 'on at least {MIN_FRONT_DAYS} of the {RECENT_DAYS} days "', 'on at least {MIN_FRONT_DAYS} of the {READ_DAYS} days "'),
     "P2's hole not said to show its promotions at some stores (q22 pages)": (SHOP_PAGES, 'no listed price is claimed, every promotion that day is shown \\"at some stores\\", with no "\n     "verdict (S4), no promotion', 'no listed price is claimed, "\n     "no promotion'),
     "P1 on the method page saying last listed, not last seen (q22 pages)": (SHOP_PAGES, '"when it was last seen listed across each column."', '"when it was last listed across each column."'),
     "P2's hole not said to give no start date (q22 pages)": (SHOP_PAGES, '"verdict (S4), no promotion is said to be listed to start, and the day', '"verdict (S4), and the day'),
     "a chain's name in the tab's title (q22 product)": (SHOP_PRODUCT, 'page(f"{covered.code} - {SITE_NAME}"', 'page(f"{covered.title} - {SITE_NAME}"'),
     "a hole's price claimed as listed (q22 product)": (SHOP_PRODUCT, '    if today.record:\n        shown = text(listed_price(point.listed)) + stores', '    if True:\n        shown = text(listed_price(point.listed)) + stores'),
-    'not listed today said on a hole (q22 product)': (SHOP_PRODUCT, "        return [f'<p class=\"few\">{text(too_few(today.with_file, today.included))}</p>']\n", "        return [f'<p class=\"not-sold\">{text(not_sold(key, None))}</p>']\n"),
+    'not listed today said on a hole (q22 product)': (SHOP_PRODUCT, "            return f'<p class=\"few\">{text(too_few(today.with_file, today.included))}</p>'\n", "            return f'<p class=\"not-sold\">{text(not_sold(key, None))}</p>'\n"),
     'an invalid deal priced (q22 product)': (SHOP_PRODUCT, '    return deal if deal.valid and deal.price is not None else None', '    return deal if deal.price is not None else None'),
     'a promotion at some stores not said so (q22 product)': (SHOP_PRODUCT, '    listed = text(MORNING) if across else f"{text(MORNING)}; {text(AT_SOME_STORES)}"', '    listed = text(MORNING)'),
     "a promotion without the morning's files (q22 product)": (SHOP_PRODUCT, '    listed = text(MORNING) if across else', '    listed = "" if across else'),
@@ -2039,19 +2066,16 @@ MUTATIONS = {
     'a product page indexable (q22 product)': (SHOP_SHELL, '<meta name="robots" content="noindex">\n', ''),
     'a product page without the credit line (q22 product)': (SHOP_SHELL, '<footer><div class="wrap"><p>{text(credit(day, collected_by))} {footer}', '<footer><div class="wrap"><p>{footer}'),
     "a page's date line left off (q22 product)": (SHOP_SHELL, '<p class="dateline">{text(date_line(day))}</p>', '<p class="dateline"></p>'),
-    "the site's name linked from the page's own folder (q22 product)": (SHOP_SHELL, '<a href="{up}index.html">', '<a href="index.html">'),
+    "the site's name linked from the page's own folder (q22 product)": (SHOP_SHELL, '<a class="brand" href="{up}index.html">', '<a class="brand" href="index.html">'),
     "a footer link from the page's own folder (q22 product)": (SHOP_SHELL, '<a href="{up}{escape(path)}">', '<a href="{escape(path)}">'),
-    'a page without the base style (q22 product)': (SHOP_SHELL, '<style>{BASE_STYLE}{style}</style>', '<style>{style}</style>'),
-    "the base style without the footer's rules (q22 product)": (PAGE_FOR_SHOP_PRODUCT, 'BASE_STYLE = "\\n" + _TOP + _TABLES + _FOOTER', 'BASE_STYLE = "\\n" + _TOP + _TABLES'),
-    "the base style holding the basket's tables (q22 product)": (PAGE_FOR_SHOP_PRODUCT, 'BASE_STYLE = "\\n" + _TOP + _TABLES +', 'BASE_STYLE = "\\n" + _TOP + _TABLES + _BASKET_TABLES +'),
-    "the basket's style out of its old order (q22 product)": (PAGE_FOR_SHOP_PRODUCT, 'STYLE = ("\\n" + _TOP + _TILES_AND_BARS + _TABLES +', 'STYLE = ("\\n" + _TOP + _TABLES + _TILES_AND_BARS +'),
+    "the basket's style out of its old order (q22 product)": (PAGE, 'STYLE = ("\\n" + _TOP + _TILES_AND_BARS + _TABLES +', 'STYLE = ("\\n" + _TOP + _TABLES + _TILES_AND_BARS +'),
     'a weighed deal per unit in the words (q22 words)': (SHOP_WORDS, '"kg": "per kilogram"}', '"kg": "per unit"}'),
     'a listed price without before promotions (q22 words)': (SHOP_WORDS, 'return f"Listed price ₪{money(price)}, before promotions, as listed', 'return f"Listed price ₪{money(price)}, as listed'),
     "the stores' range labelled a listed price (q22 words)": (SHOP_WORDS, 'return f"stores\' deal prices ₪{money(low)}', 'return f"listed price ₪{money(low)}'),
     "the stores' deal prices labelled as the listed price's range (q22 words)": (SHOP_WORDS, 'return f"stores\' deal prices ₪{money(low)}', 'return f"stores ₪{money(low)}'),
     # shopper: the front, method, record and basket pages, and the basket's frame, parts and build (q22 pages)
     'a second script (q22 pages)': (SHOP_PAGES, '    parts.append(_hiring())\n', '    parts.append(_hiring() + \'<script src="other.js"></script>\')\n'),
-    'the shell without the one script (q22 pages)': (SHELL_FOR_SHOP_PAGES, '{SCRIPT_TAG.format(up=up)}\n</head>', '</head>'),
+    'the shell without the one script (q22 pages)': (SHELL_FOR_SHOP_PAGES, '">\\n{SCRIPT_TAG.format(up=up)}\'', '">\''),
     "a store type's promotion that starts tomorrow counted (q22 pages)": (PRODUCT_FOR_SHOP_BUILD, 'for struct in point.promotions if struct["start"] <= day <= struct["end"]]', 'for struct in point.promotions]'),
     'the club-only filter hiding nothing (q22 pages)': (SHOP_PAGES, '    marks = (\' data-club=""\' if struct["restrictions"] else "")', '    marks = ("")'),
     'the minimum-spend filter hiding nothing (q22 pages)': (SHOP_PAGES, '+ (\' data-spend=""\' if struct["min_spend"] is not None\n', '+ ("" if True\n'),
@@ -2090,7 +2114,7 @@ MUTATIONS = {
     "basket.html with the basket's own credit line (q22 pages)": (PAGE_FOR_SHOP_PAGES, "credit = f'<p>{_prose(frame.credit)} <a", 'credit = f\'<p>{_prose(words.credit(date.fromisoformat(public["day"]), public["collected_by"]))} <a'),
     "basket.html's method link to the basket's own page (q22 pages)": (PAGE_FOR_SHOP_PAGES, '<a href="{_escape(frame.method_href)}">', '<a href="method.html">'),
     "an item's page link ignored (q22 pages)": (PAGE_FOR_SHOP_PAGES, '        href = None if frame is None else frame.item_link(item.code)\n', '        href = None\n'),
-    "basket.html without the basket's title (q22 pages)": (PAGE_FOR_SHOP_PAGES, '[f"<h1>{_text(words.TITLE)}</h1>", *parts], credit, frame.script)', 'parts, credit, frame.script)'),
+    "basket.html without the basket's title (q22 pages)": (PAGE_FOR_SHOP_PAGES, '[f"<h1>{_text(words.TITLE)}</h1>", *parts], credit, frame.head, frame.kind)', 'parts, credit, frame.head, frame.kind)'),
     "the basket's method page short of its intro (q22 pages)": (PAGE_FOR_SHOP_PAGES, 'parts = [f"<h1>{_text(words.METHOD_TITLE)}</h1>", *method_parts(basket, exclusions, public)]', 'parts = [f"<h1>{_text(words.METHOD_TITLE)}</h1>", *method_parts(basket, exclusions, public)[1:]]'),
     "basket.html's band without the date line (q22 pages)": (SHELL_FOR_SHOP_PAGES, '<p class="dateline">{text(date_line(day))}</p></div></header>\')', '<p class="dateline"></p></div></header>\')'),
     "the basket's pages written when not asked (q22 pages)": (BUILD_FOR_SHOP_PAGES, '    if write_pages:\n', '    if True:\n'),
@@ -2571,7 +2595,7 @@ MUTATIONS = {
     "page lowest bar marked without a comparison": (PAGE, '"lowest" if compare and chain["rank"] == 1', '"lowest" if chain["rank"] == 1'),
     "page bars offset from zero": (PAGE, '<rect class="fill" width="{width:.2f}%"', '<rect class="fill" x="10%" width="{width:.2f}%"'),
     "page date line not in the header": (PAGE, '<p class="dateline">{_text(line)}</p>', '<p class="dateline"></p>'),
-    "page header after the main part": (PAGE, "<body>\n{band}\n<main>\n{body}\n</main>\n", "<body>\n<main>\n{body}\n</main>\n{band}\n"),
+    "page header after the main part": (PAGE, "{opening}\n{band}\n<main>\n{body}\n</main>\n", "{opening}\n<main>\n{body}\n</main>\n{band}\n"),
     "page table box named by no heading": (PAGE, '<h2 id="prices">', "<h2>"),
     "page no dark set": (PAGE, "@media (prefers-color-scheme: dark) {", "@media (prefers-color-scheme: light) {"),
     "page body without a background": (PAGE, "body { margin: 0; background: var(--bg);", "body { margin: 0;"),
@@ -2673,7 +2697,7 @@ MUTATIONS = {
     "site pages put as JSON": (SITE, 'CONTENT_TYPES = {".html": HTML,', 'CONTENT_TYPES = {".html": JSON,'),
     "site day file put as HTML": (SITE, '".json": JSON, ".js"', '".json": HTML, ".js"'),
     "site pages put before the data files": (SITE, "        return put + self.put_files(site_dir, [key for key in keys if key not in records])\n", "        return put + self.put_files(site_dir, [key for key in reversed(keys) if key not in records])\n"),
-    "site puts before every file is found": (SITE, "        self._checked(site_dir, keys)  # every file found and typed before any put\n", ""),
+    "site puts before every file is found": (SITE, "        self._checked(site_dir, [*keys, *assets])  # every file found and typed before any put\n", ""),
     "site key with more after .json read as a day": (SITE, r'\.json$")', r'\.json")'),
     "site impossible date stops the latest day": (SITE, "except ValueError:", "except TypeError:"),
     "site bare 404 read as an error": (SITE, "if error_code(err) in MISSING:", 'if error_code(err) == "NoSuchKey":'),
@@ -2928,9 +2952,44 @@ MUTATIONS = {
     "the scored-so-far sentence claiming the latest days unscored (q22 pages)": (SHOP_PAGES, 'is scored {HORIZON} days after it is frozen (the days frozen are counted further down).")', 'is scored {HORIZON} days after it is frozen, so the latest days frozen are not in them yet (the days frozen are counted further down).")'),
     "basket.html links by the code as written (q22 pages)": (SHOP_PAGES, "item_link=lambda code: page_path(normalize(code)) if normalize(code) in product_pages else None", "item_link=lambda code: page_path(code) if code in product_pages else None"),
     "P10's chain read from the section's data-chain (q22 check)": (SHOP_CHECK, '    chain = BY_KEY[column].slug\n', '    chain = attributes.get("data-chain")\n'),
+    # The site's look (q36, Task 7): every page links the one stylesheet at its depth and carries no inline style;
+    # assets/ holds the stylesheet, the fonts it names and their licences, each hashed name its own bytes' hash.
+    "a second stylesheet passes (q36 check)": (SHOP_CHECK, "    if linked > 1:\n", "    if False:\n"),
+    "a stylesheet at any depth passes (q36 check)": (SHOP_CHECK, "    pieces = written.split(flatten(sheet))\n", """    pieces = re.split(r'<link rel="stylesheet" href="(?:\\.\\./)*' + re.escape(STYLESHEET) + '">', written)\n"""),
+    "a page with no stylesheet passes (q36 check)": (SHOP_CHECK, "    elif not linked:\n", "    elif False:\n"),
+    "a stylesheet at another depth also named missing (q36 check)": (SHOP_CHECK, "    elif not linked:\n", "    if not linked:\n"),
+    "another link passes (q36 check)": (SHOP_CHECK, "    if others:\n", "    if False:\n"),
+    "a link to another origin refused twice (q36 check)": (SHOP_CHECK, ".count(LINK) - len(outside)", ".count(LINK)"),
+    "a style block passes (q36 check)": (SHOP_CHECK, "    if STYLE_BLOCK in written:\n", "    if False:\n"),
+    "a style attribute passes (q36 check)": (SHOP_CHECK, '    styled = sorted({tag for tag, found in tags if "style" in found})\n', "    styled = []\n"),
+    "a stray file in assets passes (q36 check)": (SHOP_CHECK, "and key not in {*REQUIRED, *fonts}]", "and False]"),
+    "a missing licence passes (q36 check)": (SHOP_CHECK, "for key in REQUIRED if key not in files]", "for key in REQUIRED[:1] if key not in files]"),
+    "a missing stylesheet not named (q36 check)": (SHOP_CHECK, "for key in REQUIRED if key not in files]", "for key in REQUIRED[1:] if key not in files]"),
+    "an import passes (q36 check)": (SHOP_CHECK, "    if IMPORT in text.lower():\n", "    if False:\n"),
+    "an @import in capitals passes (q36 check)": (SHOP_CHECK, "IMPORT in text.lower()", "IMPORT in text"),
+    "a font from another origin passes (q36 check)": (SHOP_CHECK, "        if not BARE.fullmatch(url):\n", "        if False:\n"),
+    "a url( in capitals passes (q36 check)": (SHOP_CHECK, 'URL = re.compile(r"url\\(([^)]*)", re.I)', 'URL = re.compile(r"url\\(([^)]*)")'),
+    "a url to a file not in assets passes (q36 check)": (SHOP_CHECK, '        elif f"{FOLDER}/{url}" not in files:\n', "        elif False:\n"),
+    "a url to a file that is not a font passes (q36 check)": (SHOP_CHECK, "        elif not url.endswith(FONT):\n", "        elif False:\n"),
+    "an asset's name not its hash passes (q36 check)": (SHOP_CHECK, "(site_dir / key).read_bytes())) != key:", "(site_dir / key).read_bytes())) is None:"),
+    "a plain name's right name given without its stem (q36 check)": (SHOP_CHECK, 'return f"{plain}.{suffix}" if dot else key', 'return f"{plain}.{suffix}"'),
+    "a stylesheet not UTF-8 left to crash the check (q36 check)": (SHOP_CHECK, 'decode("utf-8", "replace")', 'decode("utf-8")'),
     "the pages uploaded before the data files (q22 publish)": (PUBLISH_SCRIPT, _PUBLISH_ORDER, "".join(reversed(_PUBLISH_ORDER.splitlines(keepends=True)))),
     "a failed upload stopped by set -e alone (q22 publish)": (PUBLISH_SCRIPT, ' --region "$REGION" || {\n    echo "the upload of $2 failed', ' --region "$REGION"\n  false && {\n    echo "the upload of $2 failed'),
     "a failed upload let through (q22 publish)": (PUBLISH_SCRIPT, ' --region "$REGION" || {\n    echo "the upload of $2 failed', ' --region "$REGION" || true || {\n    echo "the upload of $2 failed'),
+    # The site's look (q36, Task 4): the shared files under assets/ go up once each, before any page names them, in
+    # Lambda and by hand, and the role may put them.
+    "the assets put with the pages (q36 upload)": (SITE, "        put += self.put_files(site_dir, assets)  #", "        keys += assets  #"),
+    "an asset the bucket holds put again (q36 upload)": (SITE, '        held = set(self._keys(f"{ASSET_FOLDER}/"))\n', "        held = set()\n"),
+    "the assets put for an earlier day (q36 upload)": (SITE, "        assets = self._new_assets(site_dir) if with_pages else []\n", "        assets = self._new_assets(site_dir)\n"),
+    "a stylesheet served as text/plain (q36 upload)": (SITE, '".css": "text/css; charset=utf-8"', '".css": "text/plain; charset=utf-8"'),
+    "a font served as text/plain (q36 upload)": (SITE, '".woff2": "font/woff2"', '".woff2": "text/plain; charset=utf-8"'),
+    "an asset of no known type found after the records went up (q36 upload)": (SITE, "        self._checked(site_dir, [*keys, *assets])  #", "        self._checked(site_dir, keys)  #"),
+    "a failed asset put let the upload go on (q36 upload)": (SITE, "        put += self.put_files(site_dir, assets)  #", "        try:\n            put += self.put_files(site_dir, assets)\n        except Exception:\n            pass\n        #"),
+    "the stylesheet uploaded after the pages (q36 upload)": (PUBLISH_SCRIPT, "".join(_PUBLISH_ASSETS) + _PUBLISH_PAGES, "".join(_PUBLISH_ASSETS[1:]) + _PUBLISH_PAGES + _PUBLISH_ASSETS[0]),
+    "an asset synced by its time (q36 upload)": (PUBLISH_SCRIPT, "--content-type 'text/css; charset=utf-8' --size-only\n", "--content-type 'text/css; charset=utf-8'\n"),
+    "the fonts sent with no content type (q36 upload)": (PUBLISH_SCRIPT, "upload --include 'assets/*.woff2' --content-type 'font/woff2' --size-only\n", "upload --include 'assets/*.woff2' --size-only\n"),
+    "the role without assets/ (q36 upload)": (BASKET_TEMPLATE, '                - !Sub "arn:aws:s3:::${SiteBucketName}/assets/*"\n', ""),
     "the marker rewritten in place, through a hard link (q22 speed)": (TIME_SITE_RUN, "    (work / MADE).unlink(missing_ok=True)   # written anew, never through a hard link left in its place\n", ""),
     # (the fix wave's end)
     # The front page in plain words (the owner, 2026-11-10): each break undoes one of its rules.
@@ -2943,11 +3002,11 @@ MUTATIONS = {
     'the promotions line said to be every promotion (front words)': (SHOP_WORDS, 'f"carried by at least half its stores, on {products:,}', 'f"on {products:,}'),
     'the chains marking none named out of slug order (front words)': (SHOP_WORDS, 'for slug in SLUGS if slug in set(marking_none)]\n    return f"Today', 'for slug in sorted(marking_none)]\n    return f"Today'),
     "the chains' line out of slug order (front words)": (SHOP_WORDS, 'CHAINS_LINE = " · ".join(CHAIN_NAMES[slug] for slug in SLUGS)', 'CHAINS_LINE = " · ".join(sorted(CHAIN_NAMES.values()))'),
-    'the lead line left off (front words)': (SHOP_PAGES, '             f\'<p class="lede">{text(store_lead(front, today))}</p>\', _deals(shown),\n', '             \'<p class="lede"></p>\', _deals(shown),\n'),
+    'the lead line left off (front words)': (SHOP_PAGES, '             f\'<p class="lede">{_lead(front, today)}</p>\', _deals(shown),\n', '             \'<p class="lede"></p>\', _deals(shown),\n'),
     'the fold-out open by default (front words)': (SHOP_PAGES, "    return (f'<details><summary>", "    return (f'<details open><summary>"),
     'the fold-out left off (front words)': (SHOP_PAGES, '             _rules(front, today, shown, marking_none)]', '             ""]'),
     'the chains marking none left out of the fold-out (front words)': (SHOP_PAGES, 'club = " ".join(part for part in (CLUB_NOTE, marked_none([found for found in marking_none if found == slug]))\n                    if part)', 'club = CLUB_NOTE'),
-    "the fold-out's counts left off (front words)": (SHOP_PAGES, '    counts = f"<p>{text(store_promotions_line(front.column, front.promotions, front.products))}</p>" if read else ""\n', '    counts = ""\n'),
+    "the fold-out's counts left off (front words)": (SHOP_PAGES, '    counts = (f"<p>{text(store_promotions_line(front.column, count, front.products))}</p>" if count is not None\n              else "")\n', '    counts = ""\n'),
     'the fold-out without the method page (front words)': (SHOP_PAGES, 'f\'<p><a href="{UP}method.html">{text(RULES_LINK)}</a></p></details>\')', '"</details>")'),
     'the front ready on any day of records (front words)': (SHOP_PAGES, '    return held >= MIN_FRONT_DAYS\n', '    return held > 0\n'),
     'the front ready at 21 days, not 20 (front words)': (SHOP_PAGES, '    return held >= MIN_FRONT_DAYS\n', '    return held > MIN_FRONT_DAYS\n'),
@@ -2986,12 +3045,22 @@ MUTATIONS = {
     'a no deal on the front list (q33 verdict)': (SHOP_VERDICT, 'return found.call == "deal" and passes_bar(', 'return found.call in ("deal", "no_deal") and passes_bar('),
     'the bar at 19 days (q33 verdict)': (SHOP_VERDICT, '.days >= MIN_FRONT_DAYS\n', '.days >= MIN_FRONT_DAYS - 1\n'),
     "an unread sale price given the listed price as today's (q33 verdict)": (SHOP_VERDICT, 'listed = None if call == "price_unread" else Decimal(money(point.listed))', 'listed = Decimal(money(point.listed))'),
+    'the check digit not checked (q36 bars)': (SHOP_BARS, 'code.isdigit() and is_gs1(code)', 'code.isdigit()'),
+    'a code with a space drawn (q36 bars)': (SHOP_BARS, 'code.isdigit() and is_gs1(code)', 'is_gs1(code)'),
+    "EAN-8's right half in L codes (q36 bars)": (SHOP_BARS, '_CENTRE + "".join(_R[each] for each in digits[4:])', '_CENTRE + "".join(_L[each] for each in digits[4:])'),
+    'a UPC-A drawn without its leading zero (q36 bars)': (SHOP_BARS, 'code.zfill(13)', 'code.ljust(13, "0")'),
+    'the left half all in L codes (q36 bars)': (SHOP_BARS, '(_L, _G)[parity == "G"][each]', '_L[each]'),
+    'the right half in L codes (q36 bars)': (SHOP_BARS, '"".join(_R[each] for each in digits[7:])', '"".join(_L[each] for each in digits[7:])'),
+    'the centre guard left out (q36 bars)': (SHOP_BARS, '    return _EDGE + left + _CENTRE + "".join(', '    return _EDGE + left + "".join('),
+    'a 14-digit code drawn (q36 bars)': (SHOP_BARS, 'if len(code) not in (12, 13):', 'if len(code) not in (12, 13, 14):'),
+    'the digits under the bars read aloud (q36 bars)': (SHOP_BARS, '<div class="code" aria-hidden="true">', '<div class="code">'),
+    "the drawing's dashes from the bars alone (q36 bars)": (SHOP_BARS, 'dashes = " ".join(str(len(list(run))) for _, run in groupby(bars))', 'dashes = " ".join(str(len(list(run))) for bar, run in groupby(bars) if bar == "1")'),
     # the golden 90 days: the usual price's higher middle, the golden alone to catch it
     'the usual price the lower middle, in the golden (q33 golden)': (VERDICT_FOR_SHOP_GOLDEN, '    return ordered[len(ordered) // 2]\n', '    return ordered[(len(ordered) - 1) // 2]\n'),
     "a store page listing another store type's rows (q33 front)": (SHOP_BUILD, 'if row.column == column.key)),', 'if row.column.split("-")[0] == column.key.split("-")[0])),'),
     'the list cut at 10 (q33 front)': (SHOP_PAGES, '    return front.rows[:FRONT_LIMIT]\n', '    return front.rows[:10]\n'),
     'a promotion-hole day listing deals (q33 front)': (SHOP_PAGES, '    if not today.record or today.promo_hole:\n        return ()', '    if not today.record:\n        return ()'),
-    "the headline's N from the shown rows (q33 front)": (SHOP_PAGES, '{text(store_lead(front, today))}', '{text(store_lead(StoreFront(column, front.ready, shown, front.checked, front.promotions, front.products), today))}'),
+    "the headline's N from the shown rows (q33 front)": (SHOP_PAGES, '{_lead(front, today)}', '{_lead(StoreFront(column, front.ready, shown, front.checked, front.promotions, front.products), today)}'),
     'the fold-out without the ALWAYS note (q33 front)': (SHOP_PAGES, '            f\'<p class="note">{text(ALWAYS_SENTENCE)}</p>\'\n', ''),
     'the fold-out naming every chain marking none (q33 front)': (SHOP_PAGES, 'marked_none([found for found in marking_none if found == slug])', 'marked_none(marking_none)'),
     'checked counted below the bar (q33 front)': (SHOP_BUILD, '            self.checked[key] += checked(judged, pair, self.column_days, self.day)\n', '            self.checked[key] += judged.counting\n'),
@@ -3003,13 +3072,27 @@ MUTATIONS = {
     "the rules' condition without its source (q33 front)": (SHOP_WORDS, 'its condition {FROM_FIELDS} named beside it', 'its condition named beside it'),
     'a row without its condition (q33 front)': (SHOP_PAGES, '    said = f"<small>{text(\'; \'.join(named))}</small>" if named else ""\n', '    said = ""\n'),
     "a weighed row's prices without a kilogram (q33 front)": (SHOP_WORDS_FOR_SHOP_PAGES, '    return f"₪{price}{_per(found)}"\n', '    return f"₪{price}"\n'),
-    "the store pages without the badges' shades (q33 front)": (SHOP_PAGES, 'STORE_STYLE = BADGE_STYLE + PAGE_STYLE + """', 'STORE_STYLE = PAGE_STYLE + """'),
     'the story without its reason (q33 front)': (SHOP_PAGES, 'for line in (reason(found), last_low(found), how_often(found)) if line)', 'for line in (last_low(found), how_often(found)) if line)'),
     'the story without last this low (q33 front)': (SHOP_PAGES, 'for line in (reason(found), last_low(found), how_often(found)) if line)', 'for line in (reason(found), how_often(found)) if line)'),
     'the story without how often (q33 front)': (SHOP_PAGES, 'for line in (reason(found), last_low(found), how_often(found)) if line)', 'for line in (reason(found), last_low(found)) if line)'),
     'the promotions line on a hole day (q33 front)': (SHOP_PAGES, '    read = today.record and not today.promo_hole\n', '    read = not today.promo_hole\n'),
     'the promotions line on a promotion-hole day (q33 front)': (SHOP_PAGES, '    read = today.record and not today.promo_hole\n', '    read = today.record\n'),
     "the store pages' subtitle the old rule's (q33 front)": (SHOP_WORDS, 'FRONT_SUBTITLE = ("Promotions checked against what the product usually costs, sales included, over up to "\n                  f"{READ_DAYS // 30} months.")', 'FRONT_SUBTITLE = f"Promotions checked against up to {READ_DAYS // 30} months of shelf prices."'),
+    # the site's look: the front page's headline, line and labels; a store page's title, lead, table and badge
+    "the headline's DEAL off its label (q36 front)": (SHOP_PAGES, '<h1><span class="yes">{text(yes)}</span> or ', '<h1>{text(yes)} or '),
+    "the headline's NO DEAL on the deal's label (q36 front)": (SHOP_PAGES, ' or <span class="no">{text(no)}</span>?</h1>', ' or <span class="yes">{text(no)}</span>?</h1>'),
+    'the old line under the headline (q36 front)': (SHOP_PAGES, '{text(ROOT_LINE)}</p></div>', '{text("Pick the store you\'re in, then look up a product: each sale is checked against what it usually costs there.")}</p></div>'),
+    "the root's tab title the question (q36 front)": (SHOP_PAGES, '    return page(SITE_NAME, ', '    return page(f"{FRONT_TITLE} - {SITE_NAME}", '),
+    'a count on a store type not read (q36 front)': (SHOP_PAGES, '    return front.promotions if read else None\n', '    return front.promotions\n'),
+    "the picker without the chains' headings (q36 front)": (SHOP_PAGES, '<div class="chain"><h3>{text(CHAIN_NAMES[slug])}</h3><ul>', '<div class="chain"><ul>'),
+    'the hiring links with dots (q36 front)': (SHOP_PAGES, '    links = " ".join(f\'<a href="{escape(href)}">{text(label)}</a>\' for label, href in HIRING)\n', '    links = " · ".join(f\'<a href="{escape(href)}">{text(label)}</a>\' for label, href in HIRING)\n'),
+    "the store title's last word off the label (q36 front)": (SHOP_PAGES, '{text(asked)} <span class="yes">{text(last)}</span></h1>', '{text(asked)} {text(last)}</h1>'),
+    "the headline's numbers not bold (q36 front)": (SHOP_PAGES, '        said = said.replace(numbers, f"<b>{numbers}</b>", 1)\n', ''),
+    "a hole's figures set in bold as the headline's (q36 front)": (SHOP_PAGES, '    if said == text(headline(front.column, len(front.rows), front.checked)):\n', '    if True:\n'),
+    'a row badge naming its store type (q36 front)': (SHOP_PAGES, '{text(verdict_words(found))}</span>{said}</td>', '{text(badge(found))}</span>{said}</td>'),
+    'a table row without its role (q36 front)': (SHOP_PAGES, '<tr data-column="{row.column}"{marks} role="row">', '<tr data-column="{row.column}"{marks}>'),
+    'a cell without its role (q36 front)': (SHOP_PAGES, '            f\'<td role="cell">{text(price_text(found, found.usual))}</td></tr>\')\n', '            f\'<td>{text(price_text(found, found.usual))}</td></tr>\')\n'),
+    'the root without the fronts (q36 front)': (SHOP_BUILD, '"index.html": render_root(day, shown_by, fronts, history.column_days),', '"index.html": render_root(day, shown_by, {key: StoreFront(key, False, (), 0, 0, 0) for key in fronts}, history.column_days),'),
     "the site-day rows not the page's (q33 siteday)": (SHOP_SITEDAY, '"rows": [_row(row) for row in shown_rows(front, today)]}}', '"rows": [_row(row) for row in front.rows]}}'),
     "a revision dropping a column's numbers (q33 siteday)": (SHOP_SITEDAY, 'for key, block in previous["columns"].items()}}', 'for key, block in previous["columns"].items() if block["front"]["deals"]}}'),
     'a revision of a day published before the store pages keeping nothing (q33 siteday)': (SHOP_SITEDAY, '        return {"counts": previous["counts"]}\n', '        return {}\n'),
@@ -3036,8 +3119,33 @@ MUTATIONS = {
     'every badge said to write a verdict (q33 method)': (SHOP_PAGES, 'Every Deal and No deal badge writes its verdict in words', 'Every badge writes its verdict in words'),
     'S3 giving an unread sale price the listed price (q33 method)': (SHOP_PAGES, ' (S6), unless one "\n         "listed across the column runs with its price not read: then there is no price today."),', ' (S6)."),'),
     'S6 giving an unread sale price the listed price (q33 method)': (SHOP_PAGES, ', and none when one listed across "\n         "the column runs with its price not read (S3). The latest', '. The latest'),
+    # the site's look (q36): the stylesheet's tokens, contrast and rules; the shared files' hashed names; the fonts' maker
+    "the dark theme's first green too dark for its words (q36 look)": (LOOK, "--d1:#27995a", "--d1:#1f7a48"),
+    "the sale line too pale on paper (q36 look)": (LOOK, "--sale:#0b7a3b", "--sale:#2e9e57"),
+    "small print too pale on paper (q36 look)": (LOOK, "--ink-2:#555555", "--ink-2:#8a8a8a"),
+    "a green label's edge its fill on paper (q36 look)": (LOOK, "--edge:var(--ink)", "--edge:var(--fill)"),
+    "the dark NO DEAL edge in ink on the dark page (q36 look)": (LOOK, "--nd-edge:#ffd60a", "--nd-edge:#111111"),
+    "a colour written outside the tokens (q36 look)": (LOOK, ".chart text{fill:var(--ink-2)}", ".chart text{fill:#555555}"),
+    "an undefined token (q36 look)": (LOOK, ".chart .grid{stroke:var(--line)}", ".chart .grid{stroke:var(--lines)}"),
+    "the chart's words at 11 pixels (q36 look)": (LOOK, ".chart{display:flex;align-items:flex-start;margin-top:1.75rem;font-size:.78125rem", ".chart{display:flex;align-items:flex-start;margin-top:1.75rem;font-size:.6875rem"),
+    "a chart stroke that scales (q36 look)": (LOOK, ";vector-effect:non-scaling-stroke", ""),
+    "the hidden rule without !important (q36 look)": (LOOK, "[hidden]{display:none!important}", "[hidden]{display:none}"),
+    "a two-column rule without the script (q36 look)": (LOOK, ".js .t-product main{display:grid", ".t-product main{display:grid"),
+    "the phone's usual label not the table's head (q36 look)": (LOOK, 'content:"Usually ";', 'content:"Usual ";'),
+    "a transition (q36 look)": (LOOK, "a:hover{text-decoration-thickness:3px}", "a:hover{text-decoration-thickness:3px;transition:all .2s}"),
+    "print showing the controls (q36 look)": (LOOK, "@media print{.store,", "@media print{"),
+    "a stylesheet importing another (q36 look)": (LOOK, "*,*::before,*::after{box-sizing:border-box}", '@import "other.css";*,*::before,*::after{box-sizing:border-box}'),
+    "a hash of nine hex digits (q36 assets)": (SHOP_ASSETS, "hexdigest()[:10]", "hexdigest()[:9]"),
+    "a font's url left unhashed (q36 assets)": (SHOP_ASSETS, 'f"url({names[url[1]]})"', 'f"url({url[1]})"'),
+    "a stylesheet naming another file refused without naming the stylesheet (q36 assets)": (SHOP_ASSETS, "    if named != set(FONTS):\n", "    if not set(FONTS) <= named:\n"),
+    "a stylesheet leaving a font out accepted (q36 assets)": (SHOP_ASSETS, "    if named != set(FONTS):\n", "    if not named <= set(FONTS):\n"),
+    "the stylesheet's name from its plain bytes (q36 assets)": (SHOP_ASSETS, "hashed(SHEET, sheet)", "hashed(SHEET, plain)"),
+    "the Latin subset without the dashes (q36 fonts)": (SUBSET_FONTS, "U+2013,U+2014,", ""),
+    "a source not checked against its SHA-256 (q36 fonts)": (SUBSET_FONTS, "    if found != sha256:\n", "    if False:\n"),
+    "another fonttools accepted (q36 fonts)": (SUBSET_FONTS, "    if (fonttools, brotli) != TOOLS:\n", "    if brotli != TOOLS[1]:\n"),
+    "Heebo pinned at another commit (q36 fonts)": (SUBSET_FONTS, '"804ab16a8ff8ac0072e7c5ecc34e381b4a710177"', '"804ab16a8ff8ac0072e7c5ecc34e381b4a710178"'),
     # store first (q33): the product page's verdict, chart, fold-out and badge row (shopper.product, shopper.build)
-    "the store type's name left out of the verdict (q33 product)": (SHOP_PRODUCT, 'text(badge(found))', 'text(badge(found).split(": ", 1)[1])'),
+    "the store type's name left out of the verdict (q33 product)": (SHOP_PRODUCT, '{text(at)}<b>', '<b>'),
     "a no deal given a deal's shade (q33 product)": (SHOP_PRODUCT, '        return "no-deal"\n', '        return "deal-1"\n'),
     "every deal in the lightest shade (q33 product)": (SHOP_PRODUCT, '        return found.shade\n', '        return "deal-1"\n'),
     "the badge row in COLUMNS order (q33 product)": (SHOP_PRODUCT, '    selling.sort(key=lambda key: _rank(verdicts[key], places[key]))\n', ''),
@@ -3046,57 +3154,154 @@ MUTATIONS = {
     "an empty badge row left out (q33 product)": (SHOP_PRODUCT, """f'<nav class="badges">{badges}</nav>']""", """*([f'<nav class="badges">{badges}</nav>'] if badges else [])]"""),
     "the fold-out without F10 (q33 product)": (SHOP_PRODUCT, """{''.join(parts)}</details>\"""", """{''.join(parts[:-1])}</details>{parts[-1]}\""""),
     "a section hidden in the HTML (q33 product)": (SHOP_PRODUCT, 'id="c-{key}" data-chain="{column.slug}">', 'id="c-{key}" data-chain="{column.slug}" hidden>'),
-    "the style without its hidden rule (q33 product)": (SHOP_PRODUCT, '[hidden]{display:none!important}\n', ''),
-    "a coming sale on a hole morning (q33 product)": (SHOP_PRODUCT, 'next_start is not None and today.record:', 'next_start is not None and today.present:'),
+    "a coming sale on a hole morning (q33 product)": (SHOP_PRODUCT, """            return f'<p class="few">{text(too_few(today.with_file, today.included))}</p>'\n""", """            return f'<p class="few">{text(too_few(today.with_file, today.included))}</p>' + (f"<p>{text(coming_sale(point.next_start))}</p>" if point is not None and point.next_start is not None and today.present else "")\n"""),
     "a not-sold section without its last-seen day (q33 product)": (SHOP_PRODUCT, 'not_sold(key, covered.last_wide.get(key))', 'not_sold(key, None)'),
-    "the reason line left out (q33 product)": (SHOP_PRODUCT, """,\n                f'<p class="reason">{text(reason(found))}</p>']""", ']'),
+    "the reason line left out (q33 product)": (SHOP_PRODUCT, """, f'<p class="reason">{text(reason(found))}</p>']""", ']'),
     "every no-verdict call said as no sale (q33 product)": (SHOP_PRODUCT, 'NO_VERDICT[found.call]', 'NO_VERDICT["no_sale"]'),
     "the conditions left out (q33 product)": (SHOP_PRODUCT, '    if named:\n', '    if False:\n'),
     "the chart left out (q33 product)": (SHOP_PRODUCT, '    parts.append(render_chart(found, day))\n', ''),
     "how often left out (q33 product)": (SHOP_PRODUCT, '(last_low(found), how_often(found))', '(last_low(found),)'),
     "a section's verdict worked from no pair (q33 product)": (SHOP_BUILD, 'verdict(pairs.get(key), key, self.column_days, self.day)', 'verdict(None, key, self.column_days, self.day)'),
     'the badges without a verdict out of COLUMNS order (q33 product)': (SHOP_PRODUCT, 'return (1, 0, place) if found.saving is None', 'return (1, 0, -place) if found.saving is None'),
+    # the site's look (q36): the product page's shelf label, its price part and barcode, the chart through today, the
+    # facts and the badges (shopper.product)
+    "a deal's label without its shade (q36 product)": (SHOP_PRODUCT, '<div class="tag {badge_class(found)}">', '<div class="tag">'),
+    "no deal on the plain label (q36 product)": (SHOP_PRODUCT, '        return "no-deal"\n', '        return "none"\n'),
+    "a line that is not a verdict on a deal's label (q36 product)": (SHOP_PRODUCT, '    return "none"\n', '    return "deal-1"\n'),
+    "the verdict out of its bold (q36 product)": (SHOP_PRODUCT, '{text(at)}<b>{text(said)}</b></p>', '{text(at)}{text(said)}</p>'),
+    "the price part on a day with no price today (q36 product)": (SHOP_PRODUCT, """    part = f'<div class="pay">{pay}</div>' if pay else ""\n""", """    part = f'<div class="pay">{pay}</div>'\n"""),
+    "the agorot left off the price (q36 product)": (SHOP_PRODUCT, '<sup>{point}{agorot}</sup>', '<sup>{point}</sup>'),
+    "a kilogram's price without its unit (q36 product)": (SHOP_PRODUCT, '    small = f"<small>{text(unit)}</small>" if unit else ""\n', '    small = ""\n'),
+    "the barcode's drawing in every part (q36 product)": (SHOP_PRODUCT, '    pay = _price(found) + mark(covered.code)\n', '    pay = _price(found) + drawing(covered.code) + mark(covered.code)\n'),
+    "a mark with no drawing on the page (q36 product)": (SHOP_PRODUCT, '    bars = drawing(covered.code) if marked else ""\n', '    bars = ""\n'),
+    "a label without the barcode's mark (q36 product)": (SHOP_PRODUCT, '    pay = _price(found) + mark(covered.code)\n', '    pay = _price(found)\n'),
+    "the barcode's drawing after the badge row (q36 product)": (SHOP_PRODUCT, '                      *([bars] if bars else []),\n                      *_row(pairs, verdicts, day),\n', '                      *_row(pairs, verdicts, day),\n                      *([bars] if bars else []),\n'),
+    "the barcode's drawing on a page with no mark (q36 product)": (SHOP_PRODUCT, '    bars = drawing(covered.code) if marked else ""\n', '    bars = drawing(covered.code)\n'),
+    "no drawing on a page with a part without a label (q36 product)": (SHOP_PRODUCT, '    marked = any(verdicts[key].call not in NO_LABEL', '    marked = all(verdicts[key].call not in NO_LABEL'),
+    "a badge's name and verdict run together (q36 product)": (SHOP_PRODUCT, 'f"{text(name)}<i>{sep}</i><b>{text(said)}</b></a>"', 'f"{text(name)}<b>{text(said)}</b></a>"'),
+    "the facts as plain paragraphs (q36 product)": (SHOP_PRODUCT, """    parts += [f'<p class="fact">{text(line)}</p>' for line""", """    parts += [f'<p>{text(line)}</p>' for line"""),
+    "the facts before the chart (q36 product)": (SHOP_PRODUCT, """    parts.append(render_chart(found, day))\n    parts += [f'<p class="fact">{text(line)}</p>' for line in (last_low(found), how_often(found)) if line is not None]\n""", """    parts += [f'<p class="fact">{text(line)}</p>' for line in (last_low(found), how_often(found)) if line is not None]\n    parts.append(render_chart(found, day))\n"""),
     # store first (q33): the verdict's words (shopper.words)
     "a shopper date with its year (q33 words)": (SHOP_WORDS, '    return f"{day:%-d %B}"\n', '    return f"{day:%-d %B %Y}"\n'),
     "the always-on form for a small saving (q33 words)": (SHOP_WORDS, '    if found.saving <= 0:\n', '    if found.saving < 1:\n'),
     "'before this one' with no sale today (q33 words)": (SHOP_WORDS, 'before = " before this one" if found.on_sale_today else ""', 'before = " before this one"'),
-    "the day count from every tracked day in the reason (q33 words)": (SHOP_WORDS, '    days = _tracked(len(found.priced))\n', '    days = _tracked(len(found.days))\n'),
-    "the badge without the store type's name (q33 words)": (SHOP_WORDS, 'return f"At {BY_KEY[found.column].name}: {_verdict(found)}"', 'return _verdict(found)'),
+    "the day count from every tracked day in the reason (q33 words)": (SHOP_WORDS, '    days = _counted(len(found.priced), len(found.days))\n', '    days = _counted(len(found.days), len(found.days))\n'),
+    "the badge without the store type's name (q33 words)": (SHOP_WORDS, 'return f"At {BY_KEY[found.column].name}: {verdict_words(found)}"', 'return verdict_words(found)'),
     "a weighed saving without its kilogram (q33 words)": (SHOP_WORDS, 'return " a kilogram" if found.struct is not None and found.struct["per"] == "kg" else ""', 'return ""'),
-    "the badge row's line not in lower case (q33 words)": (SHOP_WORDS, 'said = (line[0].lower() + line[1:]).removesuffix(".")', 'said = line.removesuffix(".")'),
+    "the badge row's line not in lower case (q33 words)": (SHOP_WORDS, 'return (line[0].lower() + line[1:]).removesuffix(".")', 'return line.removesuffix(".")'),
     "the not-sold line without its last-seen day (q33 words)": (SHOP_WORDS, 'seen = "" if last is None else f", last seen {on_day(last)}"', 'seen = ""'),
     "the conditions without their capital (q33 words)": (SHOP_WORDS, 'found = [phrase[0].upper() + phrase[1:] for code', 'found = [phrase for code'),
     "how often counting only the days with a price (q33 words)": (SHOP_WORDS, 'sum(day.on_sale for day in found.days)', 'sum(day.on_sale for day in found.priced)'),
     "last this low with no day price before today (q33 words)": (SHOP_WORDS, '    if found.today_price is None or not found.priced:\n', '    if found.today_price is None:\n'),
     "how often said with no tracked day (q33 words)": (SHOP_WORDS, '    if not found.days:\n        return None\n    said = f"On sale on', '    said = f"On sale on'),
+    # the site's look (q36): the decided words (shopper.words) and lowest and highest counting today (shopper.verdict)
+    "the reason saying days tracked when the counts differ (q36 words)": (SHOP_WORDS, '    days = _counted(len(found.priced), len(found.days))\n', '    days = _tracked(len(found.priced))\n'),
+    "the reason naming the known-price count when the counts are equal (q36 words)": (SHOP_WORDS, '    days = _counted(len(found.priced), len(found.days))\n', '    days = _known(len(found.priced))\n'),
+    "last this low saying days tracked when the counts differ (q36 words)": (SHOP_WORDS, 'return f"Lowest in the {_counted(len(found.priced), len(found.days))}."', 'return f"Lowest in the {_tracked(len(found.priced))}."'),
+    "one day with a known price said as days (q36 words)": (SHOP_WORDS, "{_plural(count, 'day', 'days')} with a known price", "days with a known price"),
+    "a short date with its year (q36 words)": (SHOP_WORDS, '    return f"{day:%-d %b}"\n', '    return f"{day:%-d %b %Y}"\n'),
+    "a month's full name (q36 words)": (SHOP_WORDS, '    return f"{day:%b}"\n', '    return f"{day:%B}"\n'),
+    "the price line without a kilogram (q36 words)": (SHOP_WORDS, 'return f"{PRICE_TODAY} {price_text(found, found.today_price)}"', 'return f"{PRICE_TODAY} ₪{found.today_price}"'),
+    "one promotion said as promotions (q36 words)": (SHOP_WORDS, '_plural(count, "promotion today", "promotions today")', '"promotions today"'),
+    "the badge row's name and verdict run together (q36 words)": (SHOP_WORDS, 'return f"{BY_KEY[found.column].name} · {short_verdict(found)}"', 'return f"{BY_KEY[found.column].name} {short_verdict(found)}"'),
+    "the lowest leaving today out (q36 words)": (SHOP_VERDICT, '    lowest = min(prices)\n', '    lowest = min(day.price for day in found.priced)\n'),
+    "the highest leaving today out (q36 words)": (SHOP_VERDICT, '    highest = max(prices)\n', '    highest = max(day.price for day in found.priced)\n'),
+    "a lowest of today dated by an earlier day (q36 words)": (SHOP_VERDICT, '(lowest, _latest(found, lowest))', '(lowest, max((day.day for day in found.priced if day.price == lowest), default=None))'),
+    "a tie dated by its earlier day (q36 words)": (SHOP_VERDICT, '    return max(day.day for day in found.priced if day.price == price)\n', '    return min(day.day for day in found.priced if day.price == price)\n'),
+    # the site's look (q36): the price chart redrawn (shopper.chart): a ₪ axis, the dates, step lines, today's prices at the right end, the table
+    "the axis from zero (q36 chart)": (SHOP_CHART, '        bottom, top = floor(low / step) * step, ceil(high / step) * step\n', '        bottom, top = 0, ceil(high / step) * step\n'),
+    "six steps allowed (q36 chart)": (SHOP_CHART, '        if (top - bottom) / step <= 5:\n', '        if (top - bottom) / step <= 6:\n'),
+    "a price on the date line (q36 chart)": (SHOP_CHART, 'if low - bottom < Decimal("0.08") * (top - bottom) and bottom >= step:', 'if False:'),
+    "no half-shekel step for prices under a shekel apart (q36 chart)": (SHOP_CHART, '    steps = [Decimal("0.5")] if 0 < high - low < 1 else []\n', '    steps = []\n'),
+    "a sale starting today not drawn (q36 chart)": (SHOP_CHART, 'known.append((last, found.today_price, found.counting))', 'known.append((last, found.today_price, found.counting)) if not found.counting else None'),
+    "the dates a week apart on a long history (q36 chart)": (SHOP_CHART, '    monthly = span >= WEEKLY_UNDER\n', '    monthly = False\n'),
+    "a date near an end shown on a phone (q36 chart)": (SHOP_CHART, """near = "" if NEAR[0] <= share <= NEAR[1] else ' class="near"'""", 'near = ""'),
+    "the table's lowest leaving today out (q36 chart)": (SHOP_CHART, '    ends = extremes(found)  ', '    ends = extremes(__import__("dataclasses").replace(found, today_price=None))  '),
+    "a lowest of today given a date (q36 chart)": (SHOP_CHART, 'TODAY_WORD if seen is None else short_day(seen)', 'short_day(seen or day)'),
+    "text in the lines' SVG (q36 chart)": (SHOP_CHART, """preserveAspectRatio="none">{lines}</svg>'""", """preserveAspectRatio="none">{lines}{"".join(over)}</svg>'"""),
+    "the lines' SVG keeping its aspect (q36 chart)": (SHOP_CHART, ' preserveAspectRatio="none">{lines}', '>{lines}'),
+    "the usual price's words always above its line (q36 chart)": (SHOP_CHART, '        y = level - LIFT if above or not below else level + 15\n', '        y = level - LIFT\n'),
+    "no tick under today on price_unread (q36 chart)": (SHOP_CHART, '    if found.call == "price_unread":', '    if False:'),
+    "a date's name written into the first date (q36 chart)": (SHOP_CHART, 'share < NAMED[0] or share > NAMED[1]', 'share > NAMED[1]'),
+    "a date's name written out of the plot (q36 chart)": (SHOP_CHART, 'share < NAMED[0] or share > NAMED[1]', 'share < NAMED[0]'),
+    "the usual label watching the whole span (q36 chart)": (SHOP_CHART, 'for at, height in line_at.items() if 10 * (at + 1) > 7 * span]', 'for at, height in line_at.items()]'),
+    "a single price given half-shekel steps (q36 chart)": (SHOP_CHART, 'if 0 < high - low < 1 else []', 'if high - low < 1 else []'),
+    "a date at NEAR's edge hidden on a phone (q36 chart)": (SHOP_CHART, 'NEAR[0] <= share <= NEAR[1]', 'NEAR[0] < share < NEAR[1]'),
+    "every week's name on a phone at 28 days (q36 chart)": (SHOP_CHART, 'span >= ALTERNATE_WEEKS and', 'span > ALTERNATE_WEEKS and'),
+    "the even weeks' names hidden on a phone (q36 chart)": (SHOP_CHART, '(last - at) // 7 % 2:', '(last - at) // 7 % 2 == 0:'),
+    # the site's look (q36), the owner's read of 2026-11-16: the chart as one line, the price paid each day; its key and
+    # table; its words, the method page's sentences and its stylesheet rules
+    "a sale day drawn in ink (q36 chart)": (SHOP_CHART, '        pens["sale" if sale else "paid"].stroke((at, level), (at + 1, level))\n', '        pens["paid"].stroke((at, level), (at + 1, level))\n'),
+    "today's point left out (q36 chart)": (SHOP_CHART, '    if found.today_price is not None:               # today\'s point: the label\'s "Price today"\n', '    if False:\n'),
+    "today's sale point drawn in ink (q36 chart)": (SHOP_CHART, 'known.append((last, found.today_price, found.counting))', 'known.append((last, found.today_price, False))'),
+    "today's sale price written in ink (q36 chart)": (SHOP_CHART, '        mark = "sale" if found.counting else "paid"\n', '        mark = "paid"\n'),
+    "a run of eight days joined (q36 chart)": (SHOP_CHART, '            if 0 < away <= BRIDGE:\n', '            if 0 < away <= BRIDGE + 1:\n'),
+    "a run of seven left open (q36 chart)": (SHOP_CHART, '            if 0 < away <= BRIDGE:\n', '            if 0 < away < BRIDGE:\n'),
+    "the dotted stretch always ink (q36 chart)": (SHOP_CHART, 'dotted = "gap sale" if was_sale else "gap"', 'dotted = "gap"'),
+    "the step after a dotted stretch drawn solid (q36 chart)": (SHOP_CHART, 'owner = dotted if away else "sale" if sale or was_sale else "paid"', 'owner = "sale" if sale or was_sale else "paid"'),
+    "a step drawn across an open gap (q36 chart)": (SHOP_CHART, '            if away <= BRIDGE and was != level:\n', '            if was != level:\n'),
+    "the steps into a sale drawn in ink (q36 chart)": (SHOP_CHART, 'else "sale" if sale or was_sale else "paid"', 'else "sale" if was_sale else "paid"'),
+    "the steps out of a sale drawn in ink (q36 chart)": (SHOP_CHART, 'else "sale" if sale or was_sale else "paid"', 'else "sale" if sale else "paid"'),
+    "the usual dashes drawn under the line (q36 chart)": (SHOP_CHART, 'clear = [(at, level) for at in range(span) if at not in line_at or abs(line_at[at] - level) >= CLEAR]', 'clear = [(at, level) for at in range(span)]'),
+    "no dashes where there is no line (q36 chart)": (SHOP_CHART, 'clear = [(at, level) for at in range(span) if at not in line_at or abs(line_at[at] - level) >= CLEAR]', 'clear = [(at, level) for at in range(span) if at in line_at and abs(line_at[at] - level) >= CLEAR]'),
+    "dashes left out six pixels from the line (q36 chart)": (SHOP_CHART, 'abs(line_at[at] - level) >= CLEAR]', 'abs(line_at[at] - level) > CLEAR]'),
+    "the usual words ignoring a step (q36 chart)": (SHOP_CHART, '        late += [(min(was, to), max(was, to)) for at, was, to in steps if 10 * (at + 1) > 7 * span]\n', ''),
+    "the usual words kept out of the top margin (q36 chart)": (SHOP_CHART, '        above = not any(low <= level - 1', '        above = level >= 20 and not any(low <= level - 1'),
+    "the usual words written on the date line (q36 chart)": (SHOP_CHART, '        below = level <= PLOT - 20 and not any(', '        below = not any('),
+    "today left on the dates' line beside a price (q36 chart)": (SHOP_CHART, 'y="{height + 5 + WORD_DROP}">', 'y="{DATES_Y}">'),
+    "a key entry for the plain line (q36 chart)": (SHOP_CHART, '    marks = [*([("sale", CHART_KEY[0])]', '    marks = [("paid", "price"), *([("sale", CHART_KEY[0])]'),
+    "an empty key written (q36 chart)": (SHOP_CHART, """key = f'<p class="key">{key}</p>' if marks else \"\"""", """key = f'<p class="key">{key}</p>'"""),
+    "a chart drawn with no priced day (q36 chart)": (SHOP_CHART, '    if not found.priced:\n        return ""\n', '    if not found.days:\n        return ""\n'),
+    "a Usual cell in the table (q36 chart)": (SHOP_CHART, '    if found.today_price is not None:\n        cells.append((STATS_HEADS[2]', '    if found.usual is not None:\n        cells.append(("Usual", f"₪{money(found.usual)}"))\n    if found.today_price is not None:\n        cells.append((STATS_HEADS[2]'),
+    "every stroke a path of its own (q36 chart)": (SHOP_CHART, '        if start != self.at:\n', '        if True:\n'),
+    '"shelf price" back in CHART_KEY (q36 chart)': (SHOP_WORDS, 'CHART_KEY = ("on sale", "on sale, price not read")', 'CHART_KEY = ("shelf price", "on sale", "on sale, price not read")'),
+    "the table's heads with Usual (q36 chart)": (SHOP_WORDS, 'STATS_HEADS = ("Lowest", "Highest", "Today")', 'STATS_HEADS = ("Lowest", "Highest", "Usual", "Today")'),
+    "how often counting days tracked (q36 words)": (SHOP_WORDS, 'of the {_before(len(found.days))}.', 'of the {_tracked(len(found.days))}.'),
+    "one day before today said as days (q36 words)": (SHOP_WORDS, "{_plural(count, 'day', 'days')} before today", "days before today"),
+    "P2 naming the chart's shelf price (q36 method)": (SHOP_PAGES, 'shown beside it. A column whose files that day come from "', 'shown beside it. The price chart calls it the shelf price. A column whose files that day come from "'),
+    "S0 calling a day not tracked a gap in the chart (q36 method)": (SHOP_PAGES, 'tracked. In the price "\n         "chart it has no price: between two days with a price, the line goes on dotted over seven days or fewer in "\n         "a row with none, and stops for more."', 'tracked, and is a gap in "\n         "the price chart, never filled in."'),
+    "S7 quoting how often with days tracked (q36 method)": (SHOP_PAGES, '(\\"On sale on 12 of the 60 days before today.\\")', '(\\"On sale on 12 of the 60 days tracked.\\")'),
+    "the date line in the line's ink (q36 look)": (LOOK, "border-bottom:1px solid var(--ink-2)}", "border-bottom:1px solid var(--ink)}"),
+    "the dates' marks in the line's ink (q36 look)": (LOOK, ".chart line{stroke:var(--ink-2)}", ".chart line{stroke:var(--ink)}"),
+    "the dotted stretch drawn solid (q36 look)": (LOOK, ".chart .gap{stroke:var(--ink);stroke-width:2;stroke-dasharray:2 3}", ".chart .gap{stroke:var(--ink);stroke-width:2}"),
+    "the dotted stretch dashed as the usual price (q36 look)": (LOOK, ".chart .gap{stroke:var(--ink);stroke-width:2;stroke-dasharray:2 3}", ".chart .gap{stroke:var(--ink);stroke-width:2;stroke-dasharray:6 4}"),
+    "a sale's dotted stretch drawn solid (q36 look)": (LOOK, ".chart path.sale{stroke:var(--sale);stroke-width:3.5}", ".chart path.sale{stroke:var(--sale);stroke-width:3.5;stroke-dasharray:none}"),
+    "the key's swatch the plain line's (q36 look)": (LOOK, "border-top:3.5px solid var(--sale);vertical-align:middle}", "border-top:2px solid var(--ink);vertical-align:middle}"),
+    # the whole-branch review's fixes (q36, 2026-11-17): the answer's colours and the marks that carry meaning read from
+    # the rules themselves; the stylesheet held to the design's appendix
+    "a deal label's words in the page's ink (q36 look)": (LOOK, ":is(.deal-1,.deal-2,.deal-3)>.say{background:var(--fill);color:var(--on-deal)}", ":is(.deal-1,.deal-2,.deal-3)>.say{background:var(--fill);color:var(--ink)}"),
+    "NO DEAL on the deal's green (q36 look)": (LOOK, ".no-deal>.say{background:var(--nd);", ".no-deal>.say{background:var(--d3);"),
+    "the barcode's bars in the page's ink (q36 look)": (LOOK, "#ean{fill:none;stroke:var(--bars);", "#ean{fill:none;stroke:var(--ink);"),
+    "the focus ring gone (q36 look)": (LOOK, ":focus-visible{outline:3px solid var(--ink);outline-offset:3px;border-radius:2px}\n", ""),
+    "a ticked filter's fill gone (q36 look)": (LOOK, ".deals>input:checked+label::before{background:var(--ink);box-shadow:inset 0 0 0 3px var(--bg)}\n", ".deals>input:checked+label::before{box-shadow:inset 0 0 0 3px var(--bg)}\n"),
+    "the stylesheet not the design's appendix (q36 look)": (LOOK_FOR_APPENDIX, ".fact{max-width:none;padding:.7rem 0;", ".fact{max-width:none;padding:.8rem 0;"),
+    "a product's name left unbroken (q36 look)": (LOOK, ";text-transform:none;overflow-wrap:anywhere}", ";text-transform:none}"),
+    "the dark plate's left quiet zone too narrow on a phone (q36 look)": (LOOK, "padding:.4rem .6875rem .4rem 1.0625rem;", "padding:.4rem .6875rem .4rem .95rem;"),
+    "the dark plate's quiet zones a phone's on a desktop (q36 look)": (LOOK, "@media (prefers-color-scheme:dark) and (min-width:48rem){.code svg{padding-right:.9375rem;padding-left:1.4375rem}}\n", ""),
+    "a ticked filter empty in forced colours (q36 look)": (LOOK, "@media (forced-colors:active){.deals>input:checked+label::before{background:CanvasText}}\n", ""),
+    "a word in a fold-out barred as a warning (q36 look)": (LOOK, ".warn,p.few{", ".warn,.few{"),
     # store first (q33): the price chart (shopper.chart)
-    'an untracked day drawn across (q33 chart)': (SHOP_CHART, '        if found and found[-1][-1][0] + timedelta(days=1) == seen:\n', '        if found:\n'),
-    'a sale stretch on a day off sale (q33 chart)': (SHOP_CHART, 'for each in days if each.on_sale and each.price is not None]', 'for each in days if each.price is not None]'),
-    "the unknown-price mark at the listed price's height (q33 chart)": (SHOP_CHART, 'unread = [(each.day, FOOT) for each in days', 'unread = [(each.day, height(each.listed)) for each in days'),
-    "today's dot at the usual price (q33 chart)": (SHOP_CHART, 'cy="{level}"', 'cy="{height(found.usual)}"'),
-    'the dashed line stopping at today (q33 chart)': (SHOP_CHART, 'x2="{edge}"', 'x2="{_x(day, first)}"'),
+    'an untracked day drawn across (q33 chart)': (SHOP_CHART, '        if runs and runs[-1][-1][0] + 1 == x:\n', '        if runs:\n'),
+    'a sale stretch on a day off sale (q33 chart)': (SHOP_CHART, 'known = [(x(each.day), each.price, each.on_sale) for each in days if each.price is not None]', 'known = [(x(each.day), each.price, True) for each in days if each.price is not None]'),
+    "the unread ticks off the date line (q36 chart)": (SHOP_CHART, 'unread = [(x(each.day), TICK) for each in days', 'unread = [(x(each.day), TICK - 50) for each in days'),
     'the span a fixed 90 days (q33 chart)': (SHOP_CHART, '    first = days[0].day\n', '    first = day - timedelta(days=90)\n'),
-    'the lowest label from the listed prices alone (q33 chart)': (SHOP_CHART, '("lowest", min(priced))', '("lowest", min(each.listed for each in days))'),
-    'the highest label the shown maximum (q33 chart)': (SHOP_CHART, '("highest", max(priced))', '("highest", high)'),
-    'the text alternative left out (q33 chart)': (SHOP_CHART, """f'<title id="chart-{found.column}">{text(chart_summary(found))}</title>{"".join(drawn)}</svg>'""", """f'{"".join(drawn)}</svg>'"""),
-    'a run of one price drawn day by day (q33 chart)': (SHOP_CHART, '            if height != level:\n', '            if True:\n'),
-    'the labels drawn over each other (q33 chart)': (SHOP_CHART, 'levels = _placed([height(price) for _, price in labels])', 'levels = [height(price) for _, price in labels]'),
-    'the labels stacked at the top (q33 chart)': (SHOP_CHART, 'levels = _placed([height(price) for _, price in labels])', 'levels = _placed([TOP] * len(labels))'),
-    "today's price left out of the heights (q33 chart)": (SHOP_CHART, '    shown = [*(each.listed for each in days), *priced, *known]\n', '    shown = [*(each.listed for each in days), *priced]\n'),
+    'the text alternative left out (q33 chart)': (SHOP_CHART, """role="img" aria-label="{escape(chart_summary(found))}" '""", """role="img" '"""),
+    'a run of one price drawn day by day (q33 chart)': (SHOP_CHART, '        if level and start == self.at and self.parts[-1].startswith("H"):\n', '        if False:\n'),
+    "today's prices left out of the axis (q33 chart)": (SHOP_CHART, 'drawn = [*(price for _, price, _ in known),', 'drawn = [*(price for at, price, _ in known if at != last),'),
     'the days drawn in the order given (q33 chart)': (SHOP_CHART, '    days = sorted(found.days, key=lambda each: each.day)\n', '    days = list(found.days)\n'),
-    'the key naming every mark, drawn or not (q33 chart)': (SHOP_CHART, '*([("sale", CHART_KEY[1])] if sale else []),\n             *([("unread", CHART_KEY[2])] if unread else [])]', '("sale", CHART_KEY[1]), ("unread", CHART_KEY[2])]'),
+    'the key naming every mark, drawn or not (q33 chart)': (SHOP_CHART, '*([("sale", CHART_KEY[0])] if pens["sale"].parts else []),\n             *([("unread", CHART_KEY[1])] if unread else [])]', '("sale", CHART_KEY[0]), ("unread", CHART_KEY[1])]'),
     "the key's entries run together (q33 chart)": (SHOP_CHART, 'key = " · ".join(', 'key = " ".join('),
-    "the summary without the usual price (q33 chart)": (WORDS_FOR_SHOP_CHART, 'prices = {"usually": found.usual, "lowest"', 'prices = {"usually": None, "lowest"'),
-    "the summary's lowest from the listed prices alone (q33 chart)": (WORDS_FOR_SHOP_CHART, '"lowest": min(priced, default=None)', '"lowest": min((day.listed for day in found.days), default=None)'),
-    "the summary's highest the listed maximum (q33 chart)": (WORDS_FOR_SHOP_CHART, '"highest": max(priced, default=None)', '"highest": max((day.listed for day in found.days), default=None)'),
-    "the summary without today's price (q33 chart)": (WORDS_FOR_SHOP_CHART, '              "today": found.today_price}\n', '              "today": None}\n'),
-    "the script at the root's depth on every page (q33 picker)": (SHOP_SHELL, '{SCRIPT_TAG.format(up=up)}\n</head>', '{SCRIPT_TAG.format(up="")}\n</head>'),
+    "the summary without the usual price (q33 chart)": (SHOP_WORDS, 'prices = {"usually": found.usual, "lowest"', 'prices = {"usually": None, "lowest"'),
+    "the summary's lowest leaving today out (q36 words)": (SHOP_WORDS, '"lowest": low,', '"lowest": min((day.price for day in found.priced), default=None),'),
+    "the summary's highest leaving today out (q36 words)": (SHOP_WORDS, '"highest": high,', '"highest": max((day.price for day in found.priced), default=None),'),
+    "the summary without today's price (q33 chart)": (SHOP_WORDS, '              "today": found.today_price}\n', '              "today": None}\n'),
+    "the script at the root's depth on every page (q33 picker)": (SHOP_SHELL, "{SCRIPT_TAG.format(up=up)}'", '{SCRIPT_TAG.format(up="")}\''),
     'the pick link without #pick (q33 picker)': (SHOP_SHELL, '<a id="pick-link" href="{up}index.html#pick">', '<a id="pick-link" href="{up}index.html">'),
     'a store page without data-store (q33 picker)': (SHOP_PAGES, 'up=UP, store=column)', 'up=UP)'),
     'the picker a store type short (q33 picker)': (SHOP_PAGES, '("carrefour", ("carrefour-city", "carrefour-market")),', '("carrefour", ("carrefour-city",)),'),
     'the picker in COLUMNS order (q33 picker)': (SHOP_PAGES, 'for slug, keys in PICK_GROUPS)', 'for slug, keys in ((column.slug, (column.key,)) for column in COLUMNS))'),
     "a store page listing every column's rows (q33 picker)": (SHOP_BUILD, 'rows=tuple(front_list(row for row in self.rows if row.column == column.key)),', 'rows=tuple(front_list(self.rows)),'),
-    "basket.html without the site's script (q33 picker)": (SHOP_PAGES, ',\n                  script=SCRIPT_TAG.format(up=""))', ')'),
+    "basket.html without the site's script (q33 picker)": (SHOP_PAGES, ',\n                  head=head(""), kind="basket")', ', kind="basket")'),
     'a script allowed at any depth (q33 picker)': (SHOP_CHECK, 'written.replace(flatten(script), " ")', 're.sub(r\'<script src="(\\.\\./)*search\\.js" defer></script>\', " ", written)'),
     'store pages not held to the always phrases (q33 picker)': (SHOP_CHECK, '    if STORE.fullmatch(name) or product:\n', '    if product:\n'),
     'the root held to the always phrases (q33 picker)': (SHOP_CHECK, '    if STORE.fullmatch(name) or product:\n', '    if name == INDEX or STORE.fullmatch(name) or product:\n'),
@@ -3104,8 +3309,29 @@ MUTATIONS = {
     'store/ pages not uploaded (q33 picker)': (SITE, 'PAGE_FOLDERS = ("p", "browse", "search", "store")', 'PAGE_FOLDERS = ("p", "browse", "search")'),
     'the role without store/* (q33 picker)': (BASKET_TEMPLATE, '                - !Sub "arn:aws:s3:::${SiteBucketName}/store/*"\n', ''),
     'no lifecycle rule for store/ (q33 picker)': (SITE_TEMPLATE, '          - {Id: old-store-pages, Status: Enabled, Prefix: store/, NoncurrentVersionExpiration: {NoncurrentDays: 30}}\n', ''),
-    "basket.html without the frame's script (q33 picker)": (PAGE, '    head = f"{script}\\n" if script else ""', '    head = ""'),
+    "basket.html without the frame's script (q33 picker)": (PAGE, 'credit, frame.head, frame.kind)', 'credit, "", frame.kind)'),
     'a store page not built (q33 picker)': (SHOP_BUILD, '           for key, front in fronts.items()},\n', '           for key, front in list(fronts.items())[1:]},\n'),
+    # the site's look (q36, Task 6): every page links the one shared stylesheet in place of its style block and names
+    # its kind on <body>; the brand's first word on its label; the chains' line on the front page alone; the build
+    # writes assets/
+    "the stylesheet linked from the page's own folder (q36 shell)": (SHOP_SHELL, '<link rel="stylesheet" href="{up}{STYLESHEET}">', '<link rel="stylesheet" href="{STYLESHEET}">'),
+    'the body without its kind (q36 shell)': (SHOP_SHELL, '<body class="t-{kind}">', '<body>'),
+    "the chains' line on every page (q36 shell)": (SHOP_SHELL, ' if front else ""\n', ' if True else ""\n'),
+    'the brand without its green box (q36 shell)': (SHOP_SHELL, '<b>{text(yes)}</b> or ', '{text(yes)} or '),
+    'a kind the shell does not know accepted (q36 shell)': (SHOP_SHELL, '    if kind not in KINDS:\n', '    if False:\n'),
+    "basket.html with the basket's own style (q36 shell)": (PAGE, '    style = head or f"<style>{STYLE}</style>"', '    style = f"<style>{STYLE}</style>"'),
+    "the basket's own pages with a body class (q36 shell)": (PAGE, 'f\'<body class="t-{kind}">\' if kind else "<body>"', 'f\'<body class="t-{kind}">\''),
+    'the shared files not written (q36 shell)': (SHOP_BUILD, '        **asset_files(),\n', ''),
+    # the site's look (q36, Task 10): the method page's row of links to its own sections, named On this page for screen
+    # readers; S5's yellow No deal; S6's and S8's other count of days; the front page's hiring links parted by a space
+    'a section left out of the row (q36 method)': (SHOP_PAGES, '                    for found in (SECTION_HEAD.match(section) for section in sections))\n', '                    for found in (SECTION_HEAD.match(section) for section in sections[:-1]))\n'),
+    'the row without its spoken label (q36 method)': (SHOP_PAGES, '<nav class="toc" aria-label="{escape(ON_THIS_PAGE)}">', '<nav class="toc">'),
+    "a link's words not its section's heading (q36 method)": (SHOP_PAGES, """{found[2]}</a></li>'""", """{found[1]}</a></li>'"""),
+    'S5 saying a No deal is grey (q36 method)': (SHOP_PAGES, '"yellow. Every Deal and No deal badge', '"a neutral grey. Every Deal and No deal badge'),
+    'S8 calling every count days tracked (q36 method)': (SHOP_PAGES, ', else their "\n         "own count, since a sale day of unknown price (S1) has none (\\"Usually ₪22.90, sales included (83 days with "\n         "a known price).\\"), so a page never shows two different numbers both called days tracked.', '.'),
+    'S6 calling every count days tracked (q36 method)': (SHOP_PAGES, ', named as days with a known "\n         "price when some have none (\\"Lowest in the 83 days with a known price.\\")', ''),
+    'the hiring links run together (q36 front)': (SHOP_PAGES, '    links = " ".join(f\'<a href="{escape(href)}">', '    links = "".join(f\'<a href="{escape(href)}">'),
+    "S4 saying every badge names the store type (q36 method)": (SHOP_PAGES, "otherwise. A product page's badge names the store type", "otherwise. The badge names the store type"),
 }
 
 

@@ -10,14 +10,12 @@ back) over the date line, and is one HTML file in English with one style block, 
 the credit line in its footer with the link to the method page. The words are `basket.words`', and the
 tiles' labels are the headline's own: "Lowest listed total today", "Highest", and the gap as B9 defines it.
 
-Look. One style block: colours as custom properties with a dark set for `prefers-color-scheme: dark`, the
-system font stack, tabular figures in tables, a header band, cards, and the item table scrolling in its own
-box on a narrow screen (its first column held in place) and its header row held at the top on a wide one.
-The block has two parts: `BASE_STYLE`, the rules every page of this site and of the shopper site takes (the
-colours and their dark set, the fonts, the body, links, the header band, sections, tables, the footer and the
-phone's spacing), and `BASKET_STYLE`, the basket pages' own. The base rules are not the old block's first lines,
-so both are cut from pieces kept in the old order, and `STYLE`, their join in that order, is the same bytes the
-basket's pages carried before the split.
+Look. One style block, `STYLE`: colours as custom properties with a dark set for `prefers-color-scheme: dark`,
+the system font stack, tabular figures in tables, a header band, cards, and the item table scrolling in its own
+box on a narrow screen (its first column held in place) and its header row held at the top on a wide one. It is
+kept as the pieces the shopper site's pages once took their base rules from, joined in the old order, so the
+basket's pages carry the same bytes as before; the shopper site's pages now link the site's one stylesheet
+(`shopper.assets`) instead, `basket.html` included, through its frame.
 
 Order. Chains go by rank, the slug breaking a tie; a chain with no rank comes after those with one. Items
 go in the basket's order.
@@ -38,14 +36,15 @@ whole in that span, Latin letters and all ("שופרסל ONLINE"), since a chain
 site's (its Call 11); the basket's own pages keep their bytes.
 
 The shopper site's frame (`Frame`; the shopper plan's Task 18, its question M (c) and (d) and the second pre-flight's
-S6). The shopper site shows the same index page as `basket.html` in its own frame: with a frame, the header band is
-the frame's (the shopper site's name over its date line) and the basket's title opens the main part; the credit line is
-the frame's, its link the frame's method link; a basket item whose product page the build has links to it
-(`item_link`, None for no page); the frame's note goes under the item table; and the frame's script, its tag as HTML
-(the shopper site's one script, store first), goes in the head after the style. Without a frame the page is the
-basket's own, byte for byte as before, with no script. The method page's body is `method_parts`, the parts after its
-heading, so the shopper site's method page carries the basket's method in a section of its own, the same parts in the
-same order.
+S6; the site-look plan's Task 6). The shopper site shows the same index page as `basket.html` in its own frame: with a
+frame, the header band is the frame's (the shopper site's band) and the basket's title opens the main part; the credit
+line is the frame's, its link the frame's method link; a basket item whose product page the build has links to it
+(`item_link`, None for no page); the frame's note goes under the item table; the frame's head, as HTML (the shopper
+site's stylesheet and its one script), is written after the title in place of the style block; and the frame's kind
+names the body (`<body class="t-<kind>">`). A frame without a head keeps the style block, and one without a kind a bare
+`<body>`. Without a frame the page is the basket's own, byte for byte as before, with its style block, no script and a
+bare `<body>`. The method page's body is `method_parts`, the parts after its heading, so the shopper site's method page
+carries the basket's method in a section of its own, the same parts in the same order.
 
 Revisions. A revised day's public dict has `revised` ({"on": YYYY-MM-DD, "reason": text}) and `revisions`,
 the earlier runs oldest first, each with `totals` by slug (None for a chain without one) and its own
@@ -228,9 +227,7 @@ _NARROW_BASKET = """\
 """
 _NARROW = "@media (max-width: 37.5rem) {\n"
 _END = "}\n"
-BASE_STYLE = "\n" + _TOP + _TABLES + _FOOTER + _NARROW + _NARROW_BASE + _END      # every page of either site
-BASKET_STYLE = _TILES_AND_BARS + _BASKET_TABLES + _BASKET_SCREENS + _NARROW + _NARROW_BASKET + _END   # the basket's own
-# The two in the old block's order, so the basket's pages carry the same bytes as before the split.
+# The pieces in the old block's order, so the basket's pages carry the same bytes as before the split.
 STYLE = ("\n" + _TOP + _TILES_AND_BARS + _TABLES + _BASKET_TABLES + _FOOTER + _BASKET_SCREENS + _NARROW + _NARROW_BASE
          + _NARROW_BASKET + _END)
 
@@ -239,14 +236,16 @@ STYLE = ("\n" + _TOP + _TILES_AND_BARS + _TABLES + _BASKET_TABLES + _FOOTER + _B
 class Frame:
     """The shopper site's frame for the index page (the module's docstring): `band` the header band as HTML, `credit`
     the credit line's text, `item_link` a basket item's page by barcode (None for no page), `method_href` where the
-    method link goes, `note` a sentence under the item table ("" for none), `script` a script tag for the head ("" for
-    none)."""
+    method link goes, `note` a sentence under the item table ("" for none), `head` HTML written after the title in
+    place of the style block ("" keeps `<style>{STYLE}</style>`), `kind` the body's class, `t-<kind>` ("" keeps a bare
+    `<body>`)."""
     band: str
     credit: str
     item_link: Callable[[str], str | None]
     method_href: str
     note: str = ""
-    script: str = ""
+    head: str = ""
+    kind: str = ""
 
 
 def render_index(public: dict, basket: Basket, exclusions: Mapping[str, Sequence[Store]],
@@ -267,7 +266,7 @@ def render_index(public: dict, basket: Basket, exclusions: Mapping[str, Sequence
     if frame is None:
         return _page(_band(f"<h1>{_text(words.TITLE)}</h1>", public), words.TITLE, parts, _credit(public))
     credit = f'<p>{_prose(frame.credit)} <a href="{_escape(frame.method_href)}">{_text(words.METHOD_LINK)}</a></p>'
-    return _page(frame.band, words.TITLE, [f"<h1>{_text(words.TITLE)}</h1>", *parts], credit, frame.script)
+    return _page(frame.band, words.TITLE, [f"<h1>{_text(words.TITLE)}</h1>", *parts], credit, frame.head, frame.kind)
 
 
 def index_headline(public: dict, basket: Basket) -> tuple[str, str]:
@@ -335,9 +334,11 @@ def write_day_file(public: dict, site_dir: Path) -> None:
     (site_dir / "days" / f"{public['day']}.json").write_text(render_day(public), encoding="utf-8")
 
 
-def _page(band: str, title: str, parts: Sequence[str], footer: str, script: str = "") -> str:
+def _page(band: str, title: str, parts: Sequence[str], footer: str, head: str = "", kind: str = "") -> str:
+    """A whole page; `head` and `kind` the frame's (the module's docstring), "" on the basket's own pages."""
     body = "\n".join(parts)
-    head = f"{script}\n" if script else ""        # the frame's script; none on the basket's own pages
+    style = head or f"<style>{STYLE}</style>"        # the frame's head in place of the basket's own style block
+    opening = f'<body class="t-{kind}">' if kind else "<body>"     # a bare body on the basket's own pages
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -346,9 +347,9 @@ def _page(band: str, title: str, parts: Sequence[str], footer: str, script: str 
 <meta name="robots" content="noindex">
 <meta name="color-scheme" content="light dark">
 <title>{_text(title)}</title>
-<style>{STYLE}</style>
-{head}</head>
-<body>
+{style}
+</head>
+{opening}
 {band}
 <main>
 {body}

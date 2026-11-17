@@ -15,7 +15,6 @@
    readPick    [storage, ...]                               -> [pick or null, ...]
    writePick   [{storage, key}, ...]                        -> [{threw, stored: what the storage holds after}, ...]
    rootOf      [href, ...]                                  -> [root, ...]
-   redirectFor [[pick, hash], ...]                          -> [url or null, ...]
    headerFor   [[pick, root], ...]                          -> [{name, href, change} or null, ...]
    arrange     [[pick, parts, badges], ...]                 -> [{open, notSold, elsewhere, heading}, ...]
    notSoldLine [key, ...]                                   -> [line, ...]
@@ -83,6 +82,7 @@ class Element {
   get id() { return this.getAttribute("id") || ""; }
   set id(value) { this.setAttribute("id", value); }
   set className(value) { this.setAttribute("class", value); }
+  get parentElement() { return this.parent; }
   get hidden() { return this.hasAttribute("hidden"); }
   set hidden(value) { if (value) this.setAttribute("hidden", ""); else this.removeAttribute("hidden"); }
   get classList() {
@@ -190,7 +190,6 @@ function picker(op, payload, script) {
     });
   }
   if (op === "rootOf") return payload.map((href) => script.rootOf(href));
-  if (op === "redirectFor") return payload.map(([pick, hash]) => script.redirectFor(pick, hash));
   if (op === "headerFor") return payload.map(([pick, root]) => script.headerFor(pick, root));
   if (op === "arrange") return payload.map(([pick, parts, badges]) => script.arrange(pick, parts, badges));
   if (op === "notSoldLine") return payload.map((key) => script.notSoldLine(key));

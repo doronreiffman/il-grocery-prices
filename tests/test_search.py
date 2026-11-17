@@ -9,6 +9,7 @@ import pytest
 
 from basket.check import PRONOUNS, flatten, strip_tags
 from shopper import search
+from shopper.assets import STYLESHEET
 from shopper.history import Covered
 from shopper.search import NORMALIZE, PIECE_MAX, SCRIPT, browse_pages, browse_path, normalize, pieces
 from shopper.words import CREDIT_START, NEVER, SITE_NAME, date_line
@@ -209,6 +210,9 @@ def test_a_browse_page_has_the_frame_the_other_pages_have():
         assert "collected by 11:48 Israel time" in body
         assert "Not shopping advice." in body
         assert body.count("<script") == 1 and '<script src="../search.js" defer></script>' in body   # the one script
+        assert (f'</title>\n<link rel="stylesheet" href="../{STYLESHEET}">\n<script src="../search.js" defer></script>'
+                '\n</head>\n<body class="t-browse">\n') in body                 # the shared stylesheet, the kind
+        assert "<style" not in body and body.count("<link") == 1
         assert body.startswith("<!doctype html>")
         text = flatten(strip_tags(body))
         assert not PRONOUNS.search(text)
@@ -220,7 +224,7 @@ def test_a_name_is_escaped_in_its_own_span():
     pages = browse_pages(_catalogue(item), DAY, "11:48")
     body = pages["browse/other.html"]
     assert '<span class="as-listed" lang="he" dir="rtl">&lt;b&gt;FAKE "x"\n</span>' in body
-    assert "<b>" not in body
+    assert "<b>FAKE" not in body
 
 
 def test_browse_pages_are_the_same_bytes_twice():
