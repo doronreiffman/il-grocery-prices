@@ -358,3 +358,149 @@ def test_the_shortcuts_arrow_is_not_read_aloud():
     assert len(arrow) == 1
     contents = [value for name, value in arrow[0].declarations if name == "content"]
     assert contents == ['"\\2192"', '"\\2192"/""']
+
+
+# ---- the answer's colours and the marks that carry meaning, read from the rules (the whole-branch review, I3) ----
+
+VAR = re.compile(r"var\(--([\w-]+)\)")
+# The rules that set a ground and hold no words, each held by a test of its own below: a ticked filter's square, the
+# barcode's plate in the dark theme, and the key's swatch for an unread sale price (a pattern in the sale's green).
+NO_WORDS = {".deals>input:checked+label::before", ".code svg", ".key .unread"}
+# Each label, by its rule: the ground it takes, as the tokens of every label it serves, and its words' token. A Deal is
+# green in the shade of its saving, No deal yellow, both with dark words (site-look.md, "The label", "Small labels",
+# "The front page", "The header's name: green and yellow").
+LABELS = {
+    ":is(.deal-1,.deal-2,.deal-3)>.say": ({"d1", "d2", "d3"}, "on-deal"),
+    ".no-deal>.say": ({"nd"}, "on-nd"),
+    "span.badge:is(.deal-1,.deal-2,.deal-3),nav :is(.deal-1,.deal-2,.deal-3) b": ({"d1", "d2", "d3"}, "on-deal"),
+    "span.badge.no-deal,nav .no-deal b": ({"nd"}, "on-nd"),
+    "h1 .yes": ({"d3"}, "on-deal"),
+    "h1 .no": ({"nd"}, "on-nd"),
+    ".brand b": ({"d3"}, "on-deal"),
+    ".brand .no": ({"nd"}, "on-nd"),
+}
+
+
+def _token(value: str) -> str | None:
+    """The token a value is, `var(--x)` read as "x"; None for anything else."""
+    found = VAR.fullmatch(value)
+    return found[1] if found else None
+
+
+def _carriers(part: str) -> list[str]:
+    """The selectors a selector part takes its `--fill` from: the classes inside its `:is(...)`, else itself."""
+    inside = re.search(r":is\(([^)]*)\)", part)
+    return split(inside[1], ",") if inside else [part]
+
+
+def _fill(carrier: str) -> str:
+    """The token of a label's `--fill`: the one top-level rule that lists `carrier` and sets `--fill`."""
+    (value,) = [value for rule in _rules() if rule.media == "" and carrier in split(rule.selector, ",")
+                for name, value in rule.declarations if name == "--fill"]
+    return _token(value)
+
+
+def _grounds(token: str, part: str) -> set[str]:
+    """The tokens a ground of `token` set by the selector part `part` stands for: `fill` read as each label's own."""
+    return {_fill(carrier) for carrier in _carriers(part)} if token == "fill" else {token}
+
+
+def _in(rule: Rule, theme: str) -> bool:
+    return theme == "dark" or DARK not in rule.media
+
+
+def test_the_words_on_every_ground_hold_their_contrast():
+    """Goal 3 ("every text ... passes WCAG 2.2 AA in both themes, checked by a test from the stylesheet's own
+    colours"), read from the rules themselves rather than from a list of pairs. Each rule that sets a ground (a
+    `background` token), but the three that hold no words, has words in the colour it names, or in the page's ink when
+    it names none; a rule that names a colour and no ground stands on the ground of the rule whose selector it extends
+    (`#pick a:hover small` on `#pick a:hover`'s ink), else on the page. A `var(--fill)` ground is read as each label it
+    serves: the three greens of `.deal-1` to `.deal-3`, the full green of `.brand b` and `h1 .yes`. Every pair holds
+    4.5:1 in each theme its rule applies in."""
+    tokens = themes()
+    grounds = {}                                # selector part: (its rule, the tokens it stands for)
+    for rule in _rules():
+        background = dict(rule.declarations).get("background")
+        if background is None or rule.selector in NO_WORDS:
+            continue
+        token = _token(background)
+        assert token, f"a ground that is not a token: {rule.selector}{{background:{background}}}"
+        for part in split(rule.selector, ","):
+            grounds[part] = (rule, _grounds(token, part))
+    checked, failing = [], []
+    for rule in _rules():
+        declared = dict(rule.declarations)
+        if "color" not in declared and ("background" not in declared or rule.selector in NO_WORDS):
+            continue
+        if declared.get("color") == "inherit":          # a link's words are the words around it
+            continue
+        words = _token(declared.get("color", "var(--ink)"))
+        assert words, f"words not in a token: {rule.selector}{{color:{declared['color']}}}"
+        for part in split(rule.selector, ","):
+            if part in grounds:
+                ground_rule, under = grounds[part]
+            else:
+                around = [ground for ground in grounds if part.startswith((ground + " ", ground + ">"))]
+                ground_rule, under = grounds[max(around, key=len)] if around else (rule, {"bg"})
+            for theme in ("light", "dark"):
+                if not (_in(rule, theme) and _in(ground_rule, theme)):
+                    continue
+                for ground in sorted(under):
+                    ratio = contrast(tokens[theme][words], tokens[theme][ground])
+                    checked.append((part, theme, ground))
+                    if ratio < WORDS:
+                        failing.append(f"{theme}: {part} {words} on {ground} {ratio:.2f}")
+    assert failing == []
+    named = {part for part, _, _ in checked}
+    assert {part for selector in LABELS for part in split(selector, ",")} <= named
+    assert {".tile.lowest", "#pick a:hover", ".yours a:hover", "#pick a:hover small", "#pick a:hover b",
+            ".yours a:hover small", ".letters a[aria-current]", "td.low"} <= named
+
+
+def test_a_deal_is_green_and_no_deal_yellow_with_dark_words():
+    """Each label's rule takes the ground its call has and the dark words on it: a Deal's own shade of green (the
+    three for the label and the small labels, the full green for the headline's and the header's DEAL), No deal's
+    yellow."""
+    found = {}
+    for selector in LABELS:
+        (rule,) = [rule for rule in _rules() if rule.media == "" and rule.selector == selector]
+        declared = dict(rule.declarations)
+        ground = _token(declared["background"])
+        found[selector] = ({token for part in split(selector, ",") for token in _grounds(ground, part)},
+                           _token(declared["color"]))
+    assert found == LABELS
+
+
+def test_the_sale_is_drawn_in_the_sales_green():
+    """The chart's sale stretch, today's sale price and its dot, and the ticks of an unread sale price take `--sale`
+    (the "Contrast" table: 5.44:1 on paper, 10.95:1 on the dark page), never the line's ink or a label's green."""
+    assert _declared(".chart path.sale")["stroke"] == "var(--sale)"
+    assert _declared(".chart text.sale")["fill"] == "var(--sale)"
+    assert _declared(".chart circle.sale")["fill"] == "var(--sale)"
+    assert _declared(".chart .unread")["stroke"] == "var(--sale)"
+    assert contrast(themes()["light"]["sale"], themes()["light"]["bg"]) >= WORDS
+
+
+def test_the_bars_stand_on_their_plate():
+    """The barcode (site-look.md, "The barcode"): its bars are `--bars`, dark in both themes, on what they stand on:
+    the label's paper in the light theme, which draws no plate, and in the dark theme the white plate (`--plate`) it
+    draws behind them, so a scanner reads them; 4.5:1 or more in both."""
+    bars = _token(_declared("#ean")["stroke"])
+    assert bars == "bars"
+    light = [rule for rule in _rules() if rule.media == "" and rule.selector == ".code svg"
+             and "background" in dict(rule.declarations)]
+    (dark,) = [rule for rule in _rules() if rule.media == DARK and rule.selector == ".code svg"]
+    assert light == [] and _token(dict(dark.declarations)["background"]) == "plate"
+    tokens = themes()
+    assert contrast(tokens["light"][bars], tokens["light"]["bg"]) >= WORDS
+    assert contrast(tokens["dark"][bars], tokens["dark"]["plate"]) >= WORDS
+
+
+def test_the_focus_and_a_ticked_filter_are_drawn_in_ink():
+    """Focus (site-look.md, "Focus"): `:focus-visible` draws a 3-pixel ink ring; the filters' boxes are hidden, so
+    their labels take it; and a ticked filter's square fills with ink ("Filters"), 18.88:1 on paper and 16.57:1 on the
+    dark page."""
+    assert _declared(":focus-visible")["outline"] == "3px solid var(--ink)"
+    assert _declared(".deals>input:focus-visible+label")["outline"] == "3px solid var(--ink)"
+    assert _declared(".deals>input:checked+label::before")["background"] == "var(--ink)"
+    assert all(contrast(tokens["ink"], tokens["bg"]) >= MARKS for tokens in themes().values())

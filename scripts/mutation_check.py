@@ -43,10 +43,10 @@ ROOT = Path(__file__).resolve().parent.parent
 # Seconds a mutation's pytest run may take (q25), and the same tests' run unmutated after a time-out. The slowest target
 # tests are tests/test_golden_90.py: 417 to 552 s run alone on the Mac (docs/shopper-site-plan.md, Task 25 and its
 # speed-ups; 448 s on 2026-11-11) and about 689 s for its two big tests inside a full run beside another copy's (the
-# same doc). The other 91 target sets (each distinct list of target tests in MUTATIONS) took at most 57 s each unmutated
-# (tests/test_basket_handler.py, 2026-11-11; the five added since, at most 3 s each, 2026-11-16). CI's
-# runner is about as fast: the whole suite in 914 s (CI run 42925889780's pytest step) against 750 to 933 s on the Mac
-# (749.7 s in this change's own full run on 2026-11-11; 933 s in the same doc, at Task 25).
+# same doc). The other 92 target sets (each distinct list of target tests in MUTATIONS) took at most 57 s each unmutated
+# (tests/test_basket_handler.py, 2026-11-11; the five added since, at most 3 s each, 2026-11-16; the appendix's, under
+# 1 s, 2026-11-17). CI's runner is about as fast: the whole suite in 914 s (CI run 42925889780's pytest step) against
+# 750 to 933 s on the Mac (749.7 s in this change's own full run on 2026-11-11; 933 s in the same doc, at Task 25).
 # 1,400 s is twice the loaded run; the clean run has the same limit, so a clean golden run under load reads as passing.
 # A run that hangs costs the check this long, and its tests' clean run after it.
 TIME_LIMIT = 1400
@@ -171,6 +171,8 @@ SHOP_SEARCH = ("src/shopper/search.py", ["tests/test_search.py"])
 SHOP_SEARCH_JS = ("src/shopper/static/search.js", ["tests/test_search_js.py"])
 # The site's look (q36): the stylesheet, the site's shared files made from it and the fonts, and the fonts' maker.
 LOOK = ("src/shopper/static/look.css", ["tests/test_look.py"])
+# The stylesheet is the design's appendix byte for byte: a test of its own, which no other stylesheet mutation runs.
+LOOK_FOR_APPENDIX = ("src/shopper/static/look.css", ["tests/test_look_appendix.py"])
 SHOP_ASSETS = ("src/shopper/assets.py", ["tests/test_assets.py"])
 SUBSET_FONTS = ("scripts/subset_fonts.py", ["tests/test_subset_fonts.py"])
 # The product pages (Task 16) and the shell every shopper page shares: the product tests catch a break of either, and
@@ -3266,6 +3268,14 @@ MUTATIONS = {
     "the dotted stretch dashed as the usual price (q36 look)": (LOOK, ".chart .gap{stroke:var(--ink);stroke-width:2;stroke-dasharray:2 3}", ".chart .gap{stroke:var(--ink);stroke-width:2;stroke-dasharray:6 4}"),
     "a sale's dotted stretch drawn solid (q36 look)": (LOOK, ".chart path.sale{stroke:var(--sale);stroke-width:3.5}", ".chart path.sale{stroke:var(--sale);stroke-width:3.5;stroke-dasharray:none}"),
     "the key's swatch the plain line's (q36 look)": (LOOK, "border-top:3.5px solid var(--sale);vertical-align:middle}", "border-top:2px solid var(--ink);vertical-align:middle}"),
+    # the whole-branch review's fixes (q36, 2026-11-17): the answer's colours and the marks that carry meaning read from
+    # the rules themselves; the stylesheet held to the design's appendix
+    "a deal label's words in the page's ink (q36 look)": (LOOK, ":is(.deal-1,.deal-2,.deal-3)>.say{background:var(--fill);color:var(--on-deal)}", ":is(.deal-1,.deal-2,.deal-3)>.say{background:var(--fill);color:var(--ink)}"),
+    "NO DEAL on the deal's green (q36 look)": (LOOK, ".no-deal>.say{background:var(--nd);", ".no-deal>.say{background:var(--d3);"),
+    "the barcode's bars in the page's ink (q36 look)": (LOOK, "#ean{fill:none;stroke:var(--bars);", "#ean{fill:none;stroke:var(--ink);"),
+    "the focus ring gone (q36 look)": (LOOK, ":focus-visible{outline:3px solid var(--ink);outline-offset:3px;border-radius:2px}\n", ""),
+    "a ticked filter's fill gone (q36 look)": (LOOK, ".deals>input:checked+label::before{background:var(--ink);box-shadow:inset 0 0 0 3px var(--bg)}\n", ".deals>input:checked+label::before{box-shadow:inset 0 0 0 3px var(--bg)}\n"),
+    "the stylesheet not the design's appendix (q36 look)": (LOOK_FOR_APPENDIX, ".fact{max-width:none;padding:.7rem 0;", ".fact{max-width:none;padding:.8rem 0;"),
     # store first (q33): the price chart (shopper.chart)
     'an untracked day drawn across (q33 chart)': (SHOP_CHART, '        if runs and runs[-1][-1][0] + 1 == x:\n', '        if runs:\n'),
     'a sale stretch on a day off sale (q33 chart)': (SHOP_CHART, 'known = [(x(each.day), each.price, each.on_sale) for each in days if each.price is not None]', 'known = [(x(each.day), each.price, True) for each in days if each.price is not None]'),
