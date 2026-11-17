@@ -8,8 +8,8 @@
 set -eu
 PROFILE=flights-sam
 REGION=il-central-1
-EXPECTED=arn:aws:iam::137953273942:user/doron-admin
-BUCKET=il-grocery-prices-archivebucket-fmnv3dorojol
+STACK=il-grocery-prices
+ARCHIVE_PREFIX=il-grocery-prices-archivebucket-
 
 day=${1:-}
 case "$day" in
@@ -18,11 +18,34 @@ case "$day" in
 esac
 
 cd "$(dirname "$0")/.."
-who=$(aws sts get-caller-identity --profile "$PROFILE" --query Arn --output text)
-if [ "$who" != "$EXPECTED" ]; then
-  echo "profile $PROFILE is $who, not $EXPECTED (account 137953273942); nothing synced" >&2
+# The user the profile must be: GROCERY_AWS_ARN from the environment, else from scripts/local.env (untracked; a copy of
+# scripts/local.env.example), so the repo names no account. With neither, nothing is asked of AWS.
+# Only GROCERY_AWS_ARN is taken from the file, read in a subshell: a line there setting anything else (the profile,
+# the day) never reaches this script.
+if [ -z "${GROCERY_AWS_ARN:-}" ] && [ -f scripts/local.env ]; then
+  GROCERY_AWS_ARN=$(. ./scripts/local.env && printf %s "${GROCERY_AWS_ARN:-}")
+fi
+EXPECTED=${GROCERY_AWS_ARN:-}
+if [ -z "$EXPECTED" ]; then
+  echo "GROCERY_AWS_ARN is not set: put your deploy user's ARN in scripts/local.env (a copy of scripts/local.env.example) or in the environment; nothing synced" >&2
   exit 1
 fi
+who=$(aws sts get-caller-identity --profile "$PROFILE" --query Arn --output text)
+if [ "$who" != "$EXPECTED" ]; then
+  echo "profile $PROFILE is $who, not $EXPECTED; nothing synced" >&2
+  exit 1
+fi
+# The archive bucket from the collector stack's outputs (template.yaml), as publish.sh reads the site bucket from the
+# site stack's: a read that fails, or a name that is not the stack's archive bucket's, stops the sync.
+BUCKET=$(aws cloudformation describe-stacks --stack-name "$STACK" --profile "$PROFILE" --region "$REGION" \
+  --query "Stacks[0].Outputs[?OutputKey=='ArchiveBucketName'].OutputValue" --output text) || {
+  echo "the outputs of stack $STACK could not be read; nothing synced" >&2
+  exit 1
+}
+case "$BUCKET" in
+  "$ARCHIVE_PREFIX"?*) ;;
+  *) echo "stack output ArchiveBucketName is '$BUCKET', not a $ARCHIVE_PREFIX* bucket; nothing synced" >&2; exit 1 ;;
+esac
 aws s3 sync "s3://$BUCKET/raw/" data/raw/ --exclude '*' \
   --include "chain=*/date=$day/PriceFull*" --include "chain=*/date=$day/pricefull*" \
   --include "chain=*/date=$day/PromoFull*" --include "chain=*/date=$day/promofull*" \

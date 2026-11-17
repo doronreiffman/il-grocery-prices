@@ -15,8 +15,8 @@ Grade, quoted from the approved design (`docs/store-first.md`, "Grade"): "the pu
 ## Global Constraints
 
 - The grade above binds every task: test-first, a mutation for every rule, a fresh review per task and of the whole branch, and the owner's read of a real day's built pages before merge.
-- Branch `q33-store-first`, worktree `/Users/doronreiffman/Projects/il-grocery-prices-q33-store-first`. One commit per task, each message naming q33. Never push; no `gh`; no AWS write, deploy or upload (each is the owner's go, outside this plan). Before each commit, run `git status` and stage only the task's files.
-- `PY` is `/Users/doronreiffman/Projects/il-grocery-prices/.venv/bin/python`. The worktree has no venv; pytest's `pythonpath` (`src`, `tests`) makes it test the worktree's code. Commands run from the worktree root.
+- Branch `q33-store-first`, worktree `../il-grocery-prices-q33-store-first` (a sibling of the main checkout). One commit per task, each message naming q33. Never push; no `gh`; no AWS write, deploy or upload (each is the owner's go, outside this plan). Before each commit, run `git status` and stage only the task's files.
+- `PY` is `../il-grocery-prices/.venv/bin/python`, the main checkout's. The worktree has no venv; pytest's `pythonpath` (`src`, `tests`) makes it test the worktree's code. Commands run from the worktree root.
 - The full test command: `$PY -m pytest -o addopts="" --cov=collector --cov=src/basket --cov=src/shopper --cov-fail-under=95 -q`. Baseline on main at fd2d30d: 2,514 tests, 99.86%. Measure it once on the new branch before Task 1 and write it in "Deviations". The floor is 95%. The new modules `verdict.py` and `chart.py` reach 100%.
 - Test-first: a failing test before the code, for every rule.
 - A named mutation in `scripts/mutation_check.py` for every rule, added in the task that adds the rule. The name says what the break does, then the group in brackets: `(q33 verdict)`, `(q33 golden)`, `(q33 chart)`, `(q33 product)`, `(q33 words)`, `(q33 script)`, `(q33 picker)`, `(q33 front)`, `(q33 siteday)`, `(q33 method)`. New targets: `SHOP_VERDICT = ("src/shopper/verdict.py", ["tests/test_verdict.py"])`, `SHOP_CHART = ("src/shopper/chart.py", ["tests/test_chart.py"])`, `VERDICT_FOR_SHOP_GOLDEN = ("src/shopper/verdict.py", ["tests/test_golden_90.py"])`. Only pytest exit 1 counts as caught. `tests/test_mutation_targets.py` runs with the suite and refuses a target whose text or test is gone.
@@ -444,7 +444,7 @@ WORKED_OUT = "How this is worked out"
 
   No `site-days/`, `days/`, `forecasts/`, `scores/` or `ledger` line moves, nor the front, method, record or basket page. The reason in the commit: the product pages' verdict, chart and fold-out replace P7, P8, the price-change text and P9.
 - [ ] **Step 7: Measure a real day.**
-  1. Run `PYTHONPATH=src $PY -m shopper.build --day <the real day> --collected-by 11:48 --data /Users/doronreiffman/Projects/il-grocery-prices/data --site site`. This writes into the worktree's own `site/`, which is gitignored. In the main checkout's `data/` it rewrites the day's covered registry (same rules, same bytes) and adds one basket record.
+  1. Run `PYTHONPATH=src $PY -m shopper.build --day <the real day> --collected-by 11:48 --data ../il-grocery-prices/data --site site`. This writes into the worktree's own `site/`, which is gitignored. In the main checkout's `data/` it rewrites the day's covered registry (same rules, same bytes) and adds one basket record.
   2. Run `PYTHONPATH=src $PY -m shopper.check site`. Expected: exit 0.
   3. Run `find site/p -name '*.html' -exec stat -f '%z %N' {} + | sort -n | tail -3`, and take the median too.
   4. Expected: the largest page is under 45,000 bytes. Write in "Deviations" the largest page, its barcode, the median, the days of records the day's history holds, and the golden's largest day-120 page.
@@ -611,7 +611,7 @@ def column_ready(column_days, column: str, day: date) -> bool   # front_ready fo
   - Golden: the front assertions read `store/<key>.html` in place of `index.html`, under the old rule, with the same rows per column. Add `test_the_golden_root_is_the_picker`.
 - [ ] **Step 2: Run** those test files. Expected: the new tests fail.
 - [ ] **Step 3: Implement**, with each touched module's docstring updated: shell, pages, check, site, and the templates' comments.
-- [ ] **Step 4: Run** the full test command, then `/Users/doronreiffman/Projects/il-grocery-prices/.venv/bin/cfn-lint --regions il-central-1 -- template.yaml site-template.yaml`. Expected: all pass, lint clean.
+- [ ] **Step 4: Run** the full test command, then `../il-grocery-prices/.venv/bin/cfn-lint --regions il-central-1 -- template.yaml site-template.yaml`. Expected: all pass, lint clean.
 - [ ] **Step 5: Repin the golden.** Expected: every `day/` line and every final page moves (the header and the script tag). Also the new `store/` pages. `site-days/`, `days/`, `forecasts/`, `scores/` and `ledger` do not move. Reason: the header and the one script on every page, the root as the picker, a front page per store type.
 - [ ] **Step 6: Mutations**, `(q33 picker)`:
   - `SHOP_SHELL`: "the script at the root's depth on every page"; "the pick link without #pick";
@@ -767,7 +767,7 @@ def store_promotions_line(column: str, promotions: int, products: int) -> str
 
 - [ ] **Step 1:** Run the full test command. Expected: every test passes, coverage is at or above 95%, and `verdict.py` and `chart.py` are at 100%.
 - [ ] **Step 2:** Run `$PY scripts/mutation_check.py "q33"` (every q33 group; it edits files in place, so nothing else runs until it prints that the files are restored), then the staleness check. Expected: every q33 mutation CAUGHT, `none stale`. The full check is CI's weekly run.
-- [ ] **Step 3:** Run `/Users/doronreiffman/Projects/il-grocery-prices/.venv/bin/cfn-lint --regions il-central-1 -- template.yaml site-template.yaml`. Expected: clean.
+- [ ] **Step 3:** Run `../il-grocery-prices/.venv/bin/cfn-lint --regions il-central-1 -- template.yaml site-template.yaml`. Expected: clean.
 - [ ] **Step 4:** Write the counts Steps 1 and 2 printed (the test count, the coverage, the mutation count from the staleness check), with the date, in README.md's "Tests" row and "Tests that are themselves tested", and in "Deviations". Commit `git add README.md docs/store-first-plan.md && git commit -m "README: test and mutation counts after store first (q33)"`. Stop: the merge, push and deploy are the owner's go.
 
 ## Deploying this branch (the owner's go; not a task)

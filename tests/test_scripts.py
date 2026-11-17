@@ -1,15 +1,20 @@
 """The hand scripts, run against a stand-in `aws` that records each call and answers as the CLI does; neither script
 ever reaches AWS here.
 
-The stand-in answers the identity check with the expected user (or `IDENTITY`); the site stack's outputs when
-`SITE_BUCKET` is set, else AWS's words for a stack that does not exist yet (as sync.sh quotes them); a recursive
-`s3 cp` from the bucket by copying that folder of `FAKE_BUCKET`, a local folder standing in for the bucket; the listing
-of the `p/` keys with `P_KEYS`, as `--output text` prints it; and an invalidation with its id. `FAIL_READ` names one
-read that fails instead, a folder's copy or `p` for the listing, as the CLI fails one; `FAIL_SYNC` one upload, by its
+The stand-in answers the identity check with the expected user (or `IDENTITY`); the collector stack's output with the
+archive bucket (or `ARCHIVE_BUCKET`); the site stack's outputs when `SITE_BUCKET` is set, else AWS's words for a stack
+that does not exist yet (as sync.sh quotes them); a recursive `s3 cp` from the bucket by copying that folder of
+`FAKE_BUCKET`, a local folder standing in for the bucket; the listing of the `p/` keys with `P_KEYS`, as `--output text`
+prints it; and an invalidation with its id. `FAIL_READ` names one read that fails instead, a folder's copy, `p` for the
+listing or `il-grocery-prices` for the collector stack's outputs, as the CLI fails one; `FAIL_SYNC` one upload, by its
 `--include` pattern. Every other call (each `s3 sync`) is recorded and does nothing. `publish.sh` runs with a stand-in
 `python` that records each call too and answers the site check with `CHECK_EXIT` (the check's own tests are
 `tests/test_shop_check.py`); every other module, the publish guard, runs for real (`shopper.guard`), over a build made
 as `tests/test_shop_guard.py` makes one.
+
+The user the scripts expect, `GROCERY_AWS_ARN`, is a made-up one (`ARN`) given in the environment. The tests of
+`scripts/local.env` run a copy of the script beside a `local.env` of their own, so the repo's own, which holds the
+reader's real user, is never read or written here.
 """
 import os
 import re
@@ -31,8 +36,11 @@ from shopper.siteday import site_day_path
 from test_shop_guard import LATER_PUBLISHED, NEXT_DAY, PAGES, a_bucket, a_site
 
 ROOT = Path(__file__).resolve().parent.parent
-ARN = "arn:aws:iam::137953273942:user/doron-admin"
-ARCHIVE = "il-grocery-prices-archivebucket-fmnv3dorojol"
+ARN = "arn:aws:iam::111111111111:user/example"
+OTHER_ARN = "arn:aws:iam::222222222222:user/someone"
+# A name of the form CloudFormation gave the archive bucket, which template.yaml does not name.
+ARCHIVE_PREFIX = "il-grocery-prices-archivebucket-"
+ARCHIVE = f"{ARCHIVE_PREFIX}0123456789ab"
 SITE_BUCKET = "il-grocery-prices-site-sitebucket-0123456789ab"
 PROFILE = ["--profile", "flights-sam", "--region", "il-central-1"]
 # Each call's arguments one a line, then a line "--"; the stand-in python's calls start with a line "python".
@@ -42,6 +50,14 @@ echo -- >> "$AWS_CALLS"
 case "$1 $2" in
   "sts get-caller-identity") echo "${{IDENTITY-{ARN}}}" ;;
   "cloudformation describe-stacks")
+    if [ "$4" = "${{FAIL_READ:-}}" ]; then
+      echo "An error occurred (AccessDenied) when calling the DescribeStacks operation" >&2
+      exit 254
+    fi
+    if [ "$4" = il-grocery-prices ]; then
+      case "$*" in *ArchiveBucketName*) echo "${{ARCHIVE_BUCKET-{ARCHIVE}}}" ;; esac
+      exit 0
+    fi
     if [ -z "${{SITE_BUCKET:-}}" ]; then
       echo "An error occurred (ValidationError) when calling the DescribeStacks operation: Stack with id il-grocery-prices-site does not exist" >&2
       exit 254
@@ -72,11 +88,13 @@ exec "$REAL_PYTHON" "$@"
 """
 # Variables the scripts or the stand-ins read, never taken from the environment the tests run in.
 _OWN = ("SITE_DIR", "PYTHON", "SITE_BUCKET", "IDENTITY", "DISTRIBUTION", "CHECK_EXIT", "P_KEYS", "FAKE_BUCKET",
-        "FAIL_READ", "FAIL_SYNC")
+        "FAIL_READ", "FAIL_SYNC", "ARCHIVE_BUCKET", "GROCERY_AWS_ARN")
 
 
-def _run(tmp_path: Path, script: str, *args: str, **env: str) -> tuple[subprocess.CompletedProcess, list[list[str]]]:
-    """Run `scripts/<script>` with the stand-ins on PATH and `env` added; the run and each call's arguments."""
+def _run(tmp_path: Path, script: str | Path, *args: str,
+         **env: str | None) -> tuple[subprocess.CompletedProcess, list[list[str]]]:
+    """Run `scripts/<script>` (or the script at the path given) with the stand-ins on PATH and `env` added, a None
+    leaving that variable out; the run and each call's arguments."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
     for name, text in (("aws", FAKE_AWS), ("python", FAKE_PYTHON)):
@@ -87,8 +105,10 @@ def _run(tmp_path: Path, script: str, *args: str, **env: str) -> tuple[subproces
     base = {key: value for key, value in os.environ.items() if key not in _OWN}
     env = base | {"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}", "AWS_CALLS": str(calls),
                   "TMPDIR": str(tmp_path), "PYTHON": str(bin_dir / "python"), "REAL_PYTHON": sys.executable,
-                  "FAKE_BUCKET": str(tmp_path / "published"), "P_KEYS": "None\n"} | env
-    run = subprocess.run(["sh", str(ROOT / "scripts" / script), *args], env=env, capture_output=True, text=True)
+                  "FAKE_BUCKET": str(tmp_path / "published"), "P_KEYS": "None\n", "GROCERY_AWS_ARN": ARN} | env
+    env = {key: value for key, value in env.items() if value is not None}
+    path = script if isinstance(script, Path) else ROOT / "scripts" / script
+    run = subprocess.run(["sh", str(path), *args], env=env, capture_output=True, text=True)
     return run, [call.strip("\n").split("\n") for call in calls.read_text().split("--\n") if call.strip()]
 
 
@@ -198,6 +218,33 @@ def test_sync_sh_never_writes_to_aws(tmp_path):
     assert len(lines) == len(_syncs(stack))  # every copy in the script ran above
     for line in lines:
         assert re.search(r'aws s3 sync "s3://[^"]+" (?!"?s3:)', line), line
+
+
+ARCHIVE_OUTPUT = ["cloudformation", "describe-stacks", "--stack-name", "il-grocery-prices", *PROFILE, "--query",
+                  "Stacks[0].Outputs[?OutputKey=='ArchiveBucketName'].OutputValue", "--output", "text"]
+
+
+def test_sync_sh_reads_the_archive_bucket_from_the_collector_stack(tmp_path):
+    """The archive bucket's name is the collector stack's output (template.yaml's `ArchiveBucketName`), read after the
+    identity check, and every copy from the archive is from that bucket."""
+    other = f"{ARCHIVE_PREFIX}ba9876543210"
+    calls = _sync(tmp_path, "2026-11-07", ARCHIVE_BUCKET=other)
+    assert calls[0][:2] == ["sts", "get-caller-identity"] and calls[1] == ARCHIVE_OUTPUT
+    archive = [call for call in _syncs(calls) if call[3].startswith("data/")]
+    assert len(archive) == 7 and all(call[2].startswith(f"s3://{other}/") for call in archive)
+
+
+@pytest.mark.parametrize(("env", "said"), [
+    ({"FAIL_READ": "il-grocery-prices"}, "the outputs of stack il-grocery-prices could not be read"),
+    *[({"ARCHIVE_BUCKET": name}, f"stack output ArchiveBucketName is '{name}', not a {ARCHIVE_PREFIX}* bucket")
+      for name in ("", "None", SITE_BUCKET, ARCHIVE_PREFIX)],
+])
+def test_sync_sh_syncs_nothing_without_the_archive_bucket(tmp_path, env, said):
+    """A read of the collector stack that fails, or an output that does not name its archive bucket, stops the sync
+    before any copy, with its own message."""
+    run, calls = _run(tmp_path, "sync.sh", "2026-11-07", **env)
+    assert run.returncode == 1 and run.stderr.endswith(f"{said}; nothing synced\n"), run.stderr
+    assert calls[-1] == ARCHIVE_OUTPUT and not _syncs(calls)
 
 
 # ---- publish.sh ----
@@ -427,7 +474,7 @@ def test_publish_sh_needs_the_shopper_marker(tmp_path, marker):
 
 
 @pytest.mark.parametrize(("env", "said"), [
-    ({"IDENTITY": "arn:aws:iam::111111111111:user/someone"}, "profile flights-sam is arn:aws:iam::111111111111"),
+    ({"IDENTITY": OTHER_ARN}, f"profile flights-sam is {OTHER_ARN}, not {ARN}; nothing uploaded"),
     ({"SITE_BUCKET": ARCHIVE}, f"stack output SiteBucketName is '{ARCHIVE}'"),
     ({"SITE_BUCKET": "il-grocery-prices-site-sitebucket-"}, "not a il-grocery-prices-site-sitebucket-* bucket"),
     ({"DISTRIBUTION": ""}, "stack output SiteDistributionId is ''"),
@@ -444,3 +491,97 @@ def test_publish_sh_refuses_a_site_path_its_filters_would_misread(tmp_path):
     run, calls = _publish(tmp_path, odd)
     assert run.returncode == 1 and "has [, ], ? or *" in run.stderr
     assert [call[0] for call in calls] == ["sts"]
+
+
+# ---- both scripts: the user they expect ----
+
+IDENTITY_CHECK = ["sts", "get-caller-identity", "--profile", "flights-sam", "--query", "Arn", "--output", "text"]
+NOTHING = {"sync.sh": "nothing synced", "publish.sh": "nothing uploaded"}
+
+
+def _copy(tmp_path: Path, script: str, local_env: str | None) -> Path:
+    """A copy of `script` in a `scripts/` folder of its own, beside a `local.env` holding `local_env` (none when None):
+    the repo's own `scripts/local.env` is never read or written by a test."""
+    folder = tmp_path / "copy" / "scripts"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / script).write_text((ROOT / "scripts" / script).read_text())
+    if local_env is not None:
+        (folder / "local.env").write_text(local_env)
+    return folder / script
+
+
+def _checked(tmp_path: Path, script: str, local_env: str | None = None,
+             **env: str | None) -> tuple[subprocess.CompletedProcess, list[list[str]], bool]:
+    """Run a copy of `script` (beside `local_env`) one step past its identity check: sync.sh to its end, the stand-in
+    answering every read, and publish.sh to the marker an empty folder lacks. The run, its calls, and whether the
+    identity check passed."""
+    path = _copy(tmp_path, script, local_env)
+    if script == "sync.sh":
+        run, calls = _run(tmp_path, path, "2026-11-07", **env)
+        return run, calls, run.returncode == 0
+    empty = tmp_path / "empty"
+    empty.mkdir(exist_ok=True)
+    run, calls = _run(tmp_path, path, **({"SITE_DIR": str(empty)} | env))
+    marker = f"{empty} has no {MARKER} marker, so it is not a shopper site build; nothing uploaded\n"
+    return run, calls, run.stderr == marker
+
+
+@pytest.mark.parametrize("script", NOTHING)
+def test_the_user_expected_is_taken_from_the_environment_first(tmp_path, script):
+    run, calls, passed = _checked(tmp_path, script, f"GROCERY_AWS_ARN={OTHER_ARN}\n")
+    assert passed, run.stderr
+    assert calls[0] == IDENTITY_CHECK
+
+
+@pytest.mark.parametrize("script", NOTHING)
+@pytest.mark.parametrize("given", [None, ""])
+def test_the_user_expected_is_read_from_scripts_local_env(tmp_path, script, given):
+    """With no `GROCERY_AWS_ARN` in the environment (or an empty one), the script reads it from `scripts/local.env`
+    beside it, and compares the identity with that file's value."""
+    local = f"# a comment, as the example has\nGROCERY_AWS_ARN={ARN}\n"
+    run, calls, passed = _checked(tmp_path / "same", script, local, GROCERY_AWS_ARN=given)
+    assert passed, run.stderr
+    run, calls, passed = _checked(tmp_path / "other", script, local, GROCERY_AWS_ARN=given, IDENTITY=OTHER_ARN)
+    assert not passed and run.returncode == 1
+    assert run.stderr == f"profile flights-sam is {OTHER_ARN}, not {ARN}; {NOTHING[script]}\n"
+
+
+@pytest.mark.parametrize("script", NOTHING)
+def test_scripts_local_env_sets_nothing_but_the_user_expected(tmp_path, script):
+    """Only `GROCERY_AWS_ARN` is taken from `scripts/local.env`: a line there setting the profile, or sync.sh's day,
+    changes nothing the script asks of AWS (a file sourced whole would set them all)."""
+    run, calls, passed = _checked(tmp_path, script, f"GROCERY_AWS_ARN={ARN}\nPROFILE=other\nday=2026-01-01\n",
+                                  GROCERY_AWS_ARN=None)
+    assert passed, run.stderr
+    assert calls[0] == IDENTITY_CHECK
+    assert not [call for call in calls if "other" in call or any("2026-01-01" in arg for arg in call)]
+
+
+@pytest.mark.parametrize("script", NOTHING)
+@pytest.mark.parametrize(("given", "local_env"), [(None, None), ("", None), (None, "# no value here\n"),
+                                                  (None, "GROCERY_AWS_ARN=\n")])
+def test_with_no_user_expected_a_script_asks_nothing_of_aws(tmp_path, script, given, local_env):
+    run, calls, passed = _checked(tmp_path, script, local_env, GROCERY_AWS_ARN=given)
+    assert run.returncode == 1
+    assert run.stderr == ("GROCERY_AWS_ARN is not set: put your deploy user's ARN in scripts/local.env (a copy of "
+                          f"scripts/local.env.example) or in the environment; {NOTHING[script]}\n")
+    assert calls == []
+
+
+@pytest.mark.parametrize("script", NOTHING)
+def test_under_another_user_a_script_stops_after_the_identity_check(tmp_path, script):
+    """The refusal names the user found and the one expected, and nothing else: no account the repo would hold."""
+    run, calls, passed = _checked(tmp_path, script, IDENTITY=OTHER_ARN)
+    assert run.returncode == 1
+    assert run.stderr == f"profile flights-sam is {OTHER_ARN}, not {ARN}; {NOTHING[script]}\n"
+    assert calls == [IDENTITY_CHECK]
+
+
+def test_scripts_local_env_is_ignored_and_its_example_holds_no_real_user():
+    """`scripts/local.env` holds the reader's own user, so git ignores it; the example committed beside it sets the
+    one variable, to a made-up user."""
+    ignored = subprocess.run(["git", "check-ignore", "-q", "scripts/local.env"], cwd=ROOT)
+    assert ignored.returncode == 0
+    lines = (ROOT / "scripts" / "local.env.example").read_text().splitlines()
+    assert [line for line in lines if not line.startswith("#")] == [
+        "GROCERY_AWS_ARN=arn:aws:iam::123456789012:user/your-user"]

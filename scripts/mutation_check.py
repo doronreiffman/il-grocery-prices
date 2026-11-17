@@ -238,6 +238,8 @@ CHAINS_FOR_SHOP_COLUMNS = ("src/basket/chains.py", ["tests/test_columns.py"])
 # The survey reads each store's latest promotion file through basket.extract.day_files, which its tests must catch too.
 EXTRACT_FOR_SHOP_SURVEY = ("src/basket/extract.py", ["tests/test_survey.py"])
 SYNC_SCRIPT = ("scripts/sync.sh", ["tests/test_scripts.py"])
+# scripts/local.env, which holds the reader's own AWS user, ignored by git (q42).
+GITIGNORE = (".gitignore", ["tests/test_scripts.py"])
 # The site run's timing script (Task 25a), its --make guard.
 TIME_SITE_RUN = ("scripts/time_site_run.py", ["tests/test_time_site_run.py"])
 EXTRACT = ("src/basket/extract.py", ["tests/test_extract.py"])
@@ -375,6 +377,21 @@ _PUBLISH_UPLOAD = ('# One allowlisted sync per kind of file, its content type se
                    '  }\n'
                    '}\n'
                    + _PUBLISH_ORDER)
+
+# sync.sh's identity check and its read of the archive bucket from the collector stack, for the mutation that reads the
+# bucket first (q42 archive).
+_SYNC_IDENTITY = ('who=$(aws sts get-caller-identity --profile "$PROFILE" --query Arn --output text)\n'
+                  'if [ "$who" != "$EXPECTED" ]; then\n'
+                  '  echo "profile $PROFILE is $who, not $EXPECTED; nothing synced" >&2\n'
+                  '  exit 1\n'
+                  'fi\n')
+_SYNC_ARCHIVE = ('BUCKET=$(aws cloudformation describe-stacks --stack-name "$STACK" --profile "$PROFILE" --region "$REGION" \\\n'
+                 '  --query "Stacks[0].Outputs[?OutputKey==\'ArchiveBucketName\'].OutputValue" --output text) || {\n'
+                 '  echo "the outputs of stack $STACK could not be read; nothing synced" >&2\n'
+                 '  exit 1\n'
+                 '}\n')
+_SYNC_ARCHIVE_COMMENT = ("# The archive bucket from the collector stack's outputs (template.yaml), as publish.sh reads the site bucket from the\n"
+                         "# site stack's: a read that fails, or a name that is not the stack's archive bucket's, stops the sync.\n")
 
 # name -> (file and the tests that must catch it, text as it stands, the broken replacement)
 MUTATIONS = {
@@ -3332,6 +3349,21 @@ MUTATIONS = {
     'S6 calling every count days tracked (q36 method)': (SHOP_PAGES, ', named as days with a known "\n         "price when some have none (\\"Lowest in the 83 days with a known price.\\")', ''),
     'the hiring links run together (q36 front)': (SHOP_PAGES, '    links = " ".join(f\'<a href="{escape(href)}">', '    links = "".join(f\'<a href="{escape(href)}">'),
     "S4 saying every badge names the store type (q36 method)": (SHOP_PAGES, "otherwise. A product page's badge names the store type", "otherwise. The badge names the store type"),
+    # q42: the AWS user both scripts expect, from the environment or scripts/local.env, and sync.sh's archive bucket from
+    # the collector stack's outputs
+    "sync.sh: scripts/local.env read over the environment (q42 identity)": (SYNC_SCRIPT, 'if [ -z "${GROCERY_AWS_ARN:-}" ] && [ -f scripts/local.env ]; then', "if [ -f scripts/local.env ]; then"),
+    "sync.sh: scripts/local.env not read (q42 identity)": (SYNC_SCRIPT, '  GROCERY_AWS_ARN=$(. ./scripts/local.env && printf %s "${GROCERY_AWS_ARN:-}")\n', "  :\n"),
+    "sync.sh: scripts/local.env sourced whole, its other lines setting the script's own (q42 identity)": (SYNC_SCRIPT, '  GROCERY_AWS_ARN=$(. ./scripts/local.env && printf %s "${GROCERY_AWS_ARN:-}")\n', "  . ./scripts/local.env\n"),
+    "sync.sh: no user expected let through to AWS (q42 identity)": (SYNC_SCRIPT, 'if [ -z "$EXPECTED" ]; then', "if false; then"),
+    "sync.sh under another identity (q42 identity)": (SYNC_SCRIPT, 'if [ "$who" != "$EXPECTED" ]; then', "if false; then"),
+    "publish.sh: scripts/local.env read over the environment (q42 identity)": (PUBLISH_SCRIPT, 'if [ -z "${GROCERY_AWS_ARN:-}" ] && [ -f scripts/local.env ]; then', "if [ -f scripts/local.env ]; then"),
+    "publish.sh: scripts/local.env not read (q42 identity)": (PUBLISH_SCRIPT, '  GROCERY_AWS_ARN=$(. ./scripts/local.env && printf %s "${GROCERY_AWS_ARN:-}")\n', "  :\n"),
+    "publish.sh: scripts/local.env sourced whole, its other lines setting the script's own (q42 identity)": (PUBLISH_SCRIPT, '  GROCERY_AWS_ARN=$(. ./scripts/local.env && printf %s "${GROCERY_AWS_ARN:-}")\n', "  . ./scripts/local.env\n"),
+    "publish.sh: no user expected let through to AWS (q42 identity)": (PUBLISH_SCRIPT, 'if [ -z "$EXPECTED" ]; then', "if false; then"),
+    "scripts/local.env not ignored by git (q42 identity)": (GITIGNORE, "\nscripts/local.env\n", "\n"),
+    "sync.sh: the archive bucket read before the identity check (q42 archive)": (SYNC_SCRIPT, _SYNC_IDENTITY + _SYNC_ARCHIVE_COMMENT + _SYNC_ARCHIVE, _SYNC_ARCHIVE_COMMENT + _SYNC_ARCHIVE + _SYNC_IDENTITY),
+    "sync.sh: a failed read of the collector stack refused in the wrong words (q42 archive)": (SYNC_SCRIPT, "--output text) || {\n", "--output text) || true || {\n"),
+    "sync.sh: any name taken for the archive bucket (q42 archive)": (SYNC_SCRIPT, '  "$ARCHIVE_PREFIX"?*) ;;\n', "  *) ;;\n"),
 }
 
 

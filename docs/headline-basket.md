@@ -106,7 +106,7 @@ The page tests pin both lists: every "always" string present, no "never" string 
 
 1. The owner reads section 30(ה) in an official copy (Nevo, or the Knesset's law database) in his own browser and records the wording and the date in `docs/terms.md`. Today's basis is a Hebrew Wikisource copy of 2026-07-21, read 2026-10-31: anyone may access the publication, the information and the data in it and use them freely and without payment, for private or commercial purposes. Changes since July 2026 are UNVERIFIED.
 2. The first page is reviewed on the Mac; the first upload is by hand on the owner's go.
-3. The repo stays private and the site is `noindex`, reached by link, until the owner launches; the agent notes leave the repo first (QUEUE q11). The credit line does not need the repo's address.
+3. The site stays `noindex`, reached by link, until the owner launches. The repo has been public since 4 November 2026. The credit line does not need the repo's address.
 
 ## Testing (the project's standard)
 

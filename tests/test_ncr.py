@@ -454,7 +454,7 @@ def test_name_sent_again_on_both_reads_is_unreadable(answers, repeated):
 
 
 def test_a_name_sent_again_reads_the_listing_again_from_the_start_once(caplog):
-    """Ruling R34 (amends R21; QUEUE q8): retry run 101523Z-retry-8c22 (2026-11-01 10:15Z) stopped on a
+    """Ruling R34 (amends R21; q8): retry run 101523Z-retry-8c22 (2026-11-01 10:15Z) stopped on a
     name sent again from iDisplayStart 890, and the next run, two minutes later, read the listing
     through. Likely, unproven: files published while the pages were read moved the order. A repeated
     name reads the listing again from iDisplayStart 0, in the same session, once, and logs that it did."""

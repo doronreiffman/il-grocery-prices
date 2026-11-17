@@ -480,7 +480,7 @@ def shufersal_morning(store, price_full=True, promo_full=True):
 
 @pytest.mark.parametrize("kind", ["PriceFull", "PromoFull"])
 def test_a_full_kind_no_run_listed_is_a_failed_run(kind):
-    """Ruling R35 (QUEUE q7): R31 takes the union over a chain's retry runs, so a day Shufersal lists
+    """Ruling R35 (q7): R31 takes the union over a chain's retry runs, so a day Shufersal lists
     no PriceFull at all stayed silent while its Stores run listed something. Each full kind the chain
     collects must be listed by some run that day."""
     store = MemoryStore()

@@ -533,8 +533,8 @@ def operations():
 
 
 def test_every_aws_command_in_the_doc_names_the_project_account(operations):
-    """Every other profile on the owner's Mac is the employer's: a command without --profile
-    flights-sam would run against the employer's default profile."""
+    """A command without --profile flights-sam would run against whatever default profile the
+    shell has."""
     commands = [c for c in _commands(operations) if re.search(r"(^|[\s(])(aws|sam deploy)\s", c)]
     assert commands
     for command in commands:

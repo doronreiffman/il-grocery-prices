@@ -84,7 +84,7 @@ The usernames are public (the government prints them) and there are no passwords
 
 ## Identification
 
-- User-Agent `il-grocery-prices/<version> (+<repo URL>; <contact email>)`, set at deploy, never written into the repo. While the repo is private its URL returns 404; the contact email is what matters until launch.
+- User-Agent `il-grocery-prices/<version> (+<repo URL>; <contact email>)`, set at deploy, never written into the repo. The repo has been public since 4 November 2026, so the URL leads to this code.
 - One request at a time per chain, a short pause between files, at most one retry per file inside a run and up to two more requests, ten seconds apart, for a Shufersal listing page that timed out; the retry run is the real retry.
 
 ## Alerts
@@ -99,7 +99,7 @@ The usernames are public (the government prints them) and there are no passwords
 ## Security
 
 - The Lambda's role may read and write under `raw/`, `manifests/` and `state/`, and may not delete.
-- AWS: the owner's personal account through the `flights-sam` profile, region il-central-1, a separate stack `il-grocery-prices`. Nothing touches the owner's employer.
+- AWS: the owner's personal account through the `flights-sam` profile, region il-central-1, a separate stack `il-grocery-prices`.
 
 ## Testing and shipping (the owner's standard)
 
