@@ -1,18 +1,25 @@
-# Israeli grocery price tracker: listed prices and promotions at five chains
+# Is it actually a deal? Israeli supermarket promotions, checked against each product's price history
 
 [![CI](https://github.com/doronreiffman/il-grocery-prices/actions/workflows/ci.yml/badge.svg)](https://github.com/doronreiffman/il-grocery-prices/actions/workflows/ci.yml) [![Mutation check](https://github.com/doronreiffman/il-grocery-prices/actions/workflows/mutations.yml/badge.svg)](https://github.com/doronreiffman/il-grocery-prices/actions/workflows/mutations.yml) ![Python 3.13](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white) ![DuckDB](https://img.shields.io/badge/DuckDB-Parquet-FFF000?logo=duckdb&logoColor=black) ![AWS SAM](https://img.shields.io/badge/AWS%20SAM-Lambda%20%C2%B7%20S3%20%C2%B7%20CloudFront-232F3E)
 
-Collects, every morning, the price and promotion files five Israeli supermarket chains must publish by law, keeps them in a write-once archive for ten years, and builds from them a site for a shopper in the aisle, with the same basket of 32 identical products priced at each chain beside it. The site's step one has been live since 10 November 2026, and its next step, store first, since 12 November: the shopper picks the store they are in, one of nine store formats (Shufersal's four large formats, Carrefour's two, and Rami Levy, Osher Ad and Yochananof whole); each product's page then says, when today's promotion there can be judged, "Deal" if it is at least ₪1.00 below what the product usually costs there, sales included (the middle of its day prices over the past 90 days, each day the lower of its listed price and its sale price), with the shekels saved, else "No deal"; beside it, a price chart, when it was last this low and how often it goes on sale. Each store format has a front page of its deals, biggest saving first, and the basket is kept beside them. Those front pages list no deal yet, since a product needs 20 days of price history first and none has 20 days of records until about 21 November. From a format's 30th day of records, the site will freeze in public a daily forecast for each product there of a promotion within the next 14 days, score it 14 days later, and show the odds to no one until that record beats two rules of thumb.
+A shopper in an Israeli supermarket sees a promotion and wants to know: is it actually a deal? This site, "Deal or No Deal", answers for the store they are in, one of nine store formats across five chains. It compares today's promotion price with what the product usually costs at that store format (the middle of its daily prices over the past 90 days, sales included) and, when it can judge, says "Deal", with the shekels saved, when the promotion is at least ₪1.00 lower, else "No deal". Beside the answer: a chart of the price paid each day, when it was last this low, and how often it goes on sale.
 
-**Live site:** [d153udx05irk2f.cloudfront.net](https://d153udx05irk2f.cloudfront.net) · **Design notes:** [docs/](docs/README.md) · **Run it yourself:** [docs/operations.md](docs/operations.md)
+The prices are the chains' own. Israel's food-competition law (section 30) makes the large supermarket chains publish their prices and promotions as files on the web, store by store. Every morning a collector on AWS (a Lambda function in Tel Aviv) downloads five chains' files and keeps them unchanged in a write-once archive; a second function then builds the whole site from the last 90 days and publishes it as static pages on S3 and CloudFront.
+
+**Live site:** [d153udx05irk2f.cloudfront.net](https://d153udx05irk2f.cloudfront.net) · **Design notes:** [docs/](docs/README.md) · **Code:** [the collector](src/collector/), [the site](src/shopper/), [the basket](src/basket/), [the tests](tests/), the AWS templates ([functions and archive](template.yaml), [site](site-template.yaml)) · **Run it yourself:** [docs/operations.md](docs/operations.md)
 
 **Stack:** Python 3.13 · AWS SAM (Lambda, EventBridge Scheduler, S3 Object Lock, SNS, CloudWatch Logs) · DuckDB and Parquet · S3 + CloudFront for the site · healthchecks.io · GitHub Actions
 
 Built by Doron Reiffman ([LinkedIn](https://www.linkedin.com/in/doronreiffman)).
 
-![The basket page for 4 November 2026: three tiles reading lowest listed total ₪401.10 at Osher Ad, highest ₪487.42 at Carrefour and a 22% gap; the five chains' listed totals as bars that start at zero, lowest first; and the start of the item-by-item table of listed prices.](docs/img/basket.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/deal-page-dark.png">
+  <img alt="A product page at desktop width. The product's label at Osher Ad reads DEAL · ₪1.10 off, usually ₪5.00, sales included (90 days tracked), with today's price, ₪3.90, beside its barcode. Under it, a step chart of the price paid each day from 20 January: ₪5.00, with four week-long sales drawn as green drops to ₪3.90 and today's drop at the end. Then the lowest, highest and today's prices, last this low on 5 April, and on sale on 28 of the 90 days before today. At the side, the same product's deal at six other store formats." src="docs/img/deal-page-light.png">
+</picture>
 
-*The live page, as of 4 November 2026.*
+*Built by the site's own code from invented prices: 16 sample products (each name has בדיקה, "test", in it) at the five chains, dated 1 January to 30 April 2026, from the test suite's run of the whole site a day at a time ([tests/shopper_golden.py](tests/shopper_golden.py)). The page is as of 20 April 2026, its chart the 90 days before it. The live site's history starts on 1 November 2026, so its charts are still short, and its store pages list deals once a product has 20 days of prices (from about 21 November 2026).*
+
+Beside the deals, a basket page prices the same 32 everyday products, matched by barcode, at each of the five chains (listed prices, before promotions).
 
 ## At a glance
 
