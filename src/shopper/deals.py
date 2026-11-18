@@ -12,7 +12,9 @@ kilogram. By the link's kind (`shopper.promotions.kind`):
   as "N for ₪M" (Osher Ad's "2 for ₪120" on meat is ₪114.00 for 1.9 kg, ₪60 a kilogram; Carrefour's ₪22.00 for 0.25
   kg); within ₪0.01 of neither, the price is not read. In the promotions tables of 1 to 10 and 16 November 2026, all
   28,367 weighed fixed-price rows agreed with one or the other (27,525 a kilogram's price, 842 a total: Carrefour
-  627, Osher Ad 215). By the piece the figure is another measure's price (₪0.872 beside ₪8.72) and is never read.
+  627, Osher Ad 215); no kilogram's price there carried a `MinQty` of 0.25 or more other than 1 (only 0.01, 0.10 and
+  1), and no total a `MinQty` below 0.25 (0.25 to 3), so the figure decides and no cut-off on `MinQty` is coded. By
+  the piece the figure is another measure's price (a test fixture's ₪0.872 beside ₪8.72) and is never read.
 - "N for ₪M" (1 and 10) is `DiscountedPrice` ÷ `MinQty`, with "buy N" kept as the condition (`buy`; 1.5 for that
   meat). Both read from the fields of the variant most of the column's stores carry (Task 5), and a price is read
   when both read as numbers, N above 0.

@@ -443,9 +443,10 @@ RULES = (
      "promotion with \"price not read\" and is not on promotion."),
     ("P4 Deal price.",
      "The price per unit after the promotion, per kilogram when the item is weighed, when buying the least that "
-     "qualifies: a fixed price (RewardType 3) is the link's DiscountedPrice, except on a weighed item, where the chain's "
-     "own price a kilogram (DiscountedPricePerMida) decides what the DiscountedPrice pays for: within ₪0.01 of it, one "
-     "kilogram; within ₪0.01 of it ÷ MinQty, MinQty kilograms, read as \"N for ₪M\"; neither, the price is not read; "
+     "qualifies: a fixed price (RewardType 3) is the link's DiscountedPrice, except on a weighed item (there the "
+     "chain's own price per kilogram, DiscountedPricePerMida, says what DiscountedPrice buys: if that figure is within "
+     "₪0.01 of DiscountedPrice, one kilogram; if not, but that figure is within ₪0.01 of DiscountedPrice ÷ MinQty, "
+     "MinQty kilograms, read as \"N for ₪M\"; if neither, the price is not read); "
      "\"N for ₪M\" (1 and 10) is M ÷ N, shown "
      "with \"buy N\"; percent off (2) is the median of the counted stores' own DiscountedPrice, its lowest and highest "
      "shown, and it must agree with the rate: within ₪0.01 of the column's listed price × (1 − DiscountRate ÷ 100), "

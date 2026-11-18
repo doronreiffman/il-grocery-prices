@@ -17,8 +17,8 @@ For each chain, from that day's manifests of its main and retry runs (MORNING) a
   that is blocked with no error is not a failed run: the `stopped` alert covers it. A main run's
   error is left to the retry run. Ruling R31: retry runs that together list nothing for the day,
   none of them blocked, are a failed run too, with the sum of their unparsed names: a portal change
-  that leaves every name unreadable, or dated another day, ends without an error. Ruling R35 (QUEUE
-  q7): a full kind the chain collects (PriceFull, PromoFull) that no run that day listed, main or
+  that leaves every name unreadable, or dated another day, ends without an error. Ruling R35 (q7):
+  a full kind the chain collects (PriceFull, PromoFull) that no run that day listed, main or
   retry, is a failed run too, unless one of its retry runs was blocked (as R31): R31's union over
   the retry runs stayed silent on a day Shufersal listed no PriceFull while its Stores run listed
   something. Ruling R36, as ruling R37 amends it: a retry run whose error is the run's own time stop
