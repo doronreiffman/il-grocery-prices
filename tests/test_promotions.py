@@ -104,6 +104,11 @@ def test_every_fixture_passes_its_chains_checks(slug):
     ("carrefour", "(0=A|0=B  C|0=D|0=B  C)", ("other",), ("A", "B  C", "D")),  # as published, no repeats
     ("carrefour", "()", (), ()),
     ("carrefour", "(2=A|2=B)", ("chain_card",), ("A", "B")),
+    # a lone term, no parentheses (Carrefour's files of 2026-11-18): read as a list of that one term
+    ("carrefour", "2=מועדון קרפור אשראי", ("chain_card",), ("מועדון קרפור אשראי",)),
+    ("carrefour", "0=A", ("other",), ("A",)),  # a programme named under code 0 restricts, as in a list
+    # a lone term with an empty name (Carrefour, 2026-11-18, its club's name lost at one store): the bare code
+    ("carrefour", "2=", ("chain_card",), ()),
 ])
 def test_club_id_forms(slug, club_id, restrictions, names):
     found = target(slug, club_id)
@@ -111,7 +116,8 @@ def test_club_id_forms(slug, club_id, restrictions, names):
     assert found.restricted == bool(restrictions)
 
 
-@pytest.mark.parametrize("club_id", ["4", "(5=A)", "(1A)", "1 = A"])
+@pytest.mark.parametrize("club_id", ["4", "(5=A)", "(1A)", "1 = A", "5=A", "=A", "2=A|2=B", "2=A|B", "2=A&B", "2=A)", "2=(A", "1=A=B",
+                                     "0="])  # never seen: a lost name under 0 would read as open to all
 def test_an_unknown_club_form_or_code_stops_the_chain_naming_the_field(club_id):
     with pytest.raises(PromotionFormatChanged) as refused:
         target("ramilevy", club_id)

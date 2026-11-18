@@ -28,7 +28,11 @@ restriction, with no name; "N - label" (Shufersal, Yochananof) is read by its le
 RESTRICTIONS (question K's codes: 1 club, 2 the chain's card, 3 other), the label the programme's name when the code
 is not 0; and the list (Rami Levy, Carrefour), `N=name` terms joined by `|` and `&` inside parentheses, is read term
 by term, its parentheses dropped, code 1 to 3 by RESTRICTIONS and a programme named under code 0 "other", since
-Carrefour names its credit and app clubs there. Every name is kept as published, in the field's order, once.
+Carrefour names its credit and app clubs there. A lone term with no parentheses, `N=name` or `N=` (Carrefour's files
+of 2026-11-18: "2=" and its credit club's name on two promotions, 290 copies in 145 store files, and "2=" alone on the
+same two at one store, the name lost; the owner's word that day), is read as a list of that one term, or with no name
+as the bare code, except "0=", which stops the chain: a name lost under code 0 would read as open to all. A name
+holding "=", "|", "&" or a parenthesis is no such term. Every name is kept as published, in the field's order, once.
 
 P10, the codes half (the field sets are `shopper.promofile`'s half). A code outside what a chain's files were seen to
 carry stops that chain's promotions with an error naming the chain, the field and the value: a `ClubID` of any other
@@ -149,6 +153,11 @@ def _terms(club_id: str) -> list[tuple[str, str | None, bool]] | None:
     if dash and _code(code) and label:
         return [(code, label, False)]
     if not (club_id.startswith("(") and club_id.endswith(")")):
+        code, _, name = club_id.partition("=")  # with no "=", the whole field, a bare code read above or no form
+        # A lone term: a list of one, or with no name the bare code; but never "0=", whose name may be lost (the same
+        # promotions' "2=" at one store, 2026-11-18), and code 0 with a name restricts at Carrefour
+        if _code(code) and (name or code != _NO_RESTRICTION) and not any(mark in name for mark in "=|&()"):
+            return [(code, name or None, True)]  # listed: only code 0 reads it, and code 0 here has a name
         return None
     terms = []
     for term in club_id.replace("(", "").replace(")", "").replace("&", "|").split("|"):

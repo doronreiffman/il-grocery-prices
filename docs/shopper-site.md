@@ -251,6 +251,8 @@ As designed, then, Shufersal's pages would say "at some stores" on nearly every 
 
 **Changes:** P5's text; Task 3 (`target` returns the codes and names); Tasks 15 and 18 (the words: K's three phrases, joined when several, and the names in the chain's span); F1 unchanged (club-only in). No cost. **Recommendation:** (b). K's answer stands, extended by one case. Blocks Task 3.
 
+**Amended 2026-11-18 (the owner's word).** Carrefour's files of 18 November carried a lone term with no parentheses: "2=" with its credit club's name (two promotions, 290 copies in 145 store files) and "2=" alone (the same two promotions at one store, the club's name lost). The site run met that unseen form and stopped Carrefour's promotions (P10), as designed. Such a term is read as a list of that one term, so code 2 shows as the chain's card holders only with the club named; with no name it is the bare code, except "0=", which still stops the chain, since a name lost under code 0 would read as open to all (`src/shopper/promotions.py`, `_terms`).
+
 ### 5. Percent off: `DiscountedPrice` is the store's own price after the rate, and at Rami Levy the rate drifts
 
 **The design says.** P4: percent off is the listed price × (1 − `DiscountRate`/100), with `DiscountedPrice` as a check; question C: the check is within ₪0.01 of that figure from the chain's median, else "the fields disagree", "price not read", never ranked; and if Task 2 found a chain whose `DiscountedPrice` means something else, that chain's check follows the survey and the owner is told.
