@@ -75,6 +75,76 @@ def test_a_weighed_two_for_100_stored_as_1_5_for_75_is_50_a_kilogram():
     assert deal("yochananof", as_written, Decimal("59.90")).price == Fraction(50)
 
 
+def _weighed(minimum, price, figure):
+    """A weighed fixed-price link (RewardType 3, bIsWeighted 1) with its `MinQty`, `DiscountedPrice` and the chain's
+    own kilogram figure, `DiscountedPricePerMida`."""
+    return _item(CARREFOUR, "900001", bIsWeighted="1", MinQty=minimum, DiscountedPrice=price,
+                 DiscountedPricePerMida=figure)
+
+
+def test_a_weighed_fixed_price_with_a_minimum_is_the_total_for_it():
+    # Osher Ad's ground veal, "2 for ₪120" (10 November 2026): ₪114.00 for 1.9 kg or more, its figure ₪60.000 a kilogram
+    assert deal("osherad", _weighed("1.900", "114.00", "60.000"), Decimal("69.90")) == Deal(
+        Fraction(60), "kg", Decimal("1.9"), None, None, True, None)
+    # Carrefour's pastrami (16 November 2026): ₪22.00 for 250 g or more, ₪88.000 a kilogram
+    assert deal("carrefour", _weighed("0.250", "22.00", "88.000"), Decimal("103.00")) == Deal(
+        Fraction(88), "kg", Decimal("0.25"), None, None, True, None)
+    # the price is the total ÷ the minimum, exactly; the figure, rounded by the chain, only checks it
+    chicken = deal("osherad", _weighed("1.850", "41.63", "22.500"), Decimal("26.90"))
+    assert (chicken.price, chicken.buy, to_agora(chicken.price)) == (Fraction(4163, 185), Decimal("1.85"),
+                                                                     Decimal("22.50"))
+
+
+def test_a_weighed_fixed_price_with_a_placeholder_minimum_is_a_kilograms_price():
+    # every chain writes 0.01 when any weight qualifies, Shufersal 0.10 too: the figure is the price itself
+    for minimum in ("0.010", "0.10", "1"):
+        assert deal("carrefour", _weighed(minimum, "49.90", "49.900"), Decimal("59.90")) == Deal(
+            Fraction("49.90"), "kg", ONE, None, None, True, None), minimum
+    # a kilogram's price is asked first: a minimum just above 1 whose total would also agree stays no condition
+    assert deal("carrefour", _weighed("1.001", "0.50", "0.500"), Decimal("0.60")) == Deal(
+        Fraction("0.50"), "kg", ONE, None, None, True, None)
+
+
+def test_a_weighed_fixed_prices_figure_agrees_within_an_agora():
+    for figure in ("49.91", "49.89"):   # the price is DiscountedPrice, the figure only checks it
+        assert deal("carrefour", _weighed("0.010", "49.90", figure), Decimal("59.90")) == Deal(
+            Fraction("49.90"), "kg", ONE, None, None, True, None), figure
+    for figure in ("60.01", "59.99"):
+        assert deal("osherad", _weighed("1.900", "114.00", figure), Decimal("69.90")) == Deal(
+            Fraction(60), "kg", Decimal("1.9"), None, None, True, None), figure
+
+
+def test_a_weighed_fixed_price_without_a_listed_price_keeps_its_price_and_is_not_valid():
+    assert deal("osherad", _weighed("1.900", "114.00", "60.000"), None) == Deal(
+        Fraction(60), "kg", Decimal("1.9"), None, None, False, "no listed price")
+    assert deal("carrefour", _weighed("0.010", "49.90", "49.900"), None) == Deal(
+        Fraction("49.90"), "kg", ONE, None, None, False, "no listed price")
+
+
+def test_a_weighed_fixed_price_its_figure_disagrees_with_is_not_read():
+    disagree = Deal(None, "kg", ONE, None, None, False, "the price and its kilogram price disagree")
+    assert deal("osherad", _weighed("1.900", "114.00", "57.000"), Decimal("69.90")) == disagree
+    assert deal("osherad", _weighed("1.900", "114.00", "60.011"), Decimal("69.90")) == disagree
+    assert deal("osherad", _weighed("1.900", "114.00", "59.989"), Decimal("69.90")) == disagree
+    assert deal("carrefour", _weighed("0.010", "49.90", "49.911"), Decimal("59.90")) == disagree
+    assert deal("carrefour", _weighed("0.010", "49.90", "49.889"), Decimal("59.90")) == disagree
+    for minimum in ("", "0", "-1.900"):   # no minimum to divide by: only the price itself can agree
+        assert deal("osherad", _weighed(minimum, "114.00", "60.000"), Decimal("69.90")) == disagree, minimum
+    # a minimum below 0 is never divided by, even where a figure below 0 would agree with it
+    assert deal("osherad", _weighed("-1.900", "114.00", "-60.000"), Decimal("69.90")) == disagree
+    unread = Deal(None, "kg", ONE, None, None, False, "no price in the fields")
+    for figure in ("", "-"):
+        assert deal("osherad", _weighed("1.900", "114.00", figure), Decimal("69.90")) == unread, figure
+    assert deal("osherad", _weighed("1.900", "", "60.000"), Decimal("69.90")) == unread
+
+
+def test_a_fixed_price_by_the_piece_never_reads_the_figure():
+    # by the piece the figure is another measure's price (₪0.872 beside ₪8.72), and a minimum is not divided by
+    assert deal("carrefour", _item(CARREFOUR, "900001", MinQty="2"), Decimal("10.90")) == Deal(
+        Fraction("8.72"), "unit", ONE, None, None, True, None)
+    assert deal("carrefour", _item(CARREFOUR, "900001", DiscountedPricePerMida=""), Decimal("10.90")).valid
+
+
 def test_the_range_is_exclusive():
     fixed = _item(CARREFOUR, "900001")
 
