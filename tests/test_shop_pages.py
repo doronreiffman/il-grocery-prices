@@ -81,16 +81,19 @@ PICK_ORDER = ["shufersal-deal", "shufersal-express", "shufersal-sheli", "shufers
 PICK_LINK = '<p class="store"><a id="pick-link" href="{up}index.html#pick">Pick your store</a></p>'
 
 
-# Each store type's promotions today, as the build counts them: Carrefour Market's the design's 1,347, Rami Levy's one,
-# every other its own
-ROOT_PROMOTIONS = {column.key: 100 + n for n, column in enumerate(COLUMNS)} | {MARKET: 1347, RAMI: 1}
+# Each store type's products checked today, its headline's M, as the build counts them: Carrefour Market's 3,086 (its
+# live store page of 22 November 2026), Rami Levy's one, every other its own
+ROOT_CHECKED = {column.key: 100 + n for n, column in enumerate(COLUMNS)} | {MARKET: 3086, RAMI: 1}
 
 
-def _root_fronts(counts: dict[str, int] | None = None) -> dict[str, StoreFront]:
-    """Each store type's front as the build hands it to the root: no rows, its promotions today `ROOT_PROMOTIONS`'
-    unless `counts` says otherwise."""
-    counts = ROOT_PROMOTIONS | (counts or {})
-    return {key: _front(key, rows=[], checked=0, promotions=count, products=2 * count) for key, count in counts.items()}
+def _root_fronts(checked: dict[str, int] | None = None,
+                 not_ready: frozenset[str] = frozenset()) -> dict[str, StoreFront]:
+    """Each store type's front as the build hands it to the root: no rows, `ROOT_CHECKED`'s products checked unless
+    `checked` says otherwise, ready unless named in `not_ready`, and its promotions today, distinct by id, another
+    number, 2M + 1, so a label reading the promotions line's count shows."""
+    counts = ROOT_CHECKED | (checked or {})
+    return {key: _front(key, rows=[], checked=count, ready=key not in not_ready, promotions=2 * count + 1,
+                        products=3 * count) for key, count in counts.items()}
 
 
 def _root(fronts=None, days=None) -> str:
@@ -155,39 +158,40 @@ def test_the_front_headline_is_deal_or_no_deal():
     assert FRONT_TITLE not in page
 
 
-def test_each_store_label_carries_its_promotions_today():
-    """Review Focus 3 and the owner's words (2026-11-15, "Word changes" 4): each store type's label carries its count
-    of promotions today, the figure in bold, then "promotions today", one "promotion today"; on a hole and on a
-    promotion hole, whose promotions the build does not count, the label is the name alone: no figure, no "0", nothing
-    in its place. A day read with none says 0, as its store page does."""
+def test_each_store_label_carries_its_headlines_count():
+    """The owner's word (2026-11-22, q40): each store type's label carries the M of its store page's headline, "N of M
+    promotions are actually deals" (`shopper.verdict.checked`), the figure in bold, then "promotions today", one
+    "promotion today", never the promotions line's count of promotions by id. Where the headline has no M (a hole, a
+    promotion hole, a store type not yet ready, none checked: "no promotions to check"), the label is the name alone:
+    no figure, no "0", nothing in its place."""
     page = _root()
-    assert _label(page, MARKET) == "Carrefour Market <small><b>1,347</b> promotions today</small>"
+    assert _label(page, MARKET) == "Carrefour Market <small><b>3,086</b> promotions today</small>"
     assert _label(page, RAMI) == "Rami Levy <small><b>1</b> promotion today</small>"
-    for days in (_days(holes={(MARKET, DAY)}), _days(promo_holes={(MARKET, DAY)})):
-        for fronts in (_root_fronts(), _root_fronts({MARKET: 0})):        # the build's front of a day not read: 0
-            unread = _root(fronts, days)
-            assert _label(unread, MARKET) == "Carrefour Market" and "<b>0</b>" not in unread
-            assert _label(unread, RAMI) == "Rami Levy <small><b>1</b> promotion today</small>"   # another's day read
-    none = _root(_root_fronts({MARKET: 0}))
-    assert _label(none, MARKET) == "Carrefour Market <small><b>0</b> promotions today</small>"
-    assert promotions_shown(_root_fronts()[MARKET], _days()[(MARKET, DAY)]) == 1347
+    for fronts, days in ((_root_fronts(), _days(holes={(MARKET, DAY)})),
+                         (_root_fronts(), _days(promo_holes={(MARKET, DAY)})),
+                         (_root_fronts(not_ready=frozenset({MARKET})), _days()), (_root_fronts({MARKET: 0}), _days())):
+        unread = _root(fronts, days)
+        assert _label(unread, MARKET) == "Carrefour Market" and "<b>0</b>" not in unread
+        assert _label(unread, RAMI) == "Rami Levy <small><b>1</b> promotion today</small>"   # another's day read
+    # the store page's promotions line keeps its own count, the promotions by id (2 × 3,086 + 1)
+    assert promotions_shown(_root_fronts()[MARKET], _days()[(MARKET, DAY)]) == 6173
     for days in (_days(holes={(MARKET, DAY)}), _days(promo_holes={(MARKET, DAY)})):
         assert promotions_shown(_root_fronts()[MARKET], days[(MARKET, DAY)]) is None
 
 
-def test_the_labels_number_is_the_store_pages_own():
-    """The plan's "The front page's counts": each label's figure is the number its store page's promotions line
-    states (`promotions_shown`, read by both), at every store type, a hole and a promotion hole among them: where the
-    store page has no promotions line the label has no figure."""
+def test_the_labels_number_is_the_store_pages_headline():
+    """q40: each label's figure is the M its store page's headline states, at every store type, a hole, a promotion
+    hole, a store type not yet ready and one with none checked among them: where the headline has no M the label has
+    no figure."""
     days = _days(holes={(EXPRESS, DAY)}, promo_holes={(OSHER, DAY)})
-    fronts = _root_fronts()
+    fronts = _root_fronts({CITY: 0}, not_ready=frozenset({SHELI}))
     root = _root(fronts, days)
     for column in COLUMNS:
         store = render_store(fronts[column.key], days, DAY, "12:03", (), None)
-        line = re.search(rf"<p>Today {column.name} lists ([\d,]+) promotions? carried by", store)
+        said = re.search(r" of ([\d,]+) promotions? (?:is|are) actually", _lede(store))
         figure = re.search(r"<small><b>([\d,]+)</b>", _label(root, column.key))
-        assert (line and line.group(1)) == (figure and figure.group(1)), column.key
-        assert (figure is None) == (column.key in (EXPRESS, OSHER)), column.key
+        assert (said and said.group(1)) == (figure and figure.group(1)), column.key
+        assert (figure is None) == (column.key in (EXPRESS, OSHER, SHELI, CITY)), column.key
 
 
 def test_the_chains_headings_stay_for_screen_readers():

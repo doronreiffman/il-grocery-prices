@@ -265,21 +265,23 @@ def test_every_number_on_each_store_page_is_in_the_site_day_file():
 
 
 def test_every_number_on_the_front_page_is_in_the_site_day_file():
-    """The site's look (q36): each store type's label on the root carries its count of promotions today, its column's
-    `front.promotions` in the site-day file; where that is null (Express, a hole; Carrefour Market, a promotion hole)
-    the label has no figure, and the picker holds no other number. It counts the picker's numbers, not every number
-    on the root."""
+    """Each store type's label on the root carries its store page headline's M (q40, the owner's word of 2026-11-22),
+    its column's `front.checked` in the site-day file, where the headline states one: Sheli's 4 and Deal's 1; every
+    other store type (Express, a hole; Carrefour Market, a promotion hole; Universe, not ready; the rest, none
+    checked) has no figure, and the picker holds no other number. It counts the picker's numbers, not every number on
+    the root."""
     days = _days(holes={(EXPRESS, DAY)}, promo_holes={("carrefour-market", DAY)})
     fronts = _fronts()
     found = _site_day(fronts=fronts, column_days=days)["columns"]
     root = render_root(DAY, "11:48", fronts, days)
     picker = re.search(r'<section id="pick" data-page="root">.*?</section>', root, re.S).group(0)
+    shown = {SHELI: 4, DEAL: 1}
     for column in COLUMNS:
-        promotions = found[column.key]["front"]["promotions"]
         label = re.search(rf'<li><a href="store/{column.key}\.html">(.*?)</a></li>', root).group(1)
-        assert re.findall(r"\d[\d,]*", label) == ([] if promotions is None else [f"{promotions:,}"]), column.key
+        assert re.findall(r"\d[\d,]*", label) == ([str(shown[column.key])] if column.key in shown else []), column.key
+    assert {key: found[key]["front"]["checked"] for key in shown} == shown
     assert [found[key]["front"]["promotions"] for key in (EXPRESS, "carrefour-market")] == [None, None]
-    assert len(re.findall(r"\d[\d,]*", re.sub(r"<[^>]+>", " ", picker))) == len(COLUMNS) - 2     # the words alone
+    assert len(re.findall(r"\d[\d,]*", re.sub(r"<[^>]+>", " ", picker))) == len(shown)     # the words alone
 
 
 @pytest.mark.parametrize("kind", ["hole", "promo_hole"])

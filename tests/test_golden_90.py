@@ -251,10 +251,12 @@ def test_the_golden_pages_windows_and_gaps(golden):
 
 def test_the_golden_root_is_the_picker(golden):
     """Store first (q33): on every day kept and on the last, `index.html` is the picker, its nine links each to a store
-    type's front page the day's build wrote, and lists no deal; every page carries the one script. The site's look
-    (q36): each label carries its store type's promotions today, the site-day file's count, the one its store page
-    states; on the last day Shufersal Universe's nine (promotions 60, 62 to 68 and 70 run at its three stores, 69 at
-    store 81 alone), Sheli's one (G3's), and Shufersal Express, a hole every day, its name alone."""
+    type's front page the day's build wrote, and lists no deal; every page carries the one script. Each label carries
+    the M of its store page's headline, the site-day file's `checked` (q40, the owner's word of 2026-11-22), and the
+    name alone where the headline states none; on the last day Shufersal Universe's six (U1, U2, U3, U6, U7 and U8: a
+    promotion counting that day and a listed price on 27 or 28 of the 30 days before; U4 listed on 5 of them and U5 on
+    none, U9's promotion at one store of three, not wide, and U10's ₪6.50, twice its ₪3.00 or more, not read),
+    Sheli's one (G3's), and Shufersal Express, a hole every day, its name alone."""
     for n in (*KEEP, DAYS):
         root = golden.page(n, "index.html")
         assert '<section id="pick" data-page="root">' in root and "<tr" not in root and "<table" not in root
@@ -267,15 +269,15 @@ def test_the_golden_root_is_the_picker(golden):
         columns = json.loads((golden.site / "site-days" / f"{day_of(n).isoformat()}.json").read_text())["columns"]
         labels = dict(re.findall(r'<li><a href="store/([^"]+)\.html">(.*?)</a></li>', root))
         for column in COLUMNS:
-            promotions = columns[column.key]["front"]["promotions"]
+            checked = columns[column.key]["front"]["checked"]
             store = _text(golden.page(n, f"store/{column.key}.html"))
-            line = re.search(r"Today .*? lists ([\d,]+) promotions? carried", store)
+            said = re.search(r" of ([\d,]+) promotions? (?:is|are) actually", store)
             figure = re.search(r"<b>([\d,]+)</b>", labels[column.key])
-            assert (figure and figure.group(1)) == (line and line.group(1)), (n, column.key)
-            assert (figure and figure.group(1)) == (None if promotions is None else f"{promotions:,}"), (n, column.key)
+            assert (figure and figure.group(1)) == (said and said.group(1)), (n, column.key)
+            assert figure is None or figure.group(1) == f"{checked:,}", (n, column.key)
     root = golden.page(DAYS, "index.html")
     labels = dict(re.findall(r'<li><a href="store/([^"]+)\.html">(.*?)</a></li>', root))
-    assert labels["shufersal-universe"] == "Shufersal Universe <small><b>9</b> promotions today</small>"
+    assert labels["shufersal-universe"] == "Shufersal Universe <small><b>6</b> promotions today</small>"
     assert labels["shufersal-sheli"] == "Shufersal Sheli <small><b>1</b> promotion today</small>"
     assert labels["shufersal-express"] == "Shufersal Express"
 

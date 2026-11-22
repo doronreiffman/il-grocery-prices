@@ -18,11 +18,12 @@ target and search.js's mark for the root (with a remembered pick it shows "Your 
 that store type's front page; it never sends the shopper on: the owner, 2026-11-16): "Which store are you in?"
 (PICK_TITLE), then each chain as `<div class="chain">`, its name as a heading the stylesheet hides from sight alone
 (every label carries its chain's name), over a label linking to each of its store types' front pages (`store_path`), in
-the design's order by chain (PICK_GROUPS), never COLUMNS' order by name. A label is the store type's name and its count
-of promotions today, the figure in bold ("1,347 promotions today", one "promotion today":
-`shopper.words.promotions_today`), the number its store page's promotions line states (`promotions_shown`, read by
-both); on a hole or a promotion hole, whose promotions the build does not count, the name alone, never "0". The root
-shows no price, so it carries no ALWAYS phrase, and `shopper.check` holds it to none.
+the design's order by chain (PICK_GROUPS), never COLUMNS' order by name. A label is the store type's name and the M
+of its store page's headline, the products checked, the figure in bold ("3,086 promotions today", one "promotion
+today": `shopper.words.promotions_today`; `checked_shown`, the owner's word of 2026-11-22, q40, in place of the
+promotions line's count by id); where the headline states no M (a hole, a promotion hole, a store type not yet ready,
+none checked), the name alone, never "0". The root shows no price, so it carries no ALWAYS phrase, and `shopper.check`
+holds it to none.
 
 A store type's front page, `store/<key>.html` (`store_path`), one folder down (UP), with its main part marked
 `data-store` (`shopper.shell.page`), from which search.js sets the pick (docs/store-first.md, "What a visitor sees" 4
@@ -234,11 +235,21 @@ def shown_rows(front: StoreFront, today: ColumnDay) -> tuple[DealRow, ...]:
 
 
 def promotions_shown(front: StoreFront, today: ColumnDay) -> int | None:
-    """The store type's count of promotions today, the one number its store page's promotions line and its label on
-    the root both show: the front's on a day read; None on a hole or a promotion hole, whose promotions the build does
-    not count (`shopper.build`), so neither page says 0."""
+    """The store type's count of promotions today, distinct by id, its store page's promotions line's number: the
+    front's on a day read; None on a hole or a promotion hole, whose promotions the build does not count
+    (`shopper.build`), so neither says 0."""
     read = today.record and not today.promo_hole
     return front.promotions if read else None
+
+
+def checked_shown(front: StoreFront, today: ColumnDay) -> int | None:
+    """The store type's label figure on the root, the owner's word of 2026-11-22 (q40): its store page's headline's M,
+    the products checked, exactly when that headline states one (`shopper.words.store_lead`: a day with a record, no
+    promotion hole, the store type ready, and at least one checked); else None, so the label is the name alone, never
+    a 0 or a number that counts something else."""
+    if today.record and not today.promo_hole and front.ready and front.checked:
+        return front.checked
+    return None
 
 
 def _search(browse: str | None) -> str:
@@ -313,9 +324,9 @@ def _hiring() -> str:
 
 
 def _label(key: str, front: StoreFront, today: ColumnDay) -> str:
-    """A store type's label in the picker (the module's docstring): its name, then its count of promotions today when
-    the day was read (`promotions_shown`)."""
-    count = promotions_shown(front, today)
+    """A store type's label in the picker (the module's docstring): its name, then its headline's M when the store
+    page states one (`checked_shown`)."""
+    count = checked_shown(front, today)
     said = ""
     if count is not None:
         figure, words = promotions_today(count)
@@ -638,7 +649,9 @@ def store_rules() -> tuple[tuple[str, str], ...]:
          f"{MIN_FRONT_DAYS} of the {RECENT_DAYS} days before the page's day, it says \"{NONE_YET}\""),
         ("The store you pick.",
          f"The root page asks \"{PICK_TITLE}\" and lists the {_NINE} columns, the shopper pages' store types, by "
-         "chain, each a link to its front page. Opening a store type's front page picks it, and so does tapping a "
+         "chain, each a link to its front page labelled with its name and the M of its headline (\"The front page's "
+         "list\"), or with its name alone where the headline states none. Opening a store type's front page picks it, "
+         "and so does tapping a "
          "store type's badge on a product page while nothing is picked. The pick is kept in this browser's local "
          f"storage, under the one key \"{PICK_KEY}\", and sent nowhere: the site's one script, search.js, reads it "
          "only to offer the picked front page first on the root page (\"Your store\"), to name it in the header "

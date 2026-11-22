@@ -3130,6 +3130,12 @@ MUTATIONS = {
     'the old line under the headline (q36 front)': (SHOP_PAGES, '{text(ROOT_LINE)}</p></div>', '{text("Pick the store you\'re in, then look up a product: each sale is checked against what it usually costs there.")}</p></div>'),
     "the root's tab title the question (q36 front)": (SHOP_PAGES, '    return page(SITE_NAME, ', '    return page(f"{FRONT_TITLE} - {SITE_NAME}", '),
     'a count on a store type not read (q36 front)': (SHOP_PAGES, '    return front.promotions if read else None\n', '    return front.promotions\n'),
+    # shopper: the front page's label carries its store page's headline's M (q40, the owner's word of 2026-11-22)
+    "the label counting promotions by id (q40 label)": (SHOP_PAGES, "    count = checked_shown(front, today)\n", "    count = promotions_shown(front, today)\n"),
+    "the label's figure on a store type not ready (q40 label)": (SHOP_PAGES, "    if today.record and not today.promo_hole and front.ready and front.checked:\n", "    if today.record and not today.promo_hole and front.checked:\n"),
+    "the label's 0 with none checked (q40 label)": (SHOP_PAGES, "    if today.record and not today.promo_hole and front.ready and front.checked:\n", "    if today.record and not today.promo_hole and front.ready:\n"),
+    "the label's figure on a promotion hole (q40 label)": (SHOP_PAGES, "    if today.record and not today.promo_hole and front.ready and front.checked:\n", "    if today.record and front.ready and front.checked:\n"),
+    "the label's figure on a hole (q40 label)": (SHOP_PAGES, "    if today.record and not today.promo_hole and front.ready and front.checked:\n", "    if not today.promo_hole and front.ready and front.checked:\n"),
     "the picker without the chains' headings (q36 front)": (SHOP_PAGES, '<div class="chain"><h3>{text(CHAIN_NAMES[slug])}</h3><ul>', '<div class="chain"><ul>'),
     'the hiring links with dots (q36 front)': (SHOP_PAGES, '    links = " ".join(f\'<a href="{escape(href)}">{text(label)}</a>\' for label, href in HIRING)\n', '    links = " · ".join(f\'<a href="{escape(href)}">{text(label)}</a>\' for label, href in HIRING)\n'),
     "the store title's last word off the label (q36 front)": (SHOP_PAGES, '{text(asked)} <span class="yes">{text(last)}</span></h1>', '{text(asked)} {text(last)}</h1>'),

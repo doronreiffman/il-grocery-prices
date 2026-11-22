@@ -101,8 +101,8 @@ without today's price. The chart's table heads (STATS_HEADS: Lowest, Highest, To
 Usual, which the chart writes at its own height), its short dates ("16 Aug", `short_day`) and month names ("Sep",
 `month_name`), and "today" (TODAY_WORD) under today's price at the line's end (on the dates' line when today has no
 price) and as the date of a lowest or highest that is today's; sentences keep `on_day`'s long form ("ended 11
-November"). A store's label on the front page carries its count of promotions today ("1,347" and "promotions today",
-one "promotion today": `promotions_today`), the number its store page states.
+November"). A store's label on the front page carries the M of its store page's headline ("3,086" and "promotions
+today", one "promotion today": `promotions_today`; q40).
 """
 from collections.abc import Mapping, Sequence
 from datetime import date
@@ -506,8 +506,8 @@ def store_lead(front: "StoreFront", today: ColumnDay) -> str:
 
 
 def promotions_today(count: int) -> tuple[str, str]:
-    """A store's label on the front page: its count of promotions today and the words after it, "1,347" and
-    "promotions today", one "promotion today"; the store page's own count (`store_promotions_line`)."""
+    """A store's label on the front page: its figure and the words after it, "3,086" and "promotions today", one
+    "promotion today"; the figure is its store page's headline's M (`shopper.pages.checked_shown`, q40)."""
     return f"{count:,}", _plural(count, "promotion today", "promotions today")
 
 

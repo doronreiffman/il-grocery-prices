@@ -241,17 +241,20 @@ def test_the_build_writes_the_root_and_nine_store_pages(tmp_path):
 
 
 def test_the_root_counts_each_store_types_promotions(tmp_path):
-    """The site's look (q36, "Word changes" 4): the build hands the root each store type's front and day, so each
-    label carries its front's count of promotions today, the number its store page states: Osher Ad's one promotion;
-    every other store type, its prices from too few files or its promotions not read (the golden day has no promotion
-    file), its name alone."""
+    """The build hands the root each store type's front and day, so each label carries its store page headline's M
+    (q40, the owner's word of 2026-11-22): Osher Ad's one product checked, "1 of 1"; every other store type, its
+    prices from too few files or its promotions not read (the golden day has no promotion file), its name alone. Osher
+    Ad's count of promotions by id is 1 too, so tests/test_shop_pages.py tells the two counts apart."""
     data, site = tree(tmp_path), tmp_path / "site"
     _build(data, site)
     root = (site / "index.html").read_text(encoding="utf-8")
     labels = dict(re.findall(r'<li><a href="store/([^"]+)\.html">(.*?)</a></li>', root))
     columns = _site_day(site)["columns"]
     assert labels[OSHER] == "Osher Ad <small><b>1</b> promotion today</small>"
+    assert "At Osher Ad today: <b>1 of 1</b> promotions is actually a deal." in _text(site / store_path(OSHER))
     assert "Today Osher Ad lists 1 promotion carried by" in _text(site / store_path(OSHER))
+    assert {key: columns[key]["front"]["checked"] for key in labels} == {
+        column.key: 1 if column.key == OSHER else 0 for column in COLUMNS}
     assert {key: columns[key]["front"]["promotions"] for key in labels} == {
         column.key: 1 if column.key == OSHER else None for column in COLUMNS}
     assert {key: label for key, label in labels.items() if key != OSHER} == {

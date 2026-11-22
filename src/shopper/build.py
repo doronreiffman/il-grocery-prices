@@ -68,7 +68,7 @@ In order:
 10. The files: the day's forecasts file on the site when the ledger gains its line in this run (`forecasts/<d>.csv.gz`,
     the archive's bytes), the ledger when it changed, each scored day's scores file, the site-day file when it is not
     unchanged; then every page: each product's, `index.html` (the picker, from the same fronts: each store type's
-    label with its count of promotions today), each store type's front page (`store/<key>.html`, store first),
+    label with its store page headline's M, q40), each store type's front page (`store/<key>.html`, store first),
     `method.html`, `record.html` (the day frozen and in the ledger before it is drawn, so it never lists its own day
     as one with no file), `basket.html` (an item linked when its page is built), the browse pages, the search pieces,
     `search.js`, the site's shared files under `assets/` (`shopper.assets`: the stylesheet every page links, its fonts
