@@ -906,6 +906,9 @@ def test_the_method_page_states_the_rules_with_the_codes_constants(monkeypatch):
             "with its price not read: then there is no price today.") in s3
     assert s6.startswith("Today's price here is S3's when a promotion counts, else the listed price, and none when "
                          "one listed across the column runs with its price not read (S3). ")
+    # q46: a weighed "N for ₪M" is read by the chain's kilogram figure, as a weighed fixed price is
+    assert ("on a weighed item, of either kind, the chain's own price per kilogram, DiscountedPricePerMida, says what "
+            "DiscountedPrice buys") in _rule(rules, "P4 ")
     # the review's finding 3: P5 true of the product and the store pages (Task 6's fix: CONDITIONS_NOTE)
     p5 = _rule(rules, "P5 ")
     assert ("On a product page, the fold-out lists every promotion running today with each of these conditions and "
@@ -926,6 +929,9 @@ def test_the_method_page_states_the_rules_with_the_codes_constants(monkeypatch):
     key = re.search(r'const PICK_KEY = "([^"]+)";', SEARCH_JS).group(1)
     assert f'kept in this browser\'s local storage, under the one key "{key}", and sent nowhere' in pick
     assert f'"{PICK_TITLE}"' in pick and "nine" in pick
+    # q40: what a label shows, the headline's M or the name alone
+    assert ('each a link to its front page labelled with its name and the M of its headline ("The front page\'s '
+            'list"), or with its name alone where the headline states none.') in pick
     # the owner (2026-11-16): the root no longer opens the picked front page; it offers it first, in search.js's words
     yours = re.search(r'const YOURS = "([^"]+)";', SEARCH_JS).group(1)
     assert f'reads it only to offer the picked front page first on the root page ("{yours}"), to name it' in pick

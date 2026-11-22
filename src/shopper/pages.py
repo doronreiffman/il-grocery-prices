@@ -237,7 +237,7 @@ def shown_rows(front: StoreFront, today: ColumnDay) -> tuple[DealRow, ...]:
 def promotions_shown(front: StoreFront, today: ColumnDay) -> int | None:
     """The store type's count of promotions today, distinct by id, its store page's promotions line's number: the
     front's on a day read; None on a hole or a promotion hole, whose promotions the build does not count
-    (`shopper.build`), so neither says 0."""
+    (`shopper.build`), so on those days the page shows no count rather than a 0."""
     read = today.record and not today.promo_hole
     return front.promotions if read else None
 

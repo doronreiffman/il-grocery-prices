@@ -2,8 +2,8 @@
 field half, P10; docs/shopper-site.md, with its "Changed after the survey", S2, S3 and S5, and the plan's question N).
 
 Every value here was read from the files: the survey of every included store's full promotion file of 5 and 7
-November 2026 (`shopper.survey`; the figures in docs/operations.md, "Measured for the shopper site"), and Osher Ad's
-`RewardType` 6 from its files of 13 November (the same section, "RewardType"), and Carrefour's lone `ClubID` term
+November 2026 (`shopper.survey`; the figures in docs/operations.md, "Measured for the shopper site"), Osher Ad's
+`RewardType` 6 from its files of 13 November (the same section, "RewardType") and Carrefour's lone `ClubID` term
 from its files of 18 November (the same section, "ClubID"). Each chain's promotion fixtures hold its field sets, no
 more and no fewer (tests/test_promotions.py).
 
