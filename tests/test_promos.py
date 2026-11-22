@@ -26,9 +26,9 @@ ITEM_TAGS = ("ItemCode", "ItemType", "RewardType", "MinQty", "MaxQty", "Discount
 A, B, C = "2000000000046", "2000000000053", "2000000000060"   # synthetic barcodes, as the fixtures carry
 
 
-def _item(code=A, reward="3", min_qty="1", rate="", price="5.00", weighed="0"):
+def _item(code=A, reward="3", min_qty="1", rate="", price="5.00", weighed="0", figure=""):
     values = {"ItemCode": code, "ItemType": "1", "RewardType": reward, "MinQty": min_qty, "MaxQty": "",
-              "DiscountRate": rate, "DiscountedPrice": price, "DiscountedPricePerMida": "", "bIsWeighted": weighed}
+              "DiscountRate": rate, "DiscountedPrice": price, "DiscountedPricePerMida": figure, "bIsWeighted": weighed}
     return "<PromotionItem>" + "".join(f"<{tag}>{values[tag]}</{tag}>" for tag in ITEM_TAGS) + "</PromotionItem>"
 
 

@@ -68,11 +68,46 @@ def test_n_for_m_is_m_over_n():
 
 
 def test_a_weighed_two_for_100_stored_as_1_5_for_75_is_50_a_kilogram():
-    stored = _item(YOCHANANOF, "900001", MinQty="1.50", DiscountedPrice="75.00")   # RewardType 1, bIsWeighted 1
+    # RewardType 1, bIsWeighted 1; the chain's own kilogram figure, ₪50.000, says the price is the total (q46)
+    stored = _item(YOCHANANOF, "900001", MinQty="1.50", DiscountedPrice="75.00", DiscountedPricePerMida="50.000")
     assert deal("yochananof", stored, Decimal("59.90")) == Deal(Fraction(50), "kg", Decimal("1.5"), None, None,
                                                                True, None)
-    as_written = _item(YOCHANANOF, "900001", MinQty="2", DiscountedPrice="100.00")
+    as_written = _item(YOCHANANOF, "900001", MinQty="2", DiscountedPrice="100.00", DiscountedPricePerMida="50.000")
     assert deal("yochananof", as_written, Decimal("59.90")).price == Fraction(50)
+
+
+def _weighed_n_for_m(minimum, price, figure):
+    """Rami Levy's weighed "N for ₪M" link (RewardType 10, bIsWeighted 1) with its `MinQty`, `DiscountedPrice` and the
+    chain's own kilogram figure, `DiscountedPricePerMida`."""
+    return _item(RAMI_LEVY, "900001", bIsWeighted="1", MinQty=minimum, DiscountedPrice=price,
+                 DiscountedPricePerMida=figure)
+
+
+def test_a_weighed_n_for_m_whose_figure_is_its_price_is_a_kilograms_price():
+    # Rami Levy's chicken legs (22 November 2026): MinQty 0.010 (any weight), ₪28.90 and its figure ₪28.900; read as
+    # the total for 0.01 kg it was ₪2,890 a kilogram, never valid (q46)
+    assert deal("ramilevy", _weighed_n_for_m("0.010", "28.90", "28.900"), Decimal("34.90")) == Deal(
+        Fraction("28.90"), "kg", ONE, None, None, True, None)
+    # a minimum above a placeholder is no condition either, as on a fixed price: Rami Levy's red peppers, ₪5.50 a
+    # kilogram over 0.3 kg (an internal code, which no page reads)
+    assert deal("ramilevy", _weighed_n_for_m("0.300", "5.50", "5.500"), Decimal("7.90")) == Deal(
+        Fraction("5.50"), "kg", ONE, None, None, True, None)
+
+
+def test_a_weighed_n_for_m_its_figure_disagrees_with_is_not_read():
+    # the fixture's link: ₪8.72 for 1.9 kg beside a figure of ₪0.872, a kilogram's price by neither reading
+    assert deal("yochananof", _item(YOCHANANOF, "900001"), Decimal("9.90")) == Deal(
+        None, "kg", ONE, None, None, False, "the price and its kilogram price disagree")
+    assert deal("yochananof", _item(YOCHANANOF, "900001", DiscountedPricePerMida=""), Decimal("9.90")) == Deal(
+        None, "kg", ONE, None, None, False, "no price in the fields")
+
+
+def test_a_weighed_n_for_m_without_a_minimum_is_not_read_even_where_its_figure_is_its_price():
+    # an "N for ₪M" with no N is not read before the figure is asked, weighed or not; a weighed fixed price with the
+    # same fields reads a kilogram's ₪28.90 (q46's review, 2026-11-22; no row of the tables has this shape)
+    for minimum in ("", "0", "-0.010"):
+        assert deal("ramilevy", _weighed_n_for_m(minimum, "28.90", "28.900"), Decimal("34.90")) == Deal(
+            None, "kg", ONE, None, None, False, "no price in the fields"), minimum
 
 
 def _weighed(minimum, price, figure):
@@ -215,7 +250,8 @@ def _struct(price, exact, per, buy, low, high, valid, why):
 
 def test_a_deal_rebuilt_from_the_items_struct_is_the_deal():
     six_for = deal("ramilevy", _item(RAMI_LEVY, "900001"), Decimal("2.00"))   # 6 for 8.72
-    weighed = deal("yochananof", _item(YOCHANANOF, "900001", MinQty="1.50", DiscountedPrice="75.00"), Decimal("59.90"))
+    weighed = deal("yochananof", _item(YOCHANANOF, "900001", MinQty="1.50", DiscountedPrice="75.00",
+                                       DiscountedPricePerMida="50.000"), Decimal("59.90"))
     percent = deal("carrefour", _item(CARREFOUR, "900002", DiscountedPrice="4.10"), Decimal("5.50"),
                    StorePrices(Decimal("4.40"), Decimal("4.10"), Decimal("4.50")))
     zero = deal("ramilevy", _item(RAMI_LEVY, "900002", RewardType="0"), Decimal("5.50"))

@@ -27,7 +27,8 @@ The products (`PRODUCTS`, `listed`, `promotions`):
 - G3 at Shufersal: Sheli's two stores 10.90, then 11.90 from day 60 (1 March), on a 7.90 promotion (30) from day 75 (16
   March) on; Deal's two 9.90 throughout, with no promotion; Yesh Chesed does not list it.
 - G4 at Rami Levy alone, weighed: 69.90 a kilogram; "2 for ₪100" stored as `RewardType` 1, `MinQty` 1.5,
-  `DiscountedPrice` 75.00, `bIsWeighted` 1 (promotion 40), on days 85 to 98 (26 March to 8 April).
+  `DiscountedPrice` 75.00, `bIsWeighted` 1 and the chain's kilogram figure `DiscountedPricePerMida` 50.000, which makes
+  the 75.00 the total for 1.5 kg (q46); promotion 40, on days 85 to 98 (26 March to 8 April).
 - G5 at Shufersal: Sheli 6.50, Yesh Chesed 6.20, Deal 6.00, but 4.50 on days 30 to 44 (30 January to 13 February); a
   4.50 promotion (50) carried by Deal's store 21 from day 99 (9 April) and by store 22 from day 100, to day 106; neither
   Sheli store nor Yesh Chesed carries it.
@@ -383,7 +384,7 @@ def promotions(slug: str, store: str, n: int) -> list[str]:
                                 end="2026-05-31"))
     if slug == "ramilevy" and G4_PROMOTION[0] <= n <= G4_PROMOTION[1]:
         found.append(_promotion("40", _group(items=[_item(G4, reward="1", min_qty="1.5", price="75.00",
-                                                          weighed="1")]),
+                                                          weighed="1", figure="50.000")]),
                                 start=_iso(G4_PROMOTION[0]), end=_iso(G4_PROMOTION[1])))
     if slug == "shufersal" and store in G5_PROMOTION and G5_PROMOTION[store][0] <= n <= G5_PROMOTION[store][1]:
         found.append(_promotion("50", _group(items=[_item(G5, reward="3", price="4.50")]), start=_iso(99),

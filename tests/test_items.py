@@ -347,7 +347,7 @@ def test_a_deal_read_back_from_the_table_is_the_deal(tmp_path):
     listed = {"1": [(A, "5.50"), (B, "120.00"), (C, "5.00"), (D, "5.00"), (E, "5.00")],
               "2": [(A, "5.50"), (B, "120.00"), (C, "5.00"), (D, "5.00"), (E, "5.00")]}
     at_1 = [_one("80", _item(A, reward="2", rate="20", price="4.40")),
-            _one("81", _item(B, reward="1", min_qty="1.5", price="75.00", weighed="1")),
+            _one("81", _item(B, reward="1", min_qty="1.5", price="75.00", weighed="1", figure="50.000")),
             _one("82", _item(C, reward="10", min_qty="1.125", price="3.00")),
             _one("83", _item(D, reward="0", price="1.00")), _one("84", _item(E, reward="3", price="11.00"))]
     at_2 = [_one("80", _item(A, reward="2", rate="20", price="4.50"))] + at_1[1:]

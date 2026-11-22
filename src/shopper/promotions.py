@@ -3,8 +3,9 @@ field half, P10; docs/shopper-site.md, with its "Changed after the survey", S2, 
 
 Every value here was read from the files: the survey of every included store's full promotion file of 5 and 7
 November 2026 (`shopper.survey`; the figures in docs/operations.md, "Measured for the shopper site"), and Osher Ad's
-`RewardType` 6 from its files of 13 November (the same section, "RewardType"). Each chain's
-promotion fixtures hold its field sets, no more and no fewer (tests/test_promotions.py).
+`RewardType` 6 from its files of 13 November (the same section, "RewardType"), and Carrefour's lone `ClubID` term
+from its files of 18 November (the same section, "ClubID"). Each chain's promotion fixtures hold its field sets, no
+more and no fewer (tests/test_promotions.py).
 
 P3, which promotions count. A promotion is in a day when the date part of its start is on or before the day and the
 date part of its end on or after it (the files' times are Israel wall-clock with no zone, so only the dates are

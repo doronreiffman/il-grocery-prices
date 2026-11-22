@@ -1512,8 +1512,11 @@ MUTATIONS = {
     "a readable MinQty dropped from buy when the price is missing (q22 P4)": (SHOP_DEALS, "_ONE if quantity is None else quantity", "_ONE"),
     "deal rebuilt from the two-place price (q22 P4)": (SHOP_DEALS, "None if exact is None else Fraction(exact)", 'None if exact is None else Fraction(struct["price"])'),
     # shopper: a weighed fixed price read by the chain's own kilogram figure (q43, the owner's rule of 2026-11-17)
-    "a weighed fixed price read as a kilogram's whatever its figure (q43 weighed fixed price)": (SHOP_DEALS, '    if found == "fixed_price" and per == "kg":\n        return _weighed_fixed(item, amount, listed)\n', ""),
-    "the kilogram figure read by the piece too (q43 weighed fixed price)": (SHOP_DEALS, '    if found == "fixed_price" and per == "kg":', '    if found == "fixed_price":'),
+    "a weighed fixed price read as a kilogram's whatever its figure (q43 weighed fixed price)": (SHOP_DEALS, '    if per == "kg":   # a weighed fixed price or "N for ₪M": the percent off and the kind-less returned above\n        return _weighed(item, amount, listed)\n', ""),
+    "the kilogram figure read by the piece too (q43 weighed fixed price)": (SHOP_DEALS, '    if per == "kg":   # a weighed fixed price or', '    if True:   # a weighed fixed price or'),
+    # shopper: a weighed "N for ₪M" read by the same figure (q46, the owner's word of 2026-11-18)
+    "a weighed N for M read as a total whatever its figure (q46 weighed n for m)": (SHOP_DEALS, '    if per == "kg":   # a weighed fixed price or', '    if per == "kg" and found == "fixed_price":   # a weighed fixed price or'),
+    "a weighed N for M with no minimum read by its figure (q46 weighed n for m)": (SHOP_DEALS, "    if amount is None or quantity is None:\n", '    if amount is None or (quantity is None and per != "kg"):\n'),
     "a placeholder minimum divided by (q43 weighed fixed price)": (SHOP_DEALS, "    if _near(Fraction(figure), Fraction(amount)):\n", "    if False:\n"),
     "a total for the minimum not checked by the figure (q43 weighed fixed price)": (SHOP_DEALS, "minimum > 0 and _near(Fraction(figure), Fraction(amount) / Fraction(minimum)):", "minimum > 0:"),
     "a minimum below 0 divided by (q43 weighed fixed price)": (SHOP_DEALS, "minimum is not None and minimum > 0 and", "minimum is not None and minimum != 0 and"),

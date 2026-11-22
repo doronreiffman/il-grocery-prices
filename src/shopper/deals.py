@@ -6,7 +6,7 @@ is weighed (`bIsWeighted` 1): the research sample's "2 for ₪100" on meat is st
 kilogram. By the link's kind (`shopper.promotions.kind`):
 
 - A fixed price (`RewardType` 3) is the link's `DiscountedPrice`, except when weighed: then the chain's own kilogram
-  figure, `DiscountedPricePerMida`, says what the price is for (`_weighed_fixed`, the owner's rule of 2026-11-17).
+  figure, `DiscountedPricePerMida`, says what the price is for (`_weighed`, the owner's rule of 2026-11-17).
   Within ₪0.01 of the price, the price is a kilogram's (the 0.01 or 0.10 `MinQty` the chains write when any weight
   qualifies, or 1); asked second, within ₪0.01 of the price ÷ `MinQty`, it is the total for `MinQty` kilograms, read
   as "N for ₪M" (Osher Ad's "2 for ₪120" on meat is ₪114.00 for 1.9 kg, ₪60 a kilogram; Carrefour's ₪22.00 for 0.25
@@ -17,7 +17,14 @@ kilogram. By the link's kind (`shopper.promotions.kind`):
   the piece the figure is another measure's price (a test fixture's ₪0.872 beside ₪8.72) and is never read.
 - "N for ₪M" (1 and 10) is `DiscountedPrice` ÷ `MinQty`, with "buy N" kept as the condition (`buy`; 1.5 for that
   meat). Both read from the fields of the variant most of the column's stores carry (Task 5), and a price is read
-  when both read as numbers, N above 0.
+  when both read as numbers, N above 0. Weighed, it is read by the kilogram figure as a weighed fixed price is (q46,
+  the owner's word of 2026-11-18): read always as the total, a link whose figure is `DiscountedPrice` itself, a
+  kilogram's price, came out a hundred times too high at the 0.01 `MinQty` of any weight (Rami Levy's chicken legs,
+  ₪28.90 a kilogram, as ₪2,890). In the promotions tables of 1 to 10 and 16 to 22 November 2026, all 34,713 weighed
+  "N for ₪M" rows agreed with one or the other (10,643 a kilogram's price, Rami Levy's and Yochananof's; 24,070 a
+  total, Shufersal's, Yochananof's, Carrefour's and Osher Ad's). Every kilogram's price on a GS1 code carried the 0.01
+  `MinQty`; the other minimums under a kilogram's price (0.30, 1, 1.90 and 2.80) sit on internal codes, which the
+  items table never reads, so a kilogram's price keeps no "buy N", as on a fixed price.
 - Percent off (2) is the stores' own figure: the median of the column's counted stores' `DiscountedPrice` on the
   link, its lowest and highest kept and shown as P2 shows the listed range. The rate is the check: the price agrees
   when `DiscountRate` is above 0 and below 100 and the price is within ₪0.01 of the column's median listed price ×
@@ -55,7 +62,7 @@ from shopper.promotions import kind, number
 AGREE = Decimal("0.01")         # question C: the percent-off rate check, to the agora
 _FLOOR = Fraction(1, 100)       # the design's range: a deal above ₪0.01
 _ONE = Decimal(1)
-_AGORA = Fraction(AGREE)        # a weighed fixed price's kilogram figure agrees with a price within this
+_AGORA = Fraction(AGREE)        # a weighed link's kilogram figure agrees with a price within this
 _NO_PRICE = "no price in the fields"
 _DISAGREE = "the price and its kilogram price disagree"
 
@@ -114,13 +121,13 @@ def _checked(price: Fraction, per: str, buy: Decimal, low: Decimal | None, high:
 
 
 def _near(figure: Fraction, price: Fraction) -> bool:
-    """Whether a weighed fixed price's kilogram figure agrees with `price`: within ₪0.01."""
+    """Whether a weighed link's kilogram figure agrees with `price`: within ₪0.01."""
     return abs(figure - price) <= _AGORA
 
 
-def _weighed_fixed(item: Mapping[str, str], amount: Decimal, listed: Decimal | None) -> Deal:
-    """A weighed fixed price (`amount`, its `DiscountedPrice`) by the link's kilogram figure (the module's docstring):
-    a kilogram's price, the total for `MinQty` kilograms, or not read."""
+def _weighed(item: Mapping[str, str], amount: Decimal, listed: Decimal | None) -> Deal:
+    """A weighed fixed price or "N for ₪M" (`amount`, its `DiscountedPrice`) by the link's kilogram figure (the
+    module's docstring): a kilogram's price, the total for `MinQty` kilograms, or not read."""
     figure = number(item["DiscountedPricePerMida"])
     if figure is None:
         return Deal(None, "kg", _ONE, None, None, False, _NO_PRICE)
@@ -156,8 +163,8 @@ def deal(slug: str, item: Mapping[str, str], listed: Decimal | None, stores: Sto
             quantity = None
     if amount is None or quantity is None:
         return Deal(None, per, _ONE if quantity is None else quantity, None, None, False, _NO_PRICE)
-    if found == "fixed_price" and per == "kg":
-        return _weighed_fixed(item, amount, listed)
+    if per == "kg":   # a weighed fixed price or "N for ₪M": the percent off and the kind-less returned above
+        return _weighed(item, amount, listed)
     return _checked(Fraction(amount) / Fraction(quantity), per, quantity, None, None, listed, False)
 
 
