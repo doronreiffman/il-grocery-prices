@@ -156,7 +156,7 @@ def test_the_front_headline_is_deal_or_no_deal():
     assert h1 == '<span class="yes">Deal</span> or <span class="no">No Deal</span>?' and _read(h1) == ROOT_TITLE
     assert hero == f'<h1>{h1}</h1>\n<p class="lede">{ROOT_LINE}</p>'
     assert page.count("<title>") == 1 and "<title>Deal or No Deal</title>" in page
-    assert FRONT_TITLE not in _read(page)
+    assert FRONT_TITLE not in page.replace(_card_tags(page), "")    # the card's alt text alone names the question
 
 
 def test_each_store_label_carries_its_headlines_count():
@@ -640,6 +640,7 @@ def test_the_front_page_carries_the_card_after_its_title():
     lines = _card_tags(_root()).split("\n")
     assert [re.fullmatch(r'<meta property="[^"]+" content="[^"]*">', line) is not None for line in lines] == [True] * 8
     assert [(found["property"], found["content"]) for line in lines for _, found in _tags(line)] == CARD
+    assert "'" not in "".join(lines) and 'content="Pick the store you&#x27;re in, ' in lines[2]    # written escaped
 
 
 def test_no_other_page_carries_the_card():
