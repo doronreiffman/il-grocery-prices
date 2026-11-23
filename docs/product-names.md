@@ -2,7 +2,7 @@
 
 **Grade:** production (the owner's, 2026-11-18): it changes the live public site.
 
-**Status:** third version, 2026-11-23, for the owner's approval. Nothing is built. It folds in two outside reviews, each finding checked against its source, a paid trial of 50 products through three models, a throwaway search measurement on the whole registry, and the owner's decisions of 2026-11-23. The last section gives each finding's fate. A decision is marked as the owner's (with its date), the agent's call (the AI assistant the owner designs with), or this draft's ("draft's call"); the owner can overturn any call. Three questions for the owner are near the end. Built, deployed and paid for only on the owner's go. Line numbers are main's at 7ff9faf.
+**Status:** third version, 2026-11-23, for the owner's approval. Nothing is built. It folds in two outside reviews, each finding checked against its source, a paid trial of 50 products through three models, a throwaway search measurement on the whole registry, and the owner's decisions of 2026-11-23. The last section gives each finding's fate. A decision is marked as the owner's (with its date), the agent's call (the AI assistant the owner designs with), or this draft's ("draft's call"); the owner can overturn any call. No question for the owner is open: the last is answered among the decisions (decision 18). Built, deployed and paid for only on the owner's go. Line numbers are main's at 7ff9faf.
 
 ## Why
 
@@ -41,7 +41,7 @@ A failure even if everything else works: a model's name shown as the chain's, or
 | 3 | The price files' manufacturer field is an input and a brand cross-check. The trial supports keeping it: without it Haiku (thinking off) left 35 of 50 products with no brand, with it 25, in one pair of runs. | Owner, 2026-11-18; kept: agent |
 | 4 | `claude-opus-5-5` [S2] writes the names that ship, picked after a paid trial through Haiku 5.5, Sonnet 5.5 and Opus 5.5. | Owner, 2026-11-23 |
 | 5 | Haiku 5.5 and Sonnet 5.5 stay as small comparison rows on the scorecard. | Agent, 2026-11-23; the owner was not asked |
-| 6 | English names reach pages only after a read of 200 names by two readers, the owner and the agent, passes: at most 4 wrong, counting only names that say something the product is not. | Owner, 2026-11-23 |
+| 6 | English names reach pages only after a read of 200 names by two readers, the owner and an AI model that never sees the owner's marks (a fresh Fable subagent), passes: at most 4 wrong, counting only names that say something the product is not. | Owner, 2026-11-23 |
 | 7 | Sonnet 5.5 also reads every product for its brand. A product where both models name a brand and the two differ is held search-only on a review list until reviewed. | Owner, 2026-11-23 |
 | 8 | The public launch waits for the AI names: all of this release, not the word index alone. | Owner, 2026-11-23 |
 | 9 | The English name may add the kind of product from general knowledge ("Old Spice deodorant"), marked as written by AI. | Owner, 2026-11-23 |
@@ -53,6 +53,7 @@ A failure even if everything else works: a model's name shown as the chain's, or
 | 15 | The score: the product searched for is in the first 10 results. | Owner, 2026-11-23 |
 | 16 | The owner's personal Anthropic API account, under a monthly cap on the project's own workspace: $35 a month after the build. | Owner, 2026-11-23; the workspace and the build month's $75: agent |
 | 17 | The English name: marked as written by AI wherever shown; natural word order; whole English when the input name is cut; a count kept beside a weight; lengths kept. Brand and size scored, not shown. The scorecard on the method page and in the README. The batch by hand. The chains' size also filed in Latin letters. | Agent |
+| 18 | The launch also waits until the review list is cleared: every held product reviewed before the post. | Owner, 2026-11-23 |
 
 ## What the trial measured
 
@@ -202,7 +203,7 @@ Within a step a published name's match comes before the model's. Ties end in tod
 - **The bar** is decision 6. Fifty names cannot bound the rate: zero wrong in 50 fits a true rate of up to 5.8% (a one-sided 95% bound).
 - **The read (draft's calls).** 200 products drawn plainly by seed from the frozen prompt's full run, none a trial or tuning product, none held. Each shows as its page will, beside its published names, manufacturer strings and `brand`. Each reader marks alone: wrong, missing, a guess or style; the brand, as section 1 says; and whether the name adds a kind the names do not state. Wrong means the name says something the product is not. The owner settles marks that differ, and the scorecard gives both readers' counts and the settled one.
 - **The pass mark** (owner, 2026-11-23): at most 4 wrong in 200, counting only names that say something the product is not; missing details and guesses are counted and printed, with no limit of their own. A pass fits a true rate of up to 4.5%, about 1,100 names. A failed read leaves every name search-only until a fixed prompt passes a fresh 200. A pass still bounds little, so a wrong name stays cheap to take off (section 4).
-- **The review list** (decision 7). A held product is found through its model names and shown without them. The list is a local page: names, manufacturer strings, both brands, the English name. A reviewed product leaves by a new release file.
+- **The review list** (decision 7). A held product is found through its model names and shown without them. The list is a local page: names, manufacturer strings, both brands, the English name. A reviewed product leaves by a new release file. The launch waits until the list is cleared (decision 18).
 - **Product page.** Under the names as listed (`src/shopper/product.py:284-291`): the English name in its own span, labelled "English name written by AI", outside every store type's part, never the tab's title.
 - **Search results.** A matched English name shows under the chain's, with "in English, by AI". A held or search-only product shows the chain's name alone.
 - **Everyday Hebrew names** are searched and never shown (draft's call). While tuning, the report lists every result found only through one, so a wrong one can be held back.
@@ -279,10 +280,7 @@ The plan also holds: a rehearsal, against a test store, of a stopped upload, a h
 
 ## Open questions for the owner
 
-**Does the launch wait until the review list is cleared?** Decision 8 holds the launch for the AI names; decision 7 holds some products' English names until reviewed.
-
-- *Yes:* about 500 reviews before the post, at the trial's rate of 1 in 50 (anywhere from about 90 to 2,600). Each review is one look at a local page with both brands, the names and the manufacturer strings.
-- *No:* the launch goes ahead with the held products searchable by their model names and shown without an English name; the list is cleared after.
+None. The last one, whether the launch waits until the review list is cleared, is answered: it waits (decision 18, owner, 2026-11-23). That is about 500 reviews before the post, at the trial's rate of 1 in 50 (anywhere from about 90 to 2,600), each one look at a local page with both brands, the names and the manufacturer strings.
 
 The owner's answers of 2026-11-23 to the second model (Sonnet, held when both name a brand and they differ), the pass mark (at most 4 wrong in 200), the index's keys (fixed) and the monthly cap ($35) are in the decisions above.
 
