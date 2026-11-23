@@ -41,7 +41,7 @@ A failure even if everything else works: a model's name shown as the chain's, or
 | 3 | The price files' manufacturer field is an input and a brand cross-check. The trial supports keeping it: without it Haiku (thinking off) left 35 of 50 products with no brand, with it 25, in one pair of runs. | Owner, 2026-11-18; kept: agent |
 | 4 | `claude-opus-5-5` [S2] writes the names that ship, picked after a paid trial through Haiku 5.5, Sonnet 5.5 and Opus 5.5. | Owner, 2026-11-23 |
 | 5 | Haiku 5.5 and Sonnet 5.5 stay as small comparison rows on the scorecard. | Agent, 2026-11-23; the owner was not asked |
-| 6 | English names reach pages only after a read of 200 names by two readers, the owner and an AI model that never sees the owner's marks (a fresh Fable subagent), passes: at most 4 wrong, counting only names that say something the product is not. | Owner, 2026-11-23 |
+| 6 | English names reach pages only after a read of 200 names by two readers, the owner and an AI model that never sees the owner's marks (a fresh Fable subagent; Opus at Fable's limit, named), passes: at most 4 wrong, counting only names that say something the product is not. | Owner, 2026-11-23 |
 | 7 | Sonnet 5.5 also reads every product for its brand. A product where both models name a brand and the two differ is held search-only on a review list until reviewed. | Owner, 2026-11-23 |
 | 8 | The public launch waits for the AI names: all of this release, not the word index alone. | Owner, 2026-11-23 |
 | 9 | The English name may add the kind of product from general knowledge ("Old Spice deodorant"), marked as written by AI. | Owner, 2026-11-23 |
