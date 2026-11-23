@@ -169,6 +169,8 @@ SHOP_WORDS = ("src/shopper/words.py", ["tests/test_shop_words.py"])
 # pre-flight's N7).
 SHOP_SEARCH = ("src/shopper/search.py", ["tests/test_search.py"])
 SHOP_SEARCH_JS = ("src/shopper/static/search.js", ["tests/test_search_js.py"])
+# The word index and its Python lookup (q50, the product-names plan's Task 1).
+SHOP_WORDINDEX = ("src/shopper/wordindex.py", ["tests/test_wordindex.py"])
 # The site's look (q36): the stylesheet, the site's shared files made from it and the fonts, and the fonts' maker.
 LOOK = ("src/shopper/static/look.css", ["tests/test_look.py"])
 # The stylesheet is the design's appendix byte for byte: a test of its own, which no other stylesheet mutation runs.
@@ -3399,6 +3401,26 @@ MUTATIONS = {
     "sync.sh: the archive bucket read before the identity check (q42 archive)": (SYNC_SCRIPT, _SYNC_IDENTITY + _SYNC_ARCHIVE_COMMENT + _SYNC_ARCHIVE, _SYNC_ARCHIVE_COMMENT + _SYNC_ARCHIVE + _SYNC_IDENTITY),
     "sync.sh: a failed read of the collector stack refused in the wrong words (q42 archive)": (SYNC_SCRIPT, "--output text) || {\n", "--output text) || true || {\n"),
     "sync.sh: any name taken for the archive bucket (q42 archive)": (SYNC_SCRIPT, '  "$ARCHIVE_PREFIX"?*) ;;\n', "  *) ;;\n"),
+    # shopper: the word index and its Python lookup (q50, the product-names plan's Task 1)
+    "a run inside a word not a token (q50 words)": (SHOP_WORDINDEX, '                if kept:\n                    found["".join(run)] = None\n', '                if False:\n                    found["".join(run)] = None\n'),
+    "millilitres not filed (q50 words)": (SHOP_WORDINDEX, '    words = [f"{plain(amount)}g", f"{plain(amount)}ml"]\n', '    words = [f"{plain(amount)}g"]\n'),
+    "kilograms filed from 100 (q50 words)": (SHOP_WORDINDEX, "    if amount >= THOUSAND:\n", "    if amount >= 100:\n"),
+    "a leaf over the limit (q50 words)": (SHOP_WORDINDEX, "    if 1 + sum(len(encoded[number]) + 1 for number in members) <= limit:\n", "    if 1 + sum(len(encoded[number]) + 1 for number in members) <= 2 * limit:\n"),
+    "a part-typed start keeping every product (q50 words)": (SHOP_WORDINDEX, "    kept = ranked if whole else ranked[:TOP]\n", "    kept = ranked\n"),
+    "a whole token keeping its first 50 (q50 words)": (SHOP_WORDINDEX, "    kept = ranked if whole else ranked[:TOP]\n", "    kept = ranked[:TOP]\n"),
+    "the leaf with the most products picked (q50 words)": (SHOP_WORDINDEX, "(KINDS.index(node.kind), node.count, len(node.prefix), node.prefix)", "(KINDS.index(node.kind), -node.count, len(node.prefix), node.prefix)"),
+    "a part-typed start picked before a whole token (q50 words)": (SHOP_WORDINDEX, 'KINDS = ("leaf", "whole", "start")', 'KINDS = ("leaf", "start", "whole")'),
+    "a one-character word picking a file (q50 words)": (SHOP_WORDINDEX, "    if len(today) >= SHOWN or not any(len(word) >= 2 for word in words):\n", "    if len(today) >= SHOWN or not any(len(word) >= 1 for word in words):\n"),
+    "a model name ranked before a published one (q50 words)": (SHOP_WORDINDEX, "            return number, int(first >= published)\n", "            return number, int(first < published)\n"),
+    "the title's step merged into another name's (q50 words)": (SHOP_WORDINDEX, "        lambda i: i == 0 and names[i].startswith(query),\n        lambda i: i > 0 and names[i].startswith(query),\n", "        lambda i: False,\n        lambda i: names[i].startswith(query),\n"),
+    "step 4 across two names (q50 words)": (SHOP_WORDINDEX, "        lambda i: all(word in toks[i] for word in words),\n", "        lambda i: all(any(word in name for name in toks) for word in words),\n"),
+    "ties by barcode before the title (q50 words)": (SHOP_WORDINDEX, "    return (*_step(query, words, item, toks), item[4], item[0])\n", "    return (*_step(query, words, item, toks), item[0], item[4])\n"),
+    "a whole-token node flagged (q50 words)": (SHOP_WORDINDEX, '    flagged = node.kind == "start" and len(words) > 1 and node.count > TOP\n', '    flagged = node.kind != "leaf" and len(words) > 1 and node.count > TOP\n'),
+    "a missing part raised (q50 words)": (SHOP_WORDINDEX, "        if not isinstance(part, list):\n", "        if isinstance(part, dict):\n"),
+    "today's list left out of the 50 (q50 words)": (SHOP_WORDINDEX, "    room = SHOWN - len(today)\n", "    room = SHOWN\n"),
+    "a manifest of another version read (q50 words)": (SHOP_WORDINDEX, '    if not isinstance(manifest, dict) or manifest.get("v") != VERSION:\n', "    if not isinstance(manifest, dict):\n"),
+    "a today's entry shown in today's layout (q50 words)": (SHOP_WORDINDEX, "    shown = [held.get(item[0]) or as_word_entry(item) for item in today]\n", "    shown = [held.get(item[0]) or item for item in today]\n"),
+    "a product shown twice from parts of two builds (q50 words)": (SHOP_WORDINDEX, "            if item[0] in held:\n                continue\n", "            if False:\n                continue\n"),
 }
 
 
