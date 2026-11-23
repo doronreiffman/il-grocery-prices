@@ -10,7 +10,7 @@ from itertools import combinations
 import pytest
 
 from shopper.history import Covered
-from shopper.search import PIECE_MAX, normalize, pieces
+from shopper.search import PIECE_MAX, normalize, pieces, today_lookup
 from shopper.wordindex import (EMPTY_MANIFEST, FOLDER, MANIFEST, MANIFEST_MAX, SHOWN, TOP, VERSION, Extra, Found, Node,
                                as_word_entry, entry, files, lookup, node_key, order_key, pick, size_words, step, tokens)
 from words_registry import brute, extras, matches, registry
@@ -261,28 +261,32 @@ def _word(code, names, published):
     return [code, names[0], "", published, *names]
 
 
+# The crafted entries and their steps for STEP_QUERY; the script's twin is held to the same (tests/test_search_js.py).
+STEP_QUERY = "Milk 3"
+STEP_CASES = [
+    (_word("7290000000101", ["milk 3"], 1), (1, 0)),
+    (_word("7290000000102", ["fresh cream", "milk 3"], 1), (1, 1)),
+    (_word("7290000000201", ["milk 3% fat"], 1), (2, 0)),
+    (_word("7290000000301", ["fresh milk", "milk 3 pack"], 2), (3, 0)),
+    (_word("7290000000302", ["fresh milk", "milk 3 pack"], 1), (3, 1)),
+    (_word("7290000000401", ["fresh milk 3%"], 1), (4, 0)),
+    (_word("7290000000402", ["cream", "fresh milk 3%"], 1), (4, 1)),
+    (_word("7290000000501", ["fresh milky 30"], 1), (5, 0)),
+    (_word("7290000000502", ["cream", "fresh milky 30"], 1), (5, 1)),
+    (_word("7290000000601", ["fresh milk", "pack of 3"], 2), (6, 0)),     # whole tokens, but in two names
+    (_word("7290000000602", ["fresh milk", "pack of 3"], 1), (6, 1)),     # one word in the model's name only
+    (_word("7290000000701", ["semimilk 3"], 1), (7, 0)),
+    (_word("7290000000702", ["cream", "semimilk 3"], 1), (7, 1)),
+    (_word("7290000000703", ["cream"], 1), (7, 1)),
+]
+STEP_TIES = [_word("7290000000404", ["b fresh milk 3%"], 1), _word("7290000000403", ["a fresh milk 3%"], 1),
+             _word("7290000000405", ["a fresh milk 3%"], 1)]
+
+
 def test_steps():
-    query = "Milk 3"
-    cases = [
-        (_word("7290000000101", ["milk 3"], 1), (1, 0)),
-        (_word("7290000000102", ["fresh cream", "milk 3"], 1), (1, 1)),
-        (_word("7290000000201", ["milk 3% fat"], 1), (2, 0)),
-        (_word("7290000000301", ["fresh milk", "milk 3 pack"], 2), (3, 0)),
-        (_word("7290000000302", ["fresh milk", "milk 3 pack"], 1), (3, 1)),
-        (_word("7290000000401", ["fresh milk 3%"], 1), (4, 0)),
-        (_word("7290000000402", ["cream", "fresh milk 3%"], 1), (4, 1)),
-        (_word("7290000000501", ["fresh milky 30"], 1), (5, 0)),
-        (_word("7290000000502", ["cream", "fresh milky 30"], 1), (5, 1)),
-        (_word("7290000000601", ["fresh milk", "pack of 3"], 2), (6, 0)),     # whole tokens, but in two names
-        (_word("7290000000602", ["fresh milk", "pack of 3"], 1), (6, 1)),     # one word in the model's name only
-        (_word("7290000000701", ["semimilk 3"], 1), (7, 0)),
-        (_word("7290000000702", ["cream", "semimilk 3"], 1), (7, 1)),
-        (_word("7290000000703", ["cream"], 1), (7, 1)),
-    ]
+    query, cases, ties = STEP_QUERY, STEP_CASES, STEP_TIES
     for item, expected in cases:
         assert step(query, item) == expected, item
-    ties = [_word("7290000000404", ["b fresh milk 3%"], 1), _word("7290000000403", ["a fresh milk 3%"], 1),
-            _word("7290000000405", ["a fresh milk 3%"], 1)]
     assert order_key(query, ties[0]) == (4, 0, "b fresh milk 3%", "7290000000404")
     everything = [item for item, _ in cases] + ties
     expected = ["7290000000101", "7290000000102", "7290000000201", "7290000000301", "7290000000302",
@@ -366,15 +370,6 @@ def test_one_character_words_and_a_full_today_read_no_file():
         assert lookup(read, query, today) == Found(_ranked(query, today), False, [])
 
 
-def _today_for(groups, query):
-    """A stand-in for today's lookup: the products whose normalised title starts with the search's first character and
-    some name of which holds the search, the first 50 in name order (Task 2 puts today's own rule here)."""
-    wanted = normalize(query)
-    if not wanted:
-        return []
-    return [item for item in groups.get(wanted[0], []) if any(wanted in name for name in item[2:])][:SHOWN]
-
-
 def _searches(covered, extra, entries):
     """Every name typed in full, every title typed one letter at a time from two, every pair of a product's tokens and
     each pair cut to two letters each, and searches of one-character words."""
@@ -394,14 +389,12 @@ def _searches(covered, extra, entries):
 def test_lookup_is_brute_force(world):
     covered, extra, entries, built = world
     by_code = {item[0]: item for item in entries}
-    groups = defaultdict(list)
-    for item in sorted(_today_entries(covered).values(), key=lambda item: (item[2], item[0])):
-        groups[item[2][:1]].append(item)
+    todays = pieces(covered)              # today's lookup reads today's own pieces of the same registry
     reads = {limit: dict(files_) for limit, files_ in built.items()}
     manifests = {limit: json.loads(read[MANIFEST]) for limit, read in reads.items()}
     seen = Counter()
     for number, query in enumerate(_searches(covered, extra, entries)):
-        today = _today_for(groups, query)
+        today = today_lookup(todays.get, query)
         known = {item[0] for item in today}
         wanted = brute(entries, query, today)
         seen["today full" if len(today) == SHOWN else "searched"] += 1

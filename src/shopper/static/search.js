@@ -47,10 +47,23 @@
    and the script asks for that page with HEAD. Anything but 200 means the site has no page for it (the bucket answers a
    missing page with 403), and the script says so.
 
+   The word index (docs/product-names.md, section 5), read only when the page's address carries ?words=on (the
+   product-names plan's Phase 1); shopper/wordindex.py is its Python twin, and the tests hold the two together. Every
+   name is walked by code point, and strings are ordered by code point, as Python orders them (`<` goes by UTF-16
+   unit). After today's lookup, a search whose list holds fewer than 50 and has a word of two characters reads the
+   manifest (search/w/manifest.json, version 1 only), picks one node, reads its file or its parts, and adds the
+   products every word of which starts a token of some name, each product once, ranked in seven steps, ties by the
+   normalised title and then the barcode. When the query's letters have no piece, or the list of pieces or the piece
+   cannot be read, the word step runs with none of today's. A word file that cannot be read leaves today's list, and
+   when nothing is shown after a request failed, the failure message shows. The list is followed by the flagged
+   sentence when only a node's first 50 were stored, and by a measure line: the word files read, their decoded
+   kilobytes and the milliseconds from the keystroke to the results.
+
    One request per piece, once: answers are kept, and a failed request is dropped from the keep so the next key asks
    again. An answer that arrives after the query changed is not shown. Results are written as text the script has
-   escaped; they go in a box it adds after the search box. It exports normalize, pieceFor, matches and barcodeOf, and
-   the picker's NAMES, PICK_KEY and functions, when `module` exists, for tests/search_harness.js. */
+   escaped; they go in a box it adds after the search box. It exports normalize, pieceFor, matches and barcodeOf, the
+   word index's tokensOf, asWordEntry, stepOf, pickNode and wordsFor, and the picker's NAMES, PICK_KEY and functions,
+   when `module` exists, for tests/search_harness.js. */
 "use strict";
 
 const NORMALIZE = /*NORMALIZE*/{
@@ -115,6 +128,152 @@ function barcodeOf(query) {
   const typed = String(query).trim();
   if (!/^[0-9]{8,14}$/.test(typed)) return null;
   return typed.replace(/^0+/, "") || null;
+}
+
+// the word index, behind ?words=on
+
+const WORD_MANIFEST = "search/w/manifest.json";
+const WORD_VERSION = 1;                      // the manifest's "v": any other is not read
+const WORD_TOP = 50;                         // what a part-typed start stores
+const KINDS = ["leaf", "whole", "start"];    // pickNode's preference, first to last
+const FLAGGED = "There may be more matches. Type more letters to find them.";
+
+function textOrder(a, b) {   // -1, 0 or 1: two strings in Python's order, by code point
+  let i = 0;
+  while (i < a.length && i < b.length) {
+    const x = a.codePointAt(i);
+    const y = b.codePointAt(i);
+    if (x !== y) return x < y ? -1 : 1;
+    i += x > 0xffff ? 2 : 1;
+  }
+  return Math.sign(a.length - b.length);
+}
+
+function tokensOf(name) {   // each space-separated word of a normalised name, and each run in it of letters and digits
+  const found = new Set();
+  for (const word of name.split(" ")) {
+    if (word === "") continue;
+    found.add(word);
+    for (const run of word.match(/[\p{L}\p{N}]+/gu) || []) found.add(run);
+  }
+  return Array.from(found);
+}
+
+function asWordEntry(today) {   // today's [barcode, title, normalised title, other names...], every name published
+  return [today[0], today[1], "", today.length - 2, ...today.slice(2)];
+}
+
+function startsOne(word, tokens) {
+  return tokens.some((token) => token.startsWith(word));
+}
+
+function stepIn(query, words, entry) {   // [the first step, 1 to 7, that fits; 1 when only a model's name fits it]
+  const names = entry.slice(4);
+  const published = entry[3];
+  const tokens = names.map(tokensOf);
+  const fits = [
+    (name) => name === query,
+    (name, i) => i === 0 && name.startsWith(query),
+    (name, i) => i > 0 && name.startsWith(query),
+    (name, i) => words.every((word) => tokens[i].includes(word)),
+    (name, i) => words.every((word) => startsOne(word, tokens[i])),
+  ];
+  for (let step = 0; step < fits.length; step++) {
+    const first = names.findIndex(fits[step]);
+    if (first !== -1) return [step + 1, first >= published ? 1 : 0];
+  }
+  const firsts = words.map((word) => tokens.findIndex((held) => startsOne(word, held)));
+  if (!firsts.includes(-1)) return [6, Math.max(...firsts) >= published ? 1 : 0];
+  return [7, names.slice(0, published).some((name) => name.includes(query)) ? 0 : 1];
+}
+
+function stepOf(query, entry) {
+  const wanted = normalize(query);
+  return stepIn(wanted, wanted.split(" "), entry);
+}
+
+function ranked(query, words, entries) {   // by step, then the normalised title, then the barcode
+  return entries
+    .map((entry) => [stepIn(query, words, entry), entry])
+    .sort(([a, x], [b, y]) => a[0] - b[0] || a[1] - b[1] || textOrder(x[4], y[4]) || textOrder(x[0], y[0]))
+    .map(([, entry]) => entry);
+}
+
+function holdsWords(words, entry) {   // every word starts a token of some name
+  const tokens = entry.slice(4).map(tokensOf);
+  return words.every((word) => tokens.some((held) => startsOne(word, held)));
+}
+
+function nodeKey(prefix, part) {
+  return "search/w/" + Array.from(prefix, hex).join("-") + (part === undefined ? "" : "." + part) + ".json";
+}
+
+function pickNode(manifest, words) {   // the node whose files a search reads, or null
+  const nodes = manifest.nodes;
+  const found = [];
+  for (const word of words) {
+    const letters = Array.from(word);
+    for (let end = 2; end <= letters.length; end++) {
+      const prefix = letters.slice(0, end).join("");
+      if (!Object.prototype.hasOwnProperty.call(nodes, prefix)) return null;   // no token starts with the word
+      const [count, parts, whole] = nodes[prefix];
+      if (parts === 0) {
+        found.push({ kind: "leaf", prefix, count, parts });
+        break;
+      }
+      if (end === letters.length) found.push({ kind: whole ? "whole" : "start", prefix, count, parts });
+    }
+  }
+  if (found.length === 0) return null;
+  const length = (node) => Array.from(node.prefix).length;
+  return found.reduce((best, node) => (KINDS.indexOf(node.kind) - KINDS.indexOf(best.kind) || node.count - best.count ||
+    length(node) - length(best) || textOrder(node.prefix, best.prefix)) < 0 ? node : best);
+}
+
+async function wordsFor(get, query, today) {   // today's list and the word index's best matches, ranked
+  const wanted = normalize(query);
+  const words = wanted.split(" ");
+  const read = [];
+  async function load(key) {   // the key's JSON, or null when it cannot be read
+    read.push(key);
+    try {
+      return await get(key);
+    } catch (error) {
+      return null;
+    }
+  }
+  const todays = () => ({ shown: ranked(wanted, words, today.map(asWordEntry)), flagged: false, read });
+  if (today.length >= MAX_SHOWN || !words.some((word) => Array.from(word).length >= 2)) return todays();
+  const manifest = await load(WORD_MANIFEST);
+  if (manifest === null || typeof manifest !== "object" || manifest.v !== WORD_VERSION) return todays();
+  const node = pickNode(manifest, words);
+  if (node === null) return todays();
+  const room = MAX_SHOWN - today.length;
+  const known = new Set(today.map((entry) => entry[0]));
+  const held = new Map();
+  let added = [];
+  const keys = node.kind === "leaf" ? [nodeKey(node.prefix)]
+    : Array.from({ length: node.parts }, (_, part) => nodeKey(node.prefix, part));
+  for (const key of keys) {
+    const part = await load(key);
+    if (!Array.isArray(part)) return todays();
+    for (const entry of part) {
+      if (held.has(entry[0])) continue;   // once, though files from two builds both hold it
+      held.set(entry[0], entry);
+      if (!known.has(entry[0]) && holdsWords(words, entry)) added.push(entry);
+    }
+    if (words.length === 1 && added.length >= room) break;
+  }
+  added = ranked(wanted, words, added).slice(0, room);
+  const shown = today.map((entry) => held.get(entry[0]) || asWordEntry(entry));
+  const flagged = node.kind === "start" && words.length > 1 && node.count > WORD_TOP;
+  return { shown: ranked(wanted, words, shown.concat(added)).slice(0, MAX_SHOWN), flagged, read };
+}
+
+function measureLine(loaded, took) {   // the word files a search read, their decoded size, the time to its results
+  const bytes = loaded.reduce((sum, data) => sum + new TextEncoder().encode(JSON.stringify(data)).length, 0);
+  return "<p class=\"measure\">Word index: " + loaded.length + (loaded.length === 1 ? " file" : " files") + " read (" +
+    Math.round(bytes / 1000) + " KB), " + Math.round(took) + " ms.</p>";
 }
 
 function escapeHtml(text) {
@@ -261,6 +420,7 @@ function startSearch(box, root) {
   box.after(results);
   const kept = {};
   let latest = 0;
+  const wordsOn = new URLSearchParams(location.search).get("words") === "on";   // the word index's switch
 
   function fetched(url) {
     if (!kept[url]) {
@@ -273,6 +433,31 @@ function startSearch(box, root) {
     return kept[url];
   }
 
+  async function withWords(query) {   // today's lookup, then the word index's
+    const began = performance.now();
+    let failed = false;
+    let today = [];
+    try {
+      const key = pieceFor(query, await fetched(root + "search/pieces.json"));
+      today = key === null ? [] : matches(await fetched(root + "search/" + key + ".json"), query);
+    } catch (error) {
+      failed = true;   // today's list not known: the word step runs without it
+    }
+    const loaded = [];
+    const get = (key) => fetched(root + key).then((data) => {
+      loaded.push(data);
+      return data;
+    }, (error) => {
+      failed = true;
+      throw error;
+    });
+    const found = await wordsFor(get, query, today);
+    const took = performance.now() - began;
+    if (found.shown.length === 0 && failed) throw new Error("nothing could be read");   // the failure message
+    const list = found.shown.length ? listing(root, found.shown) : "<p>" + NOTHING + "</p>";
+    return list + (found.flagged ? "<p>" + FLAGGED + "</p>" : "") + measureLine(loaded, took);
+  }
+
   async function answer(raw) {
     const code = barcodeOf(raw);
     if (code) {
@@ -282,6 +467,7 @@ function startSearch(box, root) {
     }
     const query = normalize(raw);
     if (Array.from(query).length < 2) return "";
+    if (wordsOn) return withWords(query);
     const key = pieceFor(query, await fetched(root + "search/pieces.json"));
     if (key === null) return "<p>" + NOTHING + "</p>";
     const found = matches(await fetched(root + "search/" + key + ".json"), query);
@@ -327,6 +513,7 @@ function start() {
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     normalize, pieceFor, matches, barcodeOf,
+    tokensOf, asWordEntry, stepOf, pickNode, wordsFor,
     NAMES, PICK_KEY, readPick, writePick, rootOf, headerFor, arrange, notSoldLine, onBadge,
   };
 }

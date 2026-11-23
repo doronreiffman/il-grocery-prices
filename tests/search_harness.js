@@ -8,6 +8,18 @@
    pieceFor    {pieces: [key, ...], queries: [text, ...]}   -> [key or null, ...]
    matches     {entries: [...], query: text}                -> the matching entries
    barcodeOf   [text, ...]                                  -> [barcode or null, ...]
+   today       {files: {key: json}, queries: [text, ...]}   -> [[barcode, ...], ...]: pieceFor over the files'
+               search/pieces.json, then matches over the piece it names; none when the key is null or a file is not
+               there (shopper.search.today_lookup's twin)
+
+   The word index (the product-names plan's Task 2):
+   tokensOf    [name, ...]                                  -> [[token, ...], ...]
+   asWordEntry [today's entry, ...]                         -> [word entry, ...]
+   stepOf      [[query, entry], ...]                        -> [[step, model], ...]
+   pickNode    [[manifest, [word, ...]], ...]               -> [{kind, prefix, count, parts} or null, ...]
+   words       {files: {key: json}, queries: [[query, today], ...]}
+                                                            -> [{shown: [barcode, ...], flagged, read}, ...]: wordsFor
+               with a get that resolves to the file's JSON and rejects for a key that is not there
 
    The picker, one op per function, each over a list of calls. A storage is described as null (none: reading
    localStorage threw), {value} (getItem gives the value; null is a missing key) or {throws: true} (getItem and setItem
@@ -21,11 +33,12 @@
    onBadge     [[pick, key], ...]                           -> [{show, setPick}, ...]
 
    A page:
-   page        {dom?, storage?, hash?, clicks?, inputs?, responses?}
+   page        {dom?, storage?, hash?, search?, clicks?, inputs?, responses?}
                dom is the page's elements inside <html>, each [tag, {attribute: value}, [child, ...]], a child an
                element or a text; without it the page is a search box (#q) alone, at the site's root. storage is
                {key: value} (the default, {}), "throws" (getItem and setItem throw) or "blocked" (reading localStorage
-               throws, as when the browser blocks site data). hash is location.hash (default ""). The script runs; then
+               throws, as when the browser blocks site data). hash is location.hash and search location.search (each
+               "" by default; search "?words=on" turns the word index on). The script runs; then
                each click taps the badge (a[data-column]) of that key; then each input's value is typed into the search
                box, waiting for its answer unless wait is false, with a fake fetch that answers {status, body, delay?,
                reject?} and records every request. The answer: {requests: [{url, method}, ...], html: the results box's
@@ -126,7 +139,7 @@ function storageFrom(description, held = {}) {
   };
 }
 
-async function page({ dom, storage = {}, hash = "", clicks = [], inputs = [], responses = {} }) {
+async function page({ dom, storage = {}, hash = "", search = "", clicks = [], inputs = [], responses = {} }) {
   const requests = [];
   const replaced = [];
   const root = new Element("html", {}, dom || [["input", { id: "q" }, []]]);
@@ -145,7 +158,7 @@ async function page({ dom, storage = {}, hash = "", clicks = [], inputs = [], re
       return storage === "throws" ? storageFrom({ throws: true }) : storageFrom({ value: null }, held);
     },
   });
-  globalThis.location = { hash, replace: (url) => { replaced.push(url); } };
+  globalThis.location = { hash, search, replace: (url) => { replaced.push(url); } };
   globalThis.window = globalThis;
   globalThis.fetch = async (url, options = {}) => {
     requests.push({ url, method: options.method || "GET" });
@@ -197,6 +210,36 @@ function picker(op, payload, script) {
   throw new Error("unknown op " + op);
 }
 
+function today({ files, queries }, script) {
+  return queries.map((query) => {
+    const key = script.pieceFor(query, files["search/pieces.json"] || []);
+    const piece = key === null ? undefined : files["search/" + key + ".json"];
+    return piece === undefined ? [] : script.matches(piece, query).map((entry) => entry[0]);
+  });
+}
+
+async function words({ files, queries }, script) {
+  const get = async (key) => {
+    if (!Object.hasOwn(files, key)) throw new Error("no file " + key);
+    return files[key];
+  };
+  const found = [];
+  for (const [query, todays] of queries) {
+    const { shown, flagged, read } = await script.wordsFor(get, query, todays);
+    found.push({ shown: shown.map((entry) => entry[0]), flagged, read });
+  }
+  return found;
+}
+
+async function wordIndex(op, payload, script) {
+  if (op === "tokensOf") return payload.map((name) => script.tokensOf(name));
+  if (op === "asWordEntry") return payload.map((entry) => script.asWordEntry(entry));
+  if (op === "stepOf") return payload.map(([query, entry]) => script.stepOf(query, entry));
+  if (op === "pickNode") return payload.map(([manifest, terms]) => script.pickNode(manifest, terms));
+  if (op === "words") return words(payload, script);
+  return picker(op, payload, script);
+}
+
 async function main() {
   const op = process.argv[2];
   const payload = JSON.parse(fs.readFileSync(0, "utf8"));
@@ -209,7 +252,8 @@ async function main() {
     else if (op === "pieceFor") answer = payload.queries.map((query) => search.pieceFor(query, payload.pieces));
     else if (op === "matches") answer = search.matches(payload.entries, payload.query);
     else if (op === "barcodeOf") answer = payload.map((text) => search.barcodeOf(text));
-    else answer = picker(op, payload, search);
+    else if (op === "today") answer = today(payload, search);
+    else answer = await wordIndex(op, payload, search);
   }
   process.stdout.write(JSON.stringify(answer));
 }

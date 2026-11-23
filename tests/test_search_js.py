@@ -10,18 +10,27 @@ tool for this one file (Node 22.11.0 there); a machine without it fails these te
 
 The fake page (the harness's `page`) is a small DOM, a search box (`#q`) alone unless a test gives one, with a storage, a
 location and a fetch that records its requests; the answers are the results box's HTML, the page's HTML after the
-script, what the storage holds and where `location.replace` was sent (nowhere, now, on any page)."""
+script, what the storage holds and where `location.replace` was sent (nowhere, now, on any page).
+
+The word index (the product-names plan's Task 2): the script's tokens, word entries, steps, `pickNode` and `wordsFor`
+are held to their Python twins in `shopper.wordindex`, each name walked by code point, and with `?words=on` in the page's
+address a search reads the word index after today's lookup; without it the script searches as before."""
 import json
 import random
 import re
 import subprocess
+from dataclasses import asdict
 from pathlib import Path
 
 import pytest
 
 from shopper.columns import COLUMNS
-from shopper.search import normalize
+from shopper.search import normalize, pieces, today_lookup
+from shopper.wordindex import (MANIFEST, Extra, Node, as_word_entry, entry, files, lookup, node_key, order_key, pick, step,
+                               tokens)
 from shopper.words import not_sold
+from test_wordindex import NODES, STEP_CASES, STEP_QUERY, STEP_TIES, _catalogue, _item, _searches
+from words_registry import extras, registry
 
 ROOT = Path(__file__).parent.parent
 NO_PAGE = "This site has no page for that barcode."
@@ -551,3 +560,266 @@ def test_a_pick_link_with_no_href_leaves_search_working():
                              "search/05e9.json": {"status": 200, "body": [_entry("7290000000008", "שמרים")]}})
     assert '<a href="p/7290000000008.html">' in found["html"]
     assert found["stored"] == {"store": "osherad"}
+
+
+# the word index, held to its Python twin (the product-names plan's Task 2)
+
+ON = "?words=on"
+FLAGGED = "<p>There may be more matches. Type more letters to find them.</p>"
+MEASURE = re.compile(r'<p class="measure">Word index: (\d+) files? read \((\d+) KB\), (\d+) ms\.</p>$')
+
+
+def _parsed(built):
+    """Built files (key -> bytes) as the harness takes them: key -> JSON."""
+    return {key: json.loads(body) for key, body in built.items()}
+
+
+def _words(built, queries):
+    """The script's `wordsFor` over the built files, for each [query, today]: {shown: barcodes, flagged, read}."""
+    return _run("words", {"files": _parsed(built), "queries": queries})
+
+
+def _python(built, query, today):
+    found = lookup(built.get, query, today)
+    return {"shown": [item[0] for item in found.shown], "flagged": found.flagged, "read": found.read}
+
+
+def _served(*builds, failing=(), rejecting=()):
+    """The fake fetch's answers: every built file, then a 403 for each key in `failing` and no answer at all (the
+    network down) for each in `rejecting`."""
+    responses = {key: {"status": 200, "body": json.loads(body)} for built in builds for key, body in built.items()}
+    responses.update({key: {"status": 403} for key in failing})
+    responses.update({key: {"reject": True} for key in rejecting})
+    return responses
+
+
+def _search(typed, responses, search=ON):
+    """A search box page with `search` as its address's query string, each of `typed` typed in turn."""
+    return _run("page", {"search": search, "inputs": [{"value": value} for value in typed], "responses": responses})
+
+
+def _listed_codes(html):
+    return re.findall(r'<li><a href="p/([^"]+)\.html">', html)
+
+
+def _milk_index(n=120):
+    """`n` products "שוקולד חלב <n>" ("חלב" and "שוקולד" whole tokens, "שוק" and "שוקו" only starts) and three "חלב
+    טרי <n>", the only titles that start with ח: today's pieces and the word index cut at 2,000 bytes, so "חלב" is a
+    big node in parts and today's search for it finds three."""
+    covered = _catalogue(*(_item(f"72900000{number:05d}", {"ramilevy": f"שוקולד חלב {number}"}) for number in range(n)),
+                         *(_item(f"72900000{900 + number:05d}", {"osherad": f"חלב טרי {number}"}) for number in range(3)))
+    return covered, pieces(covered), dict(files(covered, None, 2000))
+
+
+def _small_index():
+    """Four products, three with a name in English the model wrote (no title starts with a Latin letter)."""
+    a = _item("7290000000031", {"ramilevy": "חלב תנובה 3%"})
+    b = _item("7290000000048", {"ramilevy": "משקה חלב"})
+    c = _item("7290000000055", {"ramilevy": "שוקו בשקית"})
+    d = _item("7290000000062", {"ramilevy": "חחלב"})      # holds "חלב" inside a word only
+    covered = _catalogue(a, b, c, d)
+    extra = {a.code: Extra("Tnuva milk 3%", ("Tnuva milk 3%", "חלב טרי")), b.code: Extra("Milk drink", ("Milk drink",)),
+             c.code: Extra("Chocolate milk", ("Chocolate milk",))}
+    return covered, pieces(covered), dict(files(covered, extra))
+
+
+def test_tokens_agree_with_python():
+    names = ["דאו.דריי", "3%", "½", "שָׁלוֹם", "a_b", "x2y", "٣", "a-b", "\U0001d400lpha.b", "a.b a b.a", "%", "",
+             "\U0001d400 \U0001d400\U0001d400.x"]
+    names += sorted({normalize(name) for item in registry(400, "q50-a").values() for name in item.names.values()})
+    assert _run("tokensOf", names) == [tokens(name) for name in names]
+    assert tokens("\U0001d400lpha.b") == ["\U0001d400lpha.b", "\U0001d400lpha", "b"]   # one character, not two
+
+
+def test_as_word_entry_agrees_with_python():
+    today = [item for key, body in pieces(registry(400, "q50-a")).items() if key != "search/pieces.json"
+             for item in json.loads(body)]
+    assert len(today) == 400
+    assert _run("asWordEntry", today) == [as_word_entry(item) for item in today]
+
+
+def test_steps_agree_with_python():
+    everything = [item for item, _ in STEP_CASES] + STEP_TIES
+    queries = [STEP_QUERY, "milk", "MILK 3 pack", "fresh", "3", "cream milk", "semimilk", "milk 3%", "pack", "fresh 3",
+               "zzz", ""]
+    calls = [[query, item] for query in queries for item in everything]
+    assert _run("stepOf", calls) == [list(step(query, item)) for query, item in calls]
+    # Their order: every crafted entry that holds both words of the search, in one leaf the manifest names.
+    leaf = {MANIFEST: json.dumps({"v": 1, "nodes": {"mi": [len(everything), 0, 1]}}).encode(),
+            node_key("mi"): json.dumps(everything).encode()}
+    expected = _python(leaf, STEP_QUERY, [])
+    assert expected["shown"] == [item[0] for item in sorted(everything, key=lambda item: order_key(STEP_QUERY, item))
+                                 if item[0] not in {"7290000000701", "7290000000702", "7290000000703"}]
+    assert _words(leaf, [[STEP_QUERY, []]]) == [expected]
+
+
+def test_ties_go_by_title_then_barcode_in_code_point_order():
+    # Python orders strings by code point, the script's `<` by UTF-16 unit; they differ for a character from U+E000 to
+    # U+FFFF (here a full-width "a") against one above U+FFFF (U+1D400), and the script must order as Python does.
+    covered = _catalogue(_item("7290000000093", {"ramilevy": "חלב טרי"}), _item("7290000000086", {"ramilevy": "חלב טרי"}),
+                         _item("7290000000079", {"ramilevy": "חלב \U0001d400"}), _item("7290000000062", {"ramilevy": "חלב \uff41"}))
+    built = dict(files(covered))
+    expected = _python(built, "חלב", [])
+    assert expected["shown"] == ["7290000000086", "7290000000093", "7290000000062", "7290000000079"]
+    assert _words(built, [["חלב", []]]) == [expected]
+
+
+def test_pick_agrees_with_python():
+    calls = [[NODES, ["abc"]], [NODES, ["abcz"]], [NODES, ["ab"]], [NODES, ["abd"]], [NODES, ["abde"]], [NODES, ["ax"]],
+             [NODES, ["abx"]], [NODES, ["cd", "ax"]], [NODES, ["cd", "abc"]], [NODES, ["abc", "cd"]],
+             [NODES, ["xy", "abd"]], [NODES, ["ef", "gh"]], [NODES, ["ef", "abd"]], [NODES, ["gh", "ab"]],
+             [NODES, ["abc", "xz"]], [NODES, ["pr", "pq"]], [NODES, ["a", "abc"]], [NODES, ["a", "b"]]]
+    # A prefix's length and its order go by code point: "\U0001d400b" is two characters, shorter than "abc", and a
+    # full-width "a" (U+FF41) comes before U+1D400.
+    wide = {"\U0001d400b": [3, 0, 0], "\uff41b": [3, 0, 0], "abc": [3, 0, 0], "ab": [10, 2, 0]}
+    calls += [[wide, ["\U0001d400b", "\uff41b"]], [wide, ["abc", "\U0001d400b"]], [wide, ["\U0001d400"]]]
+    expected = [pick({"v": 1, "nodes": nodes}, words) for nodes, words in calls]
+    assert expected[-3:] == [Node("leaf", "\uff41b", 3, 0), Node("leaf", "\U0001d400b", 3, 0), None]   # one character walks nothing
+    found = _run("pickNode", [[{"v": 1, "nodes": nodes}, words] for nodes, words in calls])
+    assert found == [None if node is None else asdict(node) for node in expected]
+
+
+def test_word_lookup_agrees_with_python():
+    covered = registry(400, "q50-a")
+    extra = extras(covered, "q50-a")
+    entries = [entry(item, extra.get(code)) for code, item in covered.items()]
+    built = dict(files(covered, extra, 600))
+    todays = pieces(covered)
+    calls = [[query, today_lookup(todays.get, query)] for query in _searches(covered, extra, entries)]
+    expected = [_python(built, query, today) for query, today in calls]
+    assert _words(built, calls) == expected
+    kinds = {("flagged" if found["flagged"] else "read" if len(found["read"]) > 1 else
+              "manifest only" if found["read"] else "nothing read") for found in expected}
+    assert kinds == {"flagged", "read", "manifest only", "nothing read"}
+
+
+def test_a_manifest_and_files_from_two_builds_never_throw_and_show_each_product_once():
+    covered = registry(400, "q50-a")
+    extra = extras(covered, "q50-a")
+    entries = [entry(item, extra.get(code)) for code, item in covered.items()]
+    other = registry(400, "q50-b")
+    mixed = {**dict(files(covered, extra, 600)), MANIFEST: dict(files(other, extras(other, "q50-b"), 600))[MANIFEST]}
+    todays = pieces(covered)
+    calls = [[query, today_lookup(todays.get, query)] for query in _searches(covered, extra, entries)[::7]]
+    found = _words(mixed, calls)                         # the harness exits 1 on a throw
+    assert found == [_python(mixed, query, today) for query, today in calls]
+    assert any(len(result["read"]) > 1 and result["shown"] for result in found)
+    for (query, today), result in zip(calls, found):
+        assert len(result["shown"]) == len(set(result["shown"])) <= 50, query
+        assert {item[0] for item in today} <= set(result["shown"]), query
+    # Parts from two builds: part 1 as an earlier build left it, holding part 0's products again.
+    covered, _, built = _milk_index()
+    mixed = {**built, node_key("חלב", 1): built[node_key("חלב", 0)]}
+    today = [as_today for as_today in json.loads(pieces(covered)["search/05d7.json"])[:1]]
+    for query in ("חלב", "חלב שוק"):
+        [result] = _words(mixed, [[query, today]])
+        assert len(result["shown"]) == len(set(result["shown"])) == 50 and result["shown"].count(today[0][0]) == 1
+        assert result == _python(mixed, query, today)
+
+
+def test_an_unknown_manifest_version_reads_no_word_file():
+    covered, todays, built = _small_index()
+    today = today_lookup(todays.get, "חלב")
+    assert [item[0] for item in today] == ["7290000000062", "7290000000031"]    # "חחלב" holds it inside a word
+    read = _words(built, [["חלב", today]])
+    assert read == [_python(built, "חלב", today)] and "7290000000048" in read[0]["shown"]   # version 1: read
+    today_only = {"shown": ["7290000000031", "7290000000062"], "flagged": False, "read": [MANIFEST]}
+    manifest = json.loads(built[MANIFEST])
+    for other in ({**manifest, "v": 2}, {**manifest, "v": "1"}, {"nodes": manifest["nodes"]}, [manifest], None):
+        broken = {**built, MANIFEST: json.dumps(other).encode()}
+        assert _words(broken, [["חלב", today]]) == [today_only] and _python(broken, "חלב", today) == today_only
+    page = _search(["חלב"], _served(todays, {**built, MANIFEST: json.dumps({**manifest, "v": 2}).encode()}))
+    assert [r["url"] for r in page["requests"] if r["url"].startswith("search/w/")] == [MANIFEST]
+    assert _listed_codes(page["html"]) == today_only["shown"]
+
+
+def test_with_the_switch_a_search_with_no_piece_reads_the_word_index():
+    covered, todays, built = _small_index()
+    assert today_lookup(todays.get, "milk") == []                       # no title starts with a Latin letter
+    english = [item[0] for item in lookup(built.get, "milk", []).shown]
+    hebrew = [item[0] for item in lookup(built.get, "חלב", []).shown]
+    assert sorted(english) == ["7290000000031", "7290000000048", "7290000000055"]
+    assert hebrew == ["7290000000031", "7290000000048"]                 # "חחלב" holds it inside a word only
+    cases = [("milk", _served(todays, built), english),                                  # no piece for the letters
+             ("חלב", _served(todays, built, failing=["search/pieces.json"]), hebrew),       # the list of pieces fails
+             ("חלב", _served(todays, built, failing=["search/05d7.json"]), hebrew)]         # the piece fails
+    for typed, responses, expected in cases:
+        html = _search([typed], responses)["html"]
+        assert _listed_codes(html) == expected, typed
+        assert FAILED not in html and NOTHING not in html, typed
+
+
+def test_with_the_switch_offline_shows_the_failure_message():
+    covered, todays, built = _small_index()
+    everything = [*todays, *built]
+    offline = _search(["חלב"], _served(rejecting=everything))
+    assert FAILED in offline["html"] and NOTHING not in offline["html"]
+    assert MANIFEST in [r["url"] for r in offline["requests"]]          # the word step ran, and read no manifest either
+    # The letters have no piece, and the manifest cannot be read.
+    for broken in ({"failing": [MANIFEST]}, {"rejecting": [MANIFEST]}):
+        html = _search(["milk"], _served(todays, built, **broken))["html"]
+        assert FAILED in html and NOTHING not in html
+    # Today's piece failed and the word index has nothing: what today's search would have found is not known.
+    html = _search(["חלבון"], _served(todays, built, failing=["search/05d7.json"]))["html"]
+    assert FAILED in html and NOTHING not in html
+    # Everything read, and nothing found: nothing found.
+    for typed in ("milkshake", "חלבון", "xq"):
+        html = _search([typed], _served(todays, built))["html"]
+        assert NOTHING in html and FAILED not in html, typed
+
+
+def test_without_the_switch_no_word_file_is_fetched():
+    covered, todays, built = _small_index()
+    on_main = ('<ul><li><a href="p/7290000000055.html"><span class="as-listed" lang="he" dir="rtl">שוקו בשקית</span></a> '
+               "<small>7290000000055</small></li></ul>")
+    for search in ("", "?words=off", "?words=ON", "?word=on", "?x=words=on"):
+        page = _search(["חלב", "milk", "שוקו"], _served(todays, built), search)
+        assert [r["url"] for r in page["requests"]] == ["search/pieces.json", "search/05d7.json", "search/05e9.json"]
+        assert page["html"] == on_main, search
+        page = _search(["milk"], _served(todays, built), search)
+        assert page["html"] == f"<p>{NOTHING} Try fewer letters, or browse by first letter.</p>", search
+
+
+def test_with_the_switch_a_missing_word_file_shows_todays_list():
+    covered, todays, built = _milk_index()
+    nodes = json.loads(built[MANIFEST])["nodes"]
+    assert nodes["חלב"][1] > 1                                        # a big node, in parts
+    today = today_lookup(todays.get, "חלב")
+    assert len(today) == 3
+    ranked = [item[0] for item in sorted(map(as_word_entry, today), key=lambda item: order_key("חלב", item))]
+    for part in (0, 1):
+        failing = node_key("חלב", part)
+        assert [item[0] for item in lookup({**built, failing: None}.get, "חלב", today).shown] == ranked
+        html = _search(["חלב"], _served(todays, built, failing=[failing]))["html"]
+        assert _listed_codes(html) == ranked
+        assert FAILED not in html and NOTHING not in html
+        assert int(MEASURE.search(html)[1]) == 1 + part                # the manifest, and the parts read before it
+
+
+def test_the_flagged_list_says_so():
+    covered, todays, built = _milk_index()
+    assert lookup(built.get, "שוקו שוק", today_lookup(todays.get, "שוקו שוק")).flagged
+    html = _search(["שוקו שוק"], _served(todays, built))["html"]
+    assert len(_listed_codes(html)) == 50 and FLAGGED in html
+    assert html.index(FLAGGED) > html.index("</ul>")                   # after the list, before the measure line
+    assert MEASURE.search(html[html.index(FLAGGED) + len(FLAGGED):])
+    for typed in ("חלב שוק", "שוקו"):
+        assert not lookup(built.get, typed, today_lookup(todays.get, typed)).flagged
+        assert FLAGGED not in _search([typed], _served(todays, built))["html"], typed
+
+
+def test_the_measure_line_only_with_the_switch():
+    covered, todays, built = _milk_index()
+    found = lookup(built.get, "חלב", today_lookup(todays.get, "חלב"))
+    size = sum(len(built[key]) for key in found.read)
+    assert len(found.read) > 2 and size > 2000
+    html = _search(["חלב"], _served(todays, built))["html"]
+    line = MEASURE.search(html)
+    assert line and html.endswith(line[0])
+    assert (int(line[1]), int(line[2])) == (len(found.read), int(size / 1000 + 0.5))
+    assert f"Word index: {len(found.read)} files read (" in line[0]
+    one = _search(["xq"], _served(todays, built))["html"]              # the manifest alone: one file
+    assert MEASURE.search(one)[0].startswith('<p class="measure">Word index: 1 file read (')
+    for search in ("", "?words=off"):
+        html = _search(["חלב", "xq"], _served(todays, built), search)["html"]
+        assert "Word index" not in html and "measure" not in html

@@ -1,6 +1,8 @@
 """Search and browse (`shopper.search`; the plan's Task 17): the normalisation table and its twin in `search.js`, the
-index pieces, the browse pages. Names are synthetic. The script's own behaviour is `tests/test_search_js.py`'s."""
+index pieces, the browse pages, and `today_lookup`, the Python twin of the script's own lookup (the product-names plan's
+Task 2), held to the script under Node. Names are synthetic. The script's own behaviour is `tests/test_search_js.py`'s."""
 import json
+import random
 import re
 from collections import Counter
 from datetime import date
@@ -11,8 +13,10 @@ from basket.check import PRONOUNS, flatten, strip_tags
 from shopper import search
 from shopper.assets import STYLESHEET
 from shopper.history import Covered
-from shopper.search import NORMALIZE, PIECE_MAX, SCRIPT, browse_pages, browse_path, normalize, pieces
+from shopper.search import NORMALIZE, PIECE_MAX, SCRIPT, browse_pages, browse_path, normalize, pieces, today_lookup
 from shopper.words import CREDIT_START, NEVER, SITE_NAME, date_line
+from test_search_js import _run
+from words_registry import registry
 
 DAY = date(2026, 11, 6)
 DEAL, RAMI = "shufersal-deal", "ramilevy"
@@ -234,3 +238,79 @@ def test_browse_pages_are_the_same_bytes_twice():
 def test_no_products_no_pages():
     assert pieces({}) == {"search/pieces.json": b"[]"}
     assert browse_pages({}, DAY, "11:48") == {}
+
+
+# today's lookup, twinned in Python (the product-names plan's Task 2)
+
+def _encode(value):
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+
+
+def _today_in_the_script(built, queries):
+    """The barcodes the script's `pieceFor` then `matches` give for each query, over the built files (key -> bytes); a
+    file that is not there gives none."""
+    return _run("today", {"files": {key: json.loads(body) for key, body in built.items()}, "queries": queries})
+
+
+def _seeded_queries(covered, count, seed):
+    """`count` queries as a shopper might type them: a piece of a product's name as published (quotes, capitals and
+    all), two to eight characters long, half of them from the name's start."""
+    rng = random.Random(seed)
+    items = sorted(covered.values(), key=lambda item: item.code)
+    found = []
+    while len(found) < count:
+        name = rng.choice(sorted(rng.choice(items).names.values()))
+        start = 0 if rng.random() < 0.5 else rng.randrange(len(name))
+        found.append(name[start:start + rng.randint(2, 8)])
+    return found
+
+
+def test_today_lookup_agrees_with_the_script():
+    covered = registry(400, "q50-a")
+    built = pieces(covered)
+    queries = _seeded_queries(covered, 200, "q50-today")
+    python = [[item[0] for item in today_lookup(built.get, query)] for query in queries]
+    assert python == _today_in_the_script(built, queries)
+    sizes = Counter("none" if not codes else "50" if len(codes) == 50 else "some" for codes in python)
+    assert set(sizes) == {"none", "some", "50"}, sizes      # nothing found, a few, and a full list among them
+
+
+def test_today_lookup_takes_the_letters_piece_first():
+    # `pieces()` writes a letter whole or split, never both, and the registry never splits one: hand-made pieces.
+    whole, split = ["7290000000001", "אבג", "אבג"], ["7290000000002", "אבד", "אבד"]
+    both = {"search/pieces.json": _encode(["05d0", "05d0-05d1"]), "search/05d0.json": _encode([whole]),
+            "search/05d0-05d1.json": _encode([split])}
+    assert today_lookup(both.get, "אב") == [whole]          # the letter's own piece, as pieceFor reads it
+    alone = {"search/pieces.json": _encode(["05d0-05d1"]), "search/05d0-05d1.json": _encode([split])}
+    assert today_lookup(alone.get, "אב") == [split]         # a split letter: the piece of its first two
+    assert today_lookup(alone.get, "א") == []               # a split letter needs a second letter
+    assert today_lookup(alone.get, "אג") == []              # a second letter no piece has
+    script = _today_in_the_script(both, ["אב"]) + _today_in_the_script(alone, ["אב", "א", "אג"])
+    assert script == [[whole[0]], [split[0]], [], []]
+
+
+def test_today_lookup_reads_every_name_and_answers_none_for_a_missing_file():
+    cheese = ["7290000000001", "גבינה צהובה פרוסה", "גבינה צהובה פרוסה", "גבינה פרוסות"]
+    goat = ["7290000000003", "גבינת עיזים", "גבינת עיזימ"]   # the normalised title: a final mem made plain
+    built = {"search/pieces.json": _encode(["05d2"]), "search/05d2.json": _encode([cheese, goat])}
+    assert today_lookup(built.get, "פרוסות") == []          # the first letter's piece: no title starts with פ
+    assert today_lookup(built.get, "גבינה פ") == [cheese]   # a name other than the title holds it ("גבינה פרוסות")
+    assert today_lookup(built.get, "גבינה פרוסו") == [cheese]
+    assert today_lookup(built.get, "גבינ") == [cheese, goat]
+    assert today_lookup(built.get, '"גבינ') == [cheese, goat]   # as typed: normalised first
+    for broken in (None, b"[", b"\xff", b'{"a": 1}'):
+        assert today_lookup({**built, "search/pieces.json": broken}.get, "גבינ") == []
+        assert today_lookup({**built, "search/05d2.json": broken}.get, "גבינ") == []
+    assert today_lookup(built.get, "") == [] and today_lookup(built.get, "  ") == []
+    assert _today_in_the_script(built, ["פרוסות", "גבינה פ", "גבינה פרוסו", "גבינ", '"גבינ']) == [
+        [], [cheese[0]], [cheese[0]], [cheese[0], goat[0]], [cheese[0], goat[0]]]
+
+
+def test_today_lookup_orders_names_as_the_script_does():
+    # The script's name order compares strings with `<`, by UTF-16 unit: a character from U+E000 to U+FFFF (here a
+    # full-width "a") comes after one above U+FFFF (U+1D400), where Python's own order, by code point, puts it before.
+    wide, astral = ["7290000000001", "אב\uff41", "אב\uff41"], ["7290000000002", "אב\U0001d400", "אב\U0001d400"]
+    built = {"search/pieces.json": _encode(["05d0"]), "search/05d0.json": _encode([wide, astral])}   # Python's order
+    assert sorted([wide[2], astral[2]]) == [wide[2], astral[2]]
+    assert today_lookup(built.get, "אב") == [astral, wide]
+    assert _today_in_the_script(built, ["אב"]) == [[astral[0], wide[0]]]

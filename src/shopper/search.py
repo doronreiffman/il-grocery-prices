@@ -21,6 +21,13 @@ piece covers is therefore the products whose longest name starts with the query'
 the start of the longest name, and the browse pages reach the rest. A piece or a sub-piece over the limit is refused by
 the upload check (Task 20), not here.
 
+Today's lookup, twinned. `today_lookup` is what the script shows for a query (`pieceFor`, then `matches`): the piece of
+the query's first character when `search/pieces.json` lists it, else of its first two; then the entries any of whose
+names holds the query, in the script's name order, the first `MAX_SHOWN`. The script orders names with `<`, by UTF-16
+unit, so the twin does too: it differs from Python's code-point order only for a character from U+E000 to U+FFFF
+against one above U+FFFF. A file missing or unreadable gives nothing: the word index's lookup then runs with no list of
+today's (`shopper.wordindex`; the product-names plan's call 29). The tests hold the twin to the script under Node.
+
 The browse pages. `browse/<hex>.html` for each Hebrew letter (alef to tav, after normalising: the finals are plain) that
 starts some covered product's longest name, and `browse/other.html` for every product whose longest name does not start
 with a Hebrew letter: a Latin name, a digit, a sign. A page lists its products in name order, each a link to
@@ -32,7 +39,7 @@ stylesheet's. A letter nobody starts a name with has no page.
 """
 import json
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import date
 from html import escape
 from pathlib import Path
@@ -43,6 +50,8 @@ from shopper.shell import page
 from shopper.words import SITE_NAME
 
 PIECE_MAX = 150_000
+PIECES = "search/pieces.json"
+MAX_SHOWN = 50        # the most entries a search shows, search.js's MAX_SHOWN
 SCRIPT = Path(__file__).parent / "static" / "search.js"
 NORMALIZE: dict[str, str] = {
     "'": "", '"': "", "\u05f3": "", "\u05f4": "",            # the quotes, geresh and gershayim: dropped
@@ -84,6 +93,47 @@ def _entry(item: Covered) -> list[str]:
     title = normalize(item.title)
     others = sorted({name for name in map(normalize, item.names.values()) if name and name != title})
     return [item.code, item.title, title, *others]
+
+
+def _hex(char: str) -> str:
+    return f"{ord(char):04x}"
+
+
+def _units(text: str) -> bytes:
+    """Bytes that order as the script's `<` orders strings: by UTF-16 unit."""
+    return text.encode("utf-16-be", "surrogatepass")
+
+
+def _json(read: Callable[[str], bytes | None], key: str):
+    """The JSON a site key holds, or None when it is missing or unreadable."""
+    body = read(key)
+    if body is None:
+        return None
+    try:
+        return json.loads(body)
+    except ValueError:
+        return None
+
+
+def today_lookup(read: Callable[[str], bytes | None], query: str) -> list[list]:
+    """The entries today's script shows for a normalised query of two or more characters: `pieceFor`, then `matches`
+    (the module's docstring, "Today's lookup, twinned"); [] when the pieces list or the piece is missing. `read` gives a
+    site key's bytes, or None when the file cannot be had."""
+    wanted = normalize(query)
+    listed = _json(read, PIECES)
+    if not wanted or not isinstance(listed, list):
+        return []
+    if _hex(wanted[0]) in listed:
+        name = _hex(wanted[0])
+    elif len(wanted) > 1 and f"{_hex(wanted[0])}-{_hex(wanted[1])}" in listed:
+        name = f"{_hex(wanted[0])}-{_hex(wanted[1])}"
+    else:
+        return []
+    piece = _json(read, f"search/{name}.json")
+    if not isinstance(piece, list):
+        return []
+    found = [entry for entry in piece if any(wanted in other for other in entry[2:])]
+    return sorted(found, key=lambda entry: (_units(entry[2]), _units(entry[0])))[:MAX_SHOWN]
 
 
 def pieces(covered: Mapping[str, Covered]) -> dict[str, bytes]:
