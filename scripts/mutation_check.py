@@ -171,6 +171,8 @@ SHOP_SEARCH = ("src/shopper/search.py", ["tests/test_search.py"])
 SHOP_SEARCH_JS = ("src/shopper/static/search.js", ["tests/test_search_js.py"])
 # The word index and its Python lookup (q50, the product-names plan's Task 1).
 SHOP_WORDINDEX = ("src/shopper/wordindex.py", ["tests/test_wordindex.py"])
+# The probe's stand-in names (q50, the product-names plan's Task 3; retired with the probe in its Task 9).
+SHOP_WORDPROBE = ("src/shopper/wordprobe.py", ["tests/test_wordprobe.py"])
 # The site's look (q36): the stylesheet, the site's shared files made from it and the fonts, and the fonts' maker.
 LOOK = ("src/shopper/static/look.css", ["tests/test_look.py"])
 # The stylesheet is the design's appendix byte for byte: a test of its own, which no other stylesheet mutation runs.
@@ -342,17 +344,18 @@ _NCR_ANSWER_BY_ANSWER = ("        length, fnames, total = _page_size(file_page),
                          "            yield from answer\n")
 
 # publish.sh's guard and its uploads, for the mutation that runs the guard after the upload (q22 publish); the uploads'
-# order, for the one that puts the pages first again (the final review's finding 8); the assets' three, for the one that
-# puts the stylesheet after the pages (q36 upload).
+# order, for the one that puts the pages first again (the final review's finding 8; the word manifest's last, q50); the
+# assets' three, for the one that puts the stylesheet after the pages (q36 upload).
 _PUBLISH_ASSETS = ("upload --include 'assets/*.css' --content-type 'text/css; charset=utf-8' --size-only\n",
                    "upload --include 'assets/*.woff2' --content-type 'font/woff2' --size-only\n",
                    "upload --include 'assets/*.txt' --content-type 'text/plain; charset=utf-8' --size-only\n")
 _PUBLISH_PAGES = "upload --include '*.html' --content-type 'text/html; charset=utf-8'\n"
+_PUBLISH_MANIFEST = "upload --include 'search/w/manifest.json' --content-type 'application/json; charset=utf-8'\n"
 _PUBLISH_ORDER = ("upload --include '*.csv.gz' --content-type 'application/gzip'\n"
                   "upload --include '*.csv' --content-type 'text/csv; charset=utf-8'\n"
-                  "upload --include '*.json' --content-type 'application/json; charset=utf-8'\n"
+                  "upload --include '*.json' --exclude 'search/w/manifest.json' --content-type 'application/json; charset=utf-8'\n"
                   "upload --include '*.js' --content-type 'text/javascript; charset=utf-8'\n"
-                  + "".join(_PUBLISH_ASSETS) + _PUBLISH_PAGES)
+                  + "".join(_PUBLISH_ASSETS) + _PUBLISH_PAGES + _PUBLISH_MANIFEST)
 _PUBLISH_GUARD = ('if ! PYTHONPATH=src "$PYTHON" -m shopper.guard "$SITE" "$tmp/published" "$tmp/pages"; then\n'
                   '  echo "the publish guard failed; nothing uploaded" >&2\n'
                   '  exit 1\n'
@@ -362,10 +365,13 @@ _PUBLISH_UPLOAD = ('# One allowlisted sync per kind of file, its content type se
                    "# nosniff), the types basket.site.CONTENT_TYPES gives the site run's uploads. The marker and anything else in the\n"
                    '# folder stay local. Browsers keep a file five minutes, so an upload shows within minutes of the invalidation. No\n'
                    '# sync here removes anything: a published file the build lacks stays (question H).\n'
-                   '# The data files go up first and the pages last, as the site run puts them (basket.site.upload): the forecasts and\n'
-                   '# scores files, the ledger, the day and site-day files with the search pieces, search.js, the shared files under\n'
-                   '# assets/ (the stylesheet, the fonts and their licences, which every page names), then the pages; so a stop part-way\n'
-                   "# never leaves a live page naming a file not yet up, a changed stylesheet's new name included. Each upload that fails\n"
+                   '# The data files go up first and the pages after them, as the site run puts them (basket.site.upload): the forecasts\n'
+                   "# and scores files, the ledger, the day and site-day files with the search pieces and the word index's files, search.js,\n"
+                   '# the shared files under assets/ (the stylesheet, the fonts and their licences, which every page names), then the pages;\n'
+                   "# so a stop part-way never leaves a live page naming a file not yet up, a changed stylesheet's new name included. The\n"
+                   "# word index's manifest, search/w/manifest.json, names its word files, whose keys are fixed: the JSON upload leaves it\n"
+                   '# out (its exclude after its include: the last filter that matches decides), and it goes up last, alone, so it never\n'
+                   "# names a word file not yet up, and a stop before it leaves the bucket's own manifest in place. Each upload that fails\n"
                    '# stops the script by its own test, never by set -e alone, before the next upload and the invalidation (the final\n'
                    "# review's finding 8). A rerun then passes the guard: what went up is the build's own bytes.\n"
                    '# The assets go by size alone (--size-only): sync puts a file whose size or time differs, and every build writes them\n'
@@ -379,6 +385,15 @@ _PUBLISH_UPLOAD = ('# One allowlisted sync per kind of file, its content type se
                    '  }\n'
                    '}\n'
                    + _PUBLISH_ORDER)
+
+# basket.site's put of each call after the records (q50), and the break that lets one call's failed put through: the
+# upload goes on to the calls after it (q36 upload, for the assets; q50 site, for the word files).
+_SITE_CALL = "            put += self.put_files(site_dir, part)\n"
+_SITE_CALL_LET_THROUGH = ("            try:\n"
+                          "                put += self.put_files(site_dir, part)\n"
+                          "            except Exception:\n"
+                          '                if name != "{call}":\n'
+                          "                    raise\n")
 
 # sync.sh's identity check and its read of the archive bucket from the collector stack, for the mutation that reads the
 # bucket first (q42 archive).
@@ -2424,11 +2439,11 @@ MUTATIONS = {
     "the keys of every prefix (q22 upload)": (SITE, '        return self._keys(prefix)\n', '        return self._keys("")\n'),
     "published reads the day file (q22 upload)": (SITE, '        return self._get(key)\n', '        return self._get("days/" + key)\n'),
     # shopper: the site run in Lambda (Task 23): the basket mode builds, checks, guards and publishes the whole site
-    "pages put for an earlier day (q22 site run)": (BASKET_HANDLER, "outcome.data, with_pages=with_pages)", "outcome.data, with_pages=True)"),
+    "pages put for an earlier day (q22 site run)": (BASKET_HANDLER, "outcome.data, with_pages=with_pages, timings=timings)", "outcome.data, with_pages=True, timings=timings)"),
     "the guard asked for the product pages of an earlier day (q22 site run)": (BASKET_HANDLER, "product_pages, with_pages=with_pages)", "product_pages, with_pages=True)"),
     "the success ping on a promotions error (q22 site run)": (BASKET_HANDLER, '                if summary["alerts"]:  #', "                if False:  #"),
-    "the fail ping before the upload (q22 site run)": (BASKET_HANDLER, "            uploaded = deps.site.upload(site, outcome.data, with_pages=with_pages)\n", '            if outcome.promotions_errors:\n                raise RuntimeError("promotions not read")\n            uploaded = deps.site.upload(site, outcome.data, with_pages=with_pages)\n'),
-    "a summary put back before the upload (q22 site run)": (BASKET_HANDLER, "            uploaded = deps.site.upload(site, outcome.data, with_pages=with_pages)\n", "            for t in outcome.scored:\n                deps.archive.put_summary(t, tables)\n            uploaded = deps.site.upload(site, outcome.data, with_pages=with_pages)\n"),
+    "the fail ping before the upload (q22 site run)": (BASKET_HANDLER, "            uploaded = deps.site.upload(site, outcome.data, with_pages=with_pages, timings=timings)\n", '            if outcome.promotions_errors:\n                raise RuntimeError("promotions not read")\n            uploaded = deps.site.upload(site, outcome.data, with_pages=with_pages, timings=timings)\n'),
+    "a summary put back before the upload (q22 site run)": (BASKET_HANDLER, "            uploaded = deps.site.upload(site, outcome.data, with_pages=with_pages, timings=timings)\n", "            for t in outcome.scored:\n                deps.archive.put_summary(t, tables)\n            uploaded = deps.site.upload(site, outcome.data, with_pages=with_pages, timings=timings)\n"),
     "the registry not put back (q22 site run)": (BASKET_HANDLER, "        deps.archive.put_covered(day, tables)\n", ""),
     "a new summary not put back (q22 site run)": (BASKET_HANDLER, "        for t in outcome.scored:\n            deps.archive.put_summary(t, tables)\n", ""),
     "no invalidation after an upload (q22 site run)": (BASKET_HANDLER, "run_id) if uploaded else None", "run_id) if False else None"),
@@ -2744,7 +2759,7 @@ MUTATIONS = {
     "site day file under another key": (SITE, 'return f"days/{day.isoformat()}.json"', 'return f"day/{day.isoformat()}.json"'),
     "site pages put as JSON": (SITE, 'CONTENT_TYPES = {".html": HTML,', 'CONTENT_TYPES = {".html": JSON,'),
     "site day file put as HTML": (SITE, '".json": JSON, ".js"', '".json": HTML, ".js"'),
-    "site pages put before the data files": (SITE, "        return put + self.put_files(site_dir, [key for key in keys if key not in records])\n", "        return put + self.put_files(site_dir, [key for key in reversed(keys) if key not in records])\n"),
+    "site pages put before the data files": (SITE, "        rest = [key for key in keys if key not in first]\n", "        rest = [key for key in reversed(keys) if key not in first]\n"),
     "site puts before every file is found": (SITE, "        self._checked(site_dir, [*keys, *assets])  # every file found and typed before any put\n", ""),
     "site key with more after .json read as a day": (SITE, r'\.json$")', r'\.json")'),
     "site impossible date stops the latest day": (SITE, "except ValueError:", "except TypeError:"),
@@ -3027,13 +3042,13 @@ MUTATIONS = {
     "a failed upload let through (q22 publish)": (PUBLISH_SCRIPT, ' --region "$REGION" || {\n    echo "the upload of $2 failed', ' --region "$REGION" || true || {\n    echo "the upload of $2 failed'),
     # The site's look (q36, Task 4): the shared files under assets/ go up once each, before any page names them, in
     # Lambda and by hand, and the role may put them.
-    "the assets put with the pages (q36 upload)": (SITE, "        put += self.put_files(site_dir, assets)  #", "        keys += assets  #"),
+    "the assets put with the pages (q36 upload)": (SITE, "        first = {*records, *words, *manifest}", "        keys += assets\n        assets = []\n        first = {*records, *words, *manifest}"),
     "an asset the bucket holds put again (q36 upload)": (SITE, '        held = set(self._keys(f"{ASSET_FOLDER}/"))\n', "        held = set()\n"),
     "the assets put for an earlier day (q36 upload)": (SITE, "        assets = self._new_assets(site_dir) if with_pages else []\n", "        assets = self._new_assets(site_dir)\n"),
     "a stylesheet served as text/plain (q36 upload)": (SITE, '".css": "text/css; charset=utf-8"', '".css": "text/plain; charset=utf-8"'),
     "a font served as text/plain (q36 upload)": (SITE, '".woff2": "font/woff2"', '".woff2": "text/plain; charset=utf-8"'),
     "an asset of no known type found after the records went up (q36 upload)": (SITE, "        self._checked(site_dir, [*keys, *assets])  #", "        self._checked(site_dir, keys)  #"),
-    "a failed asset put let the upload go on (q36 upload)": (SITE, "        put += self.put_files(site_dir, assets)  #", "        try:\n            put += self.put_files(site_dir, assets)\n        except Exception:\n            pass\n        #"),
+    "a failed asset put let the upload go on (q36 upload)": (SITE, _SITE_CALL, _SITE_CALL_LET_THROUGH.format(call="assets")),
     "the stylesheet uploaded after the pages (q36 upload)": (PUBLISH_SCRIPT, "".join(_PUBLISH_ASSETS) + _PUBLISH_PAGES, "".join(_PUBLISH_ASSETS[1:]) + _PUBLISH_PAGES + _PUBLISH_ASSETS[0]),
     "an asset synced by its time (q36 upload)": (PUBLISH_SCRIPT, "--content-type 'text/css; charset=utf-8' --size-only\n", "--content-type 'text/css; charset=utf-8'\n"),
     "the fonts sent with no content type (q36 upload)": (PUBLISH_SCRIPT, "upload --include 'assets/*.woff2' --content-type 'font/woff2' --size-only\n", "upload --include 'assets/*.woff2' --size-only\n"),
@@ -3447,6 +3462,23 @@ MUTATIONS = {
     "a today's entry shown in today's layout in the script (q50 script)": (SHOP_SEARCH_JS, "held.get(entry[0]) || asWordEntry(entry)", "held.get(entry[0]) || entry"),
     "a name walked by UTF-16 unit in the script (q50 script)": (SHOP_SEARCH_JS, "    const letters = Array.from(word);\n", '    const letters = word.split("");\n'),
     "a prefix's length counted by UTF-16 unit in the script (q50 script)": (SHOP_SEARCH_JS, "  const length = (node) => Array.from(node.prefix).length;\n", "  const length = (node) => node.prefix.length;\n"),
+    # the word index in the site run: its upload, its check, the build, the hand upload, the probe and the site run's
+    # event and alert (q50, the product-names plan's Task 3)
+    "the manifest put with the rest (q50 site)": (SITE, "        manifest = [key for key in keys if key == WORD_MANIFEST]\n", "        manifest = []\n"),
+    "word files put before the assets (q50 site)": (SITE, '(("assets", assets), ("words", words),', '(("words", words), ("assets", assets),'),
+    "a failed word put not stopping the rest (q50 site)": (SITE, _SITE_CALL, _SITE_CALL_LET_THROUGH.format(call="words")),
+    "a word file over the limit allowed (q50 check)": (SHOP_CHECK, "if key != WORD_MANIFEST and (size := (site_dir / key).stat().st_size) > PIECE_MAX]", "if key != WORD_MANIFEST and (size := (site_dir / key).stat().st_size) > 2 * PIECE_MAX]"),
+    "a named file missing allowed (q50 check)": (SHOP_CHECK, "    missing = [key for key in named if key not in files]\n", "    missing = []\n"),
+    "word files with no manifest allowed (q50 check)": (SHOP_CHECK, '        return problems + [f"{WORD_MANIFEST}: missing, though {WORD_FOLDER}/ holds word files"]\n', "        return problems\n"),
+    "a manifest of another version allowed (q50 check)": (SHOP_CHECK, 'isinstance(manifest, dict) and manifest.get("v") == WORD_VERSION else None', "isinstance(manifest, dict) else None"),
+    "a manifest over its cap allowed (q50 check)": (SHOP_CHECK, "    if len(body) > MANIFEST_MAX:\n", "    if len(body) > 2 * MANIFEST_MAX:\n"),
+    "the word index left out of the build (q50 build)": (SHOP_BUILD, "    for key, body in word_files(covered_now, stand_ins(covered_now, probe) if probe else None):\n", "    for key, body in []:\n"),
+    "a manifest over its cap published (q50 build)": (SHOP_BUILD, "            if made > MANIFEST_MAX:\n", "            if False:\n"),
+    "the manifest uploaded with the JSON (q50 publish)": (PUBLISH_SCRIPT, "upload --include '*.json' --exclude 'search/w/manifest.json' --content-type", "upload --include '*.json' --content-type"),
+    "the ceiling not padded to 60 (q50 probe)": (SHOP_WORDPROBE, "    if size == CEILING:\n", "    if False:\n"),
+    "a stand-in shown (q50 probe)": (SHOP_WORDPROBE, '    return Extra(shown="", names=(en, *hebrew))\n', "    return Extra(shown=en, names=(en, *hebrew))\n"),
+    "any probe value taken (q50 handler)": (BASKET_HANDLER, "        if PROBE in event and event[PROBE] not in tuple(SIZES):  #", "        if False:  #"),
+    "the manifest's alert left out (q50 handler)": (BASKET_HANDLER, "    if not outcome.words.published:\n", "    if False:\n"),
 }
 
 

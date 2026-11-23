@@ -69,6 +69,14 @@ when the newest `days/` file is revised. Each search piece, `search/*.json`, hol
 And `index.html`, each store type's front page (`shopper.pages.store_path`, one for each of the nine columns) and the
 marker `.shopper-site` are there.
 
+The word index, `search/w/` (`shopper.wordindex`; the product-names plan's call 9). Each file there but the manifest
+holds at most `PIECE_MAX`. When the folder holds any file, its manifest, `search/w/manifest.json`, is there, holds at
+most its own cap (`MANIFEST_MAX`), and is JSON of version 1 whose nodes are each [count, parts, whole]; every file it
+names (a leaf's file, or each part of a big node) is in the build, the files missing given in one line, their count and
+the first. A file the manifest does not name is allowed: a hand build's leftover, harmless since nothing names it, and
+every node file when the empty manifest stands in for one over its cap (call 28). A folder with no file at all is no
+word index, and no fault.
+
 A malformed page is a problem line too, never a crash: a page that is not UTF-8, or a link `urlsplit` refuses (a host in
 brackets that is no IPv6 address). Exit 0 clean; 1 with problems, one a line on stderr naming the file and the rule; 2
 when there is no page to check (`basket.check.main`). `check_site` is imported under its own name beside
@@ -96,6 +104,10 @@ from shopper.product import CHAIN_SPAN, MAX_PAGE
 from shopper.search import PIECE_MAX
 from shopper.shell import SCRIPT_TAG
 from shopper.words import ALWAYS, CREDIT_START, NEVER, ODDS_WORDS, date_line, no_odds_yet, unreadable
+from shopper.wordindex import FOLDER as WORD_FOLDER
+from shopper.wordindex import MANIFEST as WORD_MANIFEST
+from shopper.wordindex import MANIFEST_MAX, node_key
+from shopper.wordindex import VERSION as WORD_VERSION
 
 __all__ = ["NoPages", "check_site", "main"]
 
@@ -355,6 +367,47 @@ def _asset_problems(site_dir: Path, files: set[str]) -> list[str]:
     return problems
 
 
+def _named(body: bytes) -> list[str] | None:
+    """The keys of the files a word manifest names, in its order; None when it is not JSON of version 1 whose nodes
+    are each [count, parts, whole]."""
+    try:
+        manifest = json.loads(body)
+    except ValueError:                       # not JSON, or not UTF-8
+        return None
+    nodes = manifest.get("nodes") if isinstance(manifest, dict) and manifest.get("v") == WORD_VERSION else None
+    if not isinstance(nodes, dict):
+        return None
+    named = []
+    for prefix, node in nodes.items():
+        if not (isinstance(node, list) and len(node) == 3 and all(isinstance(value, int) for value in node)):
+            return None
+        parts = node[1]
+        named += [node_key(prefix)] if parts == 0 else [node_key(prefix, part) for part in range(parts)]
+    return named
+
+
+def _word_problems(site_dir: Path, files: set[str]) -> list[str]:
+    """The word index's problems (the module's docstring), `files` the build's."""
+    held = sorted(key for key in files if key.startswith(f"{WORD_FOLDER}/"))
+    problems = [f"{key}: {size:,} bytes, over the {PIECE_MAX:,} bytes a word file may hold" for key in held
+                if key != WORD_MANIFEST and (size := (site_dir / key).stat().st_size) > PIECE_MAX]
+    if not held:
+        return problems
+    if WORD_MANIFEST not in files:
+        return problems + [f"{WORD_MANIFEST}: missing, though {WORD_FOLDER}/ holds word files"]
+    body = (site_dir / WORD_MANIFEST).read_bytes()
+    if len(body) > MANIFEST_MAX:
+        problems.append(f"{WORD_MANIFEST}: {len(body):,} bytes, over the {MANIFEST_MAX:,} bytes the manifest may hold")
+    named = _named(body)
+    if named is None:
+        return problems + [f"{WORD_MANIFEST}: not a manifest of version {WORD_VERSION}"]
+    missing = [key for key in named if key not in files]
+    if missing:
+        problems.append(f"{WORD_MANIFEST}: names {len(missing):,} {'file' if len(missing) == 1 else 'files'} the build "
+                        f"lacks, the first {missing[0]}")
+    return problems
+
+
 def check_site(site_dir: Path) -> list[str]:
     """The site's problems, one line each naming the file and the rule; [] for a site fit to upload."""
     site_dir = Path(site_dir)
@@ -379,6 +432,7 @@ def check_site(site_dir: Path) -> list[str]:
         if (size := path.stat().st_size) > PIECE_MAX:
             problems.append(f"{path.relative_to(site_dir).as_posix()}: {size:,} bytes, over the {PIECE_MAX:,} bytes "
                             "a search piece may hold")
+    problems += _word_problems(site_dir, files)
     if shown is None:
         problems.append("site-days/: no site-day file, so no day to read the pages by")
     if not (site_dir / INDEX).is_file():

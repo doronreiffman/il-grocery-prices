@@ -102,10 +102,13 @@ fi
 # nosniff), the types basket.site.CONTENT_TYPES gives the site run's uploads. The marker and anything else in the
 # folder stay local. Browsers keep a file five minutes, so an upload shows within minutes of the invalidation. No
 # sync here removes anything: a published file the build lacks stays (question H).
-# The data files go up first and the pages last, as the site run puts them (basket.site.upload): the forecasts and
-# scores files, the ledger, the day and site-day files with the search pieces, search.js, the shared files under
-# assets/ (the stylesheet, the fonts and their licences, which every page names), then the pages; so a stop part-way
-# never leaves a live page naming a file not yet up, a changed stylesheet's new name included. Each upload that fails
+# The data files go up first and the pages after them, as the site run puts them (basket.site.upload): the forecasts
+# and scores files, the ledger, the day and site-day files with the search pieces and the word index's files, search.js,
+# the shared files under assets/ (the stylesheet, the fonts and their licences, which every page names), then the pages;
+# so a stop part-way never leaves a live page naming a file not yet up, a changed stylesheet's new name included. The
+# word index's manifest, search/w/manifest.json, names its word files, whose keys are fixed: the JSON upload leaves it
+# out (its exclude after its include: the last filter that matches decides), and it goes up last, alone, so it never
+# names a word file not yet up, and a stop before it leaves the bucket's own manifest in place. Each upload that fails
 # stops the script by its own test, never by set -e alone, before the next upload and the invalidation (the final
 # review's finding 8). A rerun then passes the guard: what went up is the build's own bytes.
 # The assets go by size alone (--size-only): sync puts a file whose size or time differs, and every build writes them
@@ -120,12 +123,13 @@ upload() {
 }
 upload --include '*.csv.gz' --content-type 'application/gzip'
 upload --include '*.csv' --content-type 'text/csv; charset=utf-8'
-upload --include '*.json' --content-type 'application/json; charset=utf-8'
+upload --include '*.json' --exclude 'search/w/manifest.json' --content-type 'application/json; charset=utf-8'
 upload --include '*.js' --content-type 'text/javascript; charset=utf-8'
 upload --include 'assets/*.css' --content-type 'text/css; charset=utf-8' --size-only
 upload --include 'assets/*.woff2' --content-type 'font/woff2' --size-only
 upload --include 'assets/*.txt' --content-type 'text/plain; charset=utf-8' --size-only
 upload --include '*.html' --content-type 'text/html; charset=utf-8'
+upload --include 'search/w/manifest.json' --content-type 'application/json; charset=utf-8'
 aws cloudfront create-invalidation --distribution-id "$distribution" --paths '/*' \
   --profile "$PROFILE" --query Invalidation.Id --output text
 echo "published: https://$(output SiteDomainName)/"

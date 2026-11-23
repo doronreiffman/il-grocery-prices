@@ -251,14 +251,17 @@ def test_sync_sh_syncs_nothing_without_the_archive_bucket(tmp_path, env, said):
 
 # The shared files under assets/, one of each kind: the stylesheet, a font and a licence.
 ASSETS = ("assets/look.0123456789.css", "assets/archivo-text.0123456789.woff2", "assets/OFL-archivo.txt")
+# The word index's files (q50): a node file, a big node's part and the manifest, which goes up last.
+WORD_MANIFEST = "search/w/manifest.json"
+WORD_FILES = ("search/w/05e9-05d5.json", "search/w/05d7-05dc.0.json", WORD_MANIFEST)
 
 
 def a_build(tmp_path: Path) -> Path:
     """A shopper build as `tests/test_shop_guard.py` makes one, with the marker and a page or file of every other kind,
-    the shared files under assets/ among them, and the bucket (`tmp_path / "published"`) as it published that same
-    build."""
+    the shared files under assets/ and the word index's files under search/w/ among them, and the bucket
+    (`tmp_path / "published"`) as it published that same build."""
     site = a_site(tmp_path)
-    for key in ("index.html", "method.html", "basket.html", "browse/index.html", "search/05e9.json"):
+    for key in ("index.html", "method.html", "basket.html", "browse/index.html", "search/05e9.json", *WORD_FILES):
         (site / key).parent.mkdir(parents=True, exist_ok=True)
         (site / key).write_text("<html></html>")
     (site / "search.js").write_text("")
@@ -286,7 +289,7 @@ def test_publish_sh_uploads_a_build_the_check_and_the_guard_pass(tmp_path):
     run, calls = _publish(tmp_path, a_build(tmp_path), P_KEYS="\t".join(PAGES) + "\n")
     assert run.returncode == 0, run.stderr
     assert run.stdout.endswith("published: https://d1example.cloudfront.net/\n")
-    assert len(_syncs(calls)) == 8
+    assert len(_syncs(calls)) == 9
     assert calls[-2][:2] == ["cloudfront", "create-invalidation"] and "/*" in calls[-2]
 
 
@@ -318,7 +321,7 @@ def test_publish_sh_runs_the_check_and_the_guard_before_any_upload(tmp_path):
     read = _index(calls, lambda call: call[0] in ("s3", "s3api") and call[1] in ("cp", "list-objects-v2"))
     put = _index(calls, lambda call: call in _uploads(calls))
     assert calls[checked][3] == calls[guarded][3] == str(site)
-    assert len(read) == 5 and len(put) == 9
+    assert len(read) == 5 and len(put) == 10
     assert checked < min(read) and max(read) < guarded < min(put)
 
     site = a_build(tmp_path / "check")
@@ -369,14 +372,16 @@ def test_publish_sh_stops_on_a_failed_read_of_the_bucket(tmp_path, read, said):
     assert not _uploads(calls) and not _index(calls, lambda call: call[:3] == ["python", "-m", "shopper.guard"])
 
 
-UPLOAD_ORDER = ["*.csv.gz", "*.csv", "*.json", "*.js", "assets/*.css", "assets/*.woff2", "assets/*.txt", "*.html"]
+UPLOAD_ORDER = ["*.csv.gz", "*.csv", "*.json", "*.js", "assets/*.css", "assets/*.woff2", "assets/*.txt", "*.html",
+                WORD_MANIFEST]
 
 
 def test_publish_sh_uploads_the_data_files_before_the_pages(tmp_path):
     """The final review's finding 8: the records first (the forecasts and scores files), then the ledger, the day and
-    site-day files with the search pieces, `search.js`, the shared files under assets/ (the stylesheet, the fonts, their
-    licences), and the pages last, as the site run puts them (`basket.site.upload`), so a stop part-way never leaves a
-    live page naming a file not yet up, a changed stylesheet's new name included."""
+    site-day files with the search pieces and the word files, `search.js`, the shared files under assets/ (the
+    stylesheet, the fonts, their licences), the pages, and the word index's manifest last (q50), as the site run puts
+    them (`basket.site.upload`), so a stop part-way never leaves a live page naming a file not yet up, a changed
+    stylesheet's new name included, nor a manifest naming a word file not yet up."""
     run, calls = _publish(tmp_path, a_build(tmp_path))
     assert run.returncode == 0, run.stderr
     assert [_filters(call)[1][1] for call in _syncs(calls)] == UPLOAD_ORDER
@@ -428,25 +433,30 @@ def test_publish_sh_gives_the_guard_the_published_product_pages(tmp_path, listed
 def test_publish_sh_sets_each_content_type_and_cache_control(tmp_path):
     """One allowlisted sync per kind of file, each with its content type as `basket.site.CONTENT_TYPES` gives the
     site run's uploads, and max-age=300; every file the build writes matches one allowlist, its own type's (the
-    stylesheet, the fonts and the licences under assets/ included), and the marker none."""
+    stylesheet, the fonts and the licences under assets/ included, and the word index's manifest by its own), and the
+    marker none. The CLI matches each filter against the full local path (the source folder put before it)."""
     site = a_build(tmp_path)
     run, calls = _publish(tmp_path, site)
     assert run.returncode == 0, run.stderr
-    allowlists = {}
+    allowlists, kinds = {}, {}
     for call in _syncs(calls):
         assert call[2:4] == [f"{site}/", f"s3://{SITE_BUCKET}/"]
-        assert _filters(call)[0] == ("--exclude", "*") and len(_filters(call)) == 2
+        include = _filters(call)[1][1]
+        assert _filters(call)[0] == ("--exclude", "*") and len(_filters(call)) == (3 if include == "*.json" else 2)
         assert call[call.index("--cache-control") + 1] == CACHE_CONTROL
         assert call[-4:] == PROFILE
-        allowlists[_filters(call)[1][1]] = call[call.index("--content-type") + 1]
-    assert allowlists == {"*.html": CONTENT_TYPES[".html"], "*.json": CONTENT_TYPES[".json"],
-                          "*.js": CONTENT_TYPES[".js"], "*.csv": CONTENT_TYPES[".csv"],
-                          "*.csv.gz": CONTENT_TYPES[".gz"], "assets/*.css": CONTENT_TYPES[".css"],
-                          "assets/*.woff2": CONTENT_TYPES[".woff2"], "assets/*.txt": CONTENT_TYPES[".txt"]}
+        allowlists[include] = [(kind, f"{site}/{pattern}") for kind, pattern in _filters(call)]
+        kinds[include] = call[call.index("--content-type") + 1]
+    assert kinds == {"*.html": CONTENT_TYPES[".html"], "*.json": CONTENT_TYPES[".json"],
+                     "*.js": CONTENT_TYPES[".js"], "*.csv": CONTENT_TYPES[".csv"],
+                     "*.csv.gz": CONTENT_TYPES[".gz"], "assets/*.css": CONTENT_TYPES[".css"],
+                     "assets/*.woff2": CONTENT_TYPES[".woff2"], "assets/*.txt": CONTENT_TYPES[".txt"],
+                     WORD_MANIFEST: CONTENT_TYPES[".json"]}
     files = sorted(path.relative_to(site).as_posix() for path in site.rglob("*") if path.is_file())
     assert {Path(key).suffix for key in files} == set(CONTENT_TYPES) | {""}
+    assert set(WORD_FILES) <= set(files)
     for key in files:
-        matched = [kind for pattern, kind in allowlists.items() if fnmatch(f"{site}/{key}", f"{site}/{pattern}")]
+        matched = [kinds[include] for include, filters in allowlists.items() if _passes(f"{site}/{key}", filters)]
         assert matched == ([] if key == MARKER else [CONTENT_TYPES[Path(key).suffix]]), key
 
 
@@ -459,6 +469,26 @@ def test_publish_sh_puts_an_asset_only_when_the_bucket_lacks_it(tmp_path):
     assert run.returncode == 0, run.stderr
     sized = [_filters(call)[1][1] for call in _syncs(calls) if "--size-only" in call]
     assert sized == ["assets/*.css", "assets/*.woff2", "assets/*.txt"]
+
+
+def test_publish_sh_puts_the_word_manifest_last(tmp_path):
+    """The word index's manifest names its word files, so it goes up last, alone, after the pages, the last upload
+    before the invalidation: the JSON upload leaves it out (its include, then its exclude: the last filter that
+    matches decides) and puts every other word file, before any page."""
+    site = a_build(tmp_path)
+    run, calls = _publish(tmp_path, site)
+    assert run.returncode == 0, run.stderr
+    syncs = _syncs(calls)
+    [json_sync] = [call for call in syncs if _filters(call)[1] == ("--include", "*.json")]
+    assert _filters(json_sync) == [("--exclude", "*"), ("--include", "*.json"), ("--exclude", WORD_MANIFEST)]
+    full = [(kind, f"{site}/{pattern}") for kind, pattern in _filters(json_sync)]
+    assert [_passes(f"{site}/{key}", full) for key in WORD_FILES] == [True, True, False]
+    *_, pages, manifest = syncs
+    assert _filters(pages)[1] == ("--include", "*.html")
+    assert _filters(manifest) == [("--exclude", "*"), ("--include", WORD_MANIFEST)]
+    assert manifest[manifest.index("--content-type") + 1] == CONTENT_TYPES[".json"]
+    uploads = _uploads(calls)
+    assert uploads[-2] == manifest and uploads[-1][:2] == ["cloudfront", "create-invalidation"]
 
 
 @pytest.mark.parametrize("marker", [None, ".basket-site"])

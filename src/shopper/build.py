@@ -75,6 +75,15 @@ In order:
     and their licences) and the marker `.shopper-site`. The pages show the day as published: its "collected by" time
     and code fingerprint are the published site-day file's, the product pages drawn again when the time differs from
     this run's.
+11. The word index (`shopper.wordindex`; the product-names plan's Task 3), beside the search pieces: its files under
+    `search/w/`, each written as `wordindex.files` makes it, never gathered first, so a build never holds the whole
+    index, the manifest last. Of the covered products' published names; with `words_probe` (a hand-sent site run's
+    event, for measuring), also each product's stand-in names at that size (`shopper.wordprobe`), as its model names.
+    A manifest over its cap (`MANIFEST_MAX`) is not written: the empty manifest (`EMPTY_MANIFEST`) goes in its place,
+    so the morning publishes today's search as it is and the script reads no word file (the plan's call 28); the
+    node files are written all the same, named by no manifest. Its figures (`WordFigures`): the node files' count,
+    their bytes in all and the largest's, the manifest's bytes as made (over the cap or not) and its nodes, the probe,
+    and whether the manifest went in.
 
 Each store type's front (store first, q33: docs/store-first.md, "The front page's list"). Of the covered products'
 verdicts at a column with its pair, a deal passing the 20-day bar is a row of that store type's list
@@ -97,7 +106,8 @@ before the day in the site folder; with none, every one): the site run's /fail i
 reach alerts once, not every morning after (the ruling on the task review's (b)). It also gives the seconds the scoring
 (3) and the one pass (5) took, for the site run's summary (the plan's Task 23: measured, not tuned), and logs each as it
 ends, a line a step (`STEP_LINE`, as the site run logs its own steps), so a run refused or killed later still leaves
-them (the task review's finding 2). Only `main` reads the time of day, and gives it as `now`.
+them (the task review's finding 2); and the word index's seconds (11), its step `words`, and its figures. Only `main`
+reads the time of day, and gives it as `now`.
 """
 import argparse
 import json
@@ -138,9 +148,12 @@ from shopper.score import (DaySummary, due, out_of_reach, read_summary, scores_c
 from shopper.search import SCRIPT, browse_pages, pieces
 from shopper.siteday import Inputs, publish_site_day, site_day, site_day_path, write_site_day
 from shopper.verdict import DealRow, Verdict, checked, front_list, on_list, verdict
+from shopper.wordindex import EMPTY_MANIFEST, MANIFEST, MANIFEST_MAX
+from shopper.wordindex import files as word_files
+from shopper.wordprobe import stand_ins
 
-__all__ = ["LEDGER", "MARKER", "ForecastsDiffer", "NotFrozenYet", "NotSynced", "SiteOutcome", "build_site", "main",
-           "read_ledger"]
+__all__ = ["LEDGER", "MARKER", "ForecastsDiffer", "NotFrozenYet", "NotSynced", "SiteOutcome", "WordFigures",
+           "build_site", "main", "read_ledger"]
 
 MARKER = ".shopper-site"
 LEDGER = "forecasts/ledger.csv"
@@ -157,6 +170,20 @@ class NotSynced(Exception):
 
 
 @dataclass(frozen=True)
+class WordFigures:
+    """The word index the build wrote (the module's docstring, 11): its node files' count, their bytes in all and the
+    largest's; the manifest's bytes as made, and its nodes; the probe size its stand-ins were filed at (None for none);
+    and whether the manifest went in, False when it passed MANIFEST_MAX and the empty one went in its place."""
+    files: int
+    bytes: int
+    largest: int
+    manifest: int
+    nodes: int
+    probe: str | None
+    published: bool
+
+
+@dataclass(frozen=True)
 class SiteOutcome:
     """What the build did: the day and the run; whether the site-day file was left as published; the basket's build;
     the day's forecasts file as the freezer gave it (None when none is frozen); the days scored by this run, the days due
@@ -164,7 +191,7 @@ class SiteOutcome:
     file did not list (the only ones the site run alerts for); the pages written and the data files new to the
     site, as site paths; each chain's promotions error, by slug; each ScoresDiffer's message; each chain's extraction
     seconds (None for tables kept); the site-day file as the pages show it, and whether this run revised it; the
-    seconds of the scoring and of the one pass."""
+    seconds of the scoring, of the one pass and of the word index; the word index's figures."""
     day: date
     run_id: str
     unchanged: bool
@@ -182,6 +209,7 @@ class SiteOutcome:
     site_day: dict
     revised: bool
     seconds: dict[str, float]
+    words: WordFigures
 
 
 class _Watched(History):
@@ -439,6 +467,24 @@ def _write(site_dir: Path, path: str, body: bytes | str) -> str:
     return path
 
 
+def _words(site_dir: Path, covered_now: Mapping[str, Covered], probe: str | None) -> tuple[list[str], WordFigures]:
+    """The word index's files written into the site folder each as `wordindex.files` makes it, never gathered first,
+    its stand-ins filed at the probe's size when one is given; the manifest over MANIFEST_MAX not written, the empty
+    one in its place (the module's docstring, 11). The keys written, in order, and the figures."""
+    written, sizes = [], []
+    made, nodes, published = 0, 0, True
+    for key, body in word_files(covered_now, stand_ins(covered_now, probe) if probe else None):
+        if key == MANIFEST:
+            made, nodes = len(body), len(json.loads(body)["nodes"])
+            if made > MANIFEST_MAX:
+                body, published = EMPTY_MANIFEST, False
+        else:
+            sizes.append(len(body))
+        written.append(_write(site_dir, key, body))
+    return written, WordFigures(files=len(sizes), bytes=sum(sizes), largest=max(sizes, default=0), manifest=made,
+                                nodes=nodes, probe=probe, published=published)
+
+
 def _drawn(history: History, covered_now, collected_by: str, gates, errors, out: Path) -> _Pages:
     """The product pages drawn again, in a pass of their own, at another "collected by" time."""
     again = _Pages(covered_now, history, collected_by, gates, errors, out)
@@ -450,8 +496,9 @@ def _drawn(history: History, covered_now, collected_by: str, gates, errors, out:
 
 def build_site(day: date, data_dir: Path, site_dir: Path, now: datetime, collected_by: str, freezer,
                revise: str | None = None, rebuild: bool = False, extract: bool = True,
-               basket_path: Path = DEFAULT_BASKET, min_items: int = 25) -> SiteOutcome:
-    """Build the day's whole site (the module's docstring); `now` must carry a time zone."""
+               basket_path: Path = DEFAULT_BASKET, min_items: int = 25, words_probe: str | None = None) -> SiteOutcome:
+    """Build the day's whole site (the module's docstring); `now` must carry a time zone. `words_probe`, one of
+    `shopper.wordprobe.SIZES`, files stand-in names in the word index (11)."""
     run_id = new_run_id(now, "site")   # first: it refuses a naive `now`, which would be read as this machine's zone
     raw_dir, tables_dir = data_dir / "raw", data_dir / "tables"
     extracted = _extract(raw_dir, tables_dir, day, rebuild) if extract else _fetched(tables_dir, day)
@@ -550,11 +597,16 @@ def build_site(day: date, data_dir: Path, site_dir: Path, now: datetime, collect
         **asset_files(),
     }
     written += [_write(site_dir, path, body) for path, body in fixed.items()]
+    started = time.perf_counter()
+    words_written, words = _words(site_dir, covered_now, words_probe)
+    seconds["words"] = time.perf_counter() - started
+    log.info(STEP_LINE, "words", seconds["words"])
+    written += words_written
     (site_dir / MARKER).write_text("", encoding="utf-8")
     return SiteOutcome(day=day, run_id=run_id, unchanged=unchanged, basket=basket_outcome, frozen=frozen,
                        scored=sorted(scores), pages=written, data=data, promotions_errors=errors, due=due_days,
                        out_of_reach=far, newly_out_of_reach=_newly(far, site_dir, day), scores_differ=differ, extraction_seconds=extracted, site_day=shown,
-                       revised=revised, seconds=seconds)
+                       revised=revised, seconds=seconds, words=words)
 
 
 def _days(days) -> str:

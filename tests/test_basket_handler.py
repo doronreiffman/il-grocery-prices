@@ -19,10 +19,11 @@ import logging
 import re
 import shutil
 import tempfile
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import date, datetime, timedelta, timezone
 from html import unescape
 from pathlib import Path, PurePosixPath
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import duckdb
@@ -52,6 +53,8 @@ from shopper.freeze import ArchiveFreezer, ForecastsDiffer, archive_key, ledger,
 from shopper.history import load as shop_load
 from shopper.product import page_path
 from shopper.score import SCORE_FIELDS, UNSCORED
+from shopper.wordindex import EMPTY_MANIFEST
+from shopper.wordindex import MANIFEST as WORD_MANIFEST
 from test_build import BASKET, DAY, EGGS, MILK, PASTA, PRICES, SLUGS, golden_tree, price_file_name, reprice, store_list
 from test_extract import TABLE_COLUMNS
 from test_history import _row, _table
@@ -77,7 +80,13 @@ BASKET_EVENT = {"mode": "basket", "collected_by": "11:00"}
 # forecasts file and no ledger line.
 PUBLISHED = ["site-days/2026-01-01.json", "days/2026-01-01.json"]
 NO_FORECASTS = {"status": "none", "sha256": None, "on_time": None}
-STEPS = ("fetch", "build", "scoring", "pass", "check", "guard", "upload", "total")  # the summary's seconds, in order
+# The summary's seconds, in order: the build's scoring, one pass and word index (q50) within the build, and the upload's
+# calls within the upload (q50).
+STEPS = ("fetch", "build", "scoring", "pass", "words", "check", "guard", "upload_records", "upload_assets",
+         "upload_words", "upload_rest", "upload_manifest", "upload", "total")
+# Each step's line in the log, in order: the build's own as they end, inside the build's.
+STEP_LOG = ["fetch", "scoring", "pass", "words", "build", "check", "guard", "upload_records", "upload_assets",
+            "upload_words", "upload_rest", "upload_manifest", "upload", "total"]
 HEADLINE = ["Lowest listed total today: Osher Ad, ₪22.65.",
             "Highest: Carrefour, ₪27.16, 20% more. 3 everyday items, listed shelf prices before promotions, from the "
             "chains' price files of Thursday 1 January 2026."]  # the golden day's two lines (test_build)
@@ -241,6 +250,8 @@ def test_event_day_refuses_a_bad_date(day):
     ({"mode": "extract", "chain": "ramilevy", "day": "2026-01-01"}, NAIVE, "time zone"),
     ({"mode": "basket", "collected_by": "11:00", "day": "2026-01-01"}, NAIVE, "time zone"),
     ({"mode": "extract", "chain": "ramilevy", "day": "2026-13-01"}, NOW, "day"),
+    ({"mode": "basket", "collected_by": "11:00", "words_probe": "huge"}, NOW, "words_probe"),
+    ({"mode": "extract", "chain": "ramilevy", "words_probe": "realistic"}, NOW, "words_probe"),
 ])
 def test_run_refuses_unknown_mode_chain_and_naive_now(data, tmp_root, event, now, match):
     """Each before anything is read: no listing, no read, no work folder."""
@@ -686,7 +697,9 @@ def test_first_run_publishes_the_day_and_pings(morning, tmp_root, outcomes):
                        "unchanged": False, "site_day_unchanged": False, "pages": True, "uploaded": PUBLISHED,
                        "pages_uploaded": len(outcome.pages), "invalidation": "memory-1",
                        "record": record_key(DAY, run_id), "forecasts": NO_FORECASTS, "scored": [],
-                       "promotions_errors": {}, "alerts": [], "seconds": summary["seconds"]}
+                       "promotions_errors": {}, "alerts": [], "words": asdict(outcome.words),
+                       "seconds": summary["seconds"]}
+    assert summary["words"]["probe"] is None and summary["words"]["published"]
     assert list(summary["seconds"]) == list(STEPS)
     assert all(isinstance(took, float) and took >= 0 for took in summary["seconds"].values())
     assert sorted(deps.site.objects) == sorted(outcome.pages + PUBLISHED)  # every page and the day's data files
@@ -1392,11 +1405,104 @@ def test_each_steps_seconds_go_to_the_log_as_the_step_ends(site_morning, tmp_roo
     with caplog.at_level(logging.INFO):
         summary = run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
     lines = step_lines(caplog)
-    assert [name for name, _ in lines] == ["fetch", "scoring", "pass", "build", "check", "guard", "upload", "total"]
+    assert [name for name, _ in lines] == STEP_LOG
     assert dict(lines) == summary["seconds"]
     assert json.loads(caplog.records[-1].getMessage()) == summary  # the summary after them
     caplog.clear()
-    site.failing = True
+    site.failing = True   # the rerun has no record file to put and the bucket holds the assets: the word files fail
     with caplog.at_level(logging.INFO), pytest.raises(OSError):
         run(CFG, BASKET_EVENT, deps, AGAIN, tmp_root)
-    assert [name for name, _ in step_lines(caplog)] == ["fetch", "scoring", "pass", "build", "check", "guard"]
+    assert [name for name, _ in step_lines(caplog)] == STEP_LOG[:STEP_LOG.index("upload_assets") + 1]
+
+
+# ---- the word index (q50, the product-names plan's Task 3) ----
+
+def word_files(site: MemorySite) -> dict[str, bytes]:
+    """The site's files under search/w/, by key."""
+    return {key: body for key, (body, _, _) in site.objects.items() if key.startswith("search/w/")}
+
+
+def figures_of(held: dict[str, bytes]) -> dict:
+    """The figures the summary gives of the word files `held`: the node files', then the manifest's bytes and nodes."""
+    nodes = [body for key, body in held.items() if key != WORD_MANIFEST]
+    return {"files": len(nodes), "bytes": sum(map(len, nodes)), "largest": max(map(len, nodes)),
+            "manifest": len(held[WORD_MANIFEST]), "nodes": len(json.loads(held[WORD_MANIFEST])["nodes"])}
+
+
+@pytest.mark.parametrize("event, said", [
+    ({"mode": "basket", "collected_by": "11:00", "words_probe": "huge"}, "'huge'"),
+    ({"mode": "basket", "collected_by": "11:00", "words_probe": None}, "None"),
+    ({"mode": "basket", "collected_by": "11:00", "words_probe": ["realistic"]}, "['realistic']"),
+    ({"mode": "basket", "collected_by": "11:00", "words_probe": "Realistic"}, "'Realistic'"),
+    ({"mode": "extract", "chain": "ramilevy", "words_probe": "realistic"}, "the site run's alone"),
+])
+def test_a_bad_probe_value_is_refused_before_anything_is_read(morning, tmp_root, event, said):
+    """`words_probe` is absent or one of `shopper.wordprobe.SIZES`, and only the site run's: anything else is refused
+    with the other fields, before anything is read or pinged."""
+    deps = deps_of(morning)
+    before = dict(morning.objects)
+    with pytest.raises(ValueError, match="words_probe") as raised:
+        run(CFG, event, deps, RUN_AT, tmp_root)
+    assert said in str(raised.value)
+    assert morning.reads == [] and morning.objects == before
+    assert list(tmp_root.iterdir()) == [] and deps.ping.calls == [] and deps.site.objects == {}
+
+
+@pytest.mark.parametrize("size", ["realistic", "ceiling"])
+def test_a_probe_event_builds_the_stand_ins_and_reports_the_figures(morning, tmp_root, outcomes, size):
+    """A hand-sent site run with `"words_probe"` files each product's stand-in names (`shopper.wordprobe`) as its
+    model names, never shown, and the summary's figures are the uploaded word files' own, the probe named."""
+    deps = deps_of(morning)
+    summary = run(CFG, BASKET_EVENT | {"words_probe": size}, deps, RUN_AT, tmp_root)
+    [outcome] = outcomes
+    held = word_files(deps.site)
+    assert summary["words"] == figures_of(held) | {"probe": size, "published": True} == asdict(outcome.words)
+    english = {"realistic": 26, "ceiling": 60}[size]
+    entries = [entry for key, body in held.items() if key != WORD_MANIFEST for entry in json.loads(body)]
+    assert entries and all(entry[2] == "" for entry in entries)                 # shown as nothing
+    lengths = {len(entry[4 + entry[3]]) for entry in entries}                  # the first model name: the stand-in en
+    assert max(lengths) <= english and (lengths == {60} if size == "ceiling" else True)
+    assert summary["alerts"] == [] and pinged(deps) == [f"{URL}/start", URL]
+
+
+def test_the_summary_carries_the_word_figures_and_upload_steps(site_morning, tmp_root, outcomes, caplog):
+    """The summary's `words`: the word files', the manifest's bytes and nodes, no probe, published; and the seconds of
+    the build's word step and of each of the upload's calls, each in the log as it ends."""
+    deps = site_deps(site_morning)
+    with caplog.at_level(logging.INFO):
+        summary = run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    [outcome] = outcomes
+    held = word_files(deps.site)
+    assert held[WORD_MANIFEST] == (deps.site.objects[WORD_MANIFEST][0]) and len(held) > 1
+    assert summary["words"] == figures_of(held) | {"probe": None, "published": True} == asdict(outcome.words)
+    assert list(summary["seconds"]) == list(STEPS)
+    assert summary["seconds"]["words"] == round(outcome.seconds["words"], 1)
+    assert [name for name, _ in step_lines(caplog)] == STEP_LOG
+    assert dict(step_lines(caplog)) == summary["seconds"]
+
+
+def test_a_manifest_over_its_cap_raises_one_alert(site_morning, tmp_root, monkeypatch):
+    """Call 28: a manifest over its cap is not published; the empty manifest goes up in its place, the morning
+    succeeds, and /fail carries one alert after the upload, naming the manifest's bytes and the cap."""
+    monkeypatch.setattr(shop_build, "MANIFEST_MAX", 100)
+    monkeypatch.setattr(handler_module, "MANIFEST_MAX", 100)
+    site = MemorySite()
+    deps = site_deps(site_morning, site, watch=lambda: sorted(site.objects))
+    before = sorted(site.objects)
+    summary = run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    manifest = summary["words"]["manifest"]
+    assert manifest > 100 and summary["words"]["published"] is False
+    alert = f"words: the manifest is {manifest:,} bytes, over 100: today's search only"
+    assert summary["alerts"] == [alert]
+    assert site.objects[WORD_MANIFEST][0] == EMPTY_MANIFEST and summary["pages_uploaded"] > 0
+    assert pinged(deps) == [f"{URL}/start", f"{URL}/fail"]
+    assert deps.ping.calls[1][1] == f"SiteAlert: the site went up, and:\n{alert}\n\n" + json.dumps(summary)
+    assert deps.ping.seen == [before, sorted(site.objects)]                    # /fail after the upload
+
+
+def test_the_alert_names_the_cap_in_full():
+    """The manifest's alert in the plan's words, the cap MANIFEST_MAX (150,000 bytes) written with its commas."""
+    outcome = SimpleNamespace(promotions_errors={}, scores_differ=[], newly_out_of_reach=[],
+                              words=SimpleNamespace(published=False, manifest=151_204))
+    assert handler_module._alerts(outcome) == [
+        "words: the manifest is 151,204 bytes, over 150,000: today's search only"]

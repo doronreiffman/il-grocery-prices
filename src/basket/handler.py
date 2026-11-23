@@ -7,15 +7,17 @@ Scheduler sends the events each morning; the owner sends the same with a "day" t
                                                    built, checked, guarded and published
 
 "day" (YYYY-MM-DD) is optional in both; without it the day is the Israel calendar date when the invocation starts.
-Every field is checked before anything is read. Then neither mode runs until the collector's check has written its
-record for the day under `checks/date=<day>/` (MorningNotChecked): the check is the morning's last run, so its record
-shows that every chain's runs are over. Each run works in a folder of its own under `tmp_root` (`/tmp` in Lambda),
-`basket-` and a random suffix, and removes it when it ends, failed or not: a warm Lambda keeps `/tmp` from one
-invocation to the next. A run Lambda kills at its timeout never gets to remove its folder, nor DuckDB its spill files,
-so each run, before it makes its own, removes every `basket-*` folder under `tmp_root`, and DuckDB's temp folder
-(DUCKDB_TEMP_DIRECTORY) when it holds anything: one invocation runs in an execution environment at a time, so what
-they hold is always an earlier run's. DuckDB's folder is swept only when it is a folder of its own under `tmp_root`.
-A removal that fails is logged as a warning and the run goes on.
+"words_probe" is the site run's alone, and only sent by hand: one of `shopper.wordprobe.SIZES` ("realistic", "ceiling"),
+it files stand-in names of that size in the word index, for measuring (the product-names plan's Task 3); the next
+morning's run, which sends none, replaces them. Every field is checked before anything is read. Then neither mode runs
+until the collector's check has written its record for the day under `checks/date=<day>/` (MorningNotChecked): the check
+is the morning's last run, so its record shows that every chain's runs are over. Each run works in a folder of its own
+under `tmp_root` (`/tmp` in Lambda), `basket-` and a random suffix, and removes it when it ends, failed or not: a warm
+Lambda keeps `/tmp` from one invocation to the next. A run Lambda kills at its timeout never gets to remove its folder,
+nor DuckDB its spill files, so each run, before it makes its own, removes every `basket-*` folder under `tmp_root`, and
+DuckDB's temp folder (DUCKDB_TEMP_DIRECTORY) when it holds anything: one invocation runs in an execution environment at
+a time, so what they hold is always an earlier run's. DuckDB's folder is swept only when it is a folder of its own under
+`tmp_root`. A removal that fails is logged as a warning and the run goes on.
 
 The extract mode fetches the chain's full price and promotion files of the day (`PriceFull`, `PromoFull`) and its
 store list from the archive bucket into the work folder, runs `shopper.extract.extract_chain_day` over them as the
@@ -65,7 +67,8 @@ The basket mode is the shopper site's run (the shopper plan's Task 23; the 12:33
    earlier day leaves every page as the later day's; one invalidation when anything went up. The record files (the
    day's forecasts file, the scores files) go up first, on their own: a record put that fails stops the run
    (RecordsNotUploaded, saying what to do) before the ledger, the site-day and day files or a page names one, so a
-   rerun lists them again and finishes the day (the task review's finding 1).
+   rerun lists them again and finishes the day (the task review's finding 1). The word index's files under
+   `search/w/` go up after the assets, before the other data files and the pages, and its manifest last, alone.
 5. Put back, plain, after the upload: the day's covered registry and the summary of each day scored. A day is scored
    once its summary is in the archive, so a run whose upload fails leaves its days due, and the next run publishes the
    same scores file (the archive's bytes) before it marks them scored.
@@ -74,22 +77,26 @@ The run's record goes up to the archive, write-once and locked, whatever stopped
 The summary gives the day, the basket's run id and headline, whether its day file and the site-day file were
 unchanged, whether the pages went up, the data files uploaded (by key) and the pages (by count), the invalidation's id,
 the record's key, the day's forecasts file as the freezer gave it (its status, "frozen", "late", "same" or "none", its
-SHA-256 and whether on time), the days scored, each chain's promotions error, the alerts, and the seconds of each step:
-the fetch, the build and, within it, the scoring and the one pass, the check, the guard, the upload, and the total
-(measured, not tuned: the plan's Task 25a speeds the run up). Each step's seconds also go to the log as the step ends,
-a line a step (`shopper.build.STEP_LINE`, "step fetch: 12.3 s"), so a run refused, or killed at the function's 900 s,
-still leaves the figures of the steps it finished (the task review's finding 2).
+SHA-256 and whether on time), the days scored, each chain's promotions error, the alerts, the word index's figures
+(`words`: `shopper.build.WordFigures`, its node files, their bytes, the largest's, the manifest's bytes and nodes, the
+probe and whether the manifest went in), and the seconds of each step: the fetch, the build and, within it, the
+scoring, the one pass and the word index (`words`), the check, the guard, the upload and, within it, each of its calls
+(`upload_records`, `upload_assets`, `upload_words`, `upload_rest`, `upload_manifest`), and the total (measured, not
+tuned: the plan's Task 25a speeds the run up). Each step's seconds also go to the log as the step ends, a line a step
+(`shopper.build.STEP_LINE`, "step fetch: 12.3 s"), each upload call's as the upload sets it, so a run refused, or
+killed at the function's 900 s, still leaves the figures of the steps it finished (the task review's finding 2).
 
 The basket mode reports to healthchecks.io: `/start` before it looks for the check record; then, when the run succeeds,
 the plain URL with the run's summary, or, when it succeeds with alerts, `/fail` after the upload with the alert lines
-and the summary: each chain whose promotions could not be read, by the extraction's message naming its field
-(question M (a)); each stored scores file whose rows differ from this run's, kept and published as the record, with
-both SHA-256s; the days that went out of the read's reach this morning (Task 19's ruling). When anything fails it pings
-`/fail` with the error's name and text, MorningNotChecked included. A /fail body is cut to its first 100,000 bytes of
-UTF-8, since healthchecks.io keeps the first 100 kB of a body; a character the cut would split is dropped. An event
-refused as bad (ValueError) sends no ping. A ping that fails is logged as a warning naming its kind (start, success or
-fail) and the run goes on: its outcome never hangs on healthchecks.io. The ping URL is a secret: no part of it reaches
-the log, the error's text included.
+and the summary: each chain whose promotions could not be read, by the extraction's message naming its field (question M
+(a)); each stored scores file whose rows differ from this run's, kept and published as the record, with both SHA-256s;
+the days that went out of the read's reach this morning (Task 19's ruling); a word manifest over its cap, the empty one
+published in its place ("words: the manifest is 151,204 bytes, over 150,000: today's search only", the product-names
+plan's call 28). When anything fails it pings `/fail` with the error's name and text, MorningNotChecked included. A
+/fail body is cut to its first 100,000 bytes of UTF-8, since healthchecks.io keeps the first 100 kB of a body; a
+character the cut would split is dropped. An event refused as bad (ValueError) sends no ping. A ping that fails is
+logged as a warning naming its kind (start, success or fail) and the run goes on: its outcome never hangs on
+healthchecks.io. The ping URL is a secret: no part of it reaches the log, the error's text included.
 
 The extract mode never pings. A chain whose prices extraction failed, or whose run Lambda killed (memory over the
 function's, or the timeout: then nothing goes up), shows in the site run as a missing table, unless an earlier run of
@@ -111,7 +118,7 @@ import shutil
 import tempfile
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import date, datetime, timezone
 from functools import partial
 from pathlib import Path
@@ -140,6 +147,8 @@ from shopper.freeze import ArchiveFreezer, ForecastsDiffer, scores_site_key, sit
 from shopper.guard import guard_site
 from shopper.score import due
 from shopper.siteday import site_day_path
+from shopper.wordindex import MANIFEST_MAX
+from shopper.wordprobe import SIZES
 
 # INFO on the package's logger itself, so the runs' summaries reach CloudWatch whatever level the runtime gives
 # the root logger, as the collector's handler does for its package; and on the shopper's, for the build's step lines.
@@ -160,6 +169,7 @@ FAIL_BYTES = 100_000  # a /fail ping's body: the error's name and text, cut to t
 PING_PATHS = {"start": "/start", "success": "", "fail": "/fail"}  # each ping's kind and its path after the URL
 S3_CONFIG = ClientConfig(max_pool_connections=UPLOAD_WORKERS)  # a connection for each upload worker
 ALERTED = "SiteAlert: the site went up, and:"  # the head of the /fail body for a run that published with alerts
+PROBE = "words_probe"  # the site run's event field for stand-in names of a size (shopper.wordprobe); never scheduled
 # What to do, said after the message of each refusal the build gives (the module's docstring, 2).
 WHAT_NOW = {
     RevisionNeeded: ("The site run never revises a published day: build the day by hand with a one-line reason to "
@@ -247,10 +257,14 @@ def run(cfg: Config, event: dict, deps: Deps, now: datetime, tmp_root: Path) -> 
     if mode == "extract":
         if event.get("chain") not in SLUGS:
             raise ValueError(f"unknown chain {event.get('chain')!r}: one of {', '.join(SLUGS)}")
+        if PROBE in event:
+            raise ValueError(f"the extract event takes no {PROBE}: it is the site run's alone")
     else:
         collected_by = event.get("collected_by")
         if not isinstance(collected_by, str) or not CLOCK.fullmatch(collected_by):
             raise ValueError(f"the basket event's collected_by must be a time as HH:MM, not {collected_by!r}")
+        if PROBE in event and event[PROBE] not in tuple(SIZES):  # a tuple: an unhashable value compared, not hashed
+            raise ValueError(f"the basket event's {PROBE} must be one of {', '.join(SIZES)}, not {event[PROBE]!r}")
     _aware(now)
     day = event_day(event, now)
     pings = mode == "basket"  # the extract mode never pings
@@ -421,7 +435,20 @@ def _alerts(outcome) -> list[str]:
     alerts += [f"scores differ, the stored file kept: {message}" for message in outcome.scores_differ]
     if outcome.newly_out_of_reach:
         alerts.append("out of reach, never scored: " + ", ".join(t.isoformat() for t in outcome.newly_out_of_reach))
+    if not outcome.words.published:
+        alerts.append(f"words: the manifest is {outcome.words.manifest:,} bytes, over {MANIFEST_MAX:,}: today's search "
+                      "only")
     return alerts
+
+
+class _Timings(dict):
+    """The upload's seconds by call (`basket.site.upload`'s `timings`), each into the log as a step line, `upload_`
+    and the call's name, the moment the upload sets it: a run killed during the upload still leaves the calls it
+    finished."""
+
+    def __setitem__(self, name: str, took: float) -> None:
+        super().__setitem__(name, took)
+        log.info(STEP_LINE, f"upload_{name}", took)
 
 
 def _basket(event: dict, deps: Deps, now: datetime, work: Path, day: date) -> dict:
@@ -454,7 +481,7 @@ def _basket(event: dict, deps: Deps, now: datetime, work: Path, day: date) -> di
         try:
             outcome = build_site(day, work, site, now, collected_by=event["collected_by"],
                                  freezer=ArchiveFreezer(deps.archive, now), revise=None, extract=False,
-                                 basket_path=BASKET_FILE, min_items=MIN_ITEMS)
+                                 basket_path=BASKET_FILE, min_items=MIN_ITEMS, words_probe=event.get(PROBE))
         except tuple(WHAT_NOW) as error:
             raise _told(error) from error
         _step(seconds, "build", step)
@@ -470,10 +497,12 @@ def _basket(event: dict, deps: Deps, now: datetime, work: Path, day: date) -> di
             raise SiteCheckFailed("\n".join(["the publish guard failed:", *problems]))
         _step(seconds, "guard", step)
         step = time.perf_counter()
+        timings = _Timings()
         try:
-            uploaded = deps.site.upload(site, outcome.data, with_pages=with_pages)
+            uploaded = deps.site.upload(site, outcome.data, with_pages=with_pages, timings=timings)
         except RecordsNotUploaded as error:
             raise _told(error) from error
+        seconds |= {f"upload_{name}": round(took, 1) for name, took in timings.items()}
         invalidation = deps.site.invalidate(outcome.basket.record.run_id) if uploaded else None
         _step(seconds, "upload", step)
         # Put back after the upload (the module's docstring, 5): a summary marks its day scored.
@@ -494,7 +523,7 @@ def _basket(event: dict, deps: Deps, now: datetime, work: Path, day: date) -> di
             "forecasts": {"status": "none", "sha256": None, "on_time": None} if frozen is None else {
                 "status": frozen.status, "sha256": frozen.sha256, "on_time": frozen.on_time},
             "scored": [t.isoformat() for t in outcome.scored], "promotions_errors": dict(outcome.promotions_errors),
-            "alerts": _alerts(outcome), "seconds": seconds}
+            "alerts": _alerts(outcome), "words": asdict(outcome.words), "seconds": seconds}
 
 
 def handler(event, context):

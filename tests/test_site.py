@@ -10,6 +10,7 @@ the listing's and the invalidation's parameter names are checked against botocor
 """
 import re
 import threading
+from types import SimpleNamespace
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -18,10 +19,13 @@ import pytest
 from botocore.exceptions import ClientError
 from botocore.stub import Stubber
 
+from basket import site as site_module
 from basket.site import (ASSET_FOLDER, CACHE_CONTROL, CONTENT_TYPES, FIXED_PAGES, HTML, JSON, UPLOAD_WORKERS,
-                         MemorySite, RecordsNotUploaded, S3Site, _Site, day_key, day_of, is_record)
+                         WORD_FOLDER, WORD_MANIFEST, MemorySite, RecordsNotUploaded, S3Site, _Site, day_key, day_of,
+                         is_record)
 from shopper.build import LEDGER
 from shopper.freeze import scores_site_key, site_key
+from shopper import wordindex
 from test_store import FakeS3, client_error
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -343,7 +347,7 @@ def test_upload_puts_each_asset_before_any_page(site, tmp_path):
     stylesheet or a font the site lacks, a changed stylesheet's new name included."""
     calls, puts = put_files_calls(site), recorded_puts(site)
     assert site.upload(built(tmp_path), DATA, with_pages=True) == [*RECORDS, *ASSETS, *NAMING, *FOLDER_PAGES, *FIXED]
-    assert calls == [RECORDS, ASSETS, [*NAMING, *FOLDER_PAGES, *FIXED]]
+    assert calls == [RECORDS, ASSETS, [], [*NAMING, *FOLDER_PAGES, *FIXED], []]   # no word index: two calls of none
     assert sorted(puts[:2]) == sorted(RECORDS)
     assert sorted(puts[2:5]) == sorted(ASSETS)  # every asset's put made before any data file's or page's starts
 
@@ -419,6 +423,89 @@ def test_upload_refuses_a_missing_file_before_any_put(site, tmp_path, missing):
     with pytest.raises(FileNotFoundError, match=re.escape(missing)):
         site.upload(site_dir, DATA, with_pages=True)
     assert held(site) == {}
+
+
+# The word index's files (q50, the product-names plan's Task 3): node files and a part of a big node, in the order the
+# upload takes them (by name), and the manifest.
+WORDS = ["search/w/05d7-05dc.json", "search/w/05e9-05d5.0.json", "search/w/05e9-05d5.1.json"]
+# The rest after the word files, as the upload takes them: the data files that name the records, then the pages.
+REST = [*NAMING, *FOLDER_PAGES, *FIXED]
+
+
+def with_words(folder: Path) -> Path:
+    """`built`'s folder with the word index's files beside today's pieces, each file's bytes its own key."""
+    built(folder)
+    for key in (*WORDS, WORD_MANIFEST):
+        (folder / key).parent.mkdir(parents=True, exist_ok=True)
+        (folder / key).write_bytes(key.encode())
+    return folder
+
+
+def test_the_word_constants_are_the_index_s():
+    assert WORD_FOLDER == wordindex.FOLDER + "/" == "search/w/"
+    assert WORD_MANIFEST == wordindex.MANIFEST == "search/w/manifest.json"
+
+
+def test_upload_puts_word_files_after_the_assets_and_the_manifest_last(site, tmp_path):
+    """The record files; the assets the bucket lacks; every word file but the manifest, in a call of its own, every put
+    of it ended before any data file or page is started; the rest, as before; the manifest last, alone, once all
+    else is up. Each word file goes up as JSON with max-age=300."""
+    calls, puts = put_files_calls(site), recorded_puts(site)
+    keys = site.upload(with_words(tmp_path), DATA, with_pages=True)
+    assert keys == [*RECORDS, *ASSETS, *WORDS, *REST, WORD_MANIFEST]
+    assert calls == [RECORDS, ASSETS, WORDS, REST, [WORD_MANIFEST]]
+    assert sorted(puts[5:8]) == sorted(WORDS) and puts[-1] == WORD_MANIFEST
+    assert {key: held(site)[key] for key in (*WORDS, WORD_MANIFEST)} == {
+        key: (key.encode(), JSON, CACHE_CONTROL) for key in (*WORDS, WORD_MANIFEST)}
+
+
+def test_word_files_go_up_only_with_the_pages(site, tmp_path):
+    """The word index sits under `search/`, a page folder: a run for an earlier day puts none of it."""
+    assert site.upload(with_words(tmp_path), DATA, with_pages=False) == [*RECORDS, *NAMING]
+    assert not [key for key in held(site) if key.startswith(WORD_FOLDER)]
+
+
+@pytest.mark.parametrize("refused", WORDS)
+def test_a_failed_word_put_puts_nothing_after_it(site, tmp_path, refused):
+    """A word file's put that fails is raised, and nothing after it is put: no data file, no page and no manifest, so
+    no manifest goes up naming a file the site lacks. The records and the assets, put before, stay up."""
+    refused_puts(site, {refused})
+    with pytest.raises(OSError, match=re.escape(refused)):
+        site.upload(with_words(tmp_path), DATA, with_pages=True)
+    assert {*RECORDS, *ASSETS} <= set(held(site)) <= {*RECORDS, *ASSETS, *WORDS} - {refused}
+
+
+def test_a_failed_manifest_put_leaves_the_rest_up(site, tmp_path):
+    """The manifest's put failing is raised with everything else up: the site keeps the manifest it had, which names
+    files at fixed keys, and a rerun puts the manifest."""
+    refused_puts(site, {WORD_MANIFEST})
+    with pytest.raises(OSError, match=re.escape(WORD_MANIFEST)):
+        site.upload(with_words(tmp_path), DATA, with_pages=True)
+    assert set(held(site)) == {*RECORDS, *ASSETS, *WORDS, *REST}
+
+
+def test_timings_name_each_call(site, tmp_path, monkeypatch):
+    """`timings` gains the seconds of each call, by name, in order: the records', the assets', the word files', the
+    rest's and the manifest's. A clock that a put moves on by a second shows each call's own puts in its figure."""
+    clock, lock = [0.0], threading.Lock()
+    monkeypatch.setattr(site_module, "time", SimpleNamespace(perf_counter=lambda: clock[0]))
+    put = site._put
+
+    def a_second_each(key, *rest):
+        with lock:
+            clock[0] += 1
+        put(key, *rest)
+
+    site._put = a_second_each
+    timings = {}
+    site.upload(with_words(tmp_path), DATA, with_pages=True, timings=timings)
+    assert timings == {"records": len(RECORDS), "assets": len(ASSETS), "words": len(WORDS), "rest": len(REST),
+                       "manifest": 1}
+    assert list(timings) == ["records", "assets", "words", "rest", "manifest"]
+    timings = {}
+    site.upload(with_words(tmp_path), [], with_pages=False, timings=timings)
+    assert timings == dict.fromkeys(["records", "assets", "words", "rest", "manifest"], 0)
+    assert site.upload(with_words(tmp_path), [], with_pages=False) == []     # timings are optional
 
 
 def test_day_of_reads_a_day_file_or_a_site_day_file():

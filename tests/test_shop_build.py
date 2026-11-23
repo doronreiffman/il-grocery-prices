@@ -11,6 +11,7 @@ synthetic."""
 import gzip
 import hashlib
 import json
+import logging
 import os
 import re
 import shutil
@@ -30,7 +31,8 @@ from basket.rules import MissingTable
 from basket.site import ASSET_FOLDER
 from shopper import build as shop_build
 from shopper.assets import FOLDER, asset_files
-from shopper.build import MARKER, NotFrozenYet, NotSynced, build_site, main
+from shopper.build import MARKER, NotFrozenYet, NotSynced, WordFigures, build_site, main
+from shopper.check import check_site
 from shopper.extract import extract_chain_day
 from shopper.forecast import Forecast, forecasts_csv
 from shopper.freeze import (ArchiveFreezer, Frozen, ReadOnlyFreezer, archive_key, ledger, scores_archive_key,
@@ -41,8 +43,13 @@ from shopper.items import items_path
 from shopper.pages import store_path
 from shopper.product import page_path
 from shopper.score import DaySummary, read_summary, summary_json, summary_path
-from shopper.search import SCRIPT
+from shopper.search import PIECE_MAX, SCRIPT
 from shopper.siteday import site_day_path
+from shopper.wordindex import EMPTY_MANIFEST, lookup
+from shopper.wordindex import FOLDER as WORD_FOLDER
+from shopper.wordindex import MANIFEST as WORD_MANIFEST
+from shopper.wordindex import files as real_word_files
+from shopper.wordprobe import stand_ins
 from shopper import words
 from test_build import BASKET, DAY, EGGS, MILK, PASTA, golden_tree
 import test_product as product
@@ -887,3 +894,108 @@ def test_a_day_first_out_of_reach_is_told_apart_from_those_already_out(tmp_path)
     alone = tmp_path / "alone"
     first = _build(tree(alone), alone / "site", ArchiveFreezer(archive, NOW))
     assert first.newly_out_of_reach == [FAR, later]                     # no earlier file: every one is new
+
+
+# ---- the word index (q50, the product-names plan's Task 3) ----
+
+def _word_files(site: Path) -> dict[str, bytes]:
+    """Every file under the site's search/w/, by key."""
+    return {path.relative_to(site).as_posix(): path.read_bytes() for path in sorted((site / WORD_FOLDER).rglob("*"))
+            if path.is_file()}
+
+
+def _figures(held: dict[str, bytes], probe=None, published=True) -> WordFigures:
+    """The figures of the word files `held`, its manifest's bytes and nodes given apart."""
+    nodes = {key: body for key, body in held.items() if key != WORD_MANIFEST}
+    return WordFigures(files=len(nodes), bytes=sum(map(len, nodes.values())),
+                       largest=max(map(len, nodes.values())), manifest=len(held[WORD_MANIFEST]),
+                       nodes=len(json.loads(held[WORD_MANIFEST])["nodes"]), probe=probe, published=published)
+
+
+def test_the_build_writes_the_word_index_beside_the_pieces(tmp_path, monkeypatch):
+    """The word index of the covered products' published names (no extras), as `wordindex.files` makes it, under
+    search/w/ beside today's pieces, each file written as it is made: the manifest and every file among the pages
+    written, and the outcome's figures the files' own."""
+    data, site = tree(tmp_path), tmp_path / "site"
+    calls = []
+
+    def recorded(covered_now, extras=None):
+        calls.append((covered_now, extras))
+        for key, body in real_word_files(covered_now, extras):
+            yield key, body
+            assert (site / key).read_bytes() == body, key           # written before the next file is made
+
+    monkeypatch.setattr(shop_build, "word_files", recorded)
+    outcome = _build(data, site)
+    [(covered_now, extras)] = calls
+    assert extras is None and sorted(covered_now) == sorted([MILK, PASTA, EGGS, A, B])
+    held = _word_files(site)
+    assert held == dict(real_word_files(covered_now))
+    assert WORD_MANIFEST in held and len(held) > 1
+    assert set(held) <= set(outcome.pages)
+    assert (site / "search" / "pieces.json").is_file()                 # beside today's pieces
+    assert outcome.words == _figures(held)
+    assert outcome.words.largest <= PIECE_MAX and outcome.words.files >= outcome.words.nodes
+
+
+def test_a_probe_build_files_the_stand_ins(tmp_path, monkeypatch):
+    """With a probe size the word index files each product's stand-in names (`shopper.wordprobe`) as its model names,
+    shown as "": a stand-in's transliterated word finds its product through the index's lookup."""
+    data, site = tree(tmp_path), tmp_path / "site"
+    calls = []
+
+    def recorded(covered_now, extras=None):
+        calls.append((covered_now, extras))
+        return real_word_files(covered_now, extras)
+
+    monkeypatch.setattr(shop_build, "word_files", recorded)
+    outcome = _build(data, site, words_probe="realistic")
+    [(covered_now, extras)] = calls
+    assert extras == stand_ins(covered_now, "realistic")
+    held = _word_files(site)
+    assert outcome.words == _figures(held, probe="realistic")
+
+    def read(key):
+        return held.get(key)
+
+    for code in (MILK, PASTA, EGGS):
+        english = extras[code].names[0]
+        found = lookup(read, english.split(" ")[0], [])
+        assert code in [item[0] for item in found.shown], english
+        [entry] = [item for item in found.shown if item[0] == code]
+        assert entry[2] == "" and entry[4 + entry[3]] == english          # filed, never shown
+
+
+def test_the_words_step_is_timed_and_logged(tmp_path, caplog):
+    """The word index is the build's step `words`, after the one pass: its seconds in the outcome and its line in the
+    log as it ends (`STEP_LINE`)."""
+    data, site = tree(tmp_path), tmp_path / "site"
+    with caplog.at_level(logging.INFO, logger="shopper"):
+        outcome = _build(data, site)
+    assert list(outcome.seconds) == ["scoring", "pass", "words"]
+    assert all(isinstance(took, float) and took >= 0 for took in outcome.seconds.values())
+    lines = [re.fullmatch(r"step (\w+): (\d+\.\d) s", record.getMessage()) for record in caplog.records]
+    assert [found[1] for found in lines if found] == ["scoring", "pass", "words"]
+    assert [float(found[2]) for found in lines if found and found[1] == "words"] == [
+        float(f"{outcome.seconds['words']:.1f}")]
+
+
+def test_a_manifest_over_its_cap_publishes_the_empty_manifest(tmp_path, monkeypatch):
+    """Call 28: a manifest over MANIFEST_MAX is not written; the empty manifest goes in its place, so the script reads
+    today's list only, and the figures say so, the manifest's bytes the real one's. The node files are written all the
+    same, named by no manifest, and the site check passes."""
+    data, site = tree(tmp_path / "whole"), tmp_path / "whole" / "site"
+    whole = _build(data, site)
+    real = _word_files(site)[WORD_MANIFEST]
+    monkeypatch.setattr(shop_build, "MANIFEST_MAX", len(real) - 1)
+    data, site = tree(tmp_path / "over"), tmp_path / "over" / "site"
+    over = _build(data, site)
+    held = _word_files(site)
+    assert held[WORD_MANIFEST] == EMPTY_MANIFEST
+    assert {key: body for key, body in held.items() if key != WORD_MANIFEST} == {
+        key: body for key, body in _word_files(tmp_path / "whole" / "site").items() if key != WORD_MANIFEST}
+    assert over.words == replace(whole.words, published=False) and over.words.manifest == len(real)
+    assert not [problem for problem in check_site(site) if WORD_FOLDER in problem]
+    monkeypatch.setattr(shop_build, "MANIFEST_MAX", len(real))                # at its cap: published
+    data, site = tree(tmp_path / "at"), tmp_path / "at" / "site"
+    assert _build(data, site).words.published and _word_files(site)[WORD_MANIFEST] == real

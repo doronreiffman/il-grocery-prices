@@ -35,6 +35,8 @@ from shopper.search import CHAIN_SPAN
 from shopper.shell import SCRIPT_TAG
 from shopper.siteday import site_day_path
 from shopper.words import ALWAYS, CREDIT_START, NEVER, ODDS_WORDS, date_line, no_odds_yet, unreadable
+from shopper.wordindex import EMPTY_MANIFEST, node_key
+from shopper.wordindex import MANIFEST as WORD_MANIFEST
 from test_build import BASKET, DAY, EGGS, MILK, golden_tree
 from test_history import _row, _table
 from test_shop_build import NOW, OSHER, STAMP, _frozen_file, _history, _published_ledger, _sha, _synced
@@ -139,6 +141,7 @@ def test_a_clean_site_passes(site):
         start = milk.index(f'<section data-column="{column}" id="c-{column}" data-chain="carrefour">')
         assert unreadable("carrefour") in milk[start:milk.index("</section>", start)]
     assert CHAIN_SPAN.split("{}")[0] in milk and SEARCH_SCRIPT in (site / "index.html").read_text(encoding="utf-8")
+    assert len(named(site)) > 2 and all((site / key).is_file() for key in named(site))   # the build's word index
     assert check_site(site) == []
 
 
@@ -730,6 +733,77 @@ def test_a_scores_link_to_a_day_not_scored_fails(site):
 def test_a_151_kb_piece_fails(site, piece, size, over):
     (site / piece).write_bytes(b"[" + b" " * (size - 2) + b"]")
     assert check_site(site) == ([f"{piece}: {size:,} bytes, over the 150,000 bytes a search piece may hold"]
+                                if over else [])
+
+
+# ---- the word index (q50, the product-names plan's Task 3, call 9) ----
+
+def named(site: Path) -> list[str]:
+    """The files the site's word manifest names, in its order: a leaf's file, or each of a big node's parts."""
+    nodes = json.loads((site / WORD_MANIFEST).read_bytes())["nodes"]
+    return [key for prefix, (_, parts, _) in nodes.items()
+            for key in ([node_key(prefix)] if parts == 0 else [node_key(prefix, n) for n in range(parts)])]
+
+
+@pytest.mark.parametrize("named_by_it", [True, False])
+@pytest.mark.parametrize("size, over", [(150_000, False), (150_001, True)])
+def test_a_word_file_over_the_limit_is_refused(site, named_by_it, size, over):
+    """Every node file under search/w/, named by the manifest or not, holds at most 150,000 bytes (PIECE_MAX)."""
+    key = named(site)[0] if named_by_it else "search/w/ffff-ffff.json"
+    (site / key).write_bytes(b"[" + b" " * (size - 2) + b"]")
+    assert check_site(site) == ([f"{key}: {size:,} bytes, over the 150,000 bytes a word file may hold"]
+                                if over else [])
+
+
+def test_a_file_the_manifest_names_missing_is_refused(site):
+    """Every file the manifest names is in the build: a leaf's file, and each part of a big node, from 0 to its parts
+    less one. One line, the count and the first missing."""
+    first, second = named(site)[:2]
+    (site / first).unlink()
+    assert check_site(site) == [f"{WORD_MANIFEST}: names 1 file the build lacks, the first {first}"]
+    (site / second).unlink()
+    assert check_site(site) == [f"{WORD_MANIFEST}: names 2 files the build lacks, the first {first}"]
+    (site / WORD_MANIFEST).write_bytes(b'{"v":1,"nodes":{"ab":[80,2,1]}}')       # a big node of two parts
+    (site / node_key("ab", 0)).write_bytes(b"[]")
+    assert check_site(site) == [f"{WORD_MANIFEST}: names 1 file the build lacks, the first {node_key('ab', 1)}"]
+    (site / node_key("ab", 1)).write_bytes(b"[]")
+    assert check_site(site) == []                                               # no leaf file asked of a big node
+
+
+def test_word_files_without_a_manifest_are_refused(site):
+    (site / WORD_MANIFEST).unlink()
+    assert check_site(site) == [f"{WORD_MANIFEST}: missing, though search/w/ holds word files"]
+    shutil.rmtree(site / "search" / "w")
+    assert check_site(site) == []                                               # no word index at all
+
+
+@pytest.mark.parametrize("body", [b'{"v":2,"nodes":{}}', b'{"nodes":{}}', b"[]", b"not JSON", b"\xff",
+                                  b'{"v":1,"nodes":[]}', b'{"v":1,"nodes":{"ab":[1,0]}}',
+                                  b'{"v":1,"nodes":{"ab":"leaf"}}', b'{"v":1,"nodes":{"ab":[1,"0",1]}}'])
+def test_a_manifest_of_another_version_is_refused(site, body):
+    """The manifest is JSON of version 1, its nodes each [count, parts, whole]; anything else is named, never a
+    crash."""
+    (site / WORD_MANIFEST).write_bytes(body)
+    assert check_site(site) == [f"{WORD_MANIFEST}: not a manifest of version 1"]
+
+
+def test_a_word_file_the_manifest_does_not_name_is_allowed(site):
+    """A file under search/w/ that the manifest does not name is a hand build's leftover, harmless: nothing names it.
+    So is every node file when the empty manifest stands in for one over its cap (call 28)."""
+    (site / "search" / "w" / "ffff-ffff.json").write_bytes(b"[]")
+    assert check_site(site) == []
+    (site / WORD_MANIFEST).write_bytes(EMPTY_MANIFEST)
+    assert check_site(site) == []
+
+
+@pytest.mark.parametrize("size, over", [(150_000, False), (150_001, True)])
+def test_a_manifest_over_its_cap_is_refused(site, size, over):
+    """The manifest holds at most its own cap, MANIFEST_MAX (150,000 bytes), however valid."""
+    body = (site / WORD_MANIFEST).read_bytes()
+    padded = body[:-1] + b" " * (size - len(body)) + b"}"
+    assert json.loads(padded) == json.loads(body) and len(padded) == size
+    (site / WORD_MANIFEST).write_bytes(padded)
+    assert check_site(site) == ([f"{WORD_MANIFEST}: {size:,} bytes, over the 150,000 bytes the manifest may hold"]
                                 if over else [])
 
 

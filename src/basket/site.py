@@ -17,24 +17,30 @@ invalidation, and creates no new one.
 `upload` is the site run's upload (the shopper plan's Task 23, Call 9): the data files it is given, always (the ones the
 build lists new: the day's forecasts file, the ledger, each scored day's scores file, the site-day and day files when
 not unchanged); then, only when `with_pages` (the day is the site's latest, so a run for an earlier day leaves every
-page as the later day's), every file under the page folders `p/`, `browse/`, `search/` and `store/` (the store types'
-front pages, store first) (`PAGE_FOLDERS`), and the fixed pages, `FIXED_PAGES`: `index.html`, `method.html`,
-`record.html`, `basket.html` and `search.js`, rebuilt every morning from the code (the shopper plan's question H); and,
-with the pages too, each shared file under `assets/` (`ASSET_FOLDER`: the stylesheet, the fonts and their licences,
-which every page names) that the bucket's listing of `assets/` lacks. An asset is put once: a stylesheet's or a font's
-name carries the hash of its bytes, so a name the bucket holds is that same file, and a morning that changed nothing
-piles up no new version of it (the licences keep plain names and are put once all the same; site-look.md, "The
-upload"). Every file is checked first, before any put. The record files (`is_record`: each day's forecasts file and
-scores file, never the ledger) go up in a `put_files` call of their own, ended before anything else is put; a record put
-that fails stops the upload there (RecordsNotUploaded), so the ledger, the site-day and day files and the pages, which
-name the records, never name a file the site lacks (the task review's finding 1: a rerun lists the day's forecasts file
-only when the ledger gains its line). Then the assets the bucket lacks, in a call of their own, ended before anything
-else starts; a failed asset put is raised as it is, nothing after it is put, and so no page goes up naming a stylesheet
-or a font the site lacks, a changed stylesheet's new name included. Then the rest in a last call, started in the order
-above, the data files before the pages; the pool ends them in no fixed order, so the pages are started after the data
-files, not held until those are up (the Task 23 review's point 4). Each file takes its content type by its last suffix:
-`search.js` goes up as JavaScript, never as HTML (the second pre-flight's B3). Anything else in the folder (the marker,
-the published copies the build compared with) stays local.
+page as the later day's), every file under the page folders `p/`, `browse/`, `search/` (the search pieces and the word
+index under `search/w/`) and `store/` (the store types' front pages, store first) (`PAGE_FOLDERS`), and the fixed pages,
+`FIXED_PAGES`: `index.html`, `method.html`, `record.html`, `basket.html` and `search.js`, rebuilt every morning from the
+code (the shopper plan's question H); and, with the pages too, each shared file under `assets/` (`ASSET_FOLDER`: the
+stylesheet, the fonts and their licences, which every page names) that the bucket's listing of `assets/` lacks. An asset
+is put once: a stylesheet's or a font's name carries the hash of its bytes, so a name the bucket holds is that same
+file, and a morning that changed nothing piles up no new version of it (the licences keep plain names and are put once
+all the same; site-look.md, "The upload"). Every file is checked first, before any put. The record files (`is_record`:
+each day's forecasts file and scores file, never the ledger) go up in a `put_files` call of their own, ended before
+anything else is put; a record put that fails stops the upload there (RecordsNotUploaded), so the ledger, the site-day
+and day files and the pages, which name the records, never name a file the site lacks (the task review's finding 1: a
+rerun lists the day's forecasts file only when the ledger gains its line). Then the assets the bucket lacks, in a call
+of their own, ended before anything else starts; a failed asset put is raised as it is, nothing after it is put, and so
+no page goes up naming a stylesheet or a font the site lacks, a changed stylesheet's new name included. Then the word
+index's files under `search/w/` (`WORD_FOLDER`), all but its manifest, in a call of their own, ended before anything
+else starts; a failed one is raised and nothing after it is put (the product-names plan's Task 3). Then the rest,
+started in the order above, the data files before the pages; the pool ends them in no fixed order, so the pages are
+started after the data files, not held until those are up (the Task 23 review's point 4). Then the word index's
+manifest, `search/w/manifest.json` (`WORD_MANIFEST`), alone and last: it names the word files, whose keys are fixed, so
+a manifest that goes up only once they are up names none the site lacks, and a failed put of it leaves everything else
+up and yesterday's manifest in place (the design's section 5, "Publishing"). The caller may ask each call's seconds
+(`timings`). Each file takes its content type by its last suffix: `search.js` goes up as JavaScript, never as HTML (the
+second pre-flight's B3). Anything else in the folder (the marker, the published copies the build compared with) stays
+local.
 
 `put_files` puts the shopper site's files, any number of them, each once (a key given twice goes up once): it checks
 first that every file is in the site folder and has a content type above, and refuses (FileNotFoundError, ValueError)
@@ -52,6 +58,7 @@ S3Site works through boto3's S3 and CloudFront clients; MemorySite keeps the sam
 modules' tests. Every rule above the bare operations lives in _Site, which both share.
 """
 import re
+import time
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
@@ -64,6 +71,8 @@ from collector.store import MISSING, error_code
 FIXED_PAGES = ("index.html", "method.html", "record.html", "basket.html", "search.js")   # the pre-flight's S14
 PAGE_FOLDERS = ("p", "browse", "search", "store")   # the product, browse and store pages, the search pieces
 ASSET_FOLDER = "assets"   # the shared stylesheet, fonts and licences (shopper.assets.FOLDER), each put once
+WORD_FOLDER = "search/w/"   # the word index's files (shopper.wordindex.FOLDER and a "/"; a test holds them equal)
+WORD_MANIFEST = "search/w/manifest.json"   # its manifest, which names the others (shopper.wordindex.MANIFEST)
 RECORD_FOLDERS = ("forecasts/", "scores/")   # the record files: each day's forecasts and scores files, as .csv.gz
 UPLOAD_WORKERS = 16
 HTML = "text/html; charset=utf-8"
@@ -127,13 +136,17 @@ class _Site:
         days = [day for day in map(day_of, self._keys("days/") + self._keys("site-days/")) if day is not None]
         return max(days, default=None)
 
-    def upload(self, site_dir: Path, data: Sequence[str], with_pages: bool) -> list[str]:
+    def upload(self, site_dir: Path, data: Sequence[str], with_pages: bool,
+               timings: dict[str, float] | None = None) -> list[str]:
         """Put the data files `data` from `site_dir`, then, when `with_pages`, every file under PAGE_FOLDERS and the
-        FIXED_PAGES, and each file under ASSET_FOLDER the bucket lacks: the record files among them first, in a
-        `put_files` call of their own, then those assets, in a call of their own, then the rest; their keys, in that
-        order. Refuses, putting nothing, when one of them is not in the folder (FileNotFoundError) or has no content
-        type (ValueError); RecordsNotUploaded, with nothing else put, when a record put fails; a failed asset put is
-        raised, the record files up and nothing after it put: not the ledger, the day files or any page."""
+        FIXED_PAGES, and each file under ASSET_FOLDER the bucket lacks, in five `put_files` calls, each ended before
+        the next starts: the record files; those assets; the word index's files under WORD_FOLDER but its manifest;
+        the rest; the manifest, alone. Their keys, in that order; `timings`, when given, gains each call's seconds as
+        it ends, under "records", "assets", "words", "rest" and "manifest". Refuses, putting nothing, when one of them
+        is not in the folder (FileNotFoundError) or has no content type (ValueError); RecordsNotUploaded, with nothing
+        else put, when a record put fails; any other failed put is raised as it is, the calls before its own up and
+        nothing after its call put: an asset's, so no page names a file the site lacks; a word file's, so neither a
+        page nor the manifest goes up; the manifest's last of all, with everything else up."""
         keys = list(data)
         if with_pages:
             keys += [path.relative_to(site_dir).as_posix() for folder in PAGE_FOLDERS
@@ -141,14 +154,24 @@ class _Site:
             keys += FIXED_PAGES
         assets = self._new_assets(site_dir) if with_pages else []
         self._checked(site_dir, [*keys, *assets])  # every file found and typed before any put
+        timings = {} if timings is None else timings
         records = [key for key in keys if is_record(key)]
+        words = [key for key in keys if key.startswith(WORD_FOLDER) and key != WORD_MANIFEST]
+        manifest = [key for key in keys if key == WORD_MANIFEST]
+        first = {*records, *words, *manifest}   # a set: a morning's keys are tens of thousands
+        rest = [key for key in keys if key not in first]
+        started = time.perf_counter()
         try:
             put = self.put_files(site_dir, records)
         except Exception as error:  # a put failed: the files were checked above
             raise RecordsNotUploaded(f"a record file did not go up, so nothing that names it was put: "
                                      f"{type(error).__name__}: {error}") from error
-        put += self.put_files(site_dir, assets)  # every asset up before a data file or a page is started
-        return put + self.put_files(site_dir, [key for key in keys if key not in records])
+        timings["records"] = time.perf_counter() - started
+        for name, part in (("assets", assets), ("words", words), ("rest", rest), ("manifest", manifest)):
+            started = time.perf_counter()
+            put += self.put_files(site_dir, part)
+            timings[name] = time.perf_counter() - started
+        return put
 
     def _new_assets(self, site_dir: Path) -> list[str]:
         """The key of each file under ASSET_FOLDER, by name, that the bucket's listing of ASSET_FOLDER lacks: a hashed
