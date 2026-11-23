@@ -41,17 +41,17 @@ A failure even if everything else works: a model's name shown as the chain's, or
 | 3 | The price files' manufacturer field is an input and a brand cross-check. The trial supports keeping it: without it Haiku (thinking off) left 35 of 50 products with no brand, with it 25, in one pair of runs. | Owner, 2026-11-18; kept: agent |
 | 4 | `claude-opus-5-5` [S2] writes the names that ship, picked after a paid trial through Haiku 5.5, Sonnet 5.5 and Opus 5.5. | Owner, 2026-11-23 |
 | 5 | Haiku 5.5 and Sonnet 5.5 stay as small comparison rows on the scorecard. | Agent, 2026-11-23; the owner was not asked |
-| 6 | English names reach pages only after a read of 200 names by two readers, the owner and the agent, passes. | Owner, 2026-11-23 |
-| 7 | A product whose two models' brands disagree is held search-only on a review list until reviewed. | Owner, 2026-11-23 |
+| 6 | English names reach pages only after a read of 200 names by two readers, the owner and the agent, passes: at most 4 wrong, counting only names that say something the product is not. | Owner, 2026-11-23 |
+| 7 | Sonnet 5.5 also reads every product for its brand. A product where both models name a brand and the two differ is held search-only on a review list until reviewed. | Owner, 2026-11-23 |
 | 8 | The public launch waits for the AI names: all of this release, not the word index alone. | Owner, 2026-11-23 |
 | 9 | The English name may add the kind of product from general knowledge ("Old Spice deodorant"), marked as written by AI. | Owner, 2026-11-23 |
 | 10 | Kind (category) is dropped as a field. | Owner, 2026-11-23 |
-| 11 | Search keeps today's pieces and lookup unchanged, with a word index beside them: a whole word keeps its full list, a part-typed start its first 50. | Owner, 2026-11-23 |
+| 11 | Search keeps today's pieces and lookup unchanged, with a word index beside them: a whole word keeps its full list, a part-typed start its first 50. Its files keep fixed names, as today's pieces do. | Owner, 2026-11-23 |
 | 12 | Every product today's search shows stays among the 50 shown, ranked by best match in section 5's seven steps. | Owner, 2026-11-23 |
 | 13 | Scoring: a frozen held-out half; today's search and a word index with no model as baselines; misses and cost printed; size as agreement, not truth. | Owner, 2026-11-18 |
 | 14 | No hand-written test searches. Source 2: 300 products, written once in Cursor by Grok 4.7. | Owner, 2026-11-23 |
 | 15 | The score: the product searched for is in the first 10 results. | Owner, 2026-11-23 |
-| 16 | The owner's personal Anthropic API account, under a monthly cap on the project's own workspace. | Owner, 2026-11-23; the workspace: agent |
+| 16 | The owner's personal Anthropic API account, under a monthly cap on the project's own workspace: $35 a month after the build. | Owner, 2026-11-23; the workspace and the build month's $75: agent |
 | 17 | The English name: marked as written by AI wherever shown; natural word order; whole English when the input name is cut; a count kept beside a weight; lengths kept. Brand and size scored, not shown. The scorecard on the method page and in the README. The batch by hand. The chains' size also filed in Latin letters. | Agent |
 
 ## What the trial measured
@@ -92,7 +92,7 @@ One reading per product. The code enforces the bounds, not the schema.
 **Brand** is checked three ways.
 
 - *By code:* the brand is found in the input. That passes a common word, and cannot see a swapped or a dropped brand.
-- *By a second model (decision 7):* in the trial Haiku's and Opus's brands differed on 15 of 50 products, seven of the eight brand misses among them, Opus's one included. The eighth, "Kinder", was in the English name alone: both `brand` fields read "קינד". Open question 1 asks which model reads every product beside Opus.
+- *By a second model (decision 7):* Sonnet 5.5 reads every product too, and a product is held when both models name a brand and the two differ. In the trial Sonnet's and Opus's brands differed on 12 of 50 products: on 10 Sonnet left out a brand Opus gave, on 1 the reverse, and on 1 both named the same brand in two scripts ("MAM", "מאמ"). Only that last kind is held: at 1 in 50, about 500 products, though 50 products place it anywhere from about 90 to 2,600. The rule cannot catch a brand Opus invents where Sonnet gives none; Opus invented none in the trial, and the read of 200 marks every brand. (Haiku's and Opus's brands differed on 15 of 50, seven of the trial's eight brand misses among them, most of them Haiku's.)
 - *By the readers:* the read of 200 marks each brand right, a common word, another brand, or left out. A swapped or invented brand makes the name wrong.
 
 **Size** is compared with the registry's (`Covered.size`, `src/shopper/history.py:151`), a count against a weight kept apart from a real difference. On 18 November 2026 the registry had 18,789 products in grams or millilitres (one kind there), 962 in units, 5,320 with none.
@@ -193,7 +193,7 @@ Within a step a published name's match comes before the model's. Ties end in tod
 
 **Not measured:** the site run on Lambda with these files (memory; build, check and upload time); a phone; real model names over the whole registry; the owner's order on realistic and ceiling names. The plan's first task measures these on Lambda (section 11). Today's margin: on 15 November 2026 the site run took 199.6 s of its 900 and 1,681 MB of 3,008 at 15 days of history, and an earlier estimate reached 700 to 770 s at 91 days (`docs/operations.md:577`, `:581`; `template.yaml:584-586`).
 
-**Publishing (draft's call).** Today one pool uploads data and pages together (`src/basket/site.py:144-151`). The word index's files go up first, in a call of their own, and the manifest last. The script falls back to today's list when a word file is missing or unreadable. Keys are fixed, as today's pieces', under a lifecycle rule of the same kind (`site-template.yaml:36`); open question 3 gives the other way.
+**Publishing (draft's call).** Today one pool uploads data and pages together (`src/basket/site.py:144-151`). The word index's files go up first, in a call of their own, and the manifest last. The script falls back to today's list when a word file is missing or unreadable. Keys are fixed, as today's pieces', under a lifecycle rule of the same kind (`site-template.yaml:36`) (owner, 2026-11-23). A folder for each build would keep two days' files from ever mixing, but it needs a rule that removes current files, and the site bucket's rules expire only earlier versions (`site-template.yaml:26-37`).
 
 **First and alone.** The word index deploys with published names only, before any model runs: the baseline with no model, live. That is a deployment, not the launch (decision 8): the site stays `noindex` (`src/shopper/shell.py:76`) and unshared until the AI names are on it, since the launch post's readers search in English and every published name is Hebrew.
 
@@ -201,7 +201,7 @@ Within a step a published name's match comes before the model's. Ties end in tod
 
 - **The bar** is decision 6. Fifty names cannot bound the rate: zero wrong in 50 fits a true rate of up to 5.8% (a one-sided 95% bound).
 - **The read (draft's calls).** 200 products drawn plainly by seed from the frozen prompt's full run, none a trial or tuning product, none held. Each shows as its page will, beside its published names, manufacturer strings and `brand`. Each reader marks alone: wrong, missing, a guess or style; the brand, as section 1 says; and whether the name adds a kind the names do not state. Wrong means the name says something the product is not. The owner settles marks that differ, and the scorecard gives both readers' counts and the settled one.
-- **The pass mark** is open question 2; until then, at most 4 wrong in 200, the owner's earlier 1 in 50. A failed read leaves every name search-only until a fixed prompt passes a fresh 200. A pass still bounds little, so a wrong name stays cheap to take off (section 4).
+- **The pass mark** (owner, 2026-11-23): at most 4 wrong in 200, counting only names that say something the product is not; missing details and guesses are counted and printed, with no limit of their own. A pass fits a true rate of up to 4.5%, about 1,100 names. A failed read leaves every name search-only until a fixed prompt passes a fresh 200. A pass still bounds little, so a wrong name stays cheap to take off (section 4).
 - **The review list** (decision 7). A held product is found through its model names and shown without them. The list is a local page: names, manufacturer strings, both brands, the English name. A reviewed product leaves by a new release file.
 - **Product page.** Under the names as listed (`src/shopper/product.py:284-291`): the English name in its own span, labelled "English name written by AI", outside every store type's part, never the tab's title.
 - **Search results.** A matched English name shows under the chain's, with "in English, by AI". A held or search-only product shows the chain's name alone.
@@ -243,12 +243,12 @@ Both sources are drawn by seed from one recorded registry day. The trial's 50 pr
 
 **Run to run.** The same request can give another answer, and no sampling parameter can be set. So Opus reads the held-out products three times. The first reading is named, before any score is seen, as the one scored and the one that goes live. All three scores are shown.
 
-**Also on the scorecard:** the searches only one of two rows found; the read of 200, names that add a kind counted apart; the brand counts, the review list's size and the size table; readings dropped, refused, cut off; the full run's measured cost, and Haiku's and Sonnet's, projected and labelled so; the model that wrote source 2; that all three models are one vendor's. Every miss goes in a document in this repository. The README's copy is updated by hand at each release.
+**Also on the scorecard:** the searches only one of two rows found; the read of 200, names that add a kind counted apart; the brand counts, the review list's size and the size table; readings dropped, refused, cut off; the full runs' measured cost, Opus's and Sonnet's as the second reader, and Haiku's, projected and labelled so; the model that wrote source 2; that all three models are one vendor's. Every miss goes in a document in this repository. The README's copy is updated by hand at each release.
 
 ## 9. The key and the spending cap
 
 - **A workspace of the project's own** in the Claude Console, with its own monthly limit and API key [S4] [S5], set up by the owner on 2026-11-23. An organisation limit would cap every workspace of the account (agent's call).
-- **The amount (draft's call):** $75 for the month of the build, $25 a month after, both until the first full run shows the real cache share. $25 covers a month of Opus with no cache hit, $20.72; the second version's $10 did not. A second full run in the build's month needs the owner to raise the limit. A batch "might go slightly over" a workspace's limit [S3], hence `--max-usd` and the reserve.
+- **The amount:** $75 for the month of the build (draft's call), $35 a month after (owner, 2026-11-23), both until the first full run shows the real cache share. $35 covers a month of Opus and Sonnet with no cache hit, $31.10; the second version's $10 did not. A second full run in the build's month needs the owner to raise the limit. A batch "might go slightly over" a workspace's limit [S3], hence `--max-usd` and the reserve.
 - **The key (draft's call)** stays in the Mac's login keychain, and the command clears every `ANTHROPIC_` variable from its environment first, as the trial did.
 
 ## 10. Cost
@@ -265,9 +265,9 @@ Both sources are drawn by seed from one recorded registry day. The trial's 50 pr
 
 **A month** is the 341 products that joined the registry between 10 and 18 November 2026 and the 390 whose names changed, scaled up.
 
-**The build, once,** at the trial's pattern: about $10 of tuning (20 passes of the 400 tuning products), $31.62 for the full run, $1 for two more readings of the 400 held-out products, $2.19 for the comparison rows: about $45. A second model's brands on every product add $2.33 with Haiku or $15.99 with Sonnet (open question 1). The reserve stops a run long before the full run's $192 with no cache hit.
+**The build, once,** at the trial's pattern: about $10 of tuning (20 passes of the 400 tuning products), $31.62 for the full run, $1 for two more readings of the 400 held-out products, $2.19 for the comparison rows: about $45. Sonnet's brands on every product (decision 7) add $15.99: about $61. The reserve stops a run long before the full run's $192 with no cache hit.
 
-**Each month after,** about $5 expected: $3.41 of Opus, $0.25 of Haiku as the second reader, and about $1.10 of S3 for the index (5,721 files rewritten each morning, old versions kept 30 days, at the prices in `docs/collector.md:114-115`). About $23 at the high end: no cache hit all month ($20.72 and $0.67) and the index at its ceiling ($1.60). A release's files in the archive are a few tens of megabytes by estimate (UNVERIFIED), under a cent a month at that size. Not estimated: CloudFront's requests and bytes, which grow with visitors; this repository holds no price for them (UNVERIFIED).
+**Each month after,** about $6 expected: $3.41 of Opus, $1.72 of Sonnet as the second reader, and about $1.10 of S3 for the index (5,721 files rewritten each morning, old versions kept 30 days, at the prices in `docs/collector.md:114-115`). About $33 at the high end: no cache hit all month ($20.72 and $10.38) and the index at its ceiling ($1.60). A release's files in the archive are a few tens of megabytes by estimate (UNVERIFIED), under a cent a month at that size. Not estimated: CloudFront's requests and bytes, which grow with visitors; this repository holds no price for them (UNVERIFIED).
 
 **Still estimates:** the cache share at full size (measured on batches of 50; best-effort in a batch [S3]); the final prompt's tokens; the month's re-reads.
 
@@ -279,26 +279,12 @@ The plan also holds: a rehearsal, against a test store, of a stopped upload, a h
 
 ## Open questions for the owner
 
-**1. Which model gives the second brand?** Decision 7 needs two models' brands on every product. Decision 4 ships Opus alone. Each answer keeps both, at a different cost.
+**Does the launch wait until the review list is cleared?** Decision 8 holds the launch for the AI names; decision 7 holds some products' English names until reviewed.
 
-- *Haiku 5.5 reads the whole registry too:* $2.33 a full run, $0.25 a month. In the trial its brand differed from Opus's on 15 of 50 products. At that rate about 7,500 products are held, with no English name shown until each is reviewed; fifty products place that between about 4,800 and 11,000.
-- *Sonnet 5.5 reads it:* $15.99 and $1.72. It differed from Opus on 12 of 50: about 6,000 held, between about 3,600 and 9,400.
-- *Only the 3,000 sample is compared,* which the comparison rows read anyway: no added cost, about 900 held at Haiku's rate, and 88% of products never checked. This bends decision 7 to a sample.
+- *Yes:* about 500 reviews before the post, at the trial's rate of 1 in 50 (anywhere from about 90 to 2,600). Each review is one look at a local page with both brands, the names and the manufacturer strings.
+- *No:* the launch goes ahead with the held products searchable by their model names and shown without an English name; the list is cleared after.
 
-Each held product needs one look by a reviewer. The answer should also say whether the launch (decision 8) waits for the list to clear.
-
-**2. What passes the read of 200?** The owner set its size and its readers, not its pass mark, nor whether "missing" and "a guess" count.
-
-- *At most 4 wrong* (the earlier 1 in 50): a pass fits a true rate of up to 4.5%, about 1,100 names.
-- *At most 2:* up to 3.1%, about 780 names.
-- *None:* up to 1.5%, about 370 names; one disputed mark fails the read.
-
-A failed read costs a fixed prompt, a full run ($31.62) and a fresh 200 for both readers. The draft counts and prints missing brands, missing counts and guesses, with no limit of their own.
-
-**3. May the lifecycle rule remove whole index folders?** The site bucket's rules expire only the earlier versions of rebuilt files (`site-template.yaml:26-37`).
-
-- *No (the draft's default):* fixed keys. While a cache still holds the last manifest after an upload (`max-age=300`, `src/basket/site.py:74`), and after a failed upload until the next good run, a manifest can name a file of another build, and a search can show a stale or short list. A key no build uses any more stays stored for ever, as with today's pieces.
-- *Yes:* each build's index in a folder of its own, named by the manifest, so a list never mixes two builds. The rule must then expire current files by age under that prefix: a new kind of removal, its form to be checked against S3's documentation for a bucket with versioning.
+The owner's answers of 2026-11-23 to the second model (Sonnet, held when both name a brand and they differ), the pass mark (at most 4 wrong in 200), the index's keys (fixed) and the monthly cap ($35) are in the decisions above.
 
 ## Calls made in this draft (the owner can overturn any)
 
@@ -374,7 +360,7 @@ Two outside reviews, each checked finding by finding against its source before t
 | D15 | Confirmed | Folded (section 4): tuning runs stay on the Mac; raw answers gzipped. |
 | D16 | Confirmed | Folded (section 8), and made exact by the second review's S12. |
 | D17 | Could not be checked | Folded: tuning lists results found only through a model's Hebrew name. Declined (draft): a "matched" note on the page, a second kind of AI text to gate. |
-| D18 | Confirmed | Folded (sections 2, 9 and 10): the limit on the workspace; the ceiling from the reserve; $25 a month. |
+| D18 | Confirmed | Folded (sections 2, 9 and 10): the limit on the workspace; the ceiling from the reserve; $35 a month (owner). |
 | D19 | Confirmed | Folded (section 2): four fingerprints; everything re-read only when told. |
 | D20 | In part (the widely sold band is over-weighted, not under; its power figure does not reproduce) | Folded: 300 products, cells by band, a weighted total. Three readings kept for the model that ships. |
 | D21 | Confirmed | Done: the trial, $0.10 in all. |
@@ -393,7 +379,7 @@ Two outside reviews, each checked finding by finding against its source before t
 | C5 | A release was four separate puts | Confirmed | Folded (section 4): the release file, put last; nothing else is read. |
 | C6 | The scorecard was never synced | Confirmed | Folded (sections 4 and 8): the sync fetches each release's files but the raw answers; the README is updated by hand. |
 | S1 | No entry layout and no full ranking rule | Confirmed | Folded (section 5): the entry marks published from model names; seven steps, then today's order; one ranking function. |
-| S2 | An upload can leave a mixed index; unused keys stay | Confirmed | Folded in part (section 5): files first, the manifest last, a fall-back. A folder a build is open question 3. |
+| S2 | An upload can leave a mixed index; unused keys stay | Confirmed | Folded in part (section 5): files first, the manifest last, a fall-back. A folder a build declined by the owner: fixed keys, as today's pieces. |
 | S3 | The size projection was too thin for a plan | Confirmed | Folded (sections 5 and 11): the whole-registry measurement. Lambda and a phone are the plan's first task. |
 | S4 | Faults treated alike; release dates loose | In part (pinning a past day was already stated) | Folded (section 4): four cases told apart and recorded; ids from aware Israel dates. Declined (draft): failing the build when the prefix cannot be read; prices outrank names. |
 | S5 | No reader holds inputs that only grow | In part (a full re-read was already stated) | Folded (section 2): the input snapshot; four fingerprints. |
@@ -401,7 +387,7 @@ Two outside reviews, each checked finding by finding against its source before t
 | S7 | Counts and lengths could publish text no source states | Confirmed | Folded (section 1): numbers must stand in the input; the count's conditions; the final name checked. Declined (draft): a length field; the number rule covers lengths. |
 | S8 | The brand rule and the hand count gate nothing | Confirmed | Folded (sections 1 and 6): the review list (owner); the read shows names, manufacturer strings, brand and English together; a swapped or invented brand is wrong. Declined (draft): an automatic English-against-brand flag; no code can tell "Kinder" from "Kind". |
 | S9 | The trial's marks mixed two rubrics | Confirmed | Folded (the trial): the owner's marks and the second reader's, apart. |
-| S10 | One wrong in 50 bounds little | Confirmed | Folded (section 6): 200 names, two readers (owner). Declined (draft): strata; a plain draw estimates the site's rate. The pass mark is open question 2. |
+| S10 | One wrong in 50 bounds little | Confirmed | Folded (section 6): 200 names, two readers (owner). Declined (draft): strata; a plain draw estimates the site's rate. The pass mark: at most 4 wrong in 200 (owner). |
 | S11 | The held-out set chose the model | Confirmed | Folded (section 8): Opus picked from the trial's reads; no held-out score chooses; intervals by product. |
 | S12 | Row A could not be both kept and re-scored | Confirmed | Folded (section 8): row A from a checkout of its commit; both commits named. |
 | S13 | 100 and 200 changed the owner's half | In part (it was marked a draft's call) | Folded (section 7): halves restored. |
@@ -438,7 +424,7 @@ Two outside reviews, each checked finding by finding against its source before t
 | D6 | Add 60 hand-written searches | Confirmed | Declined by the owner, twice (2026-11-23). Folded: an interval for every cell. |
 | D7 | Split search names from shown text | Could not be checked | Declined: decision 9 is the owner's. Folded: the read counts names that add a kind apart. |
 | D8 | 200 stratified, a second reader | Confirmed | Folded (owner): 200 names, two readers. Strata declined (S10). |
-| D9 | An elimination round, then a full comparison | Confirmed | Folded: the trial eliminated; the live table is the whole registry. A second model over the whole registry depends on open question 1. |
+| D9 | An elimination round, then a full comparison | Confirmed | Folded: the trial eliminated; the live table is the whole registry. Sonnet reads the whole registry for the second brand (owner). |
 | D10 | Production grade, with temporary tools allowed | Could not be checked | Kept: the grade is the owner's, one for the release. The scorecard is public evidence, so its code is tested as the rest. |
 | D11 | Source-stated counts and lengths | Confirmed | Folded (S7). The agent's calls to keep both stand. |
 | D12 | Evidence rules and a review queue | Confirmed | Folded (sections 1 and 6): the review list (owner); a brand needs the input's evidence. |
@@ -446,7 +432,7 @@ Two outside reviews, each checked finding by finding against its source before t
 | D14 | Keep the word index first; say it is not the launch | Confirmed | Folded (section 5). |
 | D15 | A release manifest | Could not be checked | Folded (C5). Its rehearsal is the plan's (section 11). |
 | D16 | The checker inside `src/` | Confirmed | Folded (C4). |
-| D17 | The caps | Confirmed | Folded (section 9): $25 a month, above the no-hit month; both amounts until the full run's figures. |
+| D17 | The caps | Confirmed | Folded (section 9): $35 a month (owner), above the no-hit month; both amounts until the full run's figures. |
 | D18 | Current plus last-known-good inputs | Could not be checked | Folded in part (S5). Declined (draft): removal rules that run by themselves; the replay they need has not run, and a value leaves by command. |
 | D19 | Read Haiku with thinking off | Confirmed | Declined (draft): Opus ships, and no read of those names would change that. |
 | D20 | Threshold alerts | Could not be checked | Folded (S17). |
