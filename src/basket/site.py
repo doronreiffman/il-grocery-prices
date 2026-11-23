@@ -8,6 +8,7 @@ up as gzip, not as text; and browsers keep a file five minutes, so an upload sho
     .json   application/json; charset=utf-8   .gz     application/gzip
     .js     text/javascript; charset=utf-8    .css    text/css; charset=utf-8
     .woff2  font/woff2                        .txt    text/plain; charset=utf-8
+    .png    image/png
     every file: max-age=300
 
 The invalidation covers every path (`/*`), as publish.sh's does. Its CallerReference is the caller's, one per run (the
@@ -21,10 +22,11 @@ page as the later day's), every file under the page folders `p/`, `browse/`, `se
 index under `search/w/`) and `store/` (the store types' front pages, store first) (`PAGE_FOLDERS`), and the fixed pages,
 `FIXED_PAGES`: `index.html`, `method.html`, `record.html`, `basket.html` and `search.js`, rebuilt every morning from the
 code (the shopper plan's question H); and, with the pages too, each shared file under `assets/` (`ASSET_FOLDER`: the
-stylesheet, the fonts and their licences, which every page names) that the bucket's listing of `assets/` lacks. An asset
-is put once: a stylesheet's or a font's name carries the hash of its bytes, so a name the bucket holds is that same
-file, and a morning that changed nothing piles up no new version of it (the licences keep plain names and are put once
-all the same; site-look.md, "The upload"). Every file is checked first, before any put. The record files (`is_record`:
+stylesheet, the fonts and their licences, which every page names, and the picture the front page's link preview card
+names) that the bucket's listing of `assets/` lacks. An asset is put once: a stylesheet's, a font's or the picture's
+name carries the hash of its bytes, so a name the bucket holds is that same file, and a morning that changed nothing
+piles up no new version of it (the licences keep plain names and are put once all the same; site-look.md, "The
+upload"). Every file is checked first, before any put. The record files (`is_record`:
 each day's forecasts file and scores file, never the ledger) go up in a `put_files` call of their own, ended before
 anything else is put; a record put that fails stops the upload there (RecordsNotUploaded), so the ledger, the site-day
 and day files and the pages, which name the records, never name a file the site lacks (the task review's finding 1: a
@@ -70,7 +72,7 @@ from collector.store import MISSING, error_code
 
 FIXED_PAGES = ("index.html", "method.html", "record.html", "basket.html", "search.js")   # the pre-flight's S14
 PAGE_FOLDERS = ("p", "browse", "search", "store")   # the product, browse and store pages, the search pieces
-ASSET_FOLDER = "assets"   # the shared stylesheet, fonts and licences (shopper.assets.FOLDER), each put once
+ASSET_FOLDER = "assets"   # the shared stylesheet, fonts, licences and card picture (shopper.assets.FOLDER), put once
 WORD_FOLDER = "search/w/"   # the word index's files (shopper.wordindex.FOLDER and a "/"; a test holds them equal)
 WORD_MANIFEST = "search/w/manifest.json"   # its manifest, which names the others (shopper.wordindex.MANIFEST)
 RECORD_FOLDERS = ("forecasts/", "scores/")   # the record files: each day's forecasts and scores files, as .csv.gz
@@ -79,7 +81,7 @@ HTML = "text/html; charset=utf-8"
 JSON = "application/json; charset=utf-8"
 CONTENT_TYPES = {".html": HTML, ".json": JSON, ".js": "text/javascript; charset=utf-8", ".csv": "text/csv; charset=utf-8",
                  ".gz": "application/gzip", ".css": "text/css; charset=utf-8", ".woff2": "font/woff2",
-                 ".txt": "text/plain; charset=utf-8"}
+                 ".txt": "text/plain; charset=utf-8", ".png": "image/png"}
 CACHE_CONTROL = "max-age=300"
 _DAY_FILE = re.compile(r"^(?:site-)?days/(\d{4}-\d{2}-\d{2})\.json$")
 

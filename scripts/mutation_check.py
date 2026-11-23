@@ -351,7 +351,8 @@ _NCR_ANSWER_BY_ANSWER = ("        length, fnames, total = _page_size(file_page),
 # assets' three, for the one that puts the stylesheet after the pages (q36 upload).
 _PUBLISH_ASSETS = ("upload --include 'assets/*.css' --content-type 'text/css; charset=utf-8' --size-only\n",
                    "upload --include 'assets/*.woff2' --content-type 'font/woff2' --size-only\n",
-                   "upload --include 'assets/*.txt' --content-type 'text/plain; charset=utf-8' --size-only\n")
+                   "upload --include 'assets/*.txt' --content-type 'text/plain; charset=utf-8' --size-only\n",
+                   "upload --include 'assets/*.png' --content-type 'image/png' --size-only\n")
 _PUBLISH_PAGES = "upload --include '*.html' --content-type 'text/html; charset=utf-8'\n"
 _PUBLISH_MANIFEST = "upload --include 'search/w/manifest.json' --content-type 'application/json; charset=utf-8'\n"
 _PUBLISH_ORDER = ("upload --include '*.csv.gz' --content-type 'application/gzip'\n"
@@ -368,19 +369,19 @@ _PUBLISH_UPLOAD = ('# One allowlisted sync per kind of file, its content type se
                    "# nosniff), the types basket.site.CONTENT_TYPES gives the site run's uploads. The marker and anything else in the\n"
                    '# folder stay local. Browsers keep a file five minutes, so an upload shows within minutes of the invalidation. No\n'
                    '# sync here removes anything: a published file the build lacks stays (question H).\n'
-                   '# The data files go up first and the pages after them, as the site run puts them (basket.site.upload): the forecasts\n'
-                   "# and scores files, the ledger, the day and site-day files with the search pieces and the word index's files, search.js,\n"
-                   '# the shared files under assets/ (the stylesheet, the fonts and their licences, which every page names), then the pages;\n'
-                   "# so a stop part-way never leaves a live page naming a file not yet up, a changed stylesheet's new name included. The\n"
-                   "# word index's manifest, search/w/manifest.json, names its word files, whose keys are fixed: the JSON upload leaves it\n"
-                   '# out (its exclude after its include: the last filter that matches decides), and it goes up last, alone, so it never\n'
-                   "# names a word file not yet up, and a stop before it leaves the bucket's own manifest in place. Each upload that fails\n"
-                   '# stops the script by its own test, never by set -e alone, before the next upload and the invalidation (the final\n'
-                   "# review's finding 8). A rerun then passes the guard: what went up is the build's own bytes.\n"
+                   '# The data files go up first and the pages after them, as the site run puts them (basket.site.upload): the forecasts and\n'
+                   "# scores files, the ledger, the day and site-day files with the search pieces and the word index's files, search.js, the\n"
+                   "# shared files under assets/ (the stylesheet, the fonts and their licences, which every page names, and the front page's\n"
+                   "# card's picture), then the pages; so a stop part-way never leaves a live page naming a file not yet up, a changed\n"
+                   "# stylesheet's new name included. The word index's manifest, search/w/manifest.json, names its word files, whose keys\n"
+                   '# are fixed: the JSON upload leaves it out (its exclude after its include: the last filter that matches decides), and it\n'
+                   "# goes up last, alone, so it never names a word file not yet up, and a stop before it leaves the bucket's own manifest\n"
+                   '# in place. Each upload that fails stops the script by its own test, never by set -e alone, before the next upload and\n'
+                   "# the invalidation (the final review's finding 8). A rerun then passes the guard: what went up is the build's own bytes.\n"
                    '# The assets go by size alone (--size-only): sync puts a file whose size or time differs, and every build writes them\n'
-                   "# afresh. A stylesheet's or a font's name carries the hash of its bytes, so a name the bucket holds is the same file,\n"
-                   '# the same size, and is not put again, as the site run puts an asset only when the bucket lacks its name; the two\n'
-                   '# licences keep plain names and are put once all the same.\n'
+                   "# afresh. A stylesheet's, a font's or the card picture's name carries the hash of its bytes, so a name the bucket holds\n"
+                   '# is the same file, the same size, and is not put again, as the site run puts an asset only when the bucket lacks its\n'
+                   '# name; the two licences keep plain names and are put once all the same.\n'
                    'upload() {\n'
                    '  aws s3 sync "$SITE/" "s3://$bucket/" --exclude \'*\' "$@" --cache-control \'max-age=300\' --profile "$PROFILE" --region "$REGION" || {\n'
                    '    echo "the upload of $2 failed: the kinds before it went up, none after it, and nothing was invalidated; run it again" >&2\n'
@@ -3537,6 +3538,11 @@ MUTATIONS = {
     "the card's title in other words (q45 words)": (SHOP_WORDS, 'CARD_TITLE = f"{SITE_NAME}: is it actually a deal?"', 'CARD_TITLE = f"{SITE_NAME}: is it a deal?"'),
     "the card's line without the chains (q45 words)": (SHOP_WORDS, 'f"there. {joined([CHAIN_NAMES[slug] for slug in SLUGS])}.")', '"there.")'),
     "the card's alt text without the question (q45 words)": (SHOP_WORDS, 'CARD_ALT = f"{SITE_NAME}. {FRONT_TITLE} {CHAINS_LINE}"', 'CARD_ALT = f"{SITE_NAME}. {CHAINS_LINE}"'),
+    "the card's picture served as text (q45 upload)": (SITE, '".png": "image/png"', '".png": "text/plain; charset=utf-8"'),
+    "the card's picture of no known type (q45 upload)": (SITE, ', ".png": "image/png"}', '}'),
+    "the card's picture not uploaded by publish.sh (q45 upload)": (PUBLISH_SCRIPT, "upload --include 'assets/*.png' --content-type 'image/png' --size-only\n", ''),
+    "the card's picture synced by its time (q45 upload)": (PUBLISH_SCRIPT, "--content-type 'image/png' --size-only\n", "--content-type 'image/png'\n"),
+    "the card's picture sent as another type by publish.sh (q45 upload)": (PUBLISH_SCRIPT, "--include 'assets/*.png' --content-type 'image/png'", "--include 'assets/*.png' --content-type 'application/octet-stream'"),
 }
 
 

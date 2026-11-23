@@ -310,8 +310,9 @@ def test_sync_sh_syncs_nothing_without_the_archive_bucket(tmp_path, env, said):
 
 # ---- publish.sh ----
 
-# The shared files under assets/, one of each kind: the stylesheet, a font and a licence.
-ASSETS = ("assets/look.0123456789.css", "assets/archivo-text.0123456789.woff2", "assets/OFL-archivo.txt")
+# The shared files under assets/, one of each kind: the stylesheet, a font, a licence and the card's picture.
+ASSETS = ("assets/look.0123456789.css", "assets/archivo-text.0123456789.woff2", "assets/OFL-archivo.txt",
+          "assets/card.0123456789.png")
 # The word index's files (q50): a node file, a big node's part and the manifest, which goes up last.
 WORD_MANIFEST = "search/w/manifest.json"
 WORD_FILES = ("search/w/05e9-05d5.json", "search/w/05d7-05dc.0.json", WORD_MANIFEST)
@@ -433,16 +434,16 @@ def test_publish_sh_stops_on_a_failed_read_of_the_bucket(tmp_path, read, said):
     assert not _uploads(calls) and not _index(calls, lambda call: call[:3] == ["python", "-m", "shopper.guard"])
 
 
-UPLOAD_ORDER = ["*.csv.gz", "*.csv", "*.json", "*.js", "assets/*.css", "assets/*.woff2", "assets/*.txt", "*.html",
-                WORD_MANIFEST]
+UPLOAD_ORDER = ["*.csv.gz", "*.csv", "*.json", "*.js", "assets/*.css", "assets/*.woff2", "assets/*.txt", "assets/*.png",
+                "*.html", WORD_MANIFEST]
 
 
 def test_publish_sh_uploads_the_data_files_before_the_pages(tmp_path):
     """The final review's finding 8: the records first (the forecasts and scores files), then the ledger, the day and
     site-day files with the search pieces and the word files, `search.js`, the shared files under assets/ (the
-    stylesheet, the fonts, their licences), the pages, and the word index's manifest last (q50), as the site run puts
-    them (`basket.site.upload`), so a stop part-way never leaves a live page naming a file not yet up, a changed
-    stylesheet's new name included, nor a manifest naming a word file not yet up."""
+    stylesheet, the fonts, their licences, the front page's card's picture), the pages, and the word index's manifest
+    last (q50), as the site run puts them (`basket.site.upload`), so a stop part-way never leaves a live page naming a
+    file not yet up, a changed stylesheet's new name included, nor a manifest naming a word file not yet up."""
     run, calls = _publish(tmp_path, a_build(tmp_path))
     assert run.returncode == 0, run.stderr
     assert [_filters(call)[1][1] for call in _syncs(calls)] == UPLOAD_ORDER
@@ -492,10 +493,10 @@ def test_publish_sh_gives_the_guard_the_published_product_pages(tmp_path, listed
 
 
 def test_publish_sh_sets_each_content_type_and_cache_control(tmp_path):
-    """One allowlisted sync per kind of file, each with its content type as `basket.site.CONTENT_TYPES` gives the
-    site run's uploads, and max-age=300; every file the build writes matches one allowlist, its own type's (the
-    stylesheet, the fonts and the licences under assets/ included, and the word index's manifest by its own), and the
-    marker none. The CLI matches each filter against the full local path (the source folder put before it)."""
+    """One allowlisted sync per kind of file, each with its content type as `basket.site.CONTENT_TYPES` gives the site
+    run's uploads, and max-age=300; every file the build writes matches one allowlist, its own type's (the stylesheet,
+    the fonts, the licences and the card's picture under assets/ included, and the word index's manifest by its own),
+    and the marker none. The CLI matches each filter against the full local path (the source folder put before it)."""
     site = a_build(tmp_path)
     run, calls = _publish(tmp_path, site)
     assert run.returncode == 0, run.stderr
@@ -512,7 +513,7 @@ def test_publish_sh_sets_each_content_type_and_cache_control(tmp_path):
                      "*.js": CONTENT_TYPES[".js"], "*.csv": CONTENT_TYPES[".csv"],
                      "*.csv.gz": CONTENT_TYPES[".gz"], "assets/*.css": CONTENT_TYPES[".css"],
                      "assets/*.woff2": CONTENT_TYPES[".woff2"], "assets/*.txt": CONTENT_TYPES[".txt"],
-                     WORD_MANIFEST: CONTENT_TYPES[".json"]}
+                     "assets/*.png": CONTENT_TYPES[".png"], WORD_MANIFEST: CONTENT_TYPES[".json"]}
     files = sorted(path.relative_to(site).as_posix() for path in site.rglob("*") if path.is_file())
     assert {Path(key).suffix for key in files} == set(CONTENT_TYPES) | {""}
     assert set(WORD_FILES) <= set(files)
@@ -523,13 +524,13 @@ def test_publish_sh_sets_each_content_type_and_cache_control(tmp_path):
 
 def test_publish_sh_puts_an_asset_only_when_the_bucket_lacks_it(tmp_path):
     """`aws s3 sync` puts a file whose size or time differs, and every build writes the assets afresh; a hashed name
-    carries its bytes' hash, so a name the bucket holds is the same file and the same size. So the three asset syncs,
+    carries its bytes' hash, so a name the bucket holds is the same file and the same size. So the four asset syncs,
     and no other, go by size alone (`--size-only`): an asset the bucket holds is not put again, and a changed
     stylesheet's new name, which the bucket lacks, goes up. Every other file goes by size and time, as before."""
     run, calls = _publish(tmp_path, a_build(tmp_path))
     assert run.returncode == 0, run.stderr
     sized = [_filters(call)[1][1] for call in _syncs(calls) if "--size-only" in call]
-    assert sized == ["assets/*.css", "assets/*.woff2", "assets/*.txt"]
+    assert sized == ["assets/*.css", "assets/*.woff2", "assets/*.txt", "assets/*.png"]
 
 
 def test_publish_sh_puts_the_word_manifest_last(tmp_path):

@@ -35,10 +35,11 @@ INDEX = b"<!doctype html><title>index</title>"
 REFERENCE = "113000Z-basket-ab12"
 ONE_PATH_ALL = {"Paths": {"Quantity": 1, "Items": ["/*"]}, "CallerReference": REFERENCE}
 # The design's content type of each kind of site file, by its last suffix (the plan's Task 22; the stylesheet, the
-# fonts and their licences: site-look.md, "The upload").
+# fonts and their licences: site-look.md, "The upload"; the front page's card's picture: link-preview.md, q45).
 TYPES = {".html": "text/html; charset=utf-8", ".json": "application/json; charset=utf-8",
          ".js": "text/javascript; charset=utf-8", ".csv": "text/csv; charset=utf-8", ".gz": "application/gzip",
-         ".css": "text/css; charset=utf-8", ".woff2": "font/woff2", ".txt": "text/plain; charset=utf-8"}
+         ".css": "text/css; charset=utf-8", ".woff2": "font/woff2", ".txt": "text/plain; charset=utf-8",
+         ".png": "image/png"}
 
 
 class FakeCloudFront:
@@ -94,10 +95,10 @@ NAMING = ["forecasts/ledger.csv", "site-days/2026-11-03.json", "days/2026-11-03.
 # Its pages under the page folders, in the order the upload takes them: by folder, then by name.
 FOLDER_PAGES = ["p/2000000000046.html", "p/2000000000053.html", "browse/05d0.html", "browse/other.html",
                 "search/05d0.json", "search/pieces.json"]
-# The shared files under assets/, one of each kind (the stylesheet, a font, a licence), in the order the upload takes
-# them: by name. The stylesheet's is the one the bucket may already hold.
+# The shared files under assets/, one of each kind (the stylesheet, a font, a licence, the card's picture), in the order
+# the upload takes them: by name. The stylesheet's is the one the bucket may already hold.
 STYLESHEET = "assets/look.aaaaaaaaaa.css"
-ASSETS = ["assets/OFL-archivo.txt", "assets/archivo-text.bbbbbbbbbb.woff2", STYLESHEET]
+ASSETS = ["assets/OFL-archivo.txt", "assets/archivo-text.bbbbbbbbbb.woff2", "assets/card.cccccccccc.png", STYLESHEET]
 
 
 def built(folder: Path) -> Path:
@@ -118,7 +119,7 @@ def shopper_files(folder: Path, count: int) -> list[str]:
     keys = ["index.html", "record.html", "search.js", "search/pieces.json", "search/05e9.json", "browse/index.html",
             "site-days/2026-11-03.json", "days/2026-11-03.json", "forecasts/ledger.csv", "forecasts/2026-11-03.csv.gz",
             "scores/2026-10-20.csv.gz", "assets/look.0123456789.css", "assets/archivo-text.0123456789.woff2",
-            "assets/OFL-archivo.txt"]
+            "assets/OFL-archivo.txt", "assets/card.0123456789.png"]
     keys += [f"p/{2000000000000 + n}.html" for n in range(count - len(keys))]
     for key in keys:
         (folder / key).parent.mkdir(parents=True, exist_ok=True)
@@ -349,7 +350,7 @@ def test_upload_puts_each_asset_before_any_page(site, tmp_path):
     assert site.upload(built(tmp_path), DATA, with_pages=True) == [*RECORDS, *ASSETS, *NAMING, *FOLDER_PAGES, *FIXED]
     assert calls == [RECORDS, ASSETS, [], [*NAMING, *FOLDER_PAGES, *FIXED], []]   # no word index: two calls of none
     assert sorted(puts[:2]) == sorted(RECORDS)
-    assert sorted(puts[2:5]) == sorted(ASSETS)  # every asset's put made before any data file's or page's starts
+    assert sorted(puts[2:2 + len(ASSETS)]) == sorted(ASSETS)  # every asset's put made before any other's starts
 
 
 def test_an_asset_the_bucket_holds_is_not_put_again(site, tmp_path):
@@ -380,11 +381,13 @@ def test_assets_go_up_only_with_the_pages(site, tmp_path):
 
 def test_each_asset_goes_up_with_its_content_type(site, tmp_path):
     """The site sends nosniff, so a stylesheet of another type would not be used: the stylesheet goes up as CSS, the
-    fonts as fonts and the licences as plain text, each with max-age=300, as every file."""
+    fonts as fonts, the licences as plain text and the card's picture as a PNG, each with max-age=300, as every
+    file."""
     site.upload(built(tmp_path), [], with_pages=True)
     assert {key: held(site)[key] for key in ASSETS} == {
         "assets/OFL-archivo.txt": (b"assets/OFL-archivo.txt", "text/plain; charset=utf-8", "max-age=300"),
         "assets/archivo-text.bbbbbbbbbb.woff2": (b"assets/archivo-text.bbbbbbbbbb.woff2", "font/woff2", "max-age=300"),
+        "assets/card.cccccccccc.png": (b"assets/card.cccccccccc.png", "image/png", "max-age=300"),
         "assets/look.aaaaaaaaaa.css": (b"assets/look.aaaaaaaaaa.css", "text/css; charset=utf-8", "max-age=300")}
 
 
