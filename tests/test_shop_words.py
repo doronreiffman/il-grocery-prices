@@ -674,3 +674,25 @@ def test_the_summary_counts_today():
     assert f'aria-label="{words.chart_summary(deal)}"' in SITE_LOOK
     dearer = _verdict("no_sale", days=days, today="11.50")
     assert words.chart_summary(dearer) == "Price chart: lowest ₪9.90, highest ₪11.50, today ₪11.50."
+
+
+# The front page's link preview card (q45: docs/link-preview.md, "What changes")
+
+def test_the_cards_words_are_the_designs():
+    """The card's title and description are the design's table, verbatim, and its picture's alt text gives the
+    picture's words as it shows them: the site's name, the question, the five chains' line."""
+    spec = (ROOT / "docs" / "link-preview.md").read_text(encoding="utf-8")
+    assert words.CARD_TITLE == "Deal or No Deal: is it actually a deal?"
+    assert f"| `og:title` | {words.CARD_TITLE} |" in spec
+    assert words.CARD_DESCRIPTION == ("Pick the store you're in, look up the product: each sale is checked against "
+                                      "what it usually costs there. Shufersal, Rami Levy, Osher Ad, Carrefour and "
+                                      "Yochananof.")
+    assert f"| `og:description` | {words.CARD_DESCRIPTION} |" in spec
+    assert words.CARD_ALT == ("Deal or No Deal. Is it actually a deal? "
+                              "Shufersal · Rami Levy · Osher Ad · Carrefour · Yochananof")
+
+
+def test_the_cards_words_say_no_never_phrase_or_we():
+    for text in (words.CARD_TITLE, words.CARD_DESCRIPTION, words.CARD_ALT):
+        assert not [phrase for phrase in NEVER if flatten(phrase) in flatten(text)], text
+        assert not PRONOUNS.search(flatten(text)), text

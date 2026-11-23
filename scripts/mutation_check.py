@@ -3533,6 +3533,10 @@ MUTATIONS = {
     "any probe value taken (q50 handler)": (BASKET_HANDLER, "        if PROBE in event and event[PROBE] not in tuple(SIZES):  #", "        if False:  #"),
     "the manifest's alert left out (q50 handler)": (BASKET_HANDLER, "    if not outcome.words.published:\n", "    if False:\n"),
     "word files counted as pages (q50 handler)": (BASKET_HANDLER, '"pages_uploaded": len(uploaded) - len(data) - len(words),', '"pages_uploaded": len(uploaded) - len(data),'),
+    # The front page's link preview card (q45: docs/link-preview.md)
+    "the card's title in other words (q45 words)": (SHOP_WORDS, 'CARD_TITLE = f"{SITE_NAME}: is it actually a deal?"', 'CARD_TITLE = f"{SITE_NAME}: is it a deal?"'),
+    "the card's line without the chains (q45 words)": (SHOP_WORDS, 'f"there. {joined([CHAIN_NAMES[slug] for slug in SLUGS])}.")', '"there.")'),
+    "the card's alt text without the question (q45 words)": (SHOP_WORDS, 'CARD_ALT = f"{SITE_NAME}. {FRONT_TITLE} {CHAINS_LINE}"', 'CARD_ALT = f"{SITE_NAME}. {CHAINS_LINE}"'),
 }
 
 

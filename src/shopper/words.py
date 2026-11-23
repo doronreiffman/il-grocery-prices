@@ -103,6 +103,11 @@ Usual, which the chart writes at its own height), its short dates ("16 Aug", `sh
 price) and as the date of a lowest or highest that is today's; sentences keep `on_day`'s long form ("ended 11
 November"). A store's label on the front page carries the M of its store page's headline ("3,086" and "promotions
 today", one "promotion today": `promotions_today`; q40).
+
+The front page's link preview card (q45: docs/link-preview.md, "What changes"), the design's words: its title
+(CARD_TITLE), its one line, the front page's own sentence with the five chains (CARD_DESCRIPTION), and its picture's
+alt text (CARD_ALT), the picture's words as it shows them: the site's name, the store pages' question and the chains'
+line.
 """
 from collections.abc import Mapping, Sequence
 from datetime import date
@@ -127,6 +132,12 @@ FRONT_TITLE = "Is it actually a deal?"           # Q4, the owner's final framing
 ROOT_TITLE = "Deal or No Deal?"
 ROOT_LINE = ("Find out if a sale is actually a deal: pick the store you're in, then look up the product. Each sale is "
              "checked against what it usually costs there.")
+# the front page's link preview card (q45: docs/link-preview.md, "What changes"): its title, its one line, and its
+# picture's words as the picture shows them (src/shopper/static/card.png)
+CARD_TITLE = f"{SITE_NAME}: is it actually a deal?"
+CARD_DESCRIPTION = ("Pick the store you're in, look up the product: each sale is checked against what it usually costs "
+                    f"there. {joined([CHAIN_NAMES[slug] for slug in SLUGS])}.")
+CARD_ALT = f"{SITE_NAME}. {FRONT_TITLE} {CHAINS_LINE}"
 # under the title on every store page, the fold-out's first line (FOLD_INTRO; the owner, 2026-11-11): READ_DAYS (90)
 # as 3 months, "up to" while the records hold fewer (they start on 1 November 2026)
 FRONT_SUBTITLE = ("Promotions checked against what the product usually costs, sales included, over up to "
