@@ -51,3 +51,12 @@ Its own deploy, after the front page's store labels (q40) are deployed and read 
 
 - **The site asks search engines not to list it** (`noindex`), and stays so. LinkedIn's help page does not say what it does with such a page, and the site has no `robots.txt` (the address answers 403, read 2026-11-23). LinkedIn reads the page anyway: the owner pasted the live front page, still without the card, into Post Inspector before the build (2026-11-23), and its read was fine.
 - **LinkedIn keeps a link's preview after it first reads it**; for how long, its help page does not say. So the order is: the card live, Post Inspector shows it, then the post.
+
+## Deviations
+
+What the build changed from the design above, and why.
+
+- **The golden pages' pin moves more than `index.html`.** The pin lists every file the run leaves under `assets/`, so it gains the picture's line; and each built day's line is a digest over the files that day wrote, `index.html` and `assets/` among them, so every day's line moves too. No other file's line moves.
+- **`assets/` admits the picture, and the hash rule covers it.** The check already held `assets/` to the stylesheet, the fonts it names and their licences, and refused anything else by name, so it would have refused the picture. It now admits the picture the build makes (`shopper.assets.CARD_IMAGE`), and holds its name to its bytes' hash, as it holds the stylesheet's and the fonts': an upload skips a name the bucket holds, so a name that did not match its bytes would never be corrected. A picture an earlier build left in `assets/` is refused by name, as an old stylesheet is.
+- **A NEVER phrase in the card's words needed no rule of its own.** The page's own rule already reads the page as written, attributes included, so it names a NEVER phrase in the card's title, line or alt text, once. Only "we", "our" and "us", which the check seeks in the text a reader sees (no attribute is in it), needed a rule that reads the card's words on their own.
+- **5 MB is read as 5,000,000 bytes**, the stricter of its two readings. The picture is 35,832 bytes.

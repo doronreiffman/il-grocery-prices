@@ -33,10 +33,10 @@ from shopper.pages import (BASKET_PAGE, BASKET_SECTION, CONDITIONS, CONDITIONS_N
                            PICK_GROUPS, PICK_TITLE, SCORED_SO_FAR, ColumnsToday, StoreFront, column_ready,
                            promotions_shown, render_basket, render_method, render_record, render_root, render_store,
                            scorecard_section, shown_rows, store_path)
-from shopper.assets import STYLESHEET, asset_files
+from shopper.assets import CARD_IMAGE, STYLESHEET, asset_files
 from shopper.product import CHAIN_SPAN, page_path
 from shopper.search import browse_pages
-from shopper.shell import SCRIPT_TAG, band, head
+from shopper.shell import ADDRESS, SCRIPT_TAG, band, head
 from shopper.items import HORIZON
 from shopper.record import scorecard
 from shopper.measures import MIN_FRONT_DAYS, RECENT_DAYS
@@ -145,7 +145,8 @@ def test_the_front_headline_is_deal_or_no_deal():
     """The owner's words (2026-11-15, site-look.md "Word changes" 1 and 2) and the design's front page: the headline
     "DEAL OR NO DEAL?" (ROOT_TITLE, set in capitals by the stylesheet), DEAL on the green label and NO DEAL on the
     yellow one, "or" and the question mark plain; the owner's line under it, after a line break; the tab title the
-    site's name alone. The store pages' question is not on the root."""
+    site's name alone. The store pages' question is not on the root (the link preview card's alt text names it, in a
+    tag the page does not show: q45)."""
     assert ROOT_TITLE == "Deal or No Deal?" and SITE_NAME == "Deal or No Deal"
     assert ROOT_LINE == ("Find out if a sale is actually a deal: pick the store you're in, then look up the product. "
                          "Each sale is checked against what it usually costs there.")
@@ -155,7 +156,7 @@ def test_the_front_headline_is_deal_or_no_deal():
     assert h1 == '<span class="yes">Deal</span> or <span class="no">No Deal</span>?' and _read(h1) == ROOT_TITLE
     assert hero == f'<h1>{h1}</h1>\n<p class="lede">{ROOT_LINE}</p>'
     assert page.count("<title>") == 1 and "<title>Deal or No Deal</title>" in page
-    assert FRONT_TITLE not in page
+    assert FRONT_TITLE not in _read(page)
 
 
 def test_each_store_label_carries_its_headlines_count():
@@ -604,12 +605,47 @@ def _every_page() -> list[tuple[str, str]]:
 def test_every_page_links_the_one_stylesheet_at_its_depth():
     """Q2's one script (store-first.md) and the site's look (q36): every page's head ends with the one shared
     stylesheet and `search.js`, each at the page's own depth ("../" for p/, browse/ and store/ pages), in place of a
-    style block; no other stylesheet or script, no style block and no style attribute."""
+    style block; no other stylesheet or script, no style block and no style attribute. On the front page the link
+    preview card's tags come between the title and the stylesheet (q45)."""
     for page, up in _every_page():
         assert page.count("<link") == 1 and page.count("<script") == 1, up
-        assert (f'</title>\n<link rel="stylesheet" href="{up}{STYLESHEET}">\n<script src="{up}search.js" defer>'
+        card = _card_tags(page) + "\n" if page == _root() else ""
+        assert (f'</title>\n{card}<link rel="stylesheet" href="{up}{STYLESHEET}">\n<script src="{up}search.js" defer>'
                 "</script>\n</head>") in page, up
         assert "<style" not in page and "style=" not in page, up
+
+
+# The front page's link preview card (q45: docs/link-preview.md, "What changes"), as an app reads it: each tag's
+# property and content, in the design's table's order
+CARD = [("og:type", "website"),
+        ("og:title", "Deal or No Deal: is it actually a deal?"),
+        ("og:description", "Pick the store you're in, look up the product: each sale is checked against what it "
+                           "usually costs there. Shufersal, Rami Levy, Osher Ad, Carrefour and Yochananof."),
+        ("og:url", "https://d153udx05irk2f.cloudfront.net/"),
+        ("og:image", f"https://d153udx05irk2f.cloudfront.net/{CARD_IMAGE}"),
+        ("og:image:alt", "Deal or No Deal. Is it actually a deal? "
+                         "Shufersal · Rami Levy · Osher Ad · Carrefour · Yochananof"),
+        ("og:image:width", "1200"), ("og:image:height", "630")]
+
+
+def _card_tags(page: str) -> str:
+    """The page's lines from the one after its title to the one before its stylesheet."""
+    return page[page.index("</title>\n") + len("</title>\n"):page.index('\n<link rel="stylesheet"')]
+
+
+def test_the_front_page_carries_the_card_after_its_title():
+    """The design's table: one `<meta property>` a tag, a line each, after the title, the picture named by the site's
+    full address and its hashed name under assets/ (an app needs a full address)."""
+    assert ADDRESS == "https://d153udx05irk2f.cloudfront.net/"
+    lines = _card_tags(_root()).split("\n")
+    assert [re.fullmatch(r'<meta property="[^"]+" content="[^"]*">', line) is not None for line in lines] == [True] * 8
+    assert [(found["property"], found["content"]) for line in lines for _, found in _tags(line)] == CARD
+
+
+def test_no_other_page_carries_the_card():
+    """The owner, 2026-11-23: a shared product or store page keeps a bare card."""
+    for page, up in _every_page()[1:]:
+        assert "og:" not in page and "<meta property" not in page, up
 
 
 def test_every_page_names_its_kind_on_its_body():

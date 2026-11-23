@@ -39,19 +39,33 @@ each chain's promotions error and every day scored to date. Every `.html` under 
   Lambda's build folder holds only the run day's site-day file). A link from the root ("/...") or out of the folder
   ("../" past it) resolves to nothing the check can see.
 
+Then the front page's link preview card (docs/link-preview.md, "What the site check adds"), read from `index.html`'s
+`<meta property>` tags (one missing, or not UTF-8, is the folder's or the page's own rule's):
+
+- Each tag of the design's table (CARD_TAGS) given exactly once; a tag given by `name`, not `property`, is not one.
+- `og:url` is the site's address (`shopper.shell.ADDRESS`), and `og:image` the site's address followed by a file the
+  build holds under `assets/`: neither a path from the page or the root (an app needs a full address) nor another
+  site's. A missing picture is this rule's.
+- That file is a PNG by its header (its signature, then the IHDR chunk) of CARD_SIZE, 1200 x 630, and at most CARD_MAX
+  bytes (LinkedIn's 5 MB, read as 5,000,000). Only its first 24 bytes are read.
+- The card's words (CARD_WORDS: its title, its line and its picture's alt text) hold no "we", "our" or "us": the text
+  read holds no attribute, so they are read on their own. A NEVER phrase in them is the page's own rule's, which reads
+  the page as written, attributes and all.
+
 Then the shared files, `assets/` (docs/site-look.md, "The shared stylesheet and the font files"):
 
-- `assets/` holds the stylesheet, each `.woff2` file the stylesheet names, and the two licences
-  (`shopper.assets.LICENCES`), and nothing else: any other file there is refused by name (so is a stylesheet an
-  earlier build left there; empty `assets/` before building into a used folder), and the stylesheet or a licence
-  missing is named. A font the stylesheet names and `assets/` lacks is the next rule's.
+- `assets/` holds the stylesheet, each `.woff2` file the stylesheet names, the two licences
+  (`shopper.assets.LICENCES`) and the card's picture (`shopper.assets.CARD_IMAGE`), and nothing else: any other file
+  there is refused by name (so is a stylesheet or a picture an earlier build left there; empty `assets/` before
+  building into a used folder), and the stylesheet or a licence missing is named. A font the stylesheet names and
+  `assets/` lacks is the next rule's.
 - The stylesheet holds no `@import`, and each `url(` in it names a bare file name, with no scheme, no "/" and no quote
   mark, that ends ".woff2" and is in `assets/`. Both are sought in any case, as CSS reads them, and each name is judged
   once, however often the stylesheet names it. Bytes that are not UTF-8 are read as the replacement character, never
   a crash: the build never writes them, so the next rule names the file.
-- The stylesheet and each font it names carry in their names the first ten hex digits of their own bytes' SHA-256
-  (`shopper.assets.hashed`), and a refusal gives the name the bytes would give: an upload skips a name the bucket
-  holds, so a name that did not match its bytes would never be corrected.
+- The stylesheet, the card's picture and each font the stylesheet names carry in their names the first ten hex
+  digits of their own bytes' SHA-256 (`shopper.assets.hashed`), and a refusal gives the name the bytes would give: an
+  upload skips a name the bucket holds, so a name that did not match its bytes would never be corrected.
 
 Then by page. Every store type's front page, `store/*.html`, and every `p/*.html` carry every ALWAYS phrase in the text
 read; `index.html`, the picker, shows no price and is held to the rest alone. A product page holds at most 60,000 bytes
@@ -95,14 +109,14 @@ from urllib.parse import SplitResult, unquote, urlsplit
 from basket.check import INDEX, NOINDEX, NOT_ADVICE, PRONOUNS, NoPages, flatten, index_problems, says, strip_tags
 from basket.check import main as check_main
 from basket.page import HE_SPAN
-from shopper.assets import FOLDER, LICENCES, STYLESHEET, hashed
+from shopper.assets import CARD_IMAGE, FOLDER, LICENCES, STYLESHEET, hashed
 from shopper.build import LEDGER, MARKER, read_ledger
 from shopper.columns import BY_KEY, COLUMNS
 from shopper.freeze import scores_site_key, site_key
 from shopper.pages import store_path
 from shopper.product import CHAIN_SPAN, MAX_PAGE
 from shopper.search import PIECE_MAX
-from shopper.shell import SCRIPT_TAG
+from shopper.shell import ADDRESS, SCRIPT_TAG
 from shopper.words import ALWAYS, CREDIT_START, NEVER, ODDS_WORDS, date_line, no_odds_yet, unreadable
 from shopper.wordindex import FOLDER as WORD_FOLDER
 from shopper.wordindex import MANIFEST as WORD_MANIFEST
@@ -133,6 +147,13 @@ HEADER = re.compile(r"<header\b[^>]*>(.*?)</header>", re.S | re.I)
 SECTION = re.compile(r"<section\b([^>]*)>(.*?)</section>", re.S | re.I)
 TAG = re.compile(r"<([a-z][a-z0-9-]*)(\s[^>]*)?>", re.I)
 ATTRIBUTE = re.compile(r"""([^\s"'<>/=]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))""")
+# The front page's link preview card (q45): the design's table, the tags read for the words, and its picture's rules
+CARD_TAGS = ("og:type", "og:title", "og:description", "og:url", "og:image", "og:image:alt", "og:image:width",
+             "og:image:height")
+CARD_WORDS = ("og:title", "og:description", "og:image:alt")
+PNG = b"\x89PNG\r\n\x1a\n"                                     # a PNG's signature; its IHDR chunk follows
+CARD_SIZE = (1200, 630)
+CARD_MAX = 5_000_000                                           # bytes: LinkedIn's 5 MB
 # A word from its start, with its other forms ("forecasts"); a phrase whole, so "21 in" and "1 inch" hold no "1 in" (N4)
 ODDS = {word: re.compile(rf"\b{re.escape(flatten(word))}" + (r"\b" if " " in word else "")) for word in ODDS_WORDS}
 
@@ -336,6 +357,62 @@ def _link_problem(name: str, url: str, files: set[str], records: set[str], ids: 
     return f"{name}: a link to {url!r} reaches no file in the build"
 
 
+def _png_size(head: bytes) -> tuple[int, int] | None:
+    """A PNG's width and height from its first 24 bytes: the signature, then the IHDR chunk's length, type, width and
+    height; None for bytes that are no PNG's."""
+    if len(head) < 24 or head[:8] != PNG or head[12:16] != b"IHDR":
+        return None
+    return int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big")
+
+
+def _picture_problems(site_dir: Path, key: str) -> list[str]:
+    """The card's picture, `key`, a file of the build: a PNG of CARD_SIZE by its header, of at most CARD_MAX bytes."""
+    path = site_dir / key
+    with path.open("rb") as file:
+        size = _png_size(file.read(24))
+    problems = []
+    if size is None:
+        problems.append(f"{key}: the card's picture is not a PNG")
+    elif size != CARD_SIZE:
+        problems.append(f"{key}: the card's picture is {size[0]} × {size[1]}, not {CARD_SIZE[0]} × {CARD_SIZE[1]}")
+    if (length := path.stat().st_size) > CARD_MAX:
+        problems.append(f"{key}: {length:,} bytes, over the {CARD_MAX:,} bytes the card's picture may hold")
+    return problems
+
+
+def _card_problems(site_dir: Path, files: set[str]) -> list[str]:
+    """The front page's link preview card (the module's docstring), `files` the build's; none to read when
+    `index.html` is missing or not UTF-8, which other rules name."""
+    path = site_dir / INDEX
+    try:
+        raw = path.read_text(encoding="utf-8") if path.is_file() else None
+    except UnicodeDecodeError:      # the page's own rule names it
+        raw = None
+    if raw is None:
+        return []
+    given: dict[str, list[str]] = {}
+    for tag, found in _tags(raw):
+        if tag == "meta" and found.get("property") in CARD_TAGS:
+            given.setdefault(found["property"], []).append(found.get("content", ""))
+    problems = [f"{INDEX}: the card's {name} given {len(given.get(name, []))} times, not once"
+                for name in CARD_TAGS if len(given.get(name, [])) != 1]
+    content = {name: values[0] for name, values in given.items()}
+    if "og:url" in content and content["og:url"] != ADDRESS:
+        problems.append(f"{INDEX}: the card's og:url is {content['og:url']!r}, not the site's address {ADDRESS}")
+    if "og:image" in content:
+        image = content["og:image"]
+        key = image.removeprefix(ADDRESS)
+        if image.startswith(ADDRESS) and key.startswith(f"{FOLDER}/") and key in files:
+            problems += _picture_problems(site_dir, key)
+        else:
+            problems.append(f"{INDEX}: the card's og:image is {image!r}, not the site's address followed by a file the "
+                            f"build holds in {FOLDER}/")
+    for name in CARD_WORDS:
+        words = sorted({found.group(0).lower() for found in PRONOUNS.finditer(flatten(content.get(name, "")))})
+        problems += [f"{INDEX}: the word {word!r} in the card's {name}" for word in words]
+    return problems
+
+
 def _unhashed(key: str) -> str:
     """A hashed name without its hash, "assets/look.css" for "assets/look.dc1312dbfc.css"; a plain name as it is."""
     stem, _, suffix = key.rpartition(".")
@@ -345,13 +422,14 @@ def _unhashed(key: str) -> str:
 
 def _asset_problems(site_dir: Path, files: set[str]) -> list[str]:
     """The problems of `assets/` (the module's docstring), `files` the build's: what the folder holds, what the
-    stylesheet names, and each hashed file's name against its bytes."""
+    stylesheet names, and each hashed file's name against its bytes, the card's picture's among them."""
     text = (site_dir / STYLESHEET).read_bytes().decode("utf-8", "replace") if STYLESHEET in files else ""
     urls = list(dict.fromkeys(URL.findall(text)))
     fonts = [f"{FOLDER}/{url}" for url in urls if BARE.fullmatch(url) and url.endswith(FONT)]
     problems = [f"{key}: missing" for key in REQUIRED if key not in files]
-    problems += [f"{key}: in {FOLDER}/, which holds only the stylesheet, the fonts it names and their licences"
-                 for key in sorted(files) if key.startswith(f"{FOLDER}/") and key not in {*REQUIRED, *fonts}]
+    problems += [f"{key}: in {FOLDER}/, which holds only the stylesheet, the fonts it names, their licences and the "
+                 "card's picture" for key in sorted(files)
+                 if key.startswith(f"{FOLDER}/") and key not in {*REQUIRED, *fonts, CARD_IMAGE}]
     if IMPORT in text.lower():
         problems.append(f"{STYLESHEET}: an {IMPORT}")
     for url in urls:
@@ -361,7 +439,7 @@ def _asset_problems(site_dir: Path, files: set[str]) -> list[str]:
             problems.append(f"{STYLESHEET}: a url to a file that is not a font: {url!r}")
         elif f"{FOLDER}/{url}" not in files:
             problems.append(f"{STYLESHEET}: a url to a file not in {FOLDER}/: {url!r}")
-    for key in [STYLESHEET, *fonts]:
+    for key in [STYLESHEET, CARD_IMAGE, *fonts]:
         if key in files and (right := hashed(_unhashed(key), (site_dir / key).read_bytes())) != key:
             problems.append(f"{key}: not named by its bytes' hash, which names it {right}")
     return problems
@@ -427,6 +505,7 @@ def check_site(site_dir: Path) -> list[str]:
     records = _records(site_dir, shown)
     for name, urls in links.items():
         problems += [problem for url in urls if (problem := _link_problem(name, url, files, records, ids))]
+    problems += _card_problems(site_dir, files)
     problems += _asset_problems(site_dir, files)
     for path in sorted(site_dir.glob(PIECES)):
         if (size := path.stat().st_size) > PIECE_MAX:

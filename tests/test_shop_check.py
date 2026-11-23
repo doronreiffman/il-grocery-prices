@@ -11,9 +11,12 @@ went up on their own day and are not in the build (B5); and a day scored 14 days
 test of a store's name renames the store in a copy of the data's store list and builds the site again. Names,
 barcodes and prices are synthetic."""
 import gzip
+import html
 import json
 import re
 import shutil
+import struct
+import zlib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -23,7 +26,7 @@ from basket.chains import SLUGS
 from basket.check import NOT_ADVICE, NoPages, flatten, strip_tags
 from basket.page import HE_SPAN
 from basket.words import REVISED
-from shopper.assets import FOLDER, FONTS, LICENCES, STYLESHEET, asset_files, hashed
+from shopper.assets import CARD_IMAGE, FOLDER, FONTS, LICENCES, STYLESHEET, asset_files, hashed
 from shopper.build import LEDGER, MARKER, build_site
 from shopper.check import check_site, main
 from shopper.extract import extract_chain_day
@@ -32,7 +35,7 @@ from shopper.pages import store_path
 from shopper.product import page_path
 from shopper.score import DaySummary, summary_json, summary_path
 from shopper.search import CHAIN_SPAN
-from shopper.shell import SCRIPT_TAG
+from shopper.shell import ADDRESS, SCRIPT_TAG
 from shopper.siteday import site_day_path
 from shopper.words import ALWAYS, CREDIT_START, NEVER, ODDS_WORDS, date_line, no_odds_yet, unreadable
 from shopper.wordindex import EMPTY_MANIFEST, node_key
@@ -54,7 +57,7 @@ FROZEN = [Frozen(day=day, body=BODY, sha256=_sha(BODY), frozen_at=at, on_time=Tr
 ONLINE = "\u05e9\u05d5\u05e4\u05e8\u05e1\u05dc ONLINE"          # store 413's name in the tree's store list
 FONT_FILES = dict(zip(FONTS, [key for key in asset_files() if key.endswith(".woff2")]))   # font to assets/<hashed>
 LICENCE_FILES = [f"{FOLDER}/{licence}" for licence in LICENCES]
-STRAY = "in assets/, which holds only the stylesheet, the fonts it names and their licences"
+STRAY = "in assets/, which holds only the stylesheet, the fonts it names, their licences and the card's picture"
 
 
 def build(data: Path, site: Path) -> Path:
@@ -458,9 +461,9 @@ def renamed(key: str, plain: str, data: bytes) -> str:
     return f"{key}: not named by its bytes' hash, which names it {hashed(plain, data)}"
 
 
-def test_the_build_writes_the_stylesheet_the_fonts_and_their_licences(built):
+def test_the_build_writes_the_stylesheet_the_fonts_their_licences_and_the_card(built):
     assert sorted(path.relative_to(built).as_posix() for path in (built / FOLDER).iterdir()) == sorted(
-        [STYLESHEET, *FONT_FILES.values(), *LICENCE_FILES])
+        [STYLESHEET, *FONT_FILES.values(), *LICENCE_FILES, CARD_IMAGE])
 
 
 def test_a_stray_file_in_assets_fails(site):
@@ -546,6 +549,159 @@ def test_a_stylesheet_that_is_not_utf8_is_still_read_not_a_crash(site):
     data = path.read_bytes() + b"\xff@import 'a.css';"
     path.write_bytes(data)
     assert check_site(site) == [f"{STYLESHEET}: an @import", renamed(STYLESHEET, f"{FOLDER}/look.css", data)]
+
+
+# ---- the front page's link preview card (q45: docs/link-preview.md, "What the site check adds") ----
+
+CARD_TAGS = ["og:type", "og:title", "og:description", "og:url", "og:image", "og:image:alt", "og:image:width",
+             "og:image:height"]
+CARD_WORDS = ["og:title", "og:description", "og:image:alt"]
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+OUTSIDE = "not the site's address followed by a file the build holds in assets/"
+
+
+def card_line(site: Path, name: str) -> str:
+    """The front page's line of the card's tag `name`."""
+    [line] = [line for line in (site / "index.html").read_text(encoding="utf-8").splitlines()
+              if line.startswith(f'<meta property="{name}" ')]
+    return line
+
+
+def with_content(site: Path, name: str, content: str) -> None:
+    """The card's tag `name` given `content`, escaped as the shell escapes it."""
+    replace(site, "index.html", card_line(site, name), f'<meta property="{name}" content="{html.escape(content)}">')
+
+
+def card_with(site: Path, data: bytes) -> str:
+    """The card's picture's bytes replaced by `data` under its name; the hash rule's line it then brings."""
+    (site / CARD_IMAGE).write_bytes(data)
+    return renamed(CARD_IMAGE, f"{FOLDER}/card.png", data)
+
+
+def png(width: int, height: int) -> bytes:
+    """A PNG's signature and IHDR chunk (8-bit colour, with its CRC) for `width` x `height`, and nothing after."""
+    ihdr = b"IHDR" + struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    return PNG_SIGNATURE + struct.pack(">I", 13) + ihdr + struct.pack(">I", zlib.crc32(ihdr))
+
+
+def test_the_built_front_page_carries_the_card_and_its_picture(built):
+    lines = (built / "index.html").read_text(encoding="utf-8").splitlines()
+    assert [line.split('"')[1] for line in lines if line.startswith("<meta property=")] == CARD_TAGS
+    assert card_line(built, "og:image") == f'<meta property="og:image" content="{ADDRESS}{CARD_IMAGE}">'
+    assert (built / CARD_IMAGE).read_bytes()[:8] == PNG_SIGNATURE
+
+
+@pytest.mark.parametrize("name", CARD_TAGS)
+def test_a_card_tag_missing_fails(site, name):
+    replace(site, "index.html", card_line(site, name) + "\n", "")
+    assert check_site(site) == [f"index.html: the card's {name} given 0 times, not once"]
+
+
+@pytest.mark.parametrize("name", CARD_TAGS)
+def test_a_card_tag_given_twice_fails(site, name):
+    line = card_line(site, name)
+    replace(site, "index.html", line, f"{line}\n{line}")
+    assert check_site(site) == [f"index.html: the card's {name} given 2 times, not once"]
+
+
+def test_a_card_tag_by_name_not_property_is_none(site):
+    """Open Graph names a tag by `property`: a `name` is not read as one."""
+    replace(site, "index.html", '<meta property="og:title"', '<meta name="og:title"')
+    assert check_site(site) == ["index.html: the card's og:title given 0 times, not once"]
+
+
+@pytest.mark.parametrize("url", ["https://example.org/", ADDRESS.removesuffix("/"), ADDRESS.replace("https:", "http:"),
+                                 "/", ""])
+def test_the_cards_url_not_the_sites_address_fails(site, url):
+    with_content(site, "og:url", url)
+    assert check_site(site) == [f"index.html: the card's og:url is {url!r}, not the site's address {ADDRESS}"]
+
+
+@pytest.mark.parametrize("image", [
+    CARD_IMAGE,                                     # from the page: an app needs a full address (link-preview.md)
+    f"/{CARD_IMAGE}",                               # from the site's root
+    f"https://example.org/{CARD_IMAGE}",            # another site's
+    f"{ADDRESS}index.html",                         # a file the build holds, outside assets/
+    f"{ADDRESS}{FOLDER}/card.0123456789.png",       # a file the build lacks
+    f"{ADDRESS}{CARD_IMAGE}?v=2",
+])
+def test_the_cards_picture_not_a_file_of_assets_at_the_sites_address_fails(site, image):
+    with_content(site, "og:image", image)
+    assert check_site(site) == [f"index.html: the card's og:image is {image!r}, {OUTSIDE}"]
+
+
+def test_a_missing_card_picture_fails(site):
+    """The front page's own rule names it: the card is the build's, as the fonts are the stylesheet's."""
+    (site / CARD_IMAGE).unlink()
+    assert check_site(site) == [f"index.html: the card's og:image is {ADDRESS + CARD_IMAGE!r}, {OUTSIDE}"]
+
+
+def test_the_card_naming_another_file_of_assets_fails_as_no_png(site):
+    with_content(site, "og:image", f"{ADDRESS}{STYLESHEET}")
+    assert check_site(site) == [f"{STYLESHEET}: the card's picture is not a PNG"]
+
+
+@pytest.mark.parametrize("data", [
+    b"", b"GIF89a" + bytes(40), png(1200, 630)[:23],             # no PNG, or too short for its size
+    PNG_SIGNATURE + struct.pack(">I", 13) + b"IDAT" + bytes(17),   # no IHDR after the signature
+    b"\x89PNG\r\n\x1a\r" + png(1200, 630)[8:],                    # a signature one byte off
+])
+def test_a_card_picture_that_is_no_png_fails(site, data):
+    line = card_with(site, data)
+    assert check_site(site) == [f"{CARD_IMAGE}: the card's picture is not a PNG", line]
+
+
+@pytest.mark.parametrize("width, height", [(1200, 627), (630, 1200), (2400, 1260), (1199, 630), (1200, 631)])
+def test_a_card_picture_of_another_size_fails(site, width, height):
+    line = card_with(site, png(width, height))
+    assert check_site(site) == [f"{CARD_IMAGE}: the card's picture is {width} × {height}, not 1200 × 630", line]
+
+
+def test_a_card_picture_whose_name_is_not_its_hash_fails(site):
+    """A 1200 x 630 PNG by its header passes the picture's own rules; its bytes changed under the old name are the
+    hash rule's: an upload skips a name the bucket holds."""
+    line = card_with(site, png(1200, 630))
+    assert check_site(site) == [line]
+
+
+@pytest.mark.parametrize("size, over", [(5_000_000, False), (5_000_001, True)])
+def test_a_card_picture_over_5_mb_fails(site, size, over):
+    data = (site / CARD_IMAGE).read_bytes()
+    line = card_with(site, data + bytes(size - len(data)))          # after the picture's end: its header unchanged
+    problems = [f"{CARD_IMAGE}: 5,000,001 bytes, over the 5,000,000 bytes the card's picture may hold"] if over else []
+    assert check_site(site) == [*problems, line]
+
+
+def test_an_old_card_picture_in_assets_fails(site):
+    """A picture an earlier build left there is refused by name, as an old stylesheet is."""
+    data = (site / CARD_IMAGE).read_bytes() + b"\0"
+    key = f"{FOLDER}/{hashed('card.png', data)}"
+    (site / key).write_bytes(data)
+    assert check_site(site) == [f"{key}: {STRAY}"]
+
+
+@pytest.mark.parametrize("name", CARD_WORDS)
+def test_we_our_us_in_the_cards_words_fail(site, name):
+    """The text read holds no attribute, so the card's words are read on their own; inside a word, not a word."""
+    with_content(site, name, "We list our prices for US. Users focus on ours.")
+    assert check_site(site) == [f"index.html: the word {word!r} in the card's {name}" for word in ("our", "us", "we")]
+
+
+@pytest.mark.parametrize("name", CARD_WORDS)
+def test_a_never_phrase_in_the_cards_words_fails_once(site, name):
+    """The page's own rule reads the page as written, attributes and all, so the card's words too."""
+    with_content(site, name, "Not a scam.")
+    assert check_site(site) == ["index.html: a never phrase: 'scam'"]
+
+
+def test_a_front_page_that_is_not_utf8_is_named_once_not_a_crash(site):
+    """The page's own rule names it; its card is not read, and its ids neither, so the links to its picker reach
+    none."""
+    path = site / "index.html"
+    path.write_bytes(path.read_bytes().replace(b"<main>", b"<main>\xff", 1))
+    problems = check_site(site)
+    assert problems[0] == "index.html: not UTF-8" and len(problems) > 1
+    assert all(line.endswith("index.html holds no id 'pick'") for line in problems[1:])
 
 
 # ---- product pages: sizes, F10 and P10 by column ----

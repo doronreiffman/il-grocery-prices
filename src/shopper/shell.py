@@ -22,6 +22,13 @@ remembered, writes "<store type> · change" there, but on the front page, where 
 the page's folder to the site's root, "../" for `p/`, `browse/` and `store/` and "" for the root pages, so every link,
 the stylesheet and the script resolve in the build.
 
+The front page alone (the owner, 2026-11-23: the post links the front page; a shared product or store page keeps a
+bare card) carries the link preview card's tags between its title and the stylesheet (docs/link-preview.md, "What
+changes"; `card`): a `<meta property>` a tag, a line each, in the design's table's order (CARD_TAGS). An app reading
+the card needs full addresses, so `og:url` is the site's address (ADDRESS, one constant: a new distribution is this
+line) and `og:image` the site's address followed by the picture's hashed path under `assets/`
+(`shopper.assets.CARD_IMAGE`); the words are `shopper.words`'.
+
 The shell lives in its own module so that the front page's module can import the product pages' `page_path` while
 the product pages import the shell: no import goes round in a circle.
 """
@@ -29,12 +36,16 @@ from collections.abc import Sequence
 from datetime import date
 from html import escape
 
-from shopper.assets import STYLESHEET
-from shopper.words import CHAINS_LINE, SITE_NAME, credit, date_line
+from shopper.assets import CARD_IMAGE, STYLESHEET
+from shopper.words import CARD_ALT, CARD_DESCRIPTION, CARD_TITLE, CHAINS_LINE, SITE_NAME, credit, date_line
 
 PICK = "Pick your store"           # the header's store line before a pick (store-first.md, "Words")
 SCRIPT_TAG = '<script src="{up}search.js" defer></script>'      # the site's one script, in every page's head
 KINDS = ("front", "store", "product", "browse", "method", "record", "basket")    # the body's class, t-<kind>
+ADDRESS = "https://d153udx05irk2f.cloudfront.net/"     # the site's address, as the README links it (q45)
+CARD_TAGS = (("og:type", "website"), ("og:title", CARD_TITLE), ("og:description", CARD_DESCRIPTION),
+             ("og:url", ADDRESS), ("og:image", ADDRESS + CARD_IMAGE), ("og:image:alt", CARD_ALT),
+             ("og:image:width", "1200"), ("og:image:height", "630"))     # the front page's card (q45), in order
 
 
 def text(value: str) -> str:
@@ -46,6 +57,11 @@ def head(up: str) -> str:
     """The head's two links after the title: the site's one stylesheet, then its one script, each from the site's
     root (`up`); `basket.html`'s too, in the basket's frame."""
     return f'<link rel="stylesheet" href="{up}{STYLESHEET}">\n{SCRIPT_TAG.format(up=up)}'
+
+
+def card() -> str:
+    """The front page's link preview card: a `<meta property>` a tag of CARD_TAGS, a line each."""
+    return "\n".join(f'<meta property="{name}" content="{escape(value)}">' for name, value in CARD_TAGS)
 
 
 def band(day: date, up: str, front: bool = False) -> str:
@@ -68,6 +84,7 @@ def page(title: str, main: str, day: date, collected_by: str, links: Sequence[tu
         raise ValueError(f"a page of a kind the shell does not know: {kind!r}, not one of {KINDS}")
     footer = " · ".join(f'<a href="{up}{escape(path)}">{text(label)}</a>' for label, path in links)
     opening = "<main>" if store is None else f'<main data-store="{escape(store)}">'
+    in_head = f"{card()}\n{head(up)}" if kind == "front" else head(up)     # the card on the front page alone
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -76,7 +93,7 @@ def page(title: str, main: str, day: date, collected_by: str, links: Sequence[tu
 <meta name="robots" content="noindex">
 <meta name="color-scheme" content="light dark">
 <title>{text(title)}</title>
-{head(up)}
+{in_head}
 </head>
 <body class="t-{kind}">
 {band(day, up, front=kind == "front")}

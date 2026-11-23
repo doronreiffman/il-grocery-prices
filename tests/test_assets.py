@@ -1,6 +1,7 @@
 """The site's shared files (`shopper.assets`; docs/site-look.md, "The shared stylesheet and the font files", "What the
 tests should pin" 9 and 10; the site-look plan's Task 1): the three fonts under hashed names, the two licences, and the
-stylesheet naming the fonts by their hashed names, under a hashed name of its own."""
+stylesheet naming the fonts by their hashed names, under a hashed name of its own; and the front page's link preview
+picture under its hashed name (q45: docs/link-preview.md, "What changes")."""
 import hashlib
 import re
 import shutil
@@ -8,7 +9,7 @@ import shutil
 import pytest
 
 import shopper.assets as assets
-from shopper.assets import FOLDER, FONTS, LICENCES, SHEET, STATIC, STYLESHEET, asset_files, hashed
+from shopper.assets import CARD, CARD_IMAGE, FOLDER, FONTS, LICENCES, SHEET, STATIC, STYLESHEET, asset_files, hashed
 
 FONT_DIR = STATIC / "fonts"
 # The design's five files: bytes and SHA-256 (site-look.md, "The shared stylesheet and the font files").
@@ -39,9 +40,12 @@ def test_a_hashed_name_carries_ten_hex_of_its_bytes():
     assert hashed("look.css", b"") == "look.e3b0c44298.css"
 
 
-def test_the_shared_files_are_the_fonts_the_licences_and_the_stylesheet():
+def test_the_shared_files_are_the_fonts_the_licences_the_card_and_the_stylesheet():
     files = asset_files()
-    assert list(files) == [f"{FOLDER}/{name}" for name in (*HASHED, *LICENCES)] + [STYLESHEET]
+    assert list(files) == [f"{FOLDER}/{name}" for name in (*HASHED, *LICENCES)] + [CARD_IMAGE, STYLESHEET]
+    assert CARD == "card.png" and re.fullmatch(r"assets/card\.[0-9a-f]{10}\.png", CARD_IMAGE)
+    assert CARD_IMAGE == f"{FOLDER}/" + hashed(CARD, (STATIC / CARD).read_bytes())
+    assert files[CARD_IMAGE] == (STATIC / CARD).read_bytes()
     assert FOLDER == "assets" and re.fullmatch(r"assets/look\.[0-9a-f]{10}\.css", STYLESHEET)
     assert STYLESHEET == f"{FOLDER}/" + hashed("look.css", files[STYLESHEET])
     for name, published in zip((*FONTS, *LICENCES), (*HASHED, *LICENCES)):
@@ -75,6 +79,15 @@ def test_the_shared_files_stay_small():
     files = asset_files()
     assert len(files[STYLESHEET]) < 22_000
     assert sum(len(files[f"{FOLDER}/{name}"]) for name in HASHED) < 45_000
+
+
+def test_the_card_is_a_1200_by_630_png_of_at_most_5_mb():
+    """The design's picture (link-preview.md, "What changes"): LinkedIn's 1.91:1 at 1200 x 627 or more, at most 5 MB,
+    read from the PNG's own header: its signature, then the IHDR chunk's width and height."""
+    data = (STATIC / CARD).read_bytes()
+    assert data[:8] == b"\x89PNG\r\n\x1a\n" and data[12:16] == b"IHDR"
+    assert (int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")) == (1200, 630)
+    assert len(data) <= 5_000_000
 
 
 def test_the_shared_files_are_the_same_bytes_twice():

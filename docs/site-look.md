@@ -391,6 +391,8 @@ Today each page carries its style inline: 6,244 bytes of the largest of the 14 p
 | `heebo-hebrew.<hash>.woff2` | 6,072 | Heebo: the Hebrew block and ₪, weights 400 to 800 |
 | `OFL-archivo.txt`, `OFL-heebo.txt` | 4,388 and 4,474 | each family's licence, as its makers ship it |
 
+Since the link preview card ([link-preview.md](link-preview.md)), `assets/` also holds `card.<hash>.png`, the front page's card picture, and the uploads send `.png` as `image/png`.
+
 Each `<hash>` is the first ten hex digits of the SHA-256 of the file's bytes, so a file's name changes when its bytes do. The stylesheet names the fonts by bare file name (`url(archivo-text.<hash>.woff2)`), resolved beside it. A first product page fetches the stylesheet and three fonts, 64,896 bytes in all beside the page; every later page fetches nothing but itself.
 
 **In the repository:**

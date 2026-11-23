@@ -205,13 +205,14 @@ def test_the_build_writes_every_covered_products_page_and_the_marker(tmp_path):
 
 def test_the_build_writes_the_shared_files(tmp_path):
     """The site's look (q36): the build writes the site's shared files, `assets/`, byte for byte as `asset_files` makes
-    them and nothing else there, and lists them among the pages written; the upload's folder is the same one."""
+    them and nothing else there (the three fonts, the two licences, the stylesheet and, since q45, the card's picture),
+    and lists them among the pages written; the upload's folder is the same one."""
     data, site = tree(tmp_path), tmp_path / "site"
     outcome = _build(data, site)
     files = asset_files()
     held = {path.relative_to(site).as_posix(): path.read_bytes() for path in (site / FOLDER).rglob("*")
             if path.is_file()}
-    assert held == files and len(files) == 6
+    assert held == files and len(files) == 7
     assert set(files) <= set(outcome.pages)
     assert FOLDER == ASSET_FOLDER == "assets"
 
