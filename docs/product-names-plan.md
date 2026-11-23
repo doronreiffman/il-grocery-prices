@@ -948,3 +948,7 @@ The runbook in `docs/operations.md` (Task 22). When the limit's alert fires, or 
 ## Deviations
 
 (Append here when reality forces a change from this plan: what changed, why, and when.)
+
+- **2026-11-23, Phase 1's baseline.** Main at 5078a2f differs from 7ff9faf by the two documents only; its CI run passed. The project's figure at 7ff9faf is 2,934 tests and 99.86%. Task 1's full run on the branch: 2,974 passed (40 new), 99.87%, 864 s.
+- **2026-11-23, Task 4 Steps 5 and 6 answered before Task 2** (read-only, the main session). The basket function's role, simulated for `s3:PutObject`: `search/w/05d0-05d1.json` and `search/w/05d0-05d1-05d2.3.json` allowed, as `search.js` and `search/05d0.json` are; a key outside the role's list (`other/x.json`) denied. IAM's `*` matches across `/`: no template change. A dry run of `aws s3 sync` over a probe folder with `--exclude '*' --include '*.json' --exclude 'search/w/manifest.json'` lists the word files and not the manifest; without the last exclude it lists the manifest. Step 6 is run again over Step 4's build.
+- **2026-11-23, work in parallel** (the owner asked for it). Task 6 started beside Phase 1 on `q50-row-b`, cut from main at 5078a2f, since it uses nothing Phase 1 builds or Gate A decides; `q50-row-b` is rebased onto main after Phase 1 merges. Tasks 2 and 3 run side by side from Task 1's head, Task 3 on a branch of its own, rebased onto Task 2 and its golden repinned once more before it joins `q50-word-index`.
