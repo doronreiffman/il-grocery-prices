@@ -29,8 +29,8 @@ parts, whole]}}`: the node's product count, its number of parts (0 for a leaf) a
 `files` yields each node file as it is made and the manifest last, so a build never holds the whole index; the
 manifest has its own cap, `MANIFEST_MAX`, which the build applies (Task 3). The node files carry no version of their
 own: only the manifest has `v`. The keys are fixed, so a change to the entry's layout needs new keys, not only a new
-`v`: a manifest of the new version could otherwise meet node files of the old layout, from a browser's cache or an
-upload that stopped part-way.
+`v`: an upload that stopped part-way would leave the morning before's manifest beside node files of the new layout,
+and a browser's cache can pair them either way.
 
 Picking a file. Each search word of two or more characters walks its starts from two characters: a start missing from
 the manifest means no product has a token starting with the word, so none matches; a leaf ends the walk; a big node
