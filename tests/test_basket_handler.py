@@ -695,7 +695,7 @@ def test_first_run_publishes_the_day_and_pings(morning, tmp_root, outcomes):
     assert re.fullmatch(r"093000Z-basket-[0-9a-f]{4}", run_id)  # the run's start in UTC
     assert summary == {"mode": "basket", "day": "2026-01-01", "run_id": run_id, "headline": HEADLINE,
                        "unchanged": False, "site_day_unchanged": False, "pages": True, "uploaded": PUBLISHED,
-                       "pages_uploaded": len(outcome.pages), "invalidation": "memory-1",
+                       "pages_uploaded": pages_put(outcome), "invalidation": "memory-1",
                        "record": record_key(DAY, run_id), "forecasts": NO_FORECASTS, "scored": [],
                        "promotions_errors": {}, "alerts": [], "words": asdict(outcome.words),
                        "seconds": summary["seconds"]}
@@ -1063,7 +1063,7 @@ def test_the_first_site_run_publishes_every_page_and_freezes(site_morning, tmp_r
     assert sorted(outcome.data) == sorted([site_key(DAY), LEDGER, scores_site_key(T), "site-days/2026-01-01.json",
                                            "days/2026-01-01.json"])
     assert (summary["uploaded"], summary["pages"], summary["pages_uploaded"]) == (
-        sorted(outcome.data, key=lambda key: not is_record(key)), True, len(outcome.pages))  # the records first
+        sorted(outcome.data, key=lambda key: not is_record(key)), True, pages_put(outcome))  # the records first
     assert sorted(deps.site.objects) == sorted({*before, *outcome.pages, *outcome.data})
     assert {page_path(code) for code in (MILK, PASTA, EGGS)} <= set(outcome.pages) and set(FIXED_PAGES) <= set(
         outcome.pages)
@@ -1115,7 +1115,7 @@ def test_an_unchanged_rerun_uploads_pages_not_the_day_files(site_morning, tmp_ro
     second = run(CFG, BASKET_EVENT, deps, AGAIN, tmp_root)
     assert (second["unchanged"], second["site_day_unchanged"], second["pages"], second["uploaded"]) == (
         True, True, True, [])
-    assert first["pages_uploaded"] == len(outcomes[1].pages)
+    assert first["pages_uploaded"] == pages_put(outcomes[1])
     assert second["pages_uploaded"] == first["pages_uploaded"] - len(asset_files())
     assert (second["forecasts"], second["scored"]) == ({**first["forecasts"], "status": "same"}, [])
     assert {key: deps.site.objects[key] for key in data} == data
@@ -1422,6 +1422,24 @@ def word_files(site: MemorySite) -> dict[str, bytes]:
     return {key: body for key, (body, _, _) in site.objects.items() if key.startswith("search/w/")}
 
 
+def pages_put(outcome) -> int:
+    """`pages_uploaded` on a morning that puts every page and every asset: the build's files, the word index's left out
+    (its files and its manifest, counted in `words`)."""
+    return sum(not key.startswith("search/w/") for key in outcome.pages)
+
+
+def test_pages_uploaded_counts_no_word_file(morning, tmp_root, outcomes):
+    """`pages_uploaded` keeps its meaning (docs/operations.md): the pages and the assets put. The word index's files and
+    manifest, about 1,800 a morning, are the summary's `words` (the Phase 1 review's F2)."""
+    deps = deps_of(morning)
+    summary = run(CFG, BASKET_EVENT, deps, RUN_AT, tmp_root)
+    [outcome] = outcomes
+    words = [key for key in outcome.pages if key.startswith("search/w/")]
+    assert len(words) == summary["words"]["files"] + 1 > 1                      # the node files and the manifest
+    assert set(words) <= set(deps.site.objects)                                 # all put
+    assert summary["pages_uploaded"] == len(outcome.pages) - len(words) > 0
+
+
 def figures_of(held: dict[str, bytes]) -> dict:
     """The figures the summary gives of the word files `held`: the node files', then the manifest's bytes and nodes."""
     nodes = [body for key, body in held.items() if key != WORD_MANIFEST]
@@ -1461,7 +1479,7 @@ def test_a_probe_event_builds_the_stand_ins_and_reports_the_figures(morning, tmp
     entries = [entry for key, body in held.items() if key != WORD_MANIFEST for entry in json.loads(body)]
     assert entries and all(entry[2] == "" for entry in entries)                 # shown as nothing
     lengths = {len(entry[4 + entry[3]]) for entry in entries}                  # the first model name: the stand-in en
-    assert max(lengths) <= english and (lengths == {60} if size == "ceiling" else True)
+    assert max(lengths) <= english and (min(lengths) > 26 if size == "ceiling" else True)   # packed again to 60
     assert summary["alerts"] == [] and pinged(deps) == [f"{URL}/start", URL]
 
 

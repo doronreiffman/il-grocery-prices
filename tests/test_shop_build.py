@@ -966,6 +966,29 @@ def test_a_probe_build_files_the_stand_ins(tmp_path, monkeypatch):
         assert entry[2] == "" and entry[4 + entry[3]] == english          # filed, never shown
 
 
+def test_the_command_prints_the_word_index_on_a_line_of_its_own(tmp_path, capsys, monkeypatch):
+    """The hand build's `pages` line counts the product pages and the others, the word index's files not among them;
+    the word index has a line of its own: its node files, their bytes, the largest's, the manifest's bytes and nodes,
+    and its step's seconds (the Phase 1 review's F2; the figures the plan's Task 4 Step 4 reads)."""
+    data, site = tree(tmp_path), tmp_path / "site"
+    outcomes = []
+
+    def kept(*args, **kwargs):
+        outcomes.append(build_site(*args, **kwargs))
+        return outcomes[-1]
+
+    monkeypatch.setattr(shop_build, "build_site", kept)
+    assert main(["--day", "2026-01-01", "--data", str(data), "--site", str(site), "--basket", str(BASKET),
+                 "--min-items", "1", "--collected-by", "11:48"]) == 0
+    [outcome] = outcomes
+    out = capsys.readouterr().out
+    words, figures = [key for key in outcome.pages if key.startswith("search/w/")], outcome.words
+    assert len(words) == figures.files + 1 > 1                                  # the node files and the manifest
+    assert f"\npages: 5 product pages and {len(outcome.pages) - 5 - len(words):,} others\n" in out
+    assert (f"\nword index: {figures.files:,} files, {figures.bytes:,} bytes, the largest {figures.largest:,}; the "
+            f"manifest {figures.manifest:,} bytes, {figures.nodes:,} nodes; {outcome.seconds['words']:.1f} s\n") in out
+
+
 def test_the_words_step_is_timed_and_logged(tmp_path, caplog):
     """The word index is the build's step `words`, after the one pass: its seconds in the outcome and its line in the
     log as it ends (`STEP_LINE`)."""

@@ -1,15 +1,17 @@
-"""The probe's stand-in names (`shopper.wordprobe`; the product-names plan's Task 3, its call 1): made from each
-product's own published words, transliterated and rotated, at the realistic size and at the ceiling, never shown. The
-products are `tests/words_registry.py`'s seeded synthetic registry, with a few written here; names and barcodes are
-synthetic."""
+"""The probe's stand-in names (`shopper.wordprobe`; the product-names plan's Task 3, its call 1, as the Phase 1 review's
+F1 changed it): 50 readings made of the published words of donor products picked by the barcodes' SHA-256, each product
+taking one by its own barcode's hash, so that a reading's words sit on many products, as the design's measured readings'
+did; packed with whole words to the realistic size, and again to the ceiling's; never shown. The products are
+`tests/words_registry.py`'s seeded synthetic registry, with a few written here; names and barcodes are synthetic."""
+import hashlib
 from datetime import date
 
 import pytest
 
 from shopper.history import Covered
 from shopper.search import normalize
-from shopper.wordindex import Extra
-from shopper.wordprobe import SIZES, TABLE, stand_ins
+from shopper.wordindex import Extra, tokens
+from shopper.wordprobe import DONORS, READINGS, SIZES, TABLE, stand_ins
 from words_registry import registry
 
 DAY = date(2026, 10, 1)
@@ -17,12 +19,23 @@ DAY = date(2026, 10, 1)
 LETTERS = {"א": "a", "ב": "b", "ג": "g", "ד": "d", "ה": "h", "ו": "v", "ז": "z", "ח": "ch", "ט": "t", "י": "y",
            "כ": "k", "ל": "l", "מ": "m", "נ": "n", "ס": "s", "ע": "e", "פ": "p", "צ": "ts", "ק": "k", "ר": "r",
            "ש": "sh", "ת": "t"}
-LONG, ONE_WORD, ONE_LONG_WORD, LATIN = "2000000000015", "2000000000022", "2000000000039", "2000000000046"
+# Four barcodes whose SHA-256s come in this order (the test below checks it), so each is that donor of every reading.
+ENGLISH_DONOR, FIRST, SECOND, THIRD = "2000000000015", "2000000000022", "2000000000039", "2000000000046"
+LONG, ONE_WORD, ONE_LONG_WORD, LATIN = "2000000000053", "2000000000060", "2000000000077", "2000000000084"
 
 
 def _item(code, names):
     title = min(names.values(), key=lambda name: (-len(name), name))
     return Covered(code=code, title=title, names=names, size=None, first_covered=DAY, last_wide={})
+
+
+def _hashed(codes):
+    """The barcodes in the order of their SHA-256s, the order the donors are taken in."""
+    return sorted(codes, key=lambda code: hashlib.sha256(code.encode()).digest())
+
+
+def _reading_of(code):
+    return int.from_bytes(hashlib.sha256(code.encode()).digest(), "big") % READINGS
 
 
 def _products():
@@ -39,9 +52,17 @@ def _products():
     return covered
 
 
-def test_the_sizes_and_the_table_are_the_briefs():
+def _starts(words):
+    """Every start of every word: a packed name keeps whole words, and cuts one only when none fits."""
+    return {word[:end] for word in words for end in range(1, len(word) + 1)}
+
+
+def test_the_sizes_the_table_and_the_readings_are_the_rulings():
     assert SIZES == {"realistic": (26, 3, 13), "ceiling": (60, 3, 30)}
     assert TABLE == LETTERS
+    assert (READINGS, DONORS) == (50, 4)
+    with pytest.raises(KeyError):
+        stand_ins({}, "Realistic")                       # an unknown size, even with nothing to file
 
 
 @pytest.mark.parametrize("size", list(SIZES))
@@ -51,58 +72,91 @@ def test_stand_ins_are_deterministic_and_show_nothing(size):
     assert found == stand_ins(dict(reversed(list(covered.items()))), size)   # the same in any order
     assert set(found) == set(covered)
     assert all(isinstance(extra, Extra) and extra.shown == "" for extra in found.values())
+    assert stand_ins({}, size) == {}                    # no product: no donor, and nothing to file
 
 
-def test_stand_ins_are_made_as_the_brief_says():
-    """`en`: the normalised title, then the other names, distinct and sorted ("חלב שוקולד" before "שוקולד"),
-    transliterated, cut at a word boundary to the length, and at the ceiling repeated to exactly 60. The Hebrew names:
-    the title's words rotated by 1, 2 and 3, each cut at a word boundary to its length."""
-    item = _item("2000000000015", {"ramilevy": "שוקולד חלב מריר", "osherad": "חלב שוקולד", "yochananof": "שוקולד"})
-    [realistic] = stand_ins({item.code: item}, "realistic").values()
-    assert realistic.names == ("shvkvld chlb mryr chlb", "חלב מריר", "מריר שוקולד", "שוקולד חלב")
-    [ceiling] = stand_ins({item.code: item}, "ceiling").values()
-    text = "shvkvld chlb mryr chlb shvkvld shvkvld"
-    assert ceiling.names == ((text + " " + text)[:60], "חלב מריר שוקולד", "מריר שוקולד חלב", "שוקולד חלב מריר")
-    # 29 letters in Latin, repeated: the 60th character would be a space, so the next one takes its place
-    one = _item("2000000000053", {"ramilevy": "סופרמרקטשוקולדמרירמיוחדמאוד"})
-    word = "svprmrktshvkvldmryrmyvchdmavd"
-    assert stand_ins({one.code: one}, "ceiling")[one.code].names[0] == f"{word} {word}s"
+def test_stand_ins_are_made_as_the_docstring_says():
+    """Four products: every reading's donors are the four, in their hashes' order. The English name: the first donor's
+    normalised title, then its other names, distinct and sorted ("חלב שוקולד" before "שוקולד"), transliterated, packed
+    with whole words, each that still fits; at the ceiling packed again to 60, its words gone over until none fits. Each
+    Hebrew name: a further donor's normalised title packed to 13 ("בטעם" skipped, and the 27-letter word too); a title
+    none of whose words fits cut to 13; at the ceiling, its realistic words repeated to 30."""
+    products = [_item(ENGLISH_DONOR, {"ramilevy": "שוקולד חלב מריר", "osherad": "חלב שוקולד", "yochananof": "שוקולד"}),
+                _item(FIRST, {"ramilevy": "חטיף תירס בטעם בוטנים אמיתיים"}),
+                _item(SECOND, {"ramilevy": "סופרמרקטשוקולדמרירמיוחדמאוד לבן"}),
+                _item(THIRD, {"ramilevy": "סופרמרקטשוקולדמרירמיוחדמאוד"})]
+    covered = {item.code: item for item in reversed(products)}
+    assert _hashed(covered) == [ENGLISH_DONOR, FIRST, SECOND, THIRD]
+    realistic = Extra("", ("shvkvld chlb mryr chlb", "חטיפ תירס", "לבנ", "סופרמרקטשוקול"))    # final letters plain
+    ceiling = Extra("", ("shvkvld chlb mryr chlb shvkvld shvkvld shvkvld chlb mryr", "חטיפ תירס חטיפ תירס חטיפ תירס",
+                         "לבנ לבנ לבנ לבנ לבנ לבנ לבנ", "סופרמרקטשוקול סופרמרקטשוקול"))
+    assert stand_ins(covered, "realistic") == {code: realistic for code in covered}
+    assert stand_ins(covered, "ceiling") == {code: ceiling for code in covered}
+    assert [len(name) for name in ceiling.names] == [56, 29, 27, 27]   # the next word would pass 60 or 30
 
 
 @pytest.mark.parametrize("size", list(SIZES))
-def test_stand_ins_fill_their_size(size):
-    english, count, each = SIZES[size]
-    found = stand_ins(_products(), size)
+def test_each_product_takes_one_of_50_readings_by_its_barcode_s_hash(size):
+    """As the design gave each product one of the trial's 50 readings by its barcode's hash: the products whose hashes
+    give the same reading share one stand-in, and there are 50."""
+    covered = registry(400, "wordprobe")
+    found = stand_ins(covered, size)
+    shared = {}
     for code, extra in found.items():
-        en, *hebrew = extra.names
-        assert len(en) <= english and en == en.strip() and "  " not in en, code
-        if size == "ceiling":
-            assert len(en) == english, code
-        assert len(hebrew) == count, code
-        assert all(0 < len(name) <= each for name in hebrew), code
-    assert found[LONG].names[0] == {"realistic": "shvkvld chlb mryr em agvzy",
-                                    "ceiling": "shvkvld chlb mryr em agvzy lvz shlmym vshkdym klvyym bmyvchd"}[size]
-    # A first word longer than the length is cut inside it: the English one at 26, the Hebrew one at 13.
-    word = "svprmrktshvkvldmryrmyvchdmavd"
-    assert found[ONE_LONG_WORD].names == {
-        "realistic": (word[:26], "לבנ", "סופרמרקטשוקול", "לבנ"),
-        "ceiling": (f"{word} lbn {word[:26]}", "לבנ", "סופרמרקטשוקולדמרירמיוחדמאוד", "לבנ")}[size]
-    assert found[ONE_WORD].names[1:] == ("במבה",) * 3                # one word rotates to itself
-    assert found[LATIN].names[0].startswith("coca-cola zero 1.5l kvkh")
+        shared.setdefault(_reading_of(code), set()).add(extra)
+    assert len(shared) == READINGS and all(len(held) == 1 for held in shared.values())
+    assert len(set(found.values())) == READINGS
 
 
 @pytest.mark.parametrize("size", list(SIZES))
-def test_stand_ins_hold_only_the_table_s_letters_and_the_names_own(size):
-    """No model text: `en` holds the table's letters, spaces and the names' own characters that are not letters of the
-    table; each Hebrew name holds only the normalised title's characters."""
-    covered = _products()
-    made = set("".join(TABLE.values()))
+def test_a_stand_in_brings_words_its_product_lacks(size):
+    """Each Hebrew stand-in name is another product's title, so it brings tokens the product's own names lack, as a
+    model's reading does (the stand-ins of Task 3 rotated the product's own title, and brought almost none). Here 399
+    of the 400, about 4.8 new tokens a product: the one is a product whose reading's words are all its own, which the
+    registry's small vocabulary allows."""
+    covered = registry(400, "wordprobe")
+    new = []
     for code, extra in stand_ins(covered, size).items():
-        item = covered[code]
-        title = normalize(item.title)
-        own = {char for name in item.names.values() for char in normalize(name)}
+        own = {token for name in covered[code].names.values() for token in tokens(normalize(name))}
+        new.append(len({token for name in extra.names[1:] for token in tokens(normalize(name))} - own))
+    assert sum(count > 0 for count in new) >= 0.95 * len(new) and sum(new) / len(new) > 4
+
+
+@pytest.mark.parametrize("size", list(SIZES))
+def test_stand_ins_keep_to_their_size(size):
+    """Each name at most its length, whole words a space apart; three Hebrew names; at the ceiling each name full: none
+    of its own words fits after it."""
+    english, count, each = SIZES[size]
+    for code, extra in stand_ins(_products(), size).items():
+        en, *hebrew = extra.names
+        assert len(hebrew) == count, code
+        for name, length in ((en, english), *((name, each) for name in hebrew)):
+            assert 0 < len(name) <= length and name == name.strip() and "  " not in name, code
+            if size == "ceiling":
+                assert len(name) + 1 + min(map(len, name.split(" "))) > length, code
+
+
+def test_the_ceiling_repeats_the_realistic_hebrew_names_words():
+    """The ceiling adds bytes to each Hebrew name, never words: its words are the realistic name's."""
+    covered = _products()
+    realistic, ceiling = stand_ins(covered, "realistic"), stand_ins(covered, "ceiling")
+    for code in covered:
+        for low, high in zip(realistic[code].names[1:], ceiling[code].names[1:]):
+            assert set(high.split(" ")) == set(low.split(" ")) and len(high) > len(low), code
+
+
+@pytest.mark.parametrize("size", list(SIZES))
+def test_stand_ins_hold_only_published_words(size):
+    """No model text: each English word is a published name's word written in the table's Latin letters (or the start
+    of one, cut when none fits), with no letter of the table left; each Hebrew name's words are words of the products'
+    normalised titles, or their starts."""
+    covered = _products()
+    latin = _starts("".join(TABLE.get(char, char) for char in word)
+                    for item in covered.values() for name in item.names.values() for word in normalize(name).split(" "))
+    titles = _starts(word for item in covered.values() for word in normalize(item.title).split(" "))
+    for code, extra in stand_ins(covered, size).items():
         en, *hebrew = extra.names
         assert not set(en) & set(TABLE), code
-        assert set(en) <= made | {" "} | (own - set(TABLE)), code
+        assert set(en.split(" ")) <= latin, code
         for name in hebrew:
-            assert set(name) <= set(title), code
+            assert set(name.split(" ")) <= titles, code

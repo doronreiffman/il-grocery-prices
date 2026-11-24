@@ -8,8 +8,10 @@ Scheduler sends the events each morning; the owner sends the same with a "day" t
 
 "day" (YYYY-MM-DD) is optional in both; without it the day is the Israel calendar date when the invocation starts.
 "words_probe" is the site run's alone, and only sent by hand: one of `shopper.wordprobe.SIZES` ("realistic", "ceiling"),
-it files stand-in names of that size in the word index, for measuring (the product-names plan's Task 3); the next
-morning's run, which sends none, replaces them. Every field is checked before anything is read. Then neither mode runs
+it files stand-in names of that size in the word index, for measuring (the product-names plan's Task 3). The next
+morning's run, which sends none, rewrites every key the published names give, and its manifest names none of the
+others: the probe's files at keys the published names never give stay in the site bucket, unnamed, since nothing
+deletes (`shopper.wordprobe`). Every field is checked before anything is read. Then neither mode runs
 until the collector's check has written its record for the day under `checks/date=<day>/` (MorningNotChecked): the check
 is the morning's last run, so its record shows that every chain's runs are over. Each run works in a folder of its own
 under `tmp_root` (`/tmp` in Lambda), `basket-` and a random suffix, and removes it when it ends, failed or not: a warm
@@ -75,7 +77,8 @@ The basket mode is the shopper site's run (the shopper plan's Task 23; the 12:33
 
 The run's record goes up to the archive, write-once and locked, whatever stopped the run once the record was written.
 The summary gives the day, the basket's run id and headline, whether its day file and the site-day file were
-unchanged, whether the pages went up, the data files uploaded (by key) and the pages (by count), the invalidation's id,
+unchanged, whether the pages went up, the data files uploaded (by key) and the pages (by count: the pages and the
+assets put, the word index's files and manifest left out), the invalidation's id,
 the record's key, the day's forecasts file as the freezer gave it (its status, "frozen", "late", "same" or "none", its
 SHA-256 and whether on time), the days scored, each chain's promotions error, the alerts, the word index's figures
 (`words`: `shopper.build.WordFigures`, its node files, their bytes, the largest's, the manifest's bytes and nodes, the
@@ -134,7 +137,7 @@ from basket.build import RevisionNeeded
 from basket.chains import CARREFOUR_COLUMNS, SLUGS
 from basket.duck import TEMP_DIRECTORY_VAR
 from basket.rules import MissingTable
-from basket.site import UPLOAD_WORKERS, RecordsNotUploaded, S3Site, day_key, day_of
+from basket.site import UPLOAD_WORKERS, WORD_FOLDER, RecordsNotUploaded, S3Site, day_key, day_of
 from basket.stores import NoStoreList
 from collector.handler import ping, ping_user_agent
 from collector.http import check_user_agent
@@ -514,11 +517,12 @@ def _basket(event: dict, deps: Deps, now: datetime, work: Path, day: date) -> di
             records.append(deps.archive.put_basket_record(path, now))
     _step(seconds, "total", started)
     data = [key for key in uploaded if key in outcome.data]
+    words = [key for key in uploaded if key.startswith(WORD_FOLDER)]   # counted in `words`, not as pages
     frozen = outcome.frozen
     return {"mode": "basket", "day": day.isoformat(), "run_id": outcome.basket.record.run_id,
             "headline": list(outcome.basket.headline_lines), "unchanged": outcome.basket.unchanged,
             "site_day_unchanged": outcome.unchanged, "pages": with_pages, "uploaded": data,
-            "pages_uploaded": len(uploaded) - len(data), "invalidation": invalidation,
+            "pages_uploaded": len(uploaded) - len(data) - len(words), "invalidation": invalidation,
             "record": records[0] if records else None,
             "forecasts": {"status": "none", "sha256": None, "on_time": None} if frozen is None else {
                 "status": frozen.status, "sha256": frozen.sha256, "on_time": frozen.on_time},

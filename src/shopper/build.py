@@ -148,7 +148,7 @@ from shopper.score import (DaySummary, due, out_of_reach, read_summary, scores_c
 from shopper.search import SCRIPT, browse_pages, pieces
 from shopper.siteday import Inputs, publish_site_day, site_day, site_day_path, write_site_day
 from shopper.verdict import DealRow, Verdict, checked, front_list, on_list, verdict
-from shopper.wordindex import EMPTY_MANIFEST, MANIFEST, MANIFEST_MAX
+from shopper.wordindex import EMPTY_MANIFEST, FOLDER, MANIFEST, MANIFEST_MAX
 from shopper.wordindex import files as word_files
 from shopper.wordprobe import stand_ins
 
@@ -659,7 +659,10 @@ def main(argv: list[str] | None = None) -> int:
             ("site day", args.site / "site-days" / f"{args.day.isoformat()}.json", outcome)):
         done = "unchanged" if state.unchanged else "revised" if state.revised else "published"
         print(f"{what}: {done}: {path}")
-    print(f"pages: {products:,} product pages and {len(outcome.pages) - products:,} others")
+    words, figures = sum(path.startswith(f"{FOLDER}/") for path in outcome.pages), outcome.words
+    print(f"pages: {products:,} product pages and {len(outcome.pages) - products - words:,} others")
+    print(f"word index: {figures.files:,} files, {figures.bytes:,} bytes, the largest {figures.largest:,}; the manifest "
+          f"{figures.manifest:,} bytes, {figures.nodes:,} nodes; {outcome.seconds['words']:.1f} s")
     print(f"data files new to the site: {', '.join(outcome.data) or 'none'}")
     return 0
 

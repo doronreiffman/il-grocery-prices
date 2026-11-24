@@ -780,6 +780,35 @@ def test_without_the_switch_no_word_file_is_fetched():
         assert page["html"] == f"<p>{NOTHING} Try fewer letters, or browse by first letter.</p>", search
 
 
+def test_a_word_file_that_parses_but_is_not_a_list_shows_todays_list():
+    """A word file that is JSON but no list (an object, a number, a string, true: another layout's file, or an error
+    answer in JSON) gives today's list ranked, in the script as in Python, and never throws (Review Focus 2; the Phase 1
+    review's F3)."""
+    covered, todays, built = _milk_index()
+    today = today_lookup(todays.get, "חלב")
+    ranked = [item[0] for item in sorted(map(as_word_entry, today), key=lambda item: order_key("חלב", item))]
+    for odd in ({"entries": []}, 5, "חלב טרי", True):
+        for part in (0, 1):
+            broken = {**built, node_key("חלב", part): json.dumps(odd, ensure_ascii=False).encode()}
+            expected = _python(broken, "חלב", today)
+            assert (expected["shown"], expected["flagged"]) == (ranked, False)
+            assert expected["read"][-1] == node_key("חלב", part)                 # the odd part, read last
+            assert _words(broken, [["חלב", today]]) == [expected], (odd, part)   # the harness exits 1 on a throw
+
+
+def test_a_word_that_names_an_inherited_property_is_no_node():
+    """The manifest's nodes are its own keys only: a search word such as "constructor" or "__proto__", whose every
+    shorter start is a big node, ends on no node, as in Python, never on what every JavaScript object inherits (the Phase
+    1 review's F3)."""
+    nodes = {word[:end]: [500, 3, 0] for word in ("constructor", "__proto__") for end in range(2, len(word))}
+    manifest = {"v": 1, "nodes": nodes}
+    calls = [["constructor"], ["__proto__"], ["co", "constructor"], ["constructo"]]
+    expected = [pick(manifest, words) for words in calls]
+    assert expected == [None, None, None, Node("start", "constructo", 500, 3)]
+    assert _run("pickNode", [[manifest, words] for words in calls]) == [
+        None if node is None else asdict(node) for node in expected]   # the harness exits 1 on a throw
+
+
 def test_with_the_switch_a_missing_word_file_shows_todays_list():
     covered, todays, built = _milk_index()
     nodes = json.loads(built[MANIFEST])["nodes"]
