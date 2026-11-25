@@ -24,6 +24,12 @@ site/
 # the product pages a build stages beside site/, left only when the build is killed (src/shopper/build.py)
 /shopper-pages-*/
 
+# the dbt layer's environment and dbt's output (docs/dbt-layer.md, section 6); its database is in data/, above.
+# .venv-dbt with no slash, so a link to another checkout's environment is ignored too
+.venv-dbt
+dbt/target/
+dbt/logs/
+
 # Local notes, not part of this repo.
 /.claude/
 /CLAUDE.md

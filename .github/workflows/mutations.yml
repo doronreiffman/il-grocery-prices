@@ -27,6 +27,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22.11.0"
+      # dbt is for the dbt layer's tests only, in an environment of its own (docs/dbt-layer.md, section 6). Each fresh
+      # install fetches one wheel from GitHub: dbt-core-experimental-parser's, from dbt's release v2.0.8, checked against
+      # the SHA-256 the package carries; packaging goes in first so the build needs nothing unpinned.
+      - run: python -m venv .venv-dbt
+      - run: .venv-dbt/bin/pip install --no-deps packaging==26.3 && .venv-dbt/bin/pip install --no-deps --no-build-isolation -r requirements-dbt.txt && .venv-dbt/bin/pip check
       # The tests first, unchanged: the check counts any failing test as a caught mutation, so a suite that fails on its own
       # (a new Python patch release, an unpinned dependency) would pass every mutation aimed at it.
       - run: pytest --cov=collector --cov=src/basket --cov=src/shopper --cov-fail-under=95

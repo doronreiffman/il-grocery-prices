@@ -1,0 +1,54 @@
+# The seven sources (docs/dbt-layer.md, section 1), each read in place through dbt-duckdb's external_location; nothing
+# is copied. The paths come from the project's vars. Each read_json takes formatter: oldstyle, since a column list's
+# braces break the default formatting (the design's trap 2).
+sources:
+  - name: tables
+    description: The tables the morning's extraction writes, one folder per chain and day, read in place.
+    tables:
+      - name: prices
+        description: The prices tables, prices/chain=<chain>/date=<day>/prices.parquet.
+        config:
+          meta: {label: prices}
+          external_location: "read_parquet('{{ var(\"tables\") }}/prices/*/*/prices.parquet', hive_partitioning = true)"
+      - name: items
+        description: The items tables, items/chain=<chain>/date=<day>/items.parquet.
+        config:
+          meta: {label: items}
+          external_location: "read_parquet('{{ var(\"tables\") }}/items/*/*/items.parquet', hive_partitioning = true)"
+      - name: promotions
+        description: The promotions tables, promotions/chain=<chain>/date=<day>/promotions.parquet.
+        config:
+          meta: {label: promotions}
+          external_location: "read_parquet('{{ var(\"tables\") }}/promotions/*/*/promotions.parquet', hive_partitioning = true)"
+      - name: items_reports
+        description: >-
+          The report beside each items table, for its counts and flags by store type and the promotions' error alone;
+          its list of store numbers is never read.
+        config:
+          meta: {label: items reports}
+          external_location: "read_json('{{ var(\"tables\") }}/items/*/*/report.json', hive_partitioning = true, columns = {columns: 'MAP(VARCHAR, STRUCT(hole BOOLEAN, promo_hole BOOLEAN, included INTEGER, with_file INTEGER, counted INTEGER, promo_files INTEGER, items INTEGER, wide INTEGER, on_promotion INTEGER, valid_deals INTEGER))', promotions_error: 'VARCHAR'})"
+          formatter: oldstyle
+  - name: published
+    description: The day files the site already published, synced read-only.
+    tables:
+      - name: site_days
+        description: The site-day files, site-days/<day>.json.
+        config:
+          meta: {label: published site-day files}
+          external_location: "read_json('{{ var(\"site\") }}/site-days/*.json', columns = {day: 'DATE', columns: 'MAP(VARCHAR, STRUCT(front STRUCT(deals INTEGER, checked INTEGER, promotions INTEGER, products INTEGER, \"rows\" STRUCT(barcode VARCHAR, today VARCHAR, usual VARCHAR, saving VARCHAR, days INTEGER)[])))'})"
+          formatter: oldstyle
+      - name: basket_days
+        description: The basket day files, days/<day>.json.
+        config:
+          meta: {label: published basket day files}
+          external_location: "read_json('{{ var(\"site\") }}/days/*.json', columns = {day: 'DATE', items_in: 'VARCHAR[]', chains: 'MAP(VARCHAR, STRUCT(total VARCHAR, items MAP(VARCHAR, STRUCT(median VARCHAR, low VARCHAR, high VARCHAR, listing INTEGER, double_coded INTEGER))))'})"
+          formatter: oldstyle
+  - name: repo
+    description: A file kept in this repository.
+    tables:
+      - name: basket
+        description: The headline basket's file, src/basket/baskets/v1.json.
+        config:
+          meta: {label: the basket}
+          external_location: "read_json('{{ var(\"basket_file\") }}')"
+          formatter: oldstyle

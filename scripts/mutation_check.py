@@ -242,6 +242,30 @@ CHAINS_FOR_SHOP_COLUMNS = ("src/basket/chains.py", ["tests/test_columns.py"])
 # The survey reads each store's latest promotion file through basket.extract.day_files, which its tests must catch too.
 EXTRACT_FOR_SHOP_SURVEY = ("src/basket/extract.py", ["tests/test_survey.py"])
 SYNC_SCRIPT = ("scripts/sync.sh", ["tests/test_scripts.py"])
+# the dbt layer (q28)
+REQUIREMENTS_DBT = ("requirements-dbt.txt", ["tests/test_dbt_project.py"])
+DBT_PROJECT = ("dbt/dbt_project.yml", ["tests/test_dbt_project.py"])
+DBT_PROFILE = ("dbt/profiles.yml", ["tests/test_dbt_project.py"])
+DBT_SOURCES = ("dbt/models/sources.yml", ["tests/test_dbt_project.py"])
+GITIGNORE_FOR_DBT = (".gitignore", ["tests/test_dbt_project.py"])
+CI_FOR_DBT = (".github/workflows/ci.yml", ["tests/test_dbt_project.py"])
+# The items reports' source in dbt/models/sources.yml, from its name to its formatter line, which a break drops.
+_DBT_REPORTS_SOURCE = ('      - name: items_reports\n'
+                       '        description: >-\n'
+                       "          The report beside each items table, for its counts and flags by store type and the promotions' error alone;\n"
+                       '          its list of store numbers is never read.\n'
+                       '        config:\n'
+                       '          meta: {label: items reports}\n'
+                       '          external_location: "read_json(\'{{ var(\\"tables\\") }}/items/*/*/report.json\', hive_partitioning = true, columns = {columns: \'MAP(VARCHAR, STRUCT(hole BOOLEAN, promo_hole BOOLEAN, included INTEGER, with_file INTEGER, counted INTEGER, promo_files INTEGER, items INTEGER, wide INTEGER, on_promotion INTEGER, valid_deals INTEGER))\', promotions_error: \'VARCHAR\'})"\n')
+# the dbt layer (q28), Task 2's targets: the staging views and the two lists
+# the dbt layer (q28), Task 4's targets: the basket's models
+# the dbt layer (q28), Task 5's targets: the deals' models
+# the dbt layer (q28), Task 6's targets: the promotions' reach
+# the dbt layer (q28), Task 7's targets: the golden build
+# the dbt layer (q28), Task 8's targets: data tests on the prices and promotions tables
+# the dbt layer (q28), Task 9's targets: data tests on the items table and its reports
+# the dbt layer (q28), Task 10's targets: data tests across tables and against the published files
+# the dbt layer (q28), Task 11's targets: the lineage map
 # scripts/local.env, which holds the reader's own AWS user, ignored by git (q42).
 GITIGNORE = (".gitignore", ["tests/test_scripts.py"])
 # The site run's timing script (Task 25a), its --make guard.
@@ -3573,6 +3597,34 @@ MUTATIONS = {
     "the card's picture not uploaded by publish.sh (q45 upload)": (PUBLISH_SCRIPT, "upload --include 'assets/*.png' --content-type 'image/png' --size-only\n", ''),
     "the card's picture synced by its time (q45 upload)": (PUBLISH_SCRIPT, "--content-type 'image/png' --size-only\n", "--content-type 'image/png'\n"),
     "the card's picture sent as another type by publish.sh (q45 upload)": (PUBLISH_SCRIPT, "--include 'assets/*.png' --content-type 'image/png'", "--include 'assets/*.png' --content-type 'application/octet-stream'"),
+    # the dbt layer (q28), Task 1's planted bugs: the environment, the pins and the project's frame
+    "dbt-core pinned loosely (q28 project)": (REQUIREMENTS_DBT, '\ndbt-core==1.12.6\n', '\ndbt-core>=1.12.6\n'),
+    "dbt's DuckDB not the project's (q28 project)": (REQUIREMENTS_DBT, '\nduckdb==1.5.6\n', '\nduckdb==1.5.4\n'),
+    "dbt-duckdb with its md extra (q28 project)": (REQUIREMENTS_DBT, '\ndbt-duckdb==1.11.0\n', '\ndbt-duckdb[md]==1.11.0\n'),
+    "telemetry on in dbt (q28 project)": (DBT_PROJECT, '  send_anonymous_usage_stats: false\n', '  send_anonymous_usage_stats: true\n'),
+    "a deal from 99 agorot in dbt (q28 project)": (DBT_PROJECT, '  deal_min: "1.00"', '  deal_min: "0.99"'),
+    "the front list's bar at 19 days in dbt (q28 project)": (DBT_PROJECT, '  min_front_days: 20 ', '  min_front_days: 19 '),
+    "the bar's window 31 days in dbt (q28 project)": (DBT_PROJECT, '  recent_days: 30 ', '  recent_days: 31 '),
+    "the history 91 days in dbt (q28 project)": (DBT_PROJECT, '  read_days: 90 ', '  read_days: 91 '),
+    "a kind of promotion renamed in dbt (q28 project)": (DBT_PROJECT, '    "2": percent_off\n', '    "2": percentage_off\n'),
+    "a store type under another chain in dbt (q28 project)": (DBT_PROJECT, '    shufersal-express: shufersal\n', '    shufersal-express: carrefour\n'),
+    "dbt threads at 2 (q28 project)": (DBT_PROFILE, '      threads: 1\n', '      threads: 2\n'),
+    "the dbt database at a fixed path (q28 project)": (DBT_PROFILE, '      path: "{{ env_var(\'GROCERY_DBT_DB\', \'../data/dbt.duckdb\') }}"\n', '      path: "../data/dbt.duckdb"\n'),
+    "the reports' store numbers read (q28 project)": (DBT_SOURCES, "promotions_error: 'VARCHAR'})", "promotions_error: 'VARCHAR', outside: 'VARCHAR[]'})"),
+    "a JSON source without the old-style formatter (q28 project)": (
+        DBT_SOURCES, _DBT_REPORTS_SOURCE + "          formatter: oldstyle\n", _DBT_REPORTS_SOURCE),
+    "a seed folder named (q28 project)": (DBT_PROJECT, 'macro-paths: ["macros"]\n', 'macro-paths: ["macros"]\nseed-paths: ["seeds"]\n'),
+    "dbt's output not ignored (q28 project)": (GITIGNORE_FOR_DBT, '\ndbt/target/\ndbt/logs/\n', '\n'),
+    "CI's dbt install with build isolation (q28 project)": (CI_FOR_DBT, ' --no-deps --no-build-isolation -r requirements-dbt.txt', ' --no-deps -r requirements-dbt.txt'),
+    # the dbt layer (q28), Task 2's planted bugs: the staging views and the two lists
+    # the dbt layer (q28), Task 4's planted bugs: the basket's models
+    # the dbt layer (q28), Task 5's planted bugs: the deals' models
+    # the dbt layer (q28), Task 6's planted bugs: the promotions' reach
+    # the dbt layer (q28), Task 7's planted bugs: the golden build
+    # the dbt layer (q28), Task 8's planted bugs: data tests on the prices and promotions tables
+    # the dbt layer (q28), Task 9's planted bugs: data tests on the items table and its reports
+    # the dbt layer (q28), Task 10's planted bugs: data tests across tables and against the published files
+    # the dbt layer (q28), Task 11's planted bugs: the lineage map
 }
 
 

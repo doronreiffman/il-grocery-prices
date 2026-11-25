@@ -1,0 +1,9 @@
+# One local DuckDB file and no secret, so the profile is kept here; dbt finds it in the folder it runs from, and
+# writes nothing to the home folder. GROCERY_DBT_DB names another file (the tests give each run its own).
+grocery:
+  target: mac
+  outputs:
+    mac:
+      type: duckdb
+      path: "{{ env_var('GROCERY_DBT_DB', '../data/dbt.duckdb') }}"
+      threads: 1

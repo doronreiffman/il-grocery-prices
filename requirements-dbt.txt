@@ -1,0 +1,80 @@
+# The dbt layer's own environment, .venv-dbt (docs/dbt-layer.md, section 6): dbt-core 1.12.6 and dbt-duckdb 1.11.0
+# with the project's duckdb 1.5.6, on Python 3.13, and every package they need, each pinned exactly. None of it goes
+# into the project's .venv (requirements-dev.txt).
+#
+# Resolved on 2026-11-25 from the packages uploaded before 2026-10-25, a month earlier:
+#   pip install --uploaded-prior-to=2026-10-25 dbt-core==1.12.6 dbt-duckdb==1.11.0 duckdb==1.5.6
+# Installed with these commands (in CI the same, the environment made by its Python 3.13's python -m venv):
+#   python3.13 -m venv .venv-dbt
+#   .venv-dbt/bin/pip install --no-deps packaging==26.3
+#   .venv-dbt/bin/pip install --no-deps --no-build-isolation -r requirements-dbt.txt
+#   .venv-dbt/bin/pip check
+#
+# One pin fetches from outside PyPI. dbt-core-experimental-parser 2.0.8, which dbt-core 1.12.6 requires, is a
+# 4,776-byte source package on PyPI (SHA-256 35b7760967f9542fd0b1a3cd742ffd24e8e08a18473a84a891a3bc8a9d6b2910). Its
+# build downloads a compiled wheel from dbt's GitHub release v2.0.8 (published 2026-10-14) and refuses it unless its
+# SHA-256 matches the one the package carries, in _dbt_sa_build/assets.json: for macOS on arm64,
+# 00f3ec35d555f6a4e3333b943011b1fdc99606112c6f3d7291c2809ae2f86c5c; for Linux on x86_64,
+# 2186d331522b2a8a0f09d2f5c81ff5f1a433160ad7cd212906dccc0d4951d2a1. That build needs packaging, so packaging goes in
+# first and the build is not isolated: an isolated build would fetch packaging unpinned. dbt runs that parser only
+# when the v2 parser is asked for (--use-v2-parser, off by default, or its project flag or variable), which this
+# project never does.
+agate==1.9.1
+annotated-types==0.8.0
+attrs==26.1.0
+babel==2.18.0
+certifi==2026.10.23
+charset-normalizer==3.5.2
+click==8.5.0
+colorama==0.4.6
+daff==1.4.2
+dbt-adapters==1.24.5
+dbt-common==1.39.0
+dbt-core==1.12.6
+dbt-core-experimental-parser==2.0.8
+dbt-duckdb==1.11.0
+dbt-extractor==0.6.0
+dbt-protos==1.0.615
+deepdiff==8.6.2
+duckdb==1.5.6
+idna==3.20
+importlib_metadata==10.1.0
+isodate==0.7.2
+Jinja2==3.1.6
+jsonschema==4.26.0
+jsonschema-specifications==2025.9.1
+leather==0.4.1
+MarkupSafe==3.0.4
+mashumaro==3.17
+metricflow==0.213.0
+more-itertools==10.8.0
+msgpack==1.2.3
+networkx==3.7
+opentelemetry-api==1.45.1
+orderly-set==5.5.0
+packaging==26.3
+parsedatetime==2.6
+pathspec==1.0.4
+protobuf==6.33.6
+pydantic==2.14.1
+pydantic_core==2.50.1
+python-dateutil==2.9.0.post0
+python-dotenv==1.2.4
+python-slugify==9.1.3
+pytimeparse==1.1.10
+pytz==2026.5
+PyYAML==6.0.3
+RapidFuzz==3.14.6
+referencing==0.37.0
+requests==2.34.2
+rpds-py==2026.9.1
+six==1.17.0
+snowplow-tracker==1.1.0
+sqlglot==30.24.0
+sqlparse==0.6.0
+tabulate==0.10.0
+text-unidecode==1.3
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+urllib3==2.8.0
+zipp==4.1.2

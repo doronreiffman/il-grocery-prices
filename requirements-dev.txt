@@ -4,3 +4,4 @@ pytest-cov==7.1.0
 cfn-lint==1.57.1
 boto3==1.43.106
 duckdb==1.5.6
+PyYAML==6.0.3

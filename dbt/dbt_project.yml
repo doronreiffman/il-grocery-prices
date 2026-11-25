@@ -1,0 +1,48 @@
+# The dbt layer (docs/dbt-layer.md): analysis models and data tests over the tables the morning writes, built on the
+# Mac into data/dbt.duckdb. Run dbt from inside this folder, with .venv-dbt's dbt (docs/dbt-layer.md, section 6).
+name: grocery
+profile: grocery
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+
+flags:
+  send_anonymous_usage_stats: false
+
+models:
+  grocery:
+    staging:
+      +materialized: view
+    lists:
+      +materialized: view
+    intermediate:
+      +materialized: view
+    marts:
+      +materialized: table
+
+vars:
+  # Where the sources' files are, from this folder; the tests give paths of their own.
+  tables: ../data/tables
+  site: ../site
+  basket_file: ../src/basket/baskets/v1.json
+  # The rules' constants, each the same as the Python's (tests/test_dbt_project.py).
+  deal_min: "1.00"      # shopper.verdict.DEAL_MIN (S4): the least saving called a deal, in shekels; text, so the SQL
+                        # gets 1.00 as written, never through a floating-point number
+  min_front_days: 20    # shopper.measures.MIN_FRONT_DAYS: the front list's bar, days of records in the window
+  recent_days: 30       # shopper.measures.RECENT_DAYS: the bar's window
+  read_days: 90         # shopper.history.READ_DAYS: the days read before the page's day
+  kinds:                # shopper.promotions.KINDS: each reward type's kind of promotion
+    "1": n_for_m
+    "10": n_for_m
+    "2": percent_off
+    "3": fixed_price
+  store_types:          # shopper.columns.COLUMNS: each store type's chain
+    carrefour-city: carrefour
+    carrefour-market: carrefour
+    osherad: osherad
+    ramilevy: ramilevy
+    shufersal-deal: shufersal
+    shufersal-express: shufersal
+    shufersal-sheli: shufersal
+    shufersal-universe: shufersal
+    yochananof: yochananof
