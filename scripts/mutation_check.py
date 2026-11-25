@@ -275,6 +275,9 @@ BASKET_HANDLER = ("src/basket/handler.py", ["tests/test_basket_handler.py"])
 # the handler's tests read those lines.
 SHOP_BUILD_FOR_BASKET_HANDLER = ("src/shopper/build.py", ["tests/test_basket_handler.py"])
 MUTATION_CHECK = ("scripts/mutation_check.py", ["tests/test_mutation_check.py"])  # this file: the run has loaded it
+# The one test that arms the process's real-time timer, which the full suite's time limit also uses (q52).
+SUITE_LIMIT = ("tests/test_mutation_check.py", ["tests/test_suite_time_limit.py"])
+_SUITE_LIMIT_BACK = "max(limit - (time.monotonic() - armed), 0.001))\n"
 CANDIDATES_MAIN = ("src/basket/candidates.py", ["tests/test_candidates.py::test_main_counts_only_the_included_stores_and_writes_the_day_s_table"])
 
 # The run loop's take of a row, in three parts, for the mutations that move how far a page counts as taken (q21 run).
@@ -3002,6 +3005,10 @@ MUTATIONS = {
     "mutation check counts a timed-out run as an error": (MUTATION_CHECK, '                    timed_out.append(name)\n', '                    errors.append(name)\n'),
     "mutation check does not say a run timed out": (MUTATION_CHECK, '                    print(f"CAUGHT {name} (timed out after {limit:g} s; its tests pass unmutated)")\n', '                    print(f"CAUGHT {name}")\n'),
     "mutation check leaves the time-outs out of its closing line": (MUTATION_CHECK, '          + (f" Timed out, counted as caught: {timed_out}" if timed_out else ""))\n', '          + "")\n'),
+    "the interrupt test leaves the suite with no time limit (q52)": (SUITE_LIMIT, "        if limit:  # a limit that ran out meanwhile still fires, at once (the timer refuses a time below 0)\n            signal.setitimer(signal.ITIMER_REAL, " + _SUITE_LIMIT_BACK, ""),
+    "the interrupt test gives its own second back to the suite's limit (q52)": (SUITE_LIMIT, _SUITE_LIMIT_BACK, "max(limit, 0.001))\n"),
+    "a suite limit that ran out during the interrupt test never fires (q52)": (SUITE_LIMIT, _SUITE_LIMIT_BACK, "max(limit - (time.monotonic() - armed), 0))\n"),
+    "the interrupt test arms a limit the suite never had (q52)": (SUITE_LIMIT, "        if limit:  # a limit that ran out meanwhile", "        if True:  # a limit that ran out meanwhile"),
     # The final review's fix wave (Task 28): each break undoes one of its fixes.
     "the product pages staged outside the run's work folder (q22 site run)": (SHOP_BUILD_FOR_BASKET_HANDLER, 'tempfile.TemporaryDirectory(prefix="shopper-pages-", dir=site_dir.parent)', 'tempfile.TemporaryDirectory(prefix="shopper-pages-")'),
     "basket /tmp back at 2 GB (q22 template)": (TMP_SIZE, "{Size: 10240}", "{Size: 2048}"),

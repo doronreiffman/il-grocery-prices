@@ -328,17 +328,22 @@ def test_a_process_that_left_the_session_holding_the_pipes_does_not_hold_up_the_
 
 
 def test_an_interrupt_kills_the_run_with_everything_it_started(check, pidfile):
-    """The run is in a session of its own, so a Ctrl-C at the terminal does not reach it: run_limited kills it."""
+    """The run is in a session of its own, so a Ctrl-C at the terminal does not reach it: run_limited kills it.
+    The interrupt comes from the process's one real-time timer, which the full suite's own time limit also uses
+    (tests/test_suite_time_limit.py): what was left of that limit is put back after, less this test's time."""
     def interrupt(signum, frame):
         raise KeyboardInterrupt
     previous = signal.signal(signal.SIGALRM, interrupt)
-    signal.setitimer(signal.ITIMER_REAL, 1.0)
+    limit, _ = signal.setitimer(signal.ITIMER_REAL, 1.0)
+    armed = time.monotonic()
     try:
         with pytest.raises(KeyboardInterrupt):
             check.run_limited([sys.executable, "-c", HANGS_WITH_A_CHILD, str(pidfile)], 30)
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, previous)
+        if limit:  # a limit that ran out meanwhile still fires, at once (the timer refuses a time below 0)
+            signal.setitimer(signal.ITIMER_REAL, max(limit - (time.monotonic() - armed), 0.001))
     assert all_gone(pidfile)
 
 
