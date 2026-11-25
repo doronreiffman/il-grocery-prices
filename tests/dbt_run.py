@@ -4,7 +4,8 @@ folders of its own.
 A run's target folder, log folder and home folder, and its database unless one is given, are all under `work`, a fresh
 folder every call. So dbt's partial parse never reads an earlier run's project (a planted bug would go unseen), and no
 run reads or writes data/, dbt/target/, dbt/logs/ or the home folder. The run's environment is the test's own, less
-every DBT_ variable and GROCERY_DBT_DB, so a setting on the machine never reaches it.
+every DBT_ variable, GROCERY_DBT_DB and DO_NOT_TRACK, so none of the machine's settings for dbt reaches it. Its output
+comes without colour codes, and a run past its time limit is stopped and fails the test.
 """
 import json
 import os
@@ -22,6 +23,15 @@ DBT = ROOT / ".venv-dbt" / "bin" / "dbt"
 MISSING = "make .venv-dbt: docs/operations.md, Develop"
 TARGET, LOGS, HOME = "target", "logs", "home"   # a run's folders, under its work folder
 DATABASE = "dbt.duckdb"                          # a run's database, under its work folder, unless one is given
+# Taken out of a run's environment, besides every DBT_ variable. DO_NOT_TRACK, when set, turns dbt's telemetry off
+# whatever the project says (dbt-core 1.12.6, dbt/cli/flags.py), so a machine that sets it would hide the project's own
+# setting from the test that reads it.
+CLEARED = ("GROCERY_DBT_DB", "DO_NOT_TRACK")
+# Seconds a dbt run may take before it is stopped. A dbt command here starts in 4 to 5 s (the design's section 6) and
+# the planned runs read small synthetic tables; the slowest, the golden build, is not yet measured. 600 s leaves it room
+# and still stops a run that waits forever (on the network, on a locked database) inside the 1,400 s the mutation check
+# gives each of its pytest runs (scripts/mutation_check.py, TIME_LIMIT).
+TIMEOUT = 600
 
 
 @dataclass(frozen=True)
@@ -43,12 +53,18 @@ def run_dbt(command: Sequence[str], work: Path, vars: Mapping[str, object] | Non
         raise ValueError(f"{work} is not empty: every dbt run needs a fresh folder")
     (work / HOME).mkdir(parents=True)
     database = database or work / DATABASE
-    env = {name: value for name, value in os.environ.items() if not name.startswith("DBT_") and name != "GROCERY_DBT_DB"}
+    env = {name: value for name, value in os.environ.items() if not name.startswith("DBT_") and name not in CLEARED}
     env |= {"HOME": str(work / HOME), "GROCERY_DBT_DB": str(database)}
-    args = [str(DBT), *command, "--target-path", str(work / TARGET), "--log-path", str(work / LOGS)]
+    args = [str(DBT), *command, "--no-use-colors", "--target-path", str(work / TARGET), "--log-path", str(work / LOGS)]
     if vars is not None:
         args += ["--vars", json.dumps(vars)]
-    done = subprocess.run(args, cwd=PROJECT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    try:
+        done = subprocess.run(args, cwd=PROJECT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                              timeout=TIMEOUT)
+    except subprocess.TimeoutExpired as stopped:
+        so_far = stopped.output.decode(errors="replace") if isinstance(stopped.output, bytes) else stopped.output or ""
+        pytest.fail(f"dbt {' '.join(command)} did not finish within {TIMEOUT} s and was stopped; its output so far:\n"
+                    f"{so_far}", pytrace=False)
     manifest = _read(work / TARGET / "manifest.json") or {}
     return DbtRun(done.returncode, done.stdout, _results(work / TARGET / "run_results.json", manifest), manifest, database)
 

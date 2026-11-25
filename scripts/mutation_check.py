@@ -249,6 +249,7 @@ DBT_PROFILE = ("dbt/profiles.yml", ["tests/test_dbt_project.py"])
 DBT_SOURCES = ("dbt/models/sources.yml", ["tests/test_dbt_project.py"])
 GITIGNORE_FOR_DBT = (".gitignore", ["tests/test_dbt_project.py"])
 CI_FOR_DBT = (".github/workflows/ci.yml", ["tests/test_dbt_project.py"])
+DBT_RUN = ("tests/dbt_run.py", ["tests/test_dbt_units.py"])
 # The items reports' source in dbt/models/sources.yml, from its name to its formatter line, which a break drops.
 _DBT_REPORTS_SOURCE = ('      - name: items_reports\n'
                        '        description: >-\n'
@@ -3616,6 +3617,13 @@ MUTATIONS = {
     "a seed folder named (q28 project)": (DBT_PROJECT, 'macro-paths: ["macros"]\n', 'macro-paths: ["macros"]\nseed-paths: ["seeds"]\n'),
     "dbt's output not ignored (q28 project)": (GITIGNORE_FOR_DBT, '\ndbt/target/\ndbt/logs/\n', '\n'),
     "CI's dbt install with build isolation (q28 project)": (CI_FOR_DBT, ' --no-deps --no-build-isolation -r requirements-dbt.txt', ' --no-deps -r requirements-dbt.txt'),
+    "DO_NOT_TRACK let through to dbt (q28 project)": (DBT_RUN, 'CLEARED = ("GROCERY_DBT_DB", "DO_NOT_TRACK")\n', 'CLEARED = ("GROCERY_DBT_DB",)\n'),
+    "a dbt run with no time limit (q28 project)": (DBT_RUN, 'timeout=TIMEOUT)', 'timeout=None)'),
+    "dbt's output in colour (q28 project)": (DBT_RUN, '"--no-use-colors", ', ''),
+    "a work folder already used taken for a dbt run (q28 project)": (DBT_RUN, '    if work.exists() and any(work.iterdir()):\n', '    if False:\n'),
+    "two results of one name, the first hidden (q28 project)": (DBT_RUN, '        if name in results:\n', '        if False:\n'),
+    "dbt's target folder left in dbt/ (q28 project)": (DBT_RUN, '"--target-path", str(work / TARGET), ', ''),
+    "dbt's log folder left in dbt/ (q28 project)": (DBT_RUN, ', "--log-path", str(work / LOGS)]', ']'),
     # the dbt layer (q28), Task 2's planted bugs: the staging views and the two lists
     # the dbt layer (q28), Task 4's planted bugs: the basket's models
     # the dbt layer (q28), Task 5's planted bugs: the deals' models

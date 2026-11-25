@@ -48,8 +48,12 @@ LABELS = {
 # Where each path var's default points, from the repository's root.
 PATHS = {"tables": "data/tables", "site": "site", "basket_file": "src/basket/baskets/v1.json"}
 
-CLOCK = re.compile(r"current_date|current_timestamp|current_time|localtimestamp|\bnow\s*\(|\btoday\s*\(|run_started_at"
-                   r"|modules\.datetime", re.IGNORECASE)
+# Every way a model could read the clock: DuckDB 1.5.6's clock functions and keywords (duckdb_functions(); `localtime`
+# alone is a keyword giving the time of day, so it is matched as a whole word), and dbt's own time of the run. The
+# longer names come first, so a finding names the function exactly.
+CLOCK = re.compile(r"current_localtimestamp|current_localtime|get_current_timestamp|get_current_time|transaction_timestamp"
+                   r"|current_date|current_timestamp|current_time|localtimestamp|\blocaltime\b|\bnow\s*\(|\btoday\s*\("
+                   r"|run_started_at|modules\.datetime", re.IGNORECASE)
 FLOATING = re.compile(r"\b(?:double|float|float4|float8|real)\b", re.IGNORECASE)
 
 
