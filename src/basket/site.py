@@ -34,14 +34,14 @@ the ledger gains its line). Then the assets the bucket lacks, in a call of their
 a failed asset put is raised as it is, nothing after it is put, and so no page goes up naming a stylesheet, a font or
 the picture the site lacks, a changed stylesheet's new name included. Then the word index's files under `search/w/`
 (`WORD_FOLDER`), all but its manifest, in a call of their own, ended before anything else starts; a failed one is
-raised and nothing after it is put (the product-names plan's Task 3). Then the rest, started in the order above, the data files before the pages;
-the pool ends them in no fixed order, so the pages are started after the data files, not held until those are up (the
-Task 23 review's point 4). Then the word index's manifest, `search/w/manifest.json` (`WORD_MANIFEST`), alone and last:
-it names the word files, whose keys are fixed, so a manifest that goes up only once they are up names none the site
-lacks, and a failed put of it leaves everything else up and yesterday's manifest in place (the design's section 5,
-"Publishing"). The caller may ask each call's seconds (`timings`). Each file takes its content type by its last suffix:
-`search.js` goes up as JavaScript, never as HTML (the second pre-flight's B3). Anything else in the folder (the marker,
-the published copies the build compared with) stays local.
+raised and nothing after it is put (the product-names plan's Task 3). Then the rest, started in the order above, the
+data files before the pages; the pool ends them in no fixed order, so the pages are started after the data files, not
+held until those are up (the Task 23 review's point 4). Then the word index's manifest, `search/w/manifest.json`
+(`WORD_MANIFEST`), alone and last: it names the word files, whose keys are fixed, so a manifest that goes up only once
+they are up names none the site lacks, and a failed put of it leaves everything else up and yesterday's manifest in
+place (the design's section 5, "Publishing"). The caller may ask each call's seconds (`timings`). Each file takes its
+content type by its last suffix: `search.js` goes up as JavaScript, never as HTML (the second pre-flight's B3).
+Anything else in the folder (the marker, the published copies the build compared with) stays local.
 
 `put_files` puts the shopper site's files, any number of them, each once (a key given twice goes up once): it checks
 first that every file is in the site folder and has a content type above, and refuses (FileNotFoundError, ValueError)
