@@ -351,7 +351,7 @@ def test_publish_sh_uploads_a_build_the_check_and_the_guard_pass(tmp_path):
     run, calls = _publish(tmp_path, a_build(tmp_path), P_KEYS="\t".join(PAGES) + "\n")
     assert run.returncode == 0, run.stderr
     assert run.stdout.endswith("published: https://d1example.cloudfront.net/\n")
-    assert len(_syncs(calls)) == 9
+    assert len(_syncs(calls)) == 10
     assert calls[-2][:2] == ["cloudfront", "create-invalidation"] and "/*" in calls[-2]
 
 
@@ -383,7 +383,7 @@ def test_publish_sh_runs_the_check_and_the_guard_before_any_upload(tmp_path):
     read = _index(calls, lambda call: call[0] in ("s3", "s3api") and call[1] in ("cp", "list-objects-v2"))
     put = _index(calls, lambda call: call in _uploads(calls))
     assert calls[checked][3] == calls[guarded][3] == str(site)
-    assert len(read) == 5 and len(put) == 10
+    assert len(read) == 5 and len(put) == 11
     assert checked < min(read) and max(read) < guarded < min(put)
 
     site = a_build(tmp_path / "check")

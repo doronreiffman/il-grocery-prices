@@ -457,7 +457,8 @@ def test_upload_puts_word_files_after_the_assets_and_the_manifest_last(site, tmp
     keys = site.upload(with_words(tmp_path), DATA, with_pages=True)
     assert keys == [*RECORDS, *ASSETS, *WORDS, *REST, WORD_MANIFEST]
     assert calls == [RECORDS, ASSETS, WORDS, REST, [WORD_MANIFEST]]
-    assert sorted(puts[5:8]) == sorted(WORDS) and puts[-1] == WORD_MANIFEST
+    start = len(RECORDS) + len(ASSETS)   # the word files' puts come after the records' and the assets'
+    assert sorted(puts[start:start + len(WORDS)]) == sorted(WORDS) and puts[-1] == WORD_MANIFEST
     assert {key: held(site)[key] for key in (*WORDS, WORD_MANIFEST)} == {
         key: (key.encode(), JSON, CACHE_CONTROL) for key in (*WORDS, WORD_MANIFEST)}
 

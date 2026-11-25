@@ -25,24 +25,23 @@ code (the shopper plan's question H); and, with the pages too, each shared file 
 stylesheet, the fonts and their licences, which every page names, and the picture the front page's link preview card
 names) that the bucket's listing of `assets/` lacks. An asset is put once: a stylesheet's, a font's or the picture's
 name carries the hash of its bytes, so a name the bucket holds is that same file, and a morning that changed nothing
-piles up no new version of it (the licences keep plain names and are put once all the same; site-look.md, "The
-upload"). Every file is checked first, before any put. The record files (`is_record`:
-each day's forecasts file and scores file, never the ledger) go up in a `put_files` call of their own, ended before
-anything else is put; a record put that fails stops the upload there (RecordsNotUploaded), so the ledger, the site-day
-and day files and the pages, which name the records, never name a file the site lacks (the task review's finding 1: a
-rerun lists the day's forecasts file only when the ledger gains its line). Then the assets the bucket lacks, in a call
-of their own, ended before anything else starts; a failed asset put is raised as it is, nothing after it is put, and so
-no page goes up naming a stylesheet or a font the site lacks, a changed stylesheet's new name included. Then the word
-index's files under `search/w/` (`WORD_FOLDER`), all but its manifest, in a call of their own, ended before anything
-else starts; a failed one is raised and nothing after it is put (the product-names plan's Task 3). Then the rest,
-started in the order above, the data files before the pages; the pool ends them in no fixed order, so the pages are
-started after the data files, not held until those are up (the Task 23 review's point 4). Then the word index's
-manifest, `search/w/manifest.json` (`WORD_MANIFEST`), alone and last: it names the word files, whose keys are fixed, so
-a manifest that goes up only once they are up names none the site lacks, and a failed put of it leaves everything else
-up and yesterday's manifest in place (the design's section 5, "Publishing"). The caller may ask each call's seconds
-(`timings`). Each file takes its content type by its last suffix: `search.js` goes up as JavaScript, never as HTML (the
-second pre-flight's B3). Anything else in the folder (the marker, the published copies the build compared with) stays
-local.
+piles up no new version of it (the licences keep plain names and are put once all the same; site-look.md, "The upload").
+Every file is checked first, before any put. The record files (`is_record`: each day's forecasts file and scores file,
+never the ledger) go up in a `put_files` call of their own, ended before anything else is put; a record put that fails
+stops the upload there (RecordsNotUploaded), so the ledger, the site-day and day files and the pages, which name the
+records, never name a file the site lacks (the task review's finding 1: a rerun lists the day's forecasts file only when
+the ledger gains its line). Then the assets the bucket lacks, in a call of their own, ended before anything else starts;
+a failed asset put is raised as it is, nothing after it is put, and so no page goes up naming a stylesheet or a font the
+site lacks, a changed stylesheet's new name included. Then the word index's files under `search/w/` (`WORD_FOLDER`), all
+but its manifest, in a call of their own, ended before anything else starts; a failed one is raised and nothing after it
+is put (the product-names plan's Task 3). Then the rest, started in the order above, the data files before the pages;
+the pool ends them in no fixed order, so the pages are started after the data files, not held until those are up (the
+Task 23 review's point 4). Then the word index's manifest, `search/w/manifest.json` (`WORD_MANIFEST`), alone and last:
+it names the word files, whose keys are fixed, so a manifest that goes up only once they are up names none the site
+lacks, and a failed put of it leaves everything else up and yesterday's manifest in place (the design's section 5,
+"Publishing"). The caller may ask each call's seconds (`timings`). Each file takes its content type by its last suffix:
+`search.js` goes up as JavaScript, never as HTML (the second pre-flight's B3). Anything else in the folder (the marker,
+the published copies the build compared with) stays local.
 
 `put_files` puts the shopper site's files, any number of them, each once (a key given twice goes up once): it checks
 first that every file is in the site folder and has a content type above, and refuses (FileNotFoundError, ValueError)

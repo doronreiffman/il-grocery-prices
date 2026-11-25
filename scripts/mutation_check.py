@@ -348,7 +348,7 @@ _NCR_ANSWER_BY_ANSWER = ("        length, fnames, total = _page_size(file_page),
 
 # publish.sh's guard and its uploads, for the mutation that runs the guard after the upload (q22 publish); the uploads'
 # order, for the one that puts the pages first again (the final review's finding 8; the word manifest's last, q50); the
-# assets' three, for the one that puts the stylesheet after the pages (q36 upload).
+# assets' four, for the one that puts the stylesheet after the pages (q36 upload).
 _PUBLISH_ASSETS = ("upload --include 'assets/*.css' --content-type 'text/css; charset=utf-8' --size-only\n",
                    "upload --include 'assets/*.woff2' --content-type 'font/woff2' --size-only\n",
                    "upload --include 'assets/*.txt' --content-type 'text/plain; charset=utf-8' --size-only\n",
