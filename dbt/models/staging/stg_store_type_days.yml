@@ -1,0 +1,71 @@
+models:
+  - name: stg_store_type_days
+    description: >-
+      The items reports' counts and flags: one row a store type and day, from the report beside the chain's items
+      table. The day is the folder's, never the report's own day field.
+    columns:
+      - name: chain
+        description: The chain, from the report's folder name (chain=<chain>).
+      - name: store_type
+        description: The store type, a key of the report's columns.
+      - name: day
+        description: The day the report is filed under, from its folder name (date=<day>).
+      - name: hole
+        description: >-
+          Whether the store type's day is a hole: no included store, or fewer than half of them with a file (rule
+          B8, by store type).
+      - name: promo_hole
+        description: >-
+          Whether the store type's day is a promotion hole: fewer than half its counted stores with a promotion file,
+          or the chain's promotions not read.
+      - name: included
+        description: The store type's included stores.
+      - name: with_file
+        description: >-
+          Its included stores with a row in the day's prices table under a sub-chain the chain keeps, by the file's
+          name.
+      - name: counted
+        description: >-
+          Its stores with a price file that counts that day (rule P2); its stores with a file when the chain's
+          promotions were not read.
+      - name: promo_files
+        description: Its counted stores with a promotion file; 0 when the chain's promotions were not read.
+      - name: items
+        description: The store type's rows in the day's items table.
+      - name: wide
+        description: Those of them wide.
+      - name: on_promotion
+        description: Those of them on promotion.
+      - name: valid_deals
+        description: The store type's item and promotion pairs running on the day whose deal is valid, wide or not.
+      - name: promotions_error
+        description: Why the chain's promotions were not read that day; NULL when they were.
+
+unit_tests:
+  - name: a_report_gives_a_row_per_store_type
+    model: stg_store_type_days
+    given:
+      - input: source('tables', 'items_reports')
+        format: sql
+        rows: |
+          select
+              'carrefour' as chain,
+              date '2026-01-01' as "date",
+              '2025-12-31' as day,
+              map {
+                  'carrefour-city': {'hole': false, 'promo_hole': true, 'included': 75, 'with_file': 74,
+                                     'counted': 74, 'promo_files': 30, 'items': 3, 'wide': 2, 'on_promotion': 1,
+                                     'valid_deals': 1},
+                  'carrefour-market': {'hole': true, 'promo_hole': true, 'included': 44, 'with_file': 10,
+                                       'counted': 10, 'promo_files': 0, 'items': 1, 'wide': 0, 'on_promotion': 0,
+                                       'valid_deals': 0}
+              } as "columns",
+              cast(null as varchar) as promotions_error
+    expect:
+      rows:
+        - {chain: carrefour, store_type: carrefour-city, day: "2026-01-01", hole: false, promo_hole: true,
+           included: 75, with_file: 74, counted: 74, promo_files: 30, items: 3, wide: 2, on_promotion: 1,
+           valid_deals: 1, promotions_error: null}
+        - {chain: carrefour, store_type: carrefour-market, day: "2026-01-01", hole: true, promo_hole: true,
+           included: 44, with_file: 10, counted: 10, promo_files: 0, items: 1, wide: 0, on_promotion: 0,
+           valid_deals: 0, promotions_error: null}

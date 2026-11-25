@@ -1,0 +1,16 @@
+models:
+  - name: left_out_stores
+    description: >-
+      The stores and sub-chains rule B2 leaves out by number (docs/headline-basket.md, B2): Shufersal's sub-chain 5
+      "Be" and store 413, its online store; Rami Levy's store 39, its internet logistics centre; Carrefour's store
+      471, its online store. tests/test_dbt_project.py holds it equal to basket.chains.EXCLUDED.
+    columns:
+      - name: chain
+        description: The chain.
+      - name: kind
+        description: >-
+          sub_chain for a sub-chain whose stores are all left out, by the sub-chain in their files' names; store for
+          one store.
+      - name: key
+        description: >-
+          The sub-chain's or store's number, leading zeros stripped, as the prices table keys stores and sub-chains.

@@ -46,3 +46,20 @@ vars:
     shufersal-sheli: shufersal
     shufersal-universe: shufersal
     yochananof: yochananof
+  # The published days today's tables no longer give, each with its reason (the owner's list, 2026-11-25; the model
+  # known_differences makes them rows). The three store-page days share one reason, written once (&weighed).
+  known_differences:
+    - kind: store_page
+      key: ramilevy
+      day: "2026-11-21"
+      reason: &weighed >-
+        published before the 22 November fix to weighed N for ₪M prices; that chain's items tables of 1 to 22
+        November were written again after it
+    - {kind: store_page, key: ramilevy, day: "2026-11-22", reason: *weighed}
+    - {kind: store_page, key: yochananof, day: "2026-11-22", reason: *weighed}
+    - kind: basket
+      key: shufersal
+      day: "2026-11-09"
+      reason: >-
+        published from 171 Shufersal stores' files, the slow morning's; that day's prices table was rebuilt later
+        from 416

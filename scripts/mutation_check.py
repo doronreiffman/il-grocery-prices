@@ -259,6 +259,14 @@ _DBT_REPORTS_SOURCE = ('      - name: items_reports\n'
                        '          meta: {label: items reports}\n'
                        '          external_location: "read_json(\'{{ var(\\"tables\\") }}/items/*/*/report.json\', hive_partitioning = true, columns = {columns: \'MAP(VARCHAR, STRUCT(hole BOOLEAN, promo_hole BOOLEAN, included INTEGER, with_file INTEGER, counted INTEGER, promo_files INTEGER, items INTEGER, wide INTEGER, on_promotion INTEGER, valid_deals INTEGER))\', promotions_error: \'VARCHAR\'})"\n')
 # the dbt layer (q28), Task 2's targets: the staging views and the two lists
+DBT_LEFT_OUT = ("dbt/models/lists/left_out_stores.sql", ["tests/test_dbt_project.py"])
+DBT_KNOWN = ("dbt/models/lists/known_differences.sql", ["tests/test_dbt_units.py"])
+DBT_KNOWN_LIST = DBT_PROJECT   # the var known_differences, in dbt/dbt_project.yml
+DBT_STG_STORE_TYPE_DAYS = ("dbt/models/staging/stg_store_type_days.sql", ["tests/test_dbt_units.py"])
+DBT_STG_PUBLISHED_STORE_PAGES = ("dbt/models/staging/stg_published_store_pages.sql", ["tests/test_dbt_units.py"])
+DBT_STG_PUBLISHED_BASKET = ("dbt/models/staging/stg_published_basket.sql", ["tests/test_dbt_units.py"])
+# A staging view that reads the clock, which the project's clock test must catch by itself.
+DBT_STG_PRICES_FOR_CLOCK = ("dbt/models/staging/stg_prices.sql", ["tests/test_dbt_project.py"])
 # the dbt layer (q28), Task 4's targets: the basket's models
 # the dbt layer (q28), Task 5's targets: the deals' models
 # the dbt layer (q28), Task 6's targets: the promotions' reach
@@ -3625,6 +3633,22 @@ MUTATIONS = {
     "dbt's target folder left in dbt/ (q28 project)": (DBT_RUN, '"--target-path", str(work / TARGET), ', ''),
     "dbt's log folder left in dbt/ (q28 project)": (DBT_RUN, ', "--log-path", str(work / LOGS)]', ']'),
     # the dbt layer (q28), Task 2's planted bugs: the staging views and the two lists
+    "Shufersal's online store kept in dbt (q28 staging)": (DBT_LEFT_OUT, "    ('shufersal', 'store', '413'),\n", ""),
+    "Be left out as a store in dbt (q28 staging)": (DBT_LEFT_OUT, "('shufersal', 'sub_chain', '5')", "('shufersal', 'store', '5')"),
+    "a known difference dropped (q28 staging)": (
+        DBT_KNOWN_LIST, '    - {kind: store_page, key: yochananof, day: "2026-11-22", reason: *weighed}\n', ''),
+    "a reason's apostrophe not doubled (q28 staging)": (
+        DBT_KNOWN, """'{{ difference.reason | replace("'", "''") }}'""", "'{{ difference.reason }}'"),
+    "the hole read as the promotion hole (q28 staging)": (
+        DBT_STG_STORE_TYPE_DAYS, "    entry.value.hole as hole,\n", "    entry.value.promo_hole as hole,\n"),
+    "the stores with a file read as the stores included (q28 staging)": (
+        DBT_STG_STORE_TYPE_DAYS, "entry.value.included as included", "entry.value.with_file as included"),
+    "a store type without a front block given a row (q28 staging)": (
+        DBT_STG_PUBLISHED_STORE_PAGES, "where entry.value.front is not null\n", "where entry.value is not null\n"),
+    "a published code's leading zeros kept (q28 staging)": (
+        DBT_STG_PUBLISHED_BASKET, "ltrim(item_entry.key, '0') as barcode", "item_entry.key as barcode"),
+    "a staging view reads the clock in dbt (q28 staging)": (
+        DBT_STG_PRICES_FOR_CLOCK, '    "date" as day,\n', '    cast(current_localtimestamp() as date) as day,\n'),
     # the dbt layer (q28), Task 4's planted bugs: the basket's models
     # the dbt layer (q28), Task 5's planted bugs: the deals' models
     # the dbt layer (q28), Task 6's planted bugs: the promotions' reach

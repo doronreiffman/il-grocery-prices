@@ -1,0 +1,61 @@
+models:
+  - name: stg_promotions
+    description: >-
+      The promotions tables' rows, renamed: one a store type, promotion, group and item code on a day, carried by at
+      least one of the store type's counted stores. The day is the table's folder's.
+    columns:
+      - name: chain
+        description: The chain, from the table's folder name (chain=<chain>).
+      - name: store_type
+        description: The store type, the table's column.
+      - name: day
+        description: The day the table is filed under, from its folder name (date=<day>).
+      - name: promotion_id
+        description: The promotion's PromotionID, as published.
+      - name: group_id
+        description: The GroupID of the promotion's group that links the item, as published.
+      - name: code
+        description: The item code as the file gives it.
+      - name: barcode
+        description: The table's code_norm, the code with leading zeros stripped.
+      - name: gs1
+        description: Whether the code is a real GS1 barcode.
+      - name: kind
+        description: >-
+          The kind of promotion its reward type gives, by the project's var kinds; NULL for reward type 0, which
+          never changes a price.
+      - name: reward_type
+        description: The RewardType, as published.
+      - name: starts
+        description: The date the promotion starts (the table's start).
+      - name: ends
+        description: The date the promotion ends (the table's end).
+      - name: restrictions
+        description: The restrictions the promotion's ClubID names, as words (rule P5).
+      - name: min_spend
+        description: >-
+          The largest minimum purchase above zero over the promotion's groups, to the agora half up; NULL for none.
+      - name: discounted_low
+        description: >-
+          The lowest DiscountedPrice on the link over the carrying stores, one price a store, to three places.
+      - name: discounted_median
+        description: >-
+          The median of those stores' DiscountedPrice (rule B5's median), to three places half up.
+      - name: discounted_high
+        description: The highest of those stores' DiscountedPrice, to three places.
+      - name: with_store_price
+        description: >-
+          For percent off, the carrying stores whose rows in the day's prices table list the code; NULL for every
+          other kind.
+      - name: agrees_with_store
+        description: >-
+          For percent off, those of them whose rate is above 0 and below 100 and whose DiscountedPrice is within
+          ₪0.01 of the store's own price less the rate, rounded half up; NULL for every other kind.
+      - name: stores
+        description: The store type's counted stores whose latest file links the promotion to the code.
+      - name: promotion_stores
+        description: The store type's counted stores carrying the promotion at all.
+      - name: counted
+        description: The store type's counted stores, with a promotion file or not.
+      - name: wide
+        description: Whether stores is at least half of counted (rule P3, by store type).

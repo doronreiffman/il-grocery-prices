@@ -1,0 +1,44 @@
+models:
+  - name: stg_published_store_pages
+    description: >-
+      The store pages' numbers as the site-day files published them: one row a store type and day with a front
+      block. A store type with none that day has no row.
+    columns:
+      - name: store_type
+        description: The store type, a key of the site-day file's columns.
+      - name: day
+        description: The site-day file's day.
+      - name: deals
+        description: N, the deals on the store type's front list.
+      - name: checked
+        description: M, the promotions the front list checked.
+      - name: promotions
+        description: >-
+          The store type's wide promotions running that day, distinct by id; NULL on a hole or a promotion hole,
+          whose promotions the build does not count.
+      - name: products
+        description: Their products; NULL on such a day.
+      - name: shown_rows
+        description: >-
+          The rows the store page shows, each its barcode, today's price, the usual price, the saving (as text) and
+          its days with a day price, as published.
+
+unit_tests:
+  - name: a_front_block_is_a_row_and_a_store_type_without_one_none
+    model: stg_published_store_pages
+    given:
+      - input: source('published', 'site_days')
+        format: sql
+        rows: |
+          select
+              date '2026-04-30' as day,
+              map {
+                  'shufersal-universe': {'front': {'deals': 4, 'checked': 6, 'promotions': 9, 'products': 9,
+                                                   'rows': [{'barcode': '2000000000145', 'today': '6.90',
+                                                             'usual': '8.90', 'saving': '2.00', 'days': 27}]}},
+                  'osherad': {'front': null}
+              } as "columns"
+    expect:
+      rows:
+        - {store_type: shufersal-universe, day: "2026-04-30", deals: 4, checked: 6, promotions: 9, products: 9,
+           shown_rows: [{barcode: "2000000000145", today: "6.90", usual: "8.90", saving: "2.00", days: 27}]}

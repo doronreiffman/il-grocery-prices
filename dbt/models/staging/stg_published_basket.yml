@@ -1,0 +1,42 @@
+models:
+  - name: stg_published_basket
+    description: >-
+      The basket's prices as the basket day files published them: one row a chain, day and published item.
+    columns:
+      - name: chain
+        description: The chain, a key of the day file's chains.
+      - name: day
+        description: The day file's day.
+      - name: barcode
+        description: >-
+          The published code with its leading zeros stripped, as every barcode match in the project strips them.
+      - name: median
+        description: The chain's median price for the item over its stores, one price a store (rule B5), as published.
+      - name: low
+        description: The lowest of those stores' prices, as published.
+      - name: high
+        description: The highest of those stores' prices, as published.
+      - name: listing
+        description: How many of the chain's stores list the item.
+      - name: double_coded
+        description: How many of those stores list the item under more than one code.
+
+unit_tests:
+  - name: each_chain_s_item_is_a_row_its_code_without_leading_zeros
+    model: stg_published_basket
+    given:
+      - input: source('published', 'basket_days')
+        format: sql
+        rows: |
+          select
+              date '2026-04-30' as day,
+              ['2000000000121'] as items_in,
+              map {
+                  'osherad': {'total': '14.70',
+                              'items': map {'02000000000121': {'median': '7.20', 'low': '7.10', 'high': '7.30',
+                                                               'listing': 2, 'double_coded': 0}}}
+              } as chains
+    expect:
+      rows:
+        - {chain: osherad, day: "2026-04-30", barcode: "2000000000121", median: "7.20", low: "7.10", high: "7.30",
+           listing: 2, double_coded: 0}

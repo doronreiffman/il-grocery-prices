@@ -1,0 +1,34 @@
+models:
+  - name: known_differences
+    description: >-
+      The published days today's tables no longer give, each with its reason: one row each, from the project's var
+      known_differences, the owner's list.
+    columns:
+      - name: kind
+        description: store_page for a store type's page, basket for a chain's basket.
+      - name: key
+        description: The store type, for a store page; the chain, for a basket.
+      - name: day
+        description: The published day.
+      - name: reason
+        description: Why today's tables no longer give what that day published, in plain words.
+
+unit_tests:
+  - name: each_known_difference_is_a_row_its_reason_kept_whole
+    model: known_differences
+    overrides:
+      vars:
+        known_differences:
+          - {kind: basket, key: osherad, day: "2026-04-30", reason: "Osher Ad's day, written again"}
+    given: []
+    expect:
+      rows:
+        - {kind: basket, key: osherad, day: "2026-04-30", reason: "Osher Ad's day, written again"}
+  - name: an_empty_list_is_no_row
+    model: known_differences
+    overrides:
+      vars:
+        known_differences: []
+    given: []
+    expect:
+      rows: []

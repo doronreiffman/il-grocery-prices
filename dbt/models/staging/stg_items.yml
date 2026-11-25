@@ -1,0 +1,40 @@
+models:
+  - name: stg_items
+    description: >-
+      The items tables' rows, renamed: one a store type and product on a day, for each GS1 barcode listed above
+      ₪0.01 at a store of the store type. The day is the table's folder's.
+    columns:
+      - name: chain
+        description: The chain, from the table's folder name (chain=<chain>).
+      - name: store_type
+        description: The store type, the table's column; one of the nine in the project's var store_types.
+      - name: day
+        description: The day the table is filed under, from its folder name (date=<day>).
+      - name: barcode
+        description: The product's barcode, leading zeros stripped (the table's code).
+      - name: listed
+        description: >-
+          The median price over the store type's stores listing the product, one price a store, exact to three
+          places (rule B5).
+      - name: low
+        description: The lowest of those stores' prices.
+      - name: high
+        description: The highest of those stores' prices.
+      - name: listing
+        description: How many of the store type's stores list the product.
+      - name: wide
+        description: >-
+          Whether the stores listing it are at least half the store type's stores with a file (rule B6, by store
+          type).
+      - name: on_promotion
+        description: >-
+          Whether a promotion of the store type on it is wide, has a kind and runs on the day; NULL when the chain's
+          promotions were not read.
+      - name: next_start
+        description: >-
+          The earliest start, in the 14 days after the day, among the store type's wide promotions on it with a
+          kind; NULL for none, or when the chain's promotions were not read.
+      - name: promotions
+        description: >-
+          One struct per promotion on the product, by start, then by id as a number, as the table writes them; NULL
+          when the chain's promotions were not read.

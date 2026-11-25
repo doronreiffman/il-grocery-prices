@@ -1,0 +1,26 @@
+-- The promotions tables' rows, renamed (stg_promotions.yml). The day is the folder's.
+select
+    chain,
+    "column" as store_type,
+    "date" as day,
+    promotion_id,
+    group_id,
+    code,
+    code_norm as barcode,
+    gs1,
+    kind,
+    reward_type,
+    "start" as starts,
+    "end" as ends,
+    restrictions,
+    min_spend,
+    discounted_low,
+    discounted_median,
+    discounted_high,
+    with_store_price,
+    agrees_with_store,
+    stores,
+    promotion_stores,
+    counted,
+    wide
+from {{ source('tables', 'promotions') }}

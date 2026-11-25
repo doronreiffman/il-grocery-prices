@@ -33,9 +33,8 @@ def work(tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def units(before, work):
-    run = run_dbt(["test", "--select", "test_type:unit"], work)
-    assert run.code == 0, run.output
-    return run
+    """The project's unit tests, run once; whether they pass is test_every_unit_test_passes's to say."""
+    return run_dbt(["test", "--select", "test_type:unit"], work)
 
 
 @pytest.fixture
@@ -51,6 +50,25 @@ def stand_in(tmp_path, monkeypatch):
         monkeypatch.setattr(dbt_run, "DBT", script)
         return script
     return make
+
+
+def test_every_unit_test_passes(units):
+    assert units.code == 0, units.output
+    assert {name: status for name, (status, _) in units.results.items() if status != "pass"} == {}
+
+
+def test_every_declared_unit_test_ran(units):
+    declared = sorted(test["name"] for test in units.manifest["unit_tests"].values())
+    assert declared != []
+    assert sorted(units.results) == declared
+
+
+def test_every_model_with_a_rule_has_a_unit_test(units):
+    # The intermediate and analysis models are read from their folders, so each model a later task adds joins the list.
+    ruled = {path.stem for folder in ("intermediate", "marts") for path in (PROJECT / "models" / folder).rglob("*.sql")}
+    ruled |= {"stg_store_type_days", "stg_published_store_pages", "stg_published_basket", "known_differences"}
+    tested = {test["model"] for test in units.manifest["unit_tests"].values()}
+    assert sorted(ruled - tested) == []
 
 
 def test_telemetry_is_off_as_dbt_reads_it(units):

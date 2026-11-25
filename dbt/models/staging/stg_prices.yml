@@ -1,0 +1,31 @@
+models:
+  - name: stg_prices
+    description: >-
+      The prices tables' rows, renamed: one a store and item code on a day, from the store's latest price file of the
+      day, the last of a code's rows in it winning. The day is the table's folder's.
+    columns:
+      - name: chain
+        description: The chain, from the table's folder name (chain=<chain>).
+      - name: day
+        description: The day the table is filed under, from its folder name (date=<day>).
+      - name: store
+        description: The store's number from the file's name, leading zeros stripped ("0" for zeros only).
+      - name: sub_chain
+        description: >-
+          The sub-chain's number from the file's name, leading zeros stripped; NULL when the name has none.
+      - name: code
+        description: The item code as the file gives it.
+      - name: barcode
+        description: >-
+          The table's code_norm: the code with leading zeros stripped, the digits a product is matched by; NULL when
+          the code is not ASCII digits alone, or is zeros only.
+      - name: gs1
+        description: >-
+          Whether the code is a real GS1 barcode: 8 to 14 digits once leading zeros are stripped, its check digit
+          holding.
+      - name: price
+        description: >-
+          The price, to two places; NULL when the file's price is no number, has more than two places, or is too
+          large for DECIMAL(12,2).
+      - name: file
+        description: The stored name of the file the row comes from.

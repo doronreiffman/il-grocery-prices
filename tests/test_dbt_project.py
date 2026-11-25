@@ -1,6 +1,7 @@
 """Pin the dbt layer's frame (docs/dbt-layer.md, section 6): the pins of its own environment, .venv-dbt, and the one
 install of it, the project's settings, its rule constants held to the Python's, its seven sources, what git ignores,
-and what is never in the project. Nothing here runs dbt: tests/test_dbt_units.py does.
+and what is never in the project; the two lists held to the Python's and the owner's (section 2); every model and
+column described. Nothing here runs dbt: tests/test_dbt_units.py does.
 
 The YAML files are read with yaml.safe_load, so a test reads the values dbt reads, not the text around them.
 """
@@ -11,6 +12,7 @@ from pathlib import Path
 
 import yaml
 
+from basket.chains import EXCLUDED, SLUGS
 from shopper.columns import COLUMNS
 from shopper.history import READ_DAYS
 from shopper.measures import MIN_FRONT_DAYS, RECENT_DAYS
@@ -55,6 +57,14 @@ CLOCK = re.compile(r"current_localtimestamp|current_localtime|get_current_timest
                    r"|current_date|current_timestamp|current_time|localtimestamp|\blocaltime\b|\bnow\s*\(|\btoday\s*\("
                    r"|run_started_at|modules\.datetime", re.IGNORECASE)
 FLOATING = re.compile(r"\b(?:double|float|float4|float8|real)\b", re.IGNORECASE)
+
+# left_out_stores.sql holds one row a line: ('<chain>', 'sub_chain' or 'store', '<key>').
+LEFT_OUT = PROJECT / "models" / "lists" / "left_out_stores.sql"
+LEFT_OUT_ROW = re.compile(r"\s*\('([a-z]+)', '(sub_chain|store)', '([0-9]+)'\),?")
+# The published days today's tables no longer give, as the owner listed them on 2026-11-25 (the design's answer 2).
+OWNER_S_FOUR = [("basket", "shufersal", "2026-11-09"), ("store_page", "ramilevy", "2026-11-21"),
+                ("store_page", "ramilevy", "2026-11-22"), ("store_page", "yochananof", "2026-11-22")]
+WE = re.compile(r"\bwe\b", re.IGNORECASE)
 
 
 def _load(path: Path):
@@ -183,6 +193,51 @@ def test_the_sources_read_their_files_in_place_and_never_a_store_number():
     reports = tables[("tables", "items_reports")]["config"]["external_location"]
     assert _column_names(reports) == ["columns", "promotions_error"]
     assert "outside" not in reports
+
+
+def test_the_left_out_stores_are_b2_s():
+    # Every line that opens a row is one of the pattern's, so no row can hide from this test in another spelling.
+    lines = [line for line in LEFT_OUT.read_text().splitlines() if line.lstrip().startswith("(")]
+    rows = [LEFT_OUT_ROW.fullmatch(line) for line in lines]
+    assert [line for line, row in zip(lines, rows) if row is None] == []
+    expected = ([(slug, "sub_chain", key) for slug, left_out in EXCLUDED.items() for key in left_out.sub_chains]
+                + [(slug, "store", key) for slug, left_out in EXCLUDED.items() for key in left_out.stores])
+    assert sorted(row.groups() for row in rows) == sorted(expected)
+
+
+def test_the_known_differences_are_the_owner_s_four():
+    found = _project()["vars"]
+    listed = found["known_differences"]
+    # The days as text: a day YAML read as a date would not be the one dbt writes into the SQL.
+    assert sorted((entry["kind"], entry["key"], entry["day"]) for entry in listed) == OWNER_S_FOUR
+    for entry in listed:
+        assert sorted(entry) == ["day", "key", "kind", "reason"], entry
+        assert entry["key"] in {"store_page": found["store_types"], "basket": SLUGS}[entry["kind"]], entry
+        assert isinstance(entry["reason"], str) and len(entry["reason"]) >= 30, entry
+
+
+def _descriptions(node) -> list[str]:
+    """Every description in a loaded YAML file, at any depth."""
+    if isinstance(node, dict):
+        return [text for key, value in node.items()
+                for text in ([value] if key == "description" and isinstance(value, str) else _descriptions(value))]
+    if isinstance(node, list):
+        return [text for value in node for text in _descriptions(value)]
+    return []
+
+
+def test_every_model_and_column_is_described():
+    found = []
+    for path in sorted((PROJECT / "models").rglob("*.sql")):
+        name, properties = str(path.relative_to(PROJECT)), path.with_suffix(".yml")
+        loaded = _load(properties) if properties.is_file() else {}
+        model = {model["name"]: model for model in loaded.get("models", [])}.get(path.stem)
+        if model is None or not model.get("description"):
+            found.append((name, "no description"))
+            continue
+        found += [(name, column.get("name")) for column in model.get("columns", []) if not column.get("description")]
+        found += [(name, text) for text in _descriptions(loaded) if WE.search(text)]
+    assert found == []
 
 
 def test_no_seed_no_package_and_no_python_in_dbt():
