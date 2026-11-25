@@ -3428,6 +3428,7 @@ MUTATIONS = {
     "the named day's prices tables not synced (q28 sync)": (SYNC_SCRIPT, 'aws s3 sync "s3://$BUCKET/tables/prices/" data/tables/prices/ --exclude \'*\' --include "chain=*/date=$day/*" \\\n  --exact-timestamps --profile "$PROFILE" --region "$REGION"\n', ''),
     "the named day's promotions tables not synced (q28 sync)": (SYNC_SCRIPT, 'aws s3 sync "s3://$BUCKET/tables/promotions/" data/tables/promotions/ --exclude \'*\' --include "chain=*/date=$day/*" \\\n  --exclude "chain=*/date=$day/texts.parquet" --exact-timestamps --profile "$PROFILE" --region "$REGION"\n', ''),
     "every day's prices tables synced (q28 sync)": (SYNC_SCRIPT, 'data/tables/prices/ --exclude \'*\' --include "chain=*/date=$day/*" \\\n', 'data/tables/prices/ \\\n'),
+    "every day's promotions tables synced (q28 sync)": (SYNC_SCRIPT, 'data/tables/promotions/ --exclude \'*\' --include "chain=*/date=$day/*" \\\n', 'data/tables/promotions/ \\\n'),
     "the promotion texts synced (q28 sync)": (SYNC_SCRIPT, '  --exclude "chain=*/date=$day/texts.parquet" --exact-timestamps', '  --exact-timestamps'),
     "the prices tables' times not kept (q28 sync)": (SYNC_SCRIPT, 'data/tables/prices/ --exclude \'*\' --include "chain=*/date=$day/*" \\\n  --exact-timestamps --profile', 'data/tables/prices/ --exclude \'*\' --include "chain=*/date=$day/*" \\\n  --profile'),
     "the promotions tables' times not kept (q28 sync)": (SYNC_SCRIPT, 'texts.parquet" --exact-timestamps --profile', 'texts.parquet" --profile'),

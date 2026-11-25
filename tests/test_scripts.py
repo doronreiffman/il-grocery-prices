@@ -231,7 +231,8 @@ def test_sync_sh_keeps_s3s_time_on_the_forecasts_files(tmp_path):
 
 
 # What the dbt layer reads beyond the items tables (docs/dbt-layer.md, section 1): each chain's prices and promotions
-# tables of the named day, each with its report.
+# tables of the named day. Each chain's folder of the day comes down whole, so a table and its report.json come down
+# together.
 _PRICES = table_path(Path("tables"), "osherad", DAY)
 _PROMOTIONS = promotions_path(Path("tables"), "osherad", DAY)
 THE_DAYS_TABLES = [str(_PRICES), str(_PRICES.with_name("report.json")), str(_PROMOTIONS),
