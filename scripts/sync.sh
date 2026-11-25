@@ -1,10 +1,12 @@
 #!/bin/sh
-# Copy what the hand build of a day reads from the archive into data/, and from the site into site/ (read-only on AWS):
+# Copy what the hand build of a day and the dbt layer read from the archive into data/, and from the site into site/
+# (read-only on AWS):
 #   sh scripts/sync.sh 2026-11-02
 # The day's full price files, full promotion files and store lists of every chain into data/raw/, the day's manifests
 # into data/manifests/, then every day's items tables, covered registries, scoring summaries, frozen forecasts files
-# and scores files into data/; then, once the site's stack exists, the published day files into site/days/, the
-# site-day files into site/site-days/ and the ledger into site/forecasts/.
+# and scores files into data/, and the day's prices tables and promotions tables, without the promotion texts, into
+# data/tables/; then, once the site's stack exists, the published day files into site/days/, the site-day files into
+# site/site-days/ and the ledger into site/forecasts/.
 set -eu
 PROFILE=flights-sam
 REGION=il-central-1
@@ -60,11 +62,25 @@ aws s3 sync "s3://$BUCKET/manifests/date=$day/" "data/manifests/date=$day/" --pr
 # (NotSynced) when it is not the published ledger's; the CLI sets it to the object's time in S3 on every download
 # (awscli 2.34.9, customizations/s3/subscribers.py), and with --exact-timestamps a local file of the same size whose
 # time is not S3's is downloaded again (syncstrategy/exacttimestamps.py), which the default leaves when it is older.
-aws s3 sync "s3://$BUCKET/tables/items/" data/tables/items/ --profile "$PROFILE" --region "$REGION"
+# The items tables get --exact-timestamps too: a report written again with a count of the same width (2,720 to 2,721)
+# keeps its size, so without it the Mac's older copy stays.
+aws s3 sync "s3://$BUCKET/tables/items/" data/tables/items/ --exact-timestamps --profile "$PROFILE" --region "$REGION"
 aws s3 sync "s3://$BUCKET/tables/covered/" data/tables/covered/ --profile "$PROFILE" --region "$REGION"
 aws s3 sync "s3://$BUCKET/tables/scored/" data/tables/scored/ --profile "$PROFILE" --region "$REGION"
 aws s3 sync "s3://$BUCKET/forecasts/" data/forecasts/ --exact-timestamps --profile "$PROFILE" --region "$REGION"
 aws s3 sync "s3://$BUCKET/scores/" data/scores/ --profile "$PROFILE" --region "$REGION"
+
+# What the dbt layer reads beyond the items tables (docs/dbt-layer.md, section 1): the named day's prices and
+# promotions tables, each chain's folder of the day whole, so a table and its report.json come down together. The
+# promotion texts beside each promotions table (texts.parquet) are left out: the layer reads none.
+# --exact-timestamps: the archive's copy wins unless the local file has its size and S3's exact time. The default skips
+# a local file of the same size unless it is newer than the object (aws s3 sync help), so a table a later run of the
+# day wrote again at the same size (the tables are overwritable: docs/operations.md, "Where things land") would stay
+# as the Mac had it.
+aws s3 sync "s3://$BUCKET/tables/prices/" data/tables/prices/ --exclude '*' --include "chain=*/date=$day/*" \
+  --exact-timestamps --profile "$PROFILE" --region "$REGION"
+aws s3 sync "s3://$BUCKET/tables/promotions/" data/tables/promotions/ --exclude '*' --include "chain=*/date=$day/*" \
+  --exclude "chain=*/date=$day/texts.parquet" --exact-timestamps --profile "$PROFILE" --region "$REGION"
 
 # The published day files, the site-day files and the ledger, so a build compares its numbers with what is on the
 # site (B12) and the Mac's build finds every record its checks read (shopper.build's NotSynced: the published ledger

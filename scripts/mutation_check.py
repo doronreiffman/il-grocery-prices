@@ -2500,7 +2500,7 @@ MUTATIONS = {
     "the uploads kept an hour (q22 publish)": (PUBLISH_SCRIPT, "--cache-control 'max-age=300'", "--cache-control 'max-age=3600'"),
     "publish.sh under another identity (q22 publish)": (PUBLISH_SCRIPT, 'if [ "$who" != "$EXPECTED" ]; then', "if false; then"),
     "the uploads to any bucket (q22 publish)": (PUBLISH_SCRIPT, '  "$BUCKET_PREFIX"?*) ;;\n', '  *) ;;\n'),
-    "the items tables not synced (q22 publish)": (SYNC_SCRIPT, 'aws s3 sync "s3://$BUCKET/tables/items/" data/tables/items/ --profile "$PROFILE" --region "$REGION"\n', ''),
+    "the items tables not synced (q22 publish)": (SYNC_SCRIPT, 'aws s3 sync "s3://$BUCKET/tables/items/" data/tables/items/ --exact-timestamps --profile "$PROFILE" --region "$REGION"\n', ''),
     "the covered registries not synced (q22 publish)": (SYNC_SCRIPT, 'aws s3 sync "s3://$BUCKET/tables/covered/" data/tables/covered/ --profile "$PROFILE" --region "$REGION"\n', ''),
     "the scoring summaries not synced (q22 publish)": (SYNC_SCRIPT, 'aws s3 sync "s3://$BUCKET/tables/scored/" data/tables/scored/ --profile "$PROFILE" --region "$REGION"\n', ''),
     "the forecasts files not synced (q22 publish)": (SYNC_SCRIPT, 'aws s3 sync "s3://$BUCKET/forecasts/" data/forecasts/ --exact-timestamps --profile "$PROFILE" --region "$REGION"\n', ''),
@@ -3423,6 +3423,15 @@ MUTATIONS = {
     "sync.sh: the archive bucket read before the identity check (q42 archive)": (SYNC_SCRIPT, _SYNC_IDENTITY + _SYNC_ARCHIVE_COMMENT + _SYNC_ARCHIVE, _SYNC_ARCHIVE_COMMENT + _SYNC_ARCHIVE + _SYNC_IDENTITY),
     "sync.sh: a failed read of the collector stack refused in the wrong words (q42 archive)": (SYNC_SCRIPT, "--output text) || {\n", "--output text) || true || {\n"),
     "sync.sh: any name taken for the archive bucket (q42 archive)": (SYNC_SCRIPT, '  "$ARCHIVE_PREFIX"?*) ;;\n', "  *) ;;\n"),
+    # q28: sync.sh brings the named day's prices and promotions tables but the promotion texts, and keeps S3's times on
+    # them and on the items tables (docs/dbt-layer.md, "The sync")
+    "the named day's prices tables not synced (q28 sync)": (SYNC_SCRIPT, 'aws s3 sync "s3://$BUCKET/tables/prices/" data/tables/prices/ --exclude \'*\' --include "chain=*/date=$day/*" \\\n  --exact-timestamps --profile "$PROFILE" --region "$REGION"\n', ''),
+    "the named day's promotions tables not synced (q28 sync)": (SYNC_SCRIPT, 'aws s3 sync "s3://$BUCKET/tables/promotions/" data/tables/promotions/ --exclude \'*\' --include "chain=*/date=$day/*" \\\n  --exclude "chain=*/date=$day/texts.parquet" --exact-timestamps --profile "$PROFILE" --region "$REGION"\n', ''),
+    "every day's prices tables synced (q28 sync)": (SYNC_SCRIPT, 'data/tables/prices/ --exclude \'*\' --include "chain=*/date=$day/*" \\\n', 'data/tables/prices/ \\\n'),
+    "the promotion texts synced (q28 sync)": (SYNC_SCRIPT, '  --exclude "chain=*/date=$day/texts.parquet" --exact-timestamps', '  --exact-timestamps'),
+    "the prices tables' times not kept (q28 sync)": (SYNC_SCRIPT, 'data/tables/prices/ --exclude \'*\' --include "chain=*/date=$day/*" \\\n  --exact-timestamps --profile', 'data/tables/prices/ --exclude \'*\' --include "chain=*/date=$day/*" \\\n  --profile'),
+    "the promotions tables' times not kept (q28 sync)": (SYNC_SCRIPT, 'texts.parquet" --exact-timestamps --profile', 'texts.parquet" --profile'),
+    "the items tables' times not kept (q28 sync)": (SYNC_SCRIPT, 'data/tables/items/ --exact-timestamps --profile', 'data/tables/items/ --profile'),
     # shopper: the word index and its Python lookup (q50, the product-names plan's Task 1)
     "a run inside a word not a token (q50 words)": (SHOP_WORDINDEX, '                if kept:\n                    found["".join(run)] = None\n', '                if False:\n                    found["".join(run)] = None\n'),
     "millilitres not filed (q50 words)": (SHOP_WORDINDEX, '    words = [f"{plain(amount)}g", f"{plain(amount)}ml"]\n', '    words = [f"{plain(amount)}g"]\n'),

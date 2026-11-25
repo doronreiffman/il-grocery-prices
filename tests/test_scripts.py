@@ -18,6 +18,7 @@ reader's real user, is never read or written here.
 """
 import os
 import re
+import shutil
 import subprocess
 import sys
 from datetime import date
@@ -26,11 +27,13 @@ from pathlib import Path
 
 import pytest
 
+from basket.extract import table_path
 from basket.site import CACHE_CONTROL, CONTENT_TYPES, day_key
 from shopper.build import LEDGER, MARKER
 from shopper.freeze import archive_key, scores_archive_key
 from shopper.history import covered_path
-from shopper.items import items_path
+from shopper.items import items_path, texts_path
+from shopper.promos import promotions_path
 from shopper.score import summary_path
 from shopper.siteday import site_day_path
 from test_shop_guard import LATER_PUBLISHED, NEXT_DAY, PAGES, a_bucket, a_site
@@ -91,15 +94,21 @@ _OWN = ("SITE_DIR", "PYTHON", "SITE_BUCKET", "IDENTITY", "DISTRIBUTION", "CHECK_
         "FAIL_READ", "FAIL_SYNC", "ARCHIVE_BUCKET", "GROCERY_AWS_ARN")
 
 
-def _run(tmp_path: Path, script: str | Path, *args: str,
-         **env: str | None) -> tuple[subprocess.CompletedProcess, list[list[str]]]:
-    """Run `scripts/<script>` (or the script at the path given) with the stand-ins on PATH and `env` added, a None
-    leaving that variable out; the run and each call's arguments."""
+def _stand_ins(tmp_path: Path) -> Path:
+    """The folder of the stand-in `aws` and `python`, made in `tmp_path`."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
     for name, text in (("aws", FAKE_AWS), ("python", FAKE_PYTHON)):
         (bin_dir / name).write_text(text)
         (bin_dir / name).chmod(0o755)
+    return bin_dir
+
+
+def _run(tmp_path: Path, script: str | Path, *args: str,
+         **env: str | None) -> tuple[subprocess.CompletedProcess, list[list[str]]]:
+    """Run `scripts/<script>` (or the script at the path given) with the stand-ins on PATH and `env` added, a None
+    leaving that variable out; the run and each call's arguments."""
+    bin_dir = _stand_ins(tmp_path)
     calls = tmp_path / "calls"
     calls.write_text("")
     base = {key: value for key, value in os.environ.items() if key not in _OWN}
@@ -117,6 +126,20 @@ def _sync(tmp_path: Path, day: str, **env: str) -> list[list[str]]:
     run, calls = _run(tmp_path, "sync.sh", day, **env)
     assert run.returncode == 0, run.stderr
     return calls
+
+
+def _sync_alone(tmp_path: Path, day: str, **env: str) -> list[list[str]]:
+    """Run a copy of sync.sh for `day` from an empty environment: HOME, PATH of the stand-ins' folder, /usr/bin and
+    /bin (where no `aws` is), and the stand-ins' own variables, with `env` added; each AWS call's arguments."""
+    assert shutil.which("aws", path="/usr/bin:/bin") is None
+    calls = tmp_path / "calls"
+    calls.write_text("")
+    env = {"HOME": os.environ["HOME"], "PATH": f"{_stand_ins(tmp_path)}:/usr/bin:/bin", "AWS_CALLS": str(calls),
+           "TMPDIR": str(tmp_path), "FAKE_BUCKET": str(tmp_path / "published"), "P_KEYS": "None\n",
+           "GROCERY_AWS_ARN": ARN} | env
+    run = subprocess.run(["sh", str(_copy(tmp_path, "sync.sh", None)), day], env=env, capture_output=True, text=True)
+    assert run.returncode == 0, run.stderr
+    return [call.strip("\n").split("\n") for call in calls.read_text().split("--\n") if call.strip()]
 
 
 def _syncs(calls: list[list[str]]) -> list[list[str]]:
@@ -207,6 +230,43 @@ def test_sync_sh_keeps_s3s_time_on_the_forecasts_files(tmp_path):
     assert [other for other in calls if any(arg.startswith("data/forecasts") for arg in other)] == [call]
 
 
+# What the dbt layer reads beyond the items tables (docs/dbt-layer.md, section 1): each chain's prices and promotions
+# tables of the named day, each with its report.
+_PRICES = table_path(Path("tables"), "osherad", DAY)
+_PROMOTIONS = promotions_path(Path("tables"), "osherad", DAY)
+THE_DAYS_TABLES = [str(_PRICES), str(_PRICES.with_name("report.json")), str(_PROMOTIONS),
+                   str(_PROMOTIONS.with_name("report.json"))]
+
+
+@pytest.mark.parametrize("key", THE_DAYS_TABLES)
+def test_sync_sh_brings_the_named_day_s_prices_and_promotions_tables(tmp_path, key):
+    """One copy brings each, the archive's copy winning unless the local file has its size and S3's exact time."""
+    [call] = _brought(_sync_alone(tmp_path, DAY.isoformat()), ARCHIVE, "data", key)
+    assert "--exact-timestamps" in call
+    assert call[-4:] == PROFILE
+
+
+def test_sync_sh_leaves_out_the_promotion_texts_and_other_days_tables(tmp_path):
+    """The texts beside the day's promotions table, and another day's prices and promotions tables, stay in the
+    archive. Each beside a file the same run brings, so the test cannot pass with no copy of the tables at all."""
+    calls = _sync_alone(tmp_path, DAY.isoformat())
+    before = date(2026, 11, 6)
+    for kept, left in ((_PROMOTIONS, texts_path(Path("tables"), "osherad", DAY)),
+                       (_PRICES, table_path(Path("tables"), "osherad", before)),
+                       (_PROMOTIONS, promotions_path(Path("tables"), "osherad", before))):
+        assert _brought(calls, ARCHIVE, "data", str(kept)), kept
+        assert not _brought(calls, ARCHIVE, "data", str(left)), left
+
+
+def test_sync_sh_keeps_s3s_time_on_the_items_tables(tmp_path):
+    """A report rewritten with a count of the same width keeps its size, and without --exact-timestamps the CLI leaves
+    a local file of the same size that is not newer than the object (`aws s3 sync help`)."""
+    calls = _sync_alone(tmp_path, DAY.isoformat())
+    for key in (_ITEMS, _ITEMS.with_name("report.json")):
+        [call] = _brought(calls, ARCHIVE, "data", str(key))
+        assert "--exact-timestamps" in call
+
+
 def test_sync_sh_never_writes_to_aws(tmp_path):
     stack = _sync(tmp_path / "stack", "2026-11-07", SITE_BUCKET=SITE_BUCKET)
     for calls in (stack, _sync(tmp_path / "no-stack", "2026-11-07")):
@@ -228,10 +288,10 @@ def test_sync_sh_reads_the_archive_bucket_from_the_collector_stack(tmp_path):
     """The archive bucket's name is the collector stack's output (template.yaml's `ArchiveBucketName`), read after the
     identity check, and every copy from the archive is from that bucket."""
     other = f"{ARCHIVE_PREFIX}ba9876543210"
-    calls = _sync(tmp_path, "2026-11-07", ARCHIVE_BUCKET=other)
+    calls = _sync_alone(tmp_path, "2026-11-07", ARCHIVE_BUCKET=other)
     assert calls[0][:2] == ["sts", "get-caller-identity"] and calls[1] == ARCHIVE_OUTPUT
     archive = [call for call in _syncs(calls) if call[3].startswith("data/")]
-    assert len(archive) == 7 and all(call[2].startswith(f"s3://{other}/") for call in archive)
+    assert len(archive) == 9 and all(call[2].startswith(f"s3://{other}/") for call in archive)
 
 
 @pytest.mark.parametrize(("env", "said"), [
