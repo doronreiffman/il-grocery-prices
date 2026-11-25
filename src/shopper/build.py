@@ -72,9 +72,9 @@ In order:
     `method.html`, `record.html` (the day frozen and in the ledger before it is drawn, so it never lists its own day
     as one with no file), `basket.html` (an item linked when its page is built), the browse pages, the search pieces,
     `search.js`, the site's shared files under `assets/` (`shopper.assets`: the stylesheet every page links, its fonts
-    and their licences) and the marker `.shopper-site`. The pages show the day as published: its "collected by" time
-    and code fingerprint are the published site-day file's, the product pages drawn again when the time differs from
-    this run's.
+    and their licences, and the front page's link preview picture) and the marker `.shopper-site`. The pages show
+    the day as published: its "collected by" time and code fingerprint are the published site-day file's, the
+    product pages drawn again when the time differs from this run's.
 11. The word index (`shopper.wordindex`; the product-names plan's Task 3), beside the search pieces: its files under
     `search/w/`, each written as `wordindex.files` makes it, never gathered first, so a build never holds the whole
     index, the manifest last. Of the covered products' published names; with `words_probe` (a hand-sent site run's

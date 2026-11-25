@@ -31,10 +31,10 @@ never the ledger) go up in a `put_files` call of their own, ended before anythin
 stops the upload there (RecordsNotUploaded), so the ledger, the site-day and day files and the pages, which name the
 records, never name a file the site lacks (the task review's finding 1: a rerun lists the day's forecasts file only when
 the ledger gains its line). Then the assets the bucket lacks, in a call of their own, ended before anything else starts;
-a failed asset put is raised as it is, nothing after it is put, and so no page goes up naming a stylesheet or a font the
-site lacks, a changed stylesheet's new name included. Then the word index's files under `search/w/` (`WORD_FOLDER`), all
-but its manifest, in a call of their own, ended before anything else starts; a failed one is raised and nothing after it
-is put (the product-names plan's Task 3). Then the rest, started in the order above, the data files before the pages;
+a failed asset put is raised as it is, nothing after it is put, and so no page goes up naming a stylesheet, a font or
+the picture the site lacks, a changed stylesheet's new name included. Then the word index's files under `search/w/`
+(`WORD_FOLDER`), all but its manifest, in a call of their own, ended before anything else starts; a failed one is
+raised and nothing after it is put (the product-names plan's Task 3). Then the rest, started in the order above, the data files before the pages;
 the pool ends them in no fixed order, so the pages are started after the data files, not held until those are up (the
 Task 23 review's point 4). Then the word index's manifest, `search/w/manifest.json` (`WORD_MANIFEST`), alone and last:
 it names the word files, whose keys are fixed, so a manifest that goes up only once they are up names none the site
@@ -53,7 +53,8 @@ and the shopper site's (`site-days/`), which go up together; `day_of` reads the 
 
 Nothing here ever deletes. `days/`, `site-days/` and the data files are append-only, as on the Mac; a page the build
 no longer writes stays on the site, since the hand upload deletes nothing either (the shopper plan's question H); and an
-old stylesheet or font stays under its own name, so a page cached for its five minutes still finds the one it names.
+old stylesheet, font or picture stays under its own name, so a page cached for its five minutes still finds the
+one it names.
 
 S3Site works through boto3's S3 and CloudFront clients; MemorySite keeps the same rules in a dict, for other
 modules' tests. Every rule above the bare operations lives in _Site, which both share.
