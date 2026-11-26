@@ -332,6 +332,11 @@ DBT_STORE_TYPE_DEALS = ("dbt/models/marts/store_type_deals.sql", ["tests/test_db
 # the dbt layer (q28), Task 6's targets: the promotions' reach
 DBT_PROMOTION_REACH = ("dbt/models/marts/promotion_reach.sql", ["tests/test_dbt_units.py"])
 # the dbt layer (q28), Task 7's targets: the golden build
+# The staging views that only rename, whose SQL no unit test runs (the unit tests of the models built on them give
+# their rows typed): the golden build on the real extraction's tables must catch a column read as another.
+DBT_STG_PRICES_FOR_GOLDEN = ("dbt/models/staging/stg_prices.sql", ["tests/test_dbt_golden.py"])
+DBT_STG_ITEMS_FOR_GOLDEN = ("dbt/models/staging/stg_items.sql", ["tests/test_dbt_golden.py"])
+DBT_STG_PROMOTIONS_FOR_GOLDEN = ("dbt/models/staging/stg_promotions.sql", ["tests/test_dbt_golden.py"])
 # the dbt layer (q28), Task 8's targets: data tests on the prices and promotions tables
 # the dbt layer (q28), Task 9's targets: data tests on the items table and its reports
 # the dbt layer (q28), Task 10's targets: data tests across tables and against the published files
@@ -3864,6 +3869,11 @@ MUTATIONS = {
     "a minimum spend counted only when every row has one (q28 reach)": (
         DBT_PROMOTION_REACH, "bool_or(promotion.min_spend is not null)", "bool_and(promotion.min_spend is not null)"),
     # the dbt layer (q28), Task 7's planted bugs: the golden build
+    "the prices' store read as their sub-chain (q28 golden)": (DBT_STG_PRICES_FOR_GOLDEN, "    store,\n", "    sub_chain as store,\n"),
+    "the items' store type read as their chain (q28 golden)": (
+        DBT_STG_ITEMS_FOR_GOLDEN, '    "column" as store_type,\n', "    chain as store_type,\n"),
+    "the promotions' start and end swapped (q28 golden)": (
+        DBT_STG_PROMOTIONS_FOR_GOLDEN, '    "start" as starts,\n    "end" as ends,\n', '    "end" as starts,\n    "start" as ends,\n'),
     # the dbt layer (q28), Task 8's planted bugs: data tests on the prices and promotions tables
     # the dbt layer (q28), Task 9's planted bugs: data tests on the items table and its reports
     # the dbt layer (q28), Task 10's planted bugs: data tests across tables and against the published files
