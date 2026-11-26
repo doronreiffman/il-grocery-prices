@@ -238,6 +238,17 @@ EXPECTED_BAD: dict[str, tuple[str, int]] = {
     "promotions_minimum_spend_above_zero": ("fail", 1),
     "promotions_store_prices_in_order": ("fail", 4),
     "promotions_counted_is_the_reports": ("fail", 2),
+    # the items tables and their reports
+    "items_one_row_per_day_store_type_and_product": ("fail", 1),
+    "items_store_type_is_one_of_the_nine_under_its_chain": ("fail", 2),
+    "items_listed_price_in_range_and_listed_somewhere": ("fail", 5),
+    "items_wide_is_half_the_stores_with_a_file": ("fail", 2),
+    "items_on_promotion_follows_its_promotions": ("fail", 4),
+    "items_promotions_start_before_they_end_run_today_and_appear_once": ("fail", 4),
+    "items_valid_deal_prices_are_above_an_agora_and_below_twice_the_listed": ("fail", 3),
+    "items_report_holes_follow_their_counts": ("fail", 4),
+    "items_every_chain_every_day": ("warn", 5),
+    "items_agree_with_their_reports": ("fail", 4),
 }
 # The GS1 test's four codes, synthetic, as basket.barcode.is_gs1 reads them; LONG's and SHORT's weighted sums, worked
 # as is_gs1 works a sum, end in 0.
@@ -261,6 +272,18 @@ VARIANT_FILE = "pricefull7290055700007-001-001-202604300800.GZ.0123456789ab"
 assert parse_file_name(published_name(VARIANT_FILE)) == FileName(
     raw=VARIANT_FILE.removesuffix(".0123456789ab"), kind="PriceFull", chain_id="7290055700007", store="001",
     day=day_of(LAST), sub_chain="001")
+# The items tables' bad rows' codes (`plant_bad_rows`), synthetic GS1 barcodes that no golden file lists, so no prices
+# or promotions row meets them; each named for what its row breaks or proves.
+LOW_ABOVE, HIGH_BELOW, ONE_AGORA, AT_NO_STORE, NO_LISTED, PROMOTED = (
+    "2000000000305", "2000000000312", "2000000000329", "2000000000336", "2000000000343", "2000000000350")
+ONE_OF_FOUR, ON_UNKNOWN, DEALS, ONE_OF_THREE, NOT_ON, NO_KIND = (
+    "2000000000367", "2000000000374", "2000000000381", "2000000000398", "2000000000404", "2000000000411")
+assert all(is_gs1(code) for code in (LOW_ABOVE, HIGH_BELOW, ONE_AGORA, AT_NO_STORE, NO_LISTED, PROMOTED, ONE_OF_FOUR,
+                                     ON_UNKNOWN, DEALS, ONE_OF_THREE, NOT_ON, NO_KIND))
+UNREAD = "carrefour: a promotion file that does not read"   # the 28 April copy's promotions error, synthetic
+# The fields of a struct of an items row's promotions list, in the table's order (src/shopper/items.py, _STRUCT).
+PROMOTION_FIELDS = ("promotion_id", "description", "start", "end", "kind", "buy", "price", "price_exact", "per", "low",
+                    "high", "valid", "why", "restrictions", "programmes", "min_spend", "stores", "wide")
 
 
 def _rewrite(path: Path, *statements: str) -> None:
@@ -293,10 +316,45 @@ def _at_city(promotion_id: str, template: Path, changes: dict[str, str] | None =
             f"and group_id = '1' and code = '{U1}'")
 
 
+def _item(code: str, template: str, changes: dict[str, str] | None = None) -> str:
+    """An insert of an items row of `code`: the G2 row of the store type `template` (listed 2.500 at every store, wide,
+    not on promotion, no promotion on it) under `code`. So it is right by every rule but its `changes`, each a column
+    (quoted where SQL needs it) and its new value as SQL."""
+    values = {"code": f"'{code}'", **(changes or {})}
+    replaced = ", ".join(f"{value} as {column}" for column, value in values.items())
+    return (f"insert into staged select * replace ({replaced}) from staged "
+            f"where \"column\" = '{template}' and code = '{G2}'")
+
+
+def _promotion(promotion_id: str, changes: dict[str, str] | None = None) -> str:
+    """A struct of an items row's promotions list as SQL, its fields in the table's order: a fixed price of 2.00 from 30
+    April to 6 May at both of a Carrefour store type's counted stores, wide and valid. So it is right by every rule but
+    its `changes`, each a field and its new value as SQL."""
+    values = {"promotion_id": f"'{promotion_id}'", "description": f"'מבצע לדוגמה {promotion_id}'",
+              "start": "date '2026-04-30'", "end": "date '2026-05-06'", "kind": "'fixed_price'", "buy": "1.000",
+              "price": "2.00", "price_exact": "'2'", "per": "'unit'", "low": "null", "high": "null", "valid": "true",
+              "why": "null", "restrictions": "[]", "programmes": "[]", "min_spend": "null", "stores": "2",
+              "wide": "true", **(changes or {})}
+    assert set(values) == set(PROMOTION_FIELDS)
+    return "{" + ", ".join(f"'{field}': {values[field]}" for field in PROMOTION_FIELDS) + "}"
+
+
+def _report(folder: Path, columns: dict[str, dict], **fields) -> None:
+    """Change the items report in `folder`: each store type's counts and flags in `columns`, and the report's own
+    `fields`, each one the report already has; written back as src/shopper/items.py writes it."""
+    path = folder / "report.json"
+    report = json.loads(path.read_text())
+    for column, changes in columns.items():
+        assert set(changes) <= set(report["columns"][column])
+        report["columns"][column] |= changes
+    assert set(fields) <= set(report)
+    path.write_text(json.dumps(report | fields, sort_keys=True, indent=1))
+
+
 def plant_bad_rows(tables: Path, site: Path) -> None:
-    """Plant the data tests' bad rows in a copy of the golden's tables (`tables`) and published files (`site`), all on
-    30 April. Each breaks one clause of one data test and keeps every other rule; none is in what another test reads,
-    unless said. The published files keep the golden's.
+    """Plant the data tests' bad rows in a copy of the golden's tables (`tables`) and published files (`site`), on 30
+    April unless said. Each breaks one clause of one data test and keeps every other rule; none is in what another test
+    reads, unless said. The published files keep the golden's.
 
     Shufersal's prices table, at Universe's stores (U1 to U10 are no basket product):
     - store 81's U1 row twice (the one row per chain, day, store and code);
@@ -320,7 +378,45 @@ def plant_bad_rows(tables: Path, site: Path) -> None:
     than priced (1), and 915 with 1 of 2, which is right. Counted: 911 at 3 counted stores where the report says 2, and
     919 under carrefour-online, a store type no report holds; neither promotion_reach nor the items table reads it.
     Shufersal's table gains Universe's promotion 60 on U1 under a second group, which is unique, so it fails only a
-    uniqueness without the group; promotion_reach counts a promotion once however many groups name it."""
+    uniqueness without the group; promotion_reach counts a promotion once however many groups name it.
+
+    The items tables and their reports, Carrefour's unless said. Every row added or changed moves its report's counts
+    with it, so the agreement of the tables with their reports fails on its own four store-type days alone. The new
+    codes (LOW_ABOVE and the others) are listed by no golden file, so no prices or promotions row meets them, and each
+    new row is a store type's G2 row under its code (`_item`), each new promotion `_promotion`'s, but what is said.
+    - Two copies of Carrefour's day, made before its bad rows, under 28 April and 1 May; Carrefour has no prices or
+      promotions table on either day. The 28 April copy's promotions were not read: its report gives a promotions error
+      (UNREAD) and both promotion holes, and its rows no promotions, on_promotion or next_start, as the extraction
+      writes such a day, but Market's G2 is not on promotion where it should be NULL (on promotion). Its promotion
+      files stay 2 of 2, so the holes stand on the error alone: right, so they fail only a hole rule that forgets the
+      error. With the two copies Carrefour lacks 29 April and the four other chains lack 1 May (every chain, every day:
+      five warnings, where a chain checked to its own last day gives one).
+    - 1 May: City's NOT_ON is not on promotion, with a wide fixed price running on it (5.00, twice its listed 2.500:
+      not valid) (on promotion); Market's NO_KIND has a wide promotion running with no kind and is not on promotion,
+      which is right, so it fails only a rule that drops the kind.
+    - Market: G2 twice (the uniqueness); G1 not wide at 2 of 2 (wide); G6 on promotion with no promotion on it (on
+      promotion); LOW_ABOVE's lowest price above its listed one, HIGH_BELOW's highest below it, ONE_AGORA listed at
+      0.010, AT_NO_STORE listed at no store (so not wide, which is right) and NO_LISTED with no listed price (the listed
+      price); PROMOTED's five promotions, none running, wide and valid: 951 ended on 29 April, 952 starting after it
+      ends, 953 twice, from 1 May, and 954 with no start (start, end and once). PROMOTED is not on promotion, which is
+      right, so it fails only an on-promotion rule that drops the start or the end, and its report counts no valid deal,
+      so it fails only an agreement that does. Market's report is a hole with every file (the holes).
+    - City: its report's included stores and stores with a file are 4, so G1, G2 and G6, at 2 of 4, are wide at
+      exactly half, which is right; ONE_OF_FOUR is wide at 1 of 4 (wide); ON_UNKNOWN has no on_promotion (on
+      promotion); both hold promotion 964, wide with no kind, once each, which is right, so it fails only a rule that
+      takes one promotion on two rows for one promotion twice on a row. DEALS has three valid deals, not wide: 961 at
+      0.01, 962 at 5.00, twice its listed 2.500, and 963 with no price (the valid deals). City's report has no
+      promotion file of its 2 counted stores and no promotion hole (the holes).
+    - Rows under store types the report lacks (the store type): G2 under carrefour-express, and U1 under shufersal-deal,
+      at 1 store, not wide, with no promotions and not on promotion, which a wide, on-promotion or agreement rule that
+      met reports without the chain would read against Shufersal Deal's.
+    - Shufersal: Universe's ONE_OF_THREE at 1 of its 3 stores and not wide, which is right, so it fails only a weakened
+      half. Express's report, of a store type with no store and no row: on 29 April 3 included, 1 with a file and a
+      hole, 3 counted, 1 with a promotion file and a promotion hole; on 28 April 2 and 1 and no hole, 2 and 1 and no
+      promotion hole: right, so they fail only a weakened half or a hole at exactly half. On 27 April 2 included, none
+      with a file and no hole; on 26 April 2 counted, both with a promotion file and a promotion hole (the holes).
+    - The agreement, each report one count off its table: Express's of 30 April 1 row where its table has none, Rami
+      Levy's 3 wide of its 4, Yochananof's 1 on promotion of none, and Sheli's 2 valid deals of 1."""
     day = f"date={day_of(LAST).isoformat()}"
     _rewrite(tables / "prices" / "chain=shufersal" / day / "prices.parquet",
              f"insert into staged select * from staged where store = '81' and code = '{U1}'",
@@ -358,6 +454,64 @@ def plant_bad_rows(tables: Path, site: Path) -> None:
              _at_city("919", universe, {'"column"': "'carrefour-online'"}))
     _rewrite(universe, "insert into staged select * replace ('2' as group_id) from staged "
                        f"where \"column\" = 'shufersal-universe' and promotion_id = '60' and code = '{U1}'")
+    items = tables / "items"
+    carrefour, shufersal = items / "chain=carrefour" / day, items / "chain=shufersal"
+    unread, after = (items / "chain=carrefour" / f"date={day_of(n).isoformat()}" for n in (LAST - 2, LAST + 1))
+    for copy in (unread, after):
+        shutil.copytree(carrefour, copy)
+    _rewrite(unread / "items.parquet", "update staged set on_promotion = null, next_start = null, promotions = null",
+             f"update staged set on_promotion = false where \"column\" = 'carrefour-market' and code = '{G2}'")
+    _report(unread, {"carrefour-city": {"promo_hole": True}, "carrefour-market": {"promo_hole": True}},
+            promotions_error=UNREAD, promotions=None)
+    too_dear = _promotion("971", {"price": "5.00", "price_exact": "'5'", "valid": "false",
+                                  "why": "'not below twice the listed price'"})
+    no_kind, on_two_rows = (_promotion(promotion_id, {"kind": "null", "price": "null", "price_exact": "null",
+                                                      "valid": "false", "why": "'no kind link'"})
+                            for promotion_id in ("972", "964"))
+    _rewrite(after / "items.parquet", _item(NOT_ON, "carrefour-city", {"promotions": f"[{too_dear}]"}),
+             _item(NO_KIND, "carrefour-market", {"promotions": f"[{no_kind}]"}))
+    _report(after, {"carrefour-city": {"items": 4, "wide": 4}, "carrefour-market": {"items": 4, "wide": 4}})
+    ended = _promotion("951", {"start": "date '2026-04-20'", "end": "date '2026-04-29'"})
+    backwards = _promotion("952", {"start": "date '2026-05-07'", "end": "date '2026-05-06'"})
+    later = _promotion("953", {"start": "date '2026-05-01'", "end": "date '2026-05-05'"})
+    no_start = _promotion("954", {"start": "null"})
+    at_one_agora, at_twice, no_price = (
+        _promotion(promotion_id, {"price": price, "price_exact": exact, "stores": "1", "wide": "false"})
+        for promotion_id, price, exact in (("961", "0.01", "'1/100'"), ("962", "5.00", "'5'"), ("963", "null", "null")))
+    _rewrite(carrefour / "items.parquet",
+             _item(G2, "carrefour-market", {'"column"': "'carrefour-express'"}),
+             _item(U1, "carrefour-market", {'"column"': "'shufersal-deal'", "listing": "1", "wide": "false",
+                                            "promotions": "null"}),
+             _item(LOW_ABOVE, "carrefour-market", {"low": "2.60", "high": "2.70"}),
+             _item(HIGH_BELOW, "carrefour-market", {"low": "2.40", "high": "2.45"}),
+             _item(ONE_AGORA, "carrefour-market", {"listed": "0.010", "low": "0.01", "high": "0.01"}),
+             _item(AT_NO_STORE, "carrefour-market", {"listing": "0", "wide": "false"}),
+             _item(NO_LISTED, "carrefour-market", {"listed": "null"}),
+             _item(PROMOTED, "carrefour-market",
+                   {"promotions": f"[{ended}, {backwards}, {later}, {later}, {no_start}]"}),
+             _item(ONE_OF_FOUR, "carrefour-city", {"listing": "1", "promotions": f"[{on_two_rows}]"}),
+             _item(ON_UNKNOWN, "carrefour-city", {"on_promotion": "null", "promotions": f"[{on_two_rows}]"}),
+             _item(DEALS, "carrefour-city", {"promotions": f"[{at_one_agora}, {at_twice}, {no_price}]"}),
+             f"update staged set wide = false where \"column\" = 'carrefour-market' and code = '{G1}'",
+             f"update staged set on_promotion = true where \"column\" = 'carrefour-market' and code = '{G6}'",
+             f"insert into staged select * from staged where \"column\" = 'carrefour-market' and code = '{G2}'")
+    _report(carrefour, {
+        "carrefour-market": {"hole": True, "items": 10, "wide": 8, "on_promotion": 1},
+        "carrefour-city": {"included": 4, "with_file": 4, "promo_files": 0, "items": 6, "wide": 6, "valid_deals": 3}})
+    _rewrite(shufersal / day / "items.parquet",
+             _item(ONE_OF_THREE, "shufersal-sheli", {'"column"': "'shufersal-universe'", "listing": "1",
+                                                     "wide": "false"}))
+    _report(shufersal / day, {"shufersal-universe": {"items": 11}, "shufersal-express": {"items": 1},
+                              "shufersal-sheli": {"valid_deals": 2}})
+    for n, express in ((LAST - 1, {"included": 3, "with_file": 1, "hole": True, "counted": 3, "promo_files": 1,
+                                   "promo_hole": True}),
+                       (LAST - 2, {"included": 2, "with_file": 1, "hole": False, "counted": 2, "promo_files": 1,
+                                   "promo_hole": False}),
+                       (LAST - 3, {"included": 2, "with_file": 0, "hole": False}),
+                       (LAST - 4, {"counted": 2, "promo_files": 2, "promo_hole": True})):
+        _report(shufersal / f"date={day_of(n).isoformat()}", {"shufersal-express": express})
+    _report(items / "chain=ramilevy" / day, {"ramilevy": {"wide": 3}})
+    _report(items / "chain=yochananof" / day, {"yochananof": {"on_promotion": 1}})
 
 
 @pytest.fixture(scope="module")

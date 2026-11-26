@@ -1,0 +1,55 @@
+# The items tables' singular data tests (docs/dbt-layer.md, section 3), one a file beside this one, each named by its
+# file. Their one generic test, one row per day, store type and product, is on the source (models/sources.yml).
+data_tests:
+  - name: items_store_type_is_one_of_the_nine_under_its_chain
+    description: >-
+      An items row's store type is one of the nine store types (docs/store-first.md, "The rules"), under its own
+      chain, as the var store_types gives each one's chain. Fails with one row for each items row whose store type the
+      var does not name or names under another chain.
+  - name: items_listed_price_in_range_and_listed_somewhere
+    description: >-
+      Rules P2, B4 and B5: an items row's listed price, the median of its stores' prices, lies between the lowest and
+      the highest of them and is above 0.01, and at least one store lists the product. Fails with one row for each
+      items row that breaks any of them or lacks one of the four figures.
+  - name: items_wide_is_half_the_stores_with_a_file
+    description: >-
+      Rule B6, by store type (P1): an items row is wide exactly when the stores listing the product are at least half
+      the store type's stores with a file, as the items report of the chain, store type and day gives them. Fails with
+      one row for each items row whose wide is not that. A row under a store type the report lacks is left to the
+      store-type test.
+  - name: items_on_promotion_follows_its_promotions
+    description: >-
+      Rule P3, as the extraction reads it: an items row is on promotion exactly when a promotion on it is wide, has a
+      kind and runs that day, whether its deal is valid or not; and its on_promotion is empty exactly when the chain's
+      promotions were not read, which the items report says by its promotions error. Fails with one row for each items
+      row that breaks either. A row under a store type the report lacks is left to the store-type test.
+  - name: items_promotions_start_before_they_end_run_today_and_appear_once
+    description: >-
+      Rule P3: each promotion on an items row starts on or before it ends and has not ended before the day, and the
+      row holds it once. One that starts after the day is kept, as the extraction keeps it. Fails with one row for each
+      row and promotion that breaks any of the three or has no start or end.
+  - name: items_valid_deal_prices_are_above_an_agora_and_below_twice_the_listed
+    description: >-
+      Rule P4: a valid deal's price, as the items table shows it, to the agora, is above 0.01 and below twice the
+      row's listed price. Fails with one row for each valid promotion on an items row that breaks either or has no
+      price.
+  - name: items_report_holes_follow_their_counts
+    description: >-
+      Rules B8 and S0, by store type: in the items report a store type's day is a hole exactly when it has no included
+      store or fewer than half of them have a file, and a promotion hole exactly when fewer than half its counted
+      stores have a promotion file or the chain's promotions were not read. Fails with one row for each store type and
+      day whose flags break either.
+  - name: items_every_chain_every_day
+    description: >-
+      Every chain has an items table on every day from its own first day to the last day any chain has. No rule states
+      it: a missing table is a day not extracted. A warning, not an error. Warns with one row for each chain and day
+      with no items row.
+    config:
+      severity: warn
+  - name: items_agree_with_their_reports
+    description: >-
+      The items report is its table's own count: for each store type and day the report holds, its rows, those wide,
+      those on promotion, and the promotions on them running that day whose deal is valid, wide or not, are the
+      table's. A row under a store type the report lacks is left out. Fails with one row for each store type and day
+      whose report and table differ. Why it failed on the Mac on 25 November 2026: docs/dbt-layer.md, section 3, "The
+      three that fail today".

@@ -368,6 +368,42 @@ _DBT_MIN_SPEND_DESCRIBED = (
     '      A minimum spend, when a row states one, is above zero: it is the largest minimum purchase above zero over the\n'
     "      promotion's groups. Fails with one row for each promotions row whose minimum spend is zero or below.\n")
 # the dbt layer (q28), Task 9's targets: data tests on the items table and its reports
+# The data tests and their descriptions' file, which holds the continuity test's severity: the bad-rows build must
+# catch a rule weakened in any of them by a count that moves. The items' uniqueness is DBT_SOURCES_FOR_GOLDEN's.
+_DBT_ITEMS = "dbt/tests/items/"
+DBT_ITEMS_STORE_TYPE = (_DBT_ITEMS + "items_store_type_is_one_of_the_nine_under_its_chain.sql",
+                        ["tests/test_dbt_golden.py"])
+DBT_ITEMS_LISTED = (_DBT_ITEMS + "items_listed_price_in_range_and_listed_somewhere.sql", ["tests/test_dbt_golden.py"])
+DBT_ITEMS_WIDE = (_DBT_ITEMS + "items_wide_is_half_the_stores_with_a_file.sql", ["tests/test_dbt_golden.py"])
+DBT_ITEMS_ON_PROMOTION = (_DBT_ITEMS + "items_on_promotion_follows_its_promotions.sql", ["tests/test_dbt_golden.py"])
+DBT_ITEMS_PROMOTIONS = (_DBT_ITEMS + "items_promotions_start_before_they_end_run_today_and_appear_once.sql",
+                        ["tests/test_dbt_golden.py"])
+DBT_ITEMS_VALID_DEALS = (_DBT_ITEMS + "items_valid_deal_prices_are_above_an_agora_and_below_twice_the_listed.sql",
+                         ["tests/test_dbt_golden.py"])
+DBT_ITEMS_HOLES = (_DBT_ITEMS + "items_report_holes_follow_their_counts.sql", ["tests/test_dbt_golden.py"])
+DBT_ITEMS_EVERY_DAY = (_DBT_ITEMS + "items_every_chain_every_day.sql", ["tests/test_dbt_golden.py"])
+DBT_ITEMS_AGREE = (_DBT_ITEMS + "items_agree_with_their_reports.sql", ["tests/test_dbt_golden.py"])
+DBT_ITEMS_DESCRIPTIONS = (_DBT_ITEMS + "_items.yml", ["tests/test_dbt_golden.py"])
+# The once-a-row test's select and grouping; a break that groups a store type's day without the barcode reads the
+# barcode through max(), as DuckDB refuses a selected column in no group by.
+_DBT_ITEMS_ONCE_A_ROW = ("select chain, store_type, day, barcode, promotion.promotion_id as promotion_id, "
+                         "count(*) as copies\n"
+                         "from entries\n"
+                         "group by chain, store_type, day, barcode, promotion.promotion_id\n")
+_DBT_ITEMS_ONCE_A_STORE_TYPE = (
+    _DBT_ITEMS_ONCE_A_ROW.replace("select chain, store_type, day, barcode,", "select chain, store_type, day, "
+                                  "max(barcode) as barcode,")
+    .replace("group by chain, store_type, day, barcode,", "group by chain, store_type, day,"))
+# The same without the day, its max() named apart (the having clause reads each row's own day inside bool_or), and
+# without the store type.
+_DBT_ITEMS_ONCE_A_PRODUCT = (
+    _DBT_ITEMS_ONCE_A_ROW.replace("select chain, store_type, day, barcode,", "select chain, store_type, "
+                                  "max(day) as last_day, barcode,")
+    .replace("group by chain, store_type, day, barcode,", "group by chain, store_type, barcode,"))
+_DBT_ITEMS_ONCE_A_CHAIN_DAY = (
+    _DBT_ITEMS_ONCE_A_ROW.replace("select chain, store_type, day, barcode,", "select chain, "
+                                  "max(store_type) as store_types, day, barcode,")
+    .replace("group by chain, store_type, day, barcode,", "group by chain, day, barcode,"))
 # the dbt layer (q28), Task 10's targets: data tests across tables and against the published files
 # the dbt layer (q28), Task 11's targets: the lineage map
 DBT_LINEAGE = ("scripts/dbt_lineage.py", ["tests/test_dbt_lineage.py"])
@@ -3969,6 +4005,138 @@ MUTATIONS = {
     "a data test's description missing allowed (q28 checks promotions)": (
         DBT_PROMOTIONS_DESCRIPTIONS, _DBT_MIN_SPEND_DESCRIBED, "  - name: promotions_minimum_spend_above_zero\n"),
     # the dbt layer (q28), Task 9's planted bugs: data tests on the items table and its reports
+    "a store type outside the nine allowed (q28 checks items)": (
+        DBT_ITEMS_STORE_TYPE, "            {%- endfor %}\n        end\n",
+        "            {%- endfor %}\n            else chain\n        end\n"),
+    "a store type under another chain allowed (q28 checks items)": (
+        DBT_ITEMS_STORE_TYPE, "then '{{ store_type_chain }}'", "then chain"),
+    "a low above the listed allowed (q28 checks items)": (DBT_ITEMS_LISTED, "coalesce(low <= listed and ", "coalesce("),
+    "a listed price of one agora allowed (q28 checks items)": (DBT_ITEMS_LISTED, "listed > 0.01", "listed >= 0.01"),
+    "a product no store lists allowed (q28 checks items)": (DBT_ITEMS_LISTED, "listing >= 1", "listing >= 0"),
+    "wide at a third of the stores (q28 checks items)": (
+        DBT_ITEMS_WIDE, "item.listing * 2 >= report.with_file", "item.listing * 3 >= report.with_file"),
+    "on promotion from a promotion at some stores (q28 checks items)": (
+        DBT_ITEMS_ON_PROMOTION, "if p.wide and p.kind is not null", "if p.kind is not null"),
+    "on promotion with its promotions unread (q28 checks items)": (
+        DBT_ITEMS_ON_PROMOTION, "then item.on_promotion is not null", "then false"),
+    "a promotion starting after it ends allowed (q28 checks items)": (
+        DBT_ITEMS_PROMOTIONS, 'promotion."start" <= promotion."end" and', 'promotion."start" <= promotion."end" + 1 and'),
+    "an ended promotion allowed on a row (q28 checks items)": (
+        DBT_ITEMS_PROMOTIONS, 'promotion."end" >= day', 'promotion."end" >= day - 1'),
+    "a promotion twice on a row allowed (q28 checks items)": (
+        DBT_ITEMS_PROMOTIONS, "having count(*) > 1", "having count(*) > 2"),
+    "a valid deal at one agora allowed (q28 checks items)": (
+        DBT_ITEMS_VALID_DEALS, "promotion.price > 0.01", "promotion.price >= 0.01"),
+    "a valid deal at twice the listed allowed (q28 checks items)": (
+        DBT_ITEMS_VALID_DEALS, "promotion.price < 2 * listed", "promotion.price <= 2 * listed"),
+    "a hole with every file allowed (q28 checks items)": (
+        DBT_ITEMS_HOLES, "where hole is distinct from (included", "where not hole and (included"),
+    "a promotion hole from its counts missed (q28 checks items)": (
+        DBT_ITEMS_HOLES, "or promo_hole is distinct from (", "or promo_hole and not ("),
+    "a promotions error not a promotion hole (q28 checks items)": (
+        DBT_ITEMS_HOLES, " or promotions_error is not null)", ")"),
+    "a missing day of a chain allowed (q28 checks items)": (
+        DBT_ITEMS_EVERY_DAY, "on days.chain = expected.chain\n    and days.day", "on days.day"),
+    "the report's rows not compared (q28 checks items)": (
+        DBT_ITEMS_AGREE, "where items is distinct from table_items\n    or wide", "where wide"),
+    "the report's wide not compared (q28 checks items)": (
+        DBT_ITEMS_AGREE, "    or wide is distinct from table_wide\n", ""),
+    "the report's on promotion not compared (q28 checks items)": (
+        DBT_ITEMS_AGREE, "    or on_promotion is distinct from table_on_promotion\n", ""),
+    "the report's valid deals not compared (q28 checks items)": (
+        DBT_ITEMS_AGREE, "\n    or valid_deals is distinct from table_valid_deals", ""),
+    # Beyond the brief's 21: a bad row for every clause its counts left without one, or a row that must pass where a
+    # clause lets right rows through, and each such clause's planted bug.
+    "the items' uniqueness without the store type (q28 checks items)": (
+        DBT_SOURCES_FOR_GOLDEN, "columns: ['\"date\"', '\"column\"', code]", "columns: ['\"date\"', code]"),
+    "the items' uniqueness without the day (q28 checks items)": (
+        DBT_SOURCES_FOR_GOLDEN, "columns: ['\"date\"', '\"column\"', code]", "columns: ['\"column\"', code]"),
+    "the items' uniqueness without the code (q28 checks items)": (
+        DBT_SOURCES_FOR_GOLDEN, "columns: ['\"date\"', '\"column\"', code]", "columns: ['\"date\"', '\"column\"']"),
+    "a high below the listed allowed (q28 checks items)": (DBT_ITEMS_LISTED, " and listed <= high", ""),
+    "a row with no listed price allowed (q28 checks items)": (
+        DBT_ITEMS_LISTED, "listing >= 1, false)", "listing >= 1, true)"),
+    "a row at exactly half its stores not wide (q28 checks items)": (
+        DBT_ITEMS_WIDE, "item.listing * 2 >= report.with_file", "item.listing * 2 > report.with_file"),
+    "a row wide below half its stores allowed (q28 checks items)": (
+        DBT_ITEMS_WIDE, "where item.wide is distinct from (", "where not item.wide and ("),
+    "a row not wide at half its stores allowed (q28 checks items)": (
+        DBT_ITEMS_WIDE, "where item.wide is distinct from (", "where item.wide and not ("),
+    "the wide test's join without its day (q28 checks items)": (DBT_ITEMS_WIDE, "    and report.day = item.day\n", ""),
+    "the wide test's join without its store type (q28 checks items)": (
+        DBT_ITEMS_WIDE, "    and report.store_type = item.store_type\n", ""),
+    "the wide test's join without its chain (q28 checks items)": (
+        DBT_ITEMS_WIDE, "on report.chain = item.chain\n    and report.store_type", "on report.store_type"),
+    "on promotion from a promotion with no kind (q28 checks items)": (
+        DBT_ITEMS_ON_PROMOTION, "p.wide and p.kind is not null and ", "p.wide and "),
+    "on promotion from a promotion yet to start (q28 checks items)": (
+        DBT_ITEMS_ON_PROMOTION, 'p."start" <= item.day and ', ""),
+    "on promotion from a promotion that has ended (q28 checks items)": (
+        DBT_ITEMS_ON_PROMOTION, ' and item.day <= p."end"', ""),
+    "a row on promotion with none running allowed (q28 checks items)": (
+        DBT_ITEMS_ON_PROMOTION, "else item.on_promotion is distinct from (", "else not item.on_promotion and ("),
+    "a row not on promotion with one running allowed (q28 checks items)": (
+        DBT_ITEMS_ON_PROMOTION, "else item.on_promotion is distinct from (", "else item.on_promotion and not ("),
+    "a row with no on_promotion allowed (q28 checks items)": (
+        DBT_ITEMS_ON_PROMOTION, "else item.on_promotion is distinct from (", "else item.on_promotion <> ("),
+    "the on-promotion test's join without its day (q28 checks items)": (
+        DBT_ITEMS_ON_PROMOTION, "    and report.day = item.day\n", ""),
+    "the on-promotion test's join without its store type (q28 checks items)": (
+        DBT_ITEMS_ON_PROMOTION, "    and report.store_type = item.store_type\n", ""),
+    "the on-promotion test's join without its chain (q28 checks items)": (
+        DBT_ITEMS_ON_PROMOTION, "on report.chain = item.chain\n    and report.store_type", "on report.store_type"),
+    "a promotion with no start allowed on a row (q28 checks items)": (
+        DBT_ITEMS_PROMOTIONS, 'promotion."end" >= day, false)', 'promotion."end" >= day, true)'),
+    "one promotion on two rows taken for twice on one (q28 checks items)": (
+        DBT_ITEMS_PROMOTIONS, _DBT_ITEMS_ONCE_A_ROW, _DBT_ITEMS_ONCE_A_STORE_TYPE),
+    "one promotion on two days taken for twice on one (q28 checks items)": (
+        DBT_ITEMS_PROMOTIONS, _DBT_ITEMS_ONCE_A_ROW, _DBT_ITEMS_ONCE_A_PRODUCT),
+    "one promotion at two store types taken for twice on one (q28 checks items)": (
+        DBT_ITEMS_PROMOTIONS, _DBT_ITEMS_ONCE_A_ROW, _DBT_ITEMS_ONCE_A_CHAIN_DAY),
+    "a deal not valid held to the range (q28 checks items)": (
+        DBT_ITEMS_VALID_DEALS, "where promotion.valid\n    and not", "where not"),
+    "a valid deal with no price allowed (q28 checks items)": (
+        DBT_ITEMS_VALID_DEALS, "2 * listed, false)", "2 * listed, true)"),
+    "a hole not flagged allowed (q28 checks items)": (
+        DBT_ITEMS_HOLES, "where hole is distinct from (included", "where hole and not (included"),
+    "a promotion hole with every promotion file allowed (q28 checks items)": (
+        DBT_ITEMS_HOLES, "or promo_hole is distinct from (", "or not promo_hole and ("),
+    "a store type with no included store not a hole (q28 checks items)": (
+        DBT_ITEMS_HOLES, "from (included = 0 or ", "from ("),
+    "a hole at a third of the files (q28 checks items)": (
+        DBT_ITEMS_HOLES, "from (included = 0 or with_file * 2 < included)",
+        "from (included = 0 or with_file * 3 < included)"),
+    "a store type with half its files a hole (q28 checks items)": (
+        DBT_ITEMS_HOLES, "from (included = 0 or with_file * 2 < included)",
+        "from (included = 0 or with_file * 2 <= included)"),
+    "a promotion hole at a third of the promotion files (q28 checks items)": (
+        DBT_ITEMS_HOLES, "from (promo_files * 2 < counted", "from (promo_files * 3 < counted"),
+    "a store type with half its promotion files a promotion hole (q28 checks items)": (
+        DBT_ITEMS_HOLES, "from (promo_files * 2 < counted", "from (promo_files * 2 <= counted"),
+    "each chain checked to its own last day (q28 checks items)": (
+        DBT_ITEMS_EVERY_DAY, "(select max(day) from days) as last_day", "max(day) as last_day"),
+    "each chain checked from the first day any chain has (q28 checks items)": (
+        DBT_ITEMS_EVERY_DAY, "min(day) as first_day", "(select min(day) from days) as first_day"),
+    "a chain's every day taken as there (q28 checks items)": (
+        DBT_ITEMS_EVERY_DAY, "\n    and days.day = expected.day\n", "\n"),
+    "a missing day an error, not a warning (q28 checks items)": (
+        DBT_ITEMS_DESCRIPTIONS, "      severity: warn\n", "      severity: error\n"),
+    "a deal not valid counted among the valid deals (q28 checks items)": (
+        DBT_ITEMS_AGREE, 'if p.valid and p."start"', 'if p."start"'),
+    "a valid deal yet to start counted (q28 checks items)": (
+        DBT_ITEMS_AGREE, 'p.valid and p."start" <= item.day and ', "p.valid and "),
+    "a valid deal that has ended counted (q28 checks items)": (
+        DBT_ITEMS_AGREE, ' and item.day <= p."end"])', "])"),
+    "a report's store type and day with no rows left out (q28 checks items)": (
+        DBT_ITEMS_AGREE, "    left join {{ ref('stg_items') }}", "    join {{ ref('stg_items') }}"),
+    "the valid deals of a store type's day with none unknown (q28 checks items)": (
+        DBT_ITEMS_AGREE, ", 0) as table_valid_deals", ", null) as table_valid_deals"),
+    "the agreement's join without its day (q28 checks items)": (
+        DBT_ITEMS_AGREE, "        and item.day = report.day\n", ""),
+    "the agreement's join without its store type (q28 checks items)": (
+        DBT_ITEMS_AGREE, "        and item.store_type = report.store_type\n", ""),
+    "the agreement's join without its chain (q28 checks items)": (
+        DBT_ITEMS_AGREE, "on item.chain = report.chain\n        and item.store_type", "on item.store_type"),
     # the dbt layer (q28), Task 10's planted bugs: data tests across tables and against the published files
     # the dbt layer (q28), Task 11's planted bugs: the lineage map
     "a source drawn as a model (q28 lineage)": (

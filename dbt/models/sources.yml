@@ -26,6 +26,14 @@ sources:
         config:
           meta: {label: items}
           external_location: "read_parquet('{{ var(\"tables\") }}/items/*/*/items.parquet', hive_partitioning = true)"
+        data_tests:
+          - unique_together:
+              name: items_one_row_per_day_store_type_and_product
+              description: >-
+                One items row per day, store type and product (docs/operations.md, "Where things land": a row per
+                column and product). Fails with one row for each key that repeats.
+              arguments:
+                columns: ['"date"', '"column"', code]
       - name: promotions
         description: The promotions tables, promotions/chain=<chain>/date=<day>/promotions.parquet.
         config:
