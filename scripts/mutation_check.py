@@ -336,6 +336,9 @@ DBT_PROMOTION_REACH = ("dbt/models/marts/promotion_reach.sql", ["tests/test_dbt_
 # the dbt layer (q28), Task 9's targets: data tests on the items table and its reports
 # the dbt layer (q28), Task 10's targets: data tests across tables and against the published files
 # the dbt layer (q28), Task 11's targets: the lineage map
+DBT_LINEAGE = ("scripts/dbt_lineage.py", ["tests/test_dbt_lineage.py"])
+# The runbook's install of .venv-dbt, which the project's test holds to CI's.
+OPERATIONS_FOR_DBT = ("docs/operations.md", ["tests/test_dbt_project.py"])
 # scripts/local.env, which holds the reader's own AWS user, ignored by git (q42).
 GITIGNORE = (".gitignore", ["tests/test_scripts.py"])
 # The site run's timing script (Task 25a), its --make guard.
@@ -3861,6 +3864,16 @@ MUTATIONS = {
     # the dbt layer (q28), Task 9's planted bugs: data tests on the items table and its reports
     # the dbt layer (q28), Task 10's planted bugs: data tests across tables and against the published files
     # the dbt layer (q28), Task 11's planted bugs: the lineage map
+    "a source drawn as a model (q28 lineage)": (
+        DBT_LINEAGE, "f\"  {source['name']}[({source['meta']['label']})]\"", "f\"  {source['name']}\""),
+    "a data test drawn (q28 lineage)": (
+        DBT_LINEAGE, 'if node["resource_type"] == "model"}', 'if node["resource_type"] in ("model", "test")}'),
+    "the edges unsorted (q28 lineage)": (
+        DBT_LINEAGE, 'for parent, child in sorted(edges)]', 'for parent, child in edges]'),
+    "a stale README passing the check (q28 lineage)": (
+        DBT_LINEAGE, '    if readme_block(Path(args.check).read_text(encoding="utf-8")) != block:\n', '    if False:\n'),
+    "the runbook's dbt install with build isolation (q28 lineage)": (
+        OPERATIONS_FOR_DBT, ' --no-deps --no-build-isolation -r requirements-dbt.txt', ' --no-deps -r requirements-dbt.txt'),
 }
 
 

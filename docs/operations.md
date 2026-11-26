@@ -285,12 +285,13 @@ From the repo root:
 ```bash
 python3.13 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
+python3.13 -m venv .venv-dbt && .venv-dbt/bin/pip install --no-deps packaging==26.3 && .venv-dbt/bin/pip install --no-deps --no-build-isolation -r requirements-dbt.txt && .venv-dbt/bin/pip check
 pytest --cov=collector --cov=src/basket --cov=src/shopper --cov-fail-under=95
 cfn-lint --regions il-central-1 -- template.yaml site-template.yaml
 python scripts/mutation_check.py
 ```
 
-The tests of `search.js` run it under Node, so `node` must be on the path (CI pins 22.11.0). The mutation check breaks each rule in turn and expects a test to fail. It edits source files in place while it runs, so run nothing else from the checkout meanwhile. CI runs the tests and cfn-lint on every push (`.github/workflows/ci.yml`); among the tests, `tests/test_mutation_targets.py` checks that every mutation's text is found exactly once in its file and that every test it names exists. The last full mutation check took 1 h 51 min on a Mac (2,338 mutations, 2026-11-09), so it is scheduled weekly on main for Saturday 03:00 UTC, after the tests, and runs on demand from the Actions tab (`.github/workflows/mutations.yml`). `tests/test_template.py` pins the deploy settings safety depends on (the bucket's lock and privacy, the role's permissions, the schedules, the parameters) and checks this file's commands against them, `tests/test_basket_template.py` the basket function's: cfn-lint lets a misspelled schedule property through.
+The tests of `search.js` run it under Node, so `node` must be on the path (CI pins 22.11.0). In the same way, the dbt layer's tests run dbt from `.venv-dbt`, an environment of its own, which the third line makes and fills: dbt-core 1.12.6 and dbt-duckdb 1.11.0 with every package they need, each pinned exactly in `requirements-dbt.txt`, none of it in `.venv` ([dbt-layer.md](dbt-layer.md), section 6). Without it those tests fail, saying how to make it. Each fresh install fetches one file from outside PyPI: `dbt-core-experimental-parser` 2.0.8, which dbt-core 1.12.6 requires, is a source package whose build downloads a compiled wheel from dbt's GitHub release v2.0.8 and refuses it unless its SHA-256 matches the one the package carries. That build needs `packaging`, so `packaging` goes in first, pinned, and the build is not isolated: an isolated build would fetch `packaging` unpinned. `pip show dbt-core` gives the version; dbt's own version flag asks PyPI, so it is never run. The mutation check breaks each rule in turn and expects a test to fail. It edits source files in place while it runs, so run nothing else from the checkout meanwhile. CI runs the tests and cfn-lint on every push (`.github/workflows/ci.yml`); among the tests, `tests/test_mutation_targets.py` checks that every mutation's text is found exactly once in its file and that every test it names exists. The last full mutation check took 1 h 51 min on a Mac (2,338 mutations, 2026-11-09), so it is scheduled weekly on main for Saturday 03:00 UTC, after the tests, and runs on demand from the Actions tab (`.github/workflows/mutations.yml`). `tests/test_template.py` pins the deploy settings safety depends on (the bucket's lock and privacy, the role's permissions, the schedules, the parameters) and checks this file's commands against them, `tests/test_basket_template.py` the basket function's: cfn-lint lets a misspelled schedule property through.
 
 ## Cost
 
@@ -714,3 +715,56 @@ The second check emails when the site run pings `/fail`, or when no ping arrives
 - `SiteCheckFailed`: the built site failed the site check (`shopper.check`) or the publish guard (`shopper.guard`); the error lists the problems, one a line. Nothing went up. Fix the cause before the day is built again.
 
 A manual site run for a day earlier than the site's latest writes that day's files (when the site has none for it) and its record, and leaves the pages to the site's latest day; so a day the morning missed can also be run by hand in Lambda, its five extractions first.
+
+## The dbt layer, on the Mac
+
+The dbt layer ([dbt-layer.md](dbt-layer.md)) reads the prices, items and promotions tables the morning writes and the files the site published, as the sync brings them to the Mac, and builds its models into a DuckDB file there. It never runs in AWS and changes nothing the site shows.
+
+**Once:** make `.venv-dbt` with the third line of the commands in [Develop](#develop).
+
+**Each time:** sync the days to read, then run dbt from inside `dbt/`:
+
+```bash
+sh scripts/sync.sh YYYY-MM-DD                  # read-only on AWS: "The shopper site, by hand", step 1
+cd dbt
+../.venv-dbt/bin/dbt run                       # every model
+../.venv-dbt/bin/dbt test                      # every data test and unit test
+../.venv-dbt/bin/dbt test --exclude tag:slow   # or every test but the slow one
+../.venv-dbt/bin/dbt docs generate --static    # dbt's own page, read on the Mac only
+```
+
+The sync is the hand build's, step 1 of "The shopper site, by hand" (above): every day's items tables and their reports, the named day's prices and promotions tables, and the published files. So the items models read every day the archive holds, and the prices and promotions models the days synced one by one. With no published files on the Mac nothing builds: the two published sources find no file and stop. The slow test is the one row per chain, day, store and code over every day's prices.
+
+`run`, then `test`, and never one `dbt build`: in one `dbt build`, a data test that fails as an error skips the models downstream of what it reads, and their tests with them, so one failure would hide others. And `items_agree_with_their_reports` fails on the Mac until a sync with the items line's `--exact-timestamps` has brought the archive's reports again ([dbt-layer.md](dbt-layer.md), section 3, the first of the three that failed).
+
+After a change to the models, the README's lineage map is made again from dbt's manifest: `../.venv-dbt/bin/dbt parse` here, then, from the repository's root, `.venv/bin/python scripts/dbt_lineage.py dbt/target/manifest.json` prints the block that goes between the README's two markers. `tests/test_dbt_lineage.py` fails until it is there.
+
+### Where it writes
+
+- `data/dbt.duckdb`: the models, built (`GROCERY_DBT_DB` names another file). It is under `data/`, which git ignores, beside the tables it is built from.
+- `dbt/target/`: what each command writes: the compiled SQL, `manifest.json`, `run_results.json` (each model's and test's status, and each test's failures; the last command's only) and `static_index.html`, dbt's page. `dbt/logs/`: dbt's log. Git ignores both.
+- `dbt/profiles.yml`, committed: one local DuckDB file, one thread and no secret. dbt reads it from the folder it runs in, and with its telemetry off (`dbt/dbt_project.yml`) it writes nothing to the home folder.
+
+### What a test's result means
+
+A data test is a query that must return no rows. `dbt test` prints each one's result: `PASS`; `FAIL` and the number of rows it returned, for a test that is an error, which makes the command exit 1; or `WARN` and the number, for a test set as a warning, which leaves the exit at 0. The closing line counts a `FAIL` under `ERROR`. A data test that fails on the real rows is never dropped, weakened or left failing without a reason: its cause is found and fixed where it lies (a sync, a model, the extraction), or, when it is a published day that today's tables no longer give, that day becomes a known difference, with its reason.
+
+**The known differences.** A table is derived and may be rebuilt, while a published day changes only by the revision rule ([headline-basket.md](headline-basket.md), B12), so a published day can differ from what today's tables give. Each such day is listed with its reason under `known_differences` in `dbt/dbt_project.yml`: Rami Levy's store page of 21 and 22 November 2026 and Yochananof's of 22 November (published before the 22 November fix to weighed "N for ₪M" prices, after which those chains' items tables of 1 to 22 November were written again), and Shufersal's basket of 9 November 2026 (published from 171 Shufersal stores' files, the slow morning's; that day's prices table was rebuilt later from 416). The comparisons with the published files skip a listed day, and a test fails when a listed day stops differing, so the list can neither hide a new difference nor go stale. A day joins or leaves the list only on the owner's word.
+
+**Store 678, a standing warning.** The comparison of `basket_prices` with the published basket is an error at Rami Levy, Osher Ad, Carrefour and Yochananof, and a warning at Shufersal. Shufersal's store list puts store 678 in sub-chain 5 (Be), which the basket leaves out (B2), while the store's files are named under sub-chain 2; the prices table carries only the file name's sub-chain, so the SQL counts one store more than the extraction, which reads the store list. On 25 November 2026 that was 32 of Shufersal's 352 published figures over 11 days. The warning stands while no table carries the store list: bringing it in would change the extraction.
+
+### How long
+
+Measured on an 8 GB Apple M2 on 25 November 2026 with the design's prototype (11 models, 12 data tests and a unit test, not the layer as built), over the 12 days of prices then on the Mac ([dbt-layer.md](dbt-layer.md), section 8). The built layer's own figures replace these ([dbt-layer-plan.md](dbt-layer-plan.md), Task 13).
+
+| Step | Measured |
+|---|---|
+| The prototype's build, without the slow test | 64.5 s by dbt's own count (67.8 s for the command) |
+| Of it: the listed-price check across tables | 41.6 s (6.2 s as a direct query) |
+| Of it: `basket_prices` | 12.1 s (0.5 s as a direct query) |
+| Of it: `int_day_prices`, 2,991,201 rows, and `product_deals`, 653,699 rows | 3.3 s and 4.5 s |
+| The slow test, uniqueness over 58,254,923 price rows | 79.7 s |
+| dbt's own start and parse | 4 to 5 s a command |
+| `dbt docs generate --static` | 4.2 s |
+
+The layer has about 30 data tests against the prototype's 12, and the others each ran in under 6 s as queries. So, an estimate: about 3 minutes for everything, about 1.5 minutes without the slow test. The slow test grows by about 7 to 9 s for each day of prices kept; `product_deals` reads up to 90 days back for every day, so its time grows faster than the days.

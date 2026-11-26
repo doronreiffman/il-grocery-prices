@@ -6,7 +6,7 @@ A shopper sees a promotion in an Israeli supermarket and wants to know: is it ac
 
 **Live site:** [d153udx05irk2f.cloudfront.net](https://d153udx05irk2f.cloudfront.net) · **Design notes:** [docs/](docs/README.md) · **Code:** [the collector](src/collector/), [the site](src/shopper/), [the basket](src/basket/), [the tests](tests/), the AWS templates ([functions and archive](template.yaml), [site](site-template.yaml)) · **Run it yourself:** [docs/operations.md](docs/operations.md)
 
-**Stack:** Python 3.13 · AWS SAM (Lambda, EventBridge Scheduler, S3 Object Lock, SNS, CloudWatch Logs) · DuckDB and Parquet · S3 + CloudFront for the site · healthchecks.io · GitHub Actions
+**Stack:** Python 3.13 · AWS SAM (Lambda, EventBridge Scheduler, S3 Object Lock, SNS, CloudWatch Logs) · DuckDB and Parquet · dbt (DuckDB adapter) · S3 + CloudFront for the site · healthchecks.io · GitHub Actions
 
 Built by Doron Reiffman ([LinkedIn](https://www.linkedin.com/in/doronreiffman)).
 
@@ -69,6 +69,48 @@ All times are Israel time. The diagram shows the headline basket's morning, as i
 - **Claims no stronger than the evidence.** The page says "listed price" and "before promotions", never "cheapest chain", "you'll pay" or "at the till". A check before every upload refuses a page that uses a banned phrase or lacks the credit line. The shopper site adds its own banned words ("fake", "real deal", "you save" among them), and its product pages say "No deal" of a promotion less than ₪1.00 below what the product usually costs, never a motive. [docs/headline-basket.md](docs/headline-basket.md#words), [docs/shopper-site.md](docs/shopper-site.md#words), [docs/terms.md](docs/terms.md)
 - **Tests that are themselves tested.** 2,934 tests covering 99.86% of the collector's, the basket's and the shopper site's code, and 2,690 deliberate bugs that a [script](scripts/mutation_check.py) plants one at a time to prove a test catches each (as of 22 November 2026). CI runs the tests and a lint of the AWS templates on every push, with a check that every planted bug still finds its text, exactly once, and its tests; a full run took 1 h 51 min on a Mac for the 2,338 of 9 November, so it is scheduled weekly and runs on demand. Template tests pin the settings safety depends on: the archive's lock, the functions' permissions, the schedules.
 - **Cheap, boring infrastructure.** About $1 to $3 a month for the collector in its first year, about $1 to $3 more for the update files through the day (averaged over the year; a check of the arithmetic gives $0.90 to $3.70, and the first weeks' measurements replace both), about $0.10 to $0.90 more for the basket (about $3.50 at worst), under $0.05 for the basket's site, and about $4.80 to $7.20 for the shopper site (about $11 at worst), each estimate written down with its sources. [docs/operations.md](docs/operations.md#cost), [docs/headline-basket.md](docs/headline-basket.md#cost-monthly-estimates)
+
+## A dbt layer, where it earns its place
+
+Beside the pipeline, a small dbt project ([dbt/](dbt/), design in [docs/dbt-layer.md](docs/dbt-layer.md)) reads the three tables the morning writes and builds four analysis models from them. It runs on a laptop, costs nothing, and never touches the live site.
+
+Installing it fetches one compiled wheel from dbt's GitHub release, its parser's, checked against a fingerprint the package carries.
+
+- **Tests on the real rows.** Every build checks the day's tables against rules the design notes state: one row per store and barcode, a promotion marked "at most branches" only when half the branches carry it, a listed price that is the median of the prices table's rows.
+- **A second opinion on published numbers.** The models work out again, in SQL alone, each store page's "N of M promotions are actually deals" and the rows under it, and a test compares them with the files the site published. On 23 November 2026 all nine store types and all 800 rows agreed.
+- **A lineage map.**
+
+<!-- dbt lineage: made by scripts/dbt_lineage.py from dbt's manifest; tests/test_dbt_lineage.py holds it equal -->
+```mermaid
+graph LR
+  basket[(the basket)]
+  basket_days[(published basket day files)]
+  items[(items)]
+  items_reports[(items reports)]
+  prices[(prices)]
+  promotions[(promotions)]
+  site_days[(published site-day files)]
+  basket --> basket_prices
+  basket_days --> stg_published_basket
+  int_counted_prices --> basket_prices
+  int_day_prices --> product_deals
+  items --> stg_items
+  items_reports --> stg_store_type_days
+  left_out_stores --> int_counted_prices
+  prices --> stg_prices
+  product_deals --> store_type_deals
+  promotions --> stg_promotions
+  site_days --> stg_published_store_pages
+  stg_items --> int_day_prices
+  stg_items --> promotion_reach
+  stg_prices --> int_counted_prices
+  stg_promotions --> promotion_reach
+  stg_store_type_days --> int_day_prices
+  stg_store_type_days --> store_type_deals
+```
+<!-- end of dbt lineage -->
+
+The extraction itself is not in dbt. dbt runs SQL over tables, and the extraction is mostly something else: it reads gzipped XML in three layouts, decides from each chain's store list which stores count, and prices a promotion in exact fractions against the chain's own per-kilogram figure. Measured in this layer: the basket's prices, worked from the prices table alone, match the published ones at four chains (1,408 of 1,408 figures over 11 days). At Shufersal they miss by one store in 32 of 352 figures: the store list puts that store in a sub-chain the basket leaves out, and no table carries the store list. So the Python and DuckDB extraction stays as it is, and dbt tests and explains tables that already exist.
 
 ## What's next
 

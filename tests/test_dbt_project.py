@@ -278,3 +278,28 @@ def test_nothing_asks_dbt_its_version():
     files += [ROOT / "README.md", ROOT / "docs" / "operations.md"]
     assert [str(path.relative_to(ROOT)) for path in files
             if asked.search(path.read_bytes().decode("utf-8", errors="replace"))] == []
+
+
+# The runbook's install of the dbt environment (Task 11): docs/operations.md makes and fills .venv-dbt as CI does, so
+# the line a reader copies is the one CI proves. Every line of a fenced block there that runs .venv-dbt's pip is that
+# install, whole.
+OPERATIONS = ROOT / "docs" / "operations.md"
+
+
+def _fenced(path: Path) -> list[str]:
+    """The lines inside the file's fenced code blocks, stripped."""
+    lines, inside = [], False
+    for line in path.read_text().splitlines():
+        if line.strip().startswith("```"):
+            inside = not inside
+        elif inside:
+            lines.append(line.strip())
+    return lines
+
+
+def test_the_runbook_installs_the_dbt_environment_as_ci_does():
+    ci = [command.strip() for run in _runs(WORKFLOWS[0]) if ".venv-dbt/bin/pip" in run for command in run.split("&&")]
+    installs = [line for line in _fenced(OPERATIONS) if ".venv-dbt/bin/pip" in line]
+    assert installs != []
+    for line in installs:
+        assert [command.strip() for command in line.split("&&")] == ["python3.13 -m venv .venv-dbt", *ci]
