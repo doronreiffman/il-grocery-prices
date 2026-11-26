@@ -299,6 +299,7 @@ DBT_DAY_PRICES = ("dbt/models/intermediate/int_day_prices.sql", ["tests/test_dbt
 DBT_PRODUCT_DEALS = ("dbt/models/marts/product_deals.sql", ["tests/test_dbt_units.py"])
 DBT_STORE_TYPE_DEALS = ("dbt/models/marts/store_type_deals.sql", ["tests/test_dbt_units.py"])
 # the dbt layer (q28), Task 6's targets: the promotions' reach
+DBT_PROMOTION_REACH = ("dbt/models/marts/promotion_reach.sql", ["tests/test_dbt_units.py"])
 # the dbt layer (q28), Task 7's targets: the golden build
 # the dbt layer (q28), Task 8's targets: data tests on the prices and promotions tables
 # the dbt layer (q28), Task 9's targets: data tests on the items table and its reports
@@ -3755,6 +3756,20 @@ MUTATIONS = {
     "a store-type day with nothing checked left out (q28 deals)": (
         DBT_STORE_TYPE_DEALS, "left join {{ ref('product_deals') }}", "join {{ ref('product_deals') }}"),
     # the dbt layer (q28), Task 6's planted bugs: the promotions' reach
+    "a promotion at fewer than half the branches counted at most (q28 reach)": (
+        DBT_PROMOTION_REACH, "count(*) filter (where wide) as at_most_branches", "count(*) as at_most_branches"),
+    "a promotion on an unlisted product counted (q28 reach)": (
+        DBT_PROMOTION_REACH, "    join {{ ref('stg_items') }} as item\n", "    left join {{ ref('stg_items') }} as item\n"),
+    "a promotion not yet started counted (q28 reach)": (
+        DBT_PROMOTION_REACH, "        and promotion.starts <= promotion.day\n", ""),
+    "an internal code counted (q28 reach)": (DBT_PROMOTION_REACH, "    where promotion.gs1\n", "    where true\n"),
+    "a restriction counted at some branches (q28 reach)": (
+        DBT_PROMOTION_REACH, "filter (where wide and has_restriction)", "filter (where has_restriction)"),
+    "a minimum spend counted at some branches (q28 reach)": (
+        DBT_PROMOTION_REACH, "filter (where wide and has_min_spend)", "filter (where has_min_spend)"),
+    "a promotion counted once a product (q28 reach)": (
+        DBT_PROMOTION_REACH, "    group by promotion.store_type, promotion.day, promotion.promotion_id\n",
+        "    group by promotion.store_type, promotion.day, promotion.promotion_id, promotion.barcode\n"),
     # the dbt layer (q28), Task 7's planted bugs: the golden build
     # the dbt layer (q28), Task 8's planted bugs: data tests on the prices and promotions tables
     # the dbt layer (q28), Task 9's planted bugs: data tests on the items table and its reports

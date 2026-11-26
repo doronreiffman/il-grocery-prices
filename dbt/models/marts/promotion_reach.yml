@@ -1,0 +1,211 @@
+models:
+  - name: promotion_reach
+    description: >-
+      Is a promotion on at most branches, or at a few? One row a store type and day with a promotion on a listed
+      product: the promotions running that day with a kind, on GS1 barcodes the items table lists at that store type
+      and day, each counted once however many products and groups it links; those at half the store type's counted
+      stores or more on any one of those products (rule P3), those at fewer, and among the first, those with a
+      restriction and those with a minimum spend (rule P5).
+    columns:
+      - name: store_type
+        description: The store type, the promotions table's column; one of the nine in the project's var store_types.
+      - name: day
+        description: The day the promotions and items tables are filed under.
+      - name: promotions
+        description: >-
+          The promotions counted: each starting on or before the day and ending on or after it, with a kind (its
+          reward type is not 0), on at least one GS1 barcode the items table lists at the store type that day; each
+          once, however many products and groups it links.
+      - name: at_most_branches
+        description: >-
+          Those of them that half the store type's counted stores or more carry on at least one of those products
+          (rule P3: the table's wide).
+      - name: at_some_branches
+        description: Those of them that fewer than half the counted stores carry on every one of those products.
+      - name: restricted
+        description: >-
+          Those at most branches whose ClubID names a restriction: a club, the chain's card or another (rule P5).
+      - name: with_min_spend
+        description: Those at most branches with a minimum purchase above zero on one of their groups (rule P5).
+
+# Each test's rows are one store type's (shufersal-deal) on 30 April 2026 unless it says otherwise. A row of
+# stg_promotions gives only the columns the model reads, and group_id, so a reader sees the groups.
+unit_tests:
+  - name: a_promotion_counts_once_however_many_products_and_groups
+    model: promotion_reach
+    given:
+      - input: ref('stg_promotions')
+        format: sql
+        rows: |
+          select 'shufersal' as chain, 'shufersal-deal' as store_type, date '2026-04-30' as day,
+                 '60' as promotion_id, '1' as group_id, '2000000000107' as barcode, true as gs1,
+                 'fixed_price' as kind, date '2026-04-01' as starts, date '2026-05-31' as ends,
+                 []::varchar[] as restrictions, cast(null as decimal(12,2)) as min_spend, true as wide
+          union all
+          select 'shufersal', 'shufersal-deal', date '2026-04-30', '60', '1', '2000000000114', true, 'fixed_price',
+                 date '2026-04-01', date '2026-05-31', []::varchar[], null, true
+          union all
+          select 'shufersal', 'shufersal-deal', date '2026-04-30', '60', '2', '2000000000107', true, 'fixed_price',
+                 date '2026-04-01', date '2026-05-31', []::varchar[], null, true
+      - input: ref('stg_items')
+        format: sql
+        rows: |
+          select 'shufersal' as chain, 'shufersal-deal' as store_type, date '2026-04-30' as day,
+                 '2000000000107' as barcode
+          union all
+          select 'shufersal', 'shufersal-deal', date '2026-04-30', '2000000000114'
+    expect:
+      rows:
+        - {store_type: shufersal-deal, day: "2026-04-30", promotions: 1, at_most_branches: 1, at_some_branches: 0,
+           restricted: 0, with_min_spend: 0}
+
+  - name: at_most_branches_when_any_of_its_rows_is
+    model: promotion_reach
+    given:
+      - input: ref('stg_promotions')
+        format: sql
+        rows: |
+          select 'shufersal' as chain, 'shufersal-deal' as store_type, date '2026-04-30' as day,
+                 '61' as promotion_id, '1' as group_id, '2000000000107' as barcode, true as gs1,
+                 'percent_off' as kind, date '2026-04-01' as starts, date '2026-05-31' as ends,
+                 []::varchar[] as restrictions, cast(null as decimal(12,2)) as min_spend, true as wide
+          union all
+          select 'shufersal', 'shufersal-deal', date '2026-04-30', '61', '1', '2000000000114', true, 'percent_off',
+                 date '2026-04-01', date '2026-05-31', []::varchar[], null, false
+          union all
+          select 'shufersal', 'shufersal-deal', date '2026-04-30', '62', '1', '2000000000107', true, 'n_for_m',
+                 date '2026-04-01', date '2026-05-31', []::varchar[], null, false
+          union all
+          select 'shufersal', 'shufersal-deal', date '2026-04-30', '62', '1', '2000000000114', true, 'n_for_m',
+                 date '2026-04-01', date '2026-05-31', []::varchar[], null, false
+      - input: ref('stg_items')
+        format: sql
+        rows: |
+          select 'shufersal' as chain, 'shufersal-deal' as store_type, date '2026-04-30' as day,
+                 '2000000000107' as barcode
+          union all
+          select 'shufersal', 'shufersal-deal', date '2026-04-30', '2000000000114'
+    expect:
+      rows:
+        - {store_type: shufersal-deal, day: "2026-04-30", promotions: 2, at_most_branches: 1, at_some_branches: 1,
+           restricted: 0, with_min_spend: 0}
+
+  # Promotions 63 to 67 each fail one condition; 68 counts, running from the day to the day. The items table lists
+  # only GS1 barcodes; the internal code 12345 is listed here so that the gs1 condition alone keeps 64 out.
+  - name: only_running_promotions_with_a_kind_on_listed_gs1_products_count
+    model: promotion_reach
+    given:
+      - input: ref('stg_promotions')
+        format: sql
+        rows: |
+          select 'shufersal' as chain, 'shufersal-deal' as store_type, date '2026-04-30' as day,
+                 '63' as promotion_id, '1' as group_id, '2000000000121' as barcode, true as gs1,
+                 'fixed_price' as kind, date '2026-04-01' as starts, date '2026-05-31' as ends,
+                 []::varchar[] as restrictions, cast(null as decimal(12,2)) as min_spend, true as wide
+          union all
+          select 'shufersal', 'shufersal-deal', date '2026-04-30', '64', '1', '12345', false, 'fixed_price',
+                 date '2026-04-01', date '2026-05-31', []::varchar[], null, true
+          union all
+          select 'shufersal', 'shufersal-deal', date '2026-04-30', '65', '1', '2000000000107', true, null,
+                 date '2026-04-01', date '2026-05-31', []::varchar[], null, true
+          union all
+          select 'shufersal', 'shufersal-deal', date '2026-04-30', '66', '1', '2000000000107', true, 'fixed_price',
+                 date '2026-05-01', date '2026-05-31', []::varchar[], null, true
+          union all
+          select 'shufersal', 'shufersal-deal', date '2026-04-30', '67', '1', '2000000000107', true, 'fixed_price',
+                 date '2026-04-01', date '2026-04-29', []::varchar[], null, true
+          union all
+          select 'shufersal', 'shufersal-deal', date '2026-04-30', '68', '1', '2000000000107', true, 'fixed_price',
+                 date '2026-04-30', date '2026-04-30', []::varchar[], null, true
+      - input: ref('stg_items')
+        format: sql
+        rows: |
+          select 'shufersal' as chain, 'shufersal-deal' as store_type, date '2026-04-30' as day,
+                 '2000000000107' as barcode
+          union all
+          select 'shufersal', 'shufersal-deal', date '2026-04-30', '12345'
+    expect:
+      rows:
+        - {store_type: shufersal-deal, day: "2026-04-30", promotions: 1, at_most_branches: 1, at_some_branches: 0,
+           restricted: 0, with_min_spend: 0}
+
+  # 69: wide, a club; 70: not wide, a club; 71: wide, a minimum spend; 72: wide, neither; 73: not wide, a minimum
+  # spend.
+  - name: restrictions_and_minimum_spends_among_those_at_most_branches
+    model: promotion_reach
+    given:
+      - input: ref('stg_promotions')
+        format: sql
+        rows: |
+          select 'shufersal' as chain, 'shufersal-deal' as store_type, date '2026-04-30' as day,
+                 '69' as promotion_id, '1' as group_id, '2000000000107' as barcode, true as gs1,
+                 'fixed_price' as kind, date '2026-04-01' as starts, date '2026-05-31' as ends,
+                 ['club']::varchar[] as restrictions, cast(null as decimal(12,2)) as min_spend, true as wide
+          union all
+          select 'shufersal', 'shufersal-deal', date '2026-04-30', '70', '1', '2000000000107', true, 'fixed_price',
+                 date '2026-04-01', date '2026-05-31', ['club']::varchar[], null, false
+          union all
+          select 'shufersal', 'shufersal-deal', date '2026-04-30', '71', '1', '2000000000107', true, 'fixed_price',
+                 date '2026-04-01', date '2026-05-31', []::varchar[], 50.00::decimal(12,2), true
+          union all
+          select 'shufersal', 'shufersal-deal', date '2026-04-30', '72', '1', '2000000000107', true, 'fixed_price',
+                 date '2026-04-01', date '2026-05-31', []::varchar[], null, true
+          union all
+          select 'shufersal', 'shufersal-deal', date '2026-04-30', '73', '1', '2000000000107', true, 'fixed_price',
+                 date '2026-04-01', date '2026-05-31', []::varchar[], 50.00::decimal(12,2), false
+      - input: ref('stg_items')
+        format: sql
+        rows: |
+          select 'shufersal' as chain, 'shufersal-deal' as store_type, date '2026-04-30' as day,
+                 '2000000000107' as barcode
+    expect:
+      rows:
+        - {store_type: shufersal-deal, day: "2026-04-30", promotions: 5, at_most_branches: 3, at_some_branches: 2,
+           restricted: 1, with_min_spend: 1}
+
+  # 74 runs at two store types over two days: a row for each pair where its product is listed. Its product 107 is
+  # listed at shufersal-sheli on 30 April only, so 74 there on 1 May is no row; 75's product 114 is listed at
+  # shufersal-sheli alone, so 75 at shufersal-deal counts nowhere.
+  - name: each_store_type_and_day_on_its_own
+    model: promotion_reach
+    given:
+      - input: ref('stg_promotions')
+        format: sql
+        rows: |
+          select 'shufersal' as chain, 'shufersal-deal' as store_type, date '2026-04-30' as day,
+                 '74' as promotion_id, '1' as group_id, '2000000000107' as barcode, true as gs1,
+                 'fixed_price' as kind, date '2026-04-01' as starts, date '2026-05-31' as ends,
+                 []::varchar[] as restrictions, cast(null as decimal(12,2)) as min_spend, true as wide
+          union all
+          select 'shufersal', 'shufersal-deal', date '2026-05-01', '74', '1', '2000000000107', true, 'fixed_price',
+                 date '2026-04-01', date '2026-05-31', []::varchar[], null, true
+          union all
+          select 'shufersal', 'shufersal-sheli', date '2026-04-30', '74', '1', '2000000000107', true, 'fixed_price',
+                 date '2026-04-01', date '2026-05-31', []::varchar[], null, false
+          union all
+          select 'shufersal', 'shufersal-sheli', date '2026-05-01', '74', '1', '2000000000107', true, 'fixed_price',
+                 date '2026-04-01', date '2026-05-31', []::varchar[], null, true
+          union all
+          select 'shufersal', 'shufersal-deal', date '2026-04-30', '75', '1', '2000000000114', true, 'fixed_price',
+                 date '2026-04-01', date '2026-05-31', []::varchar[], null, true
+      - input: ref('stg_items')
+        format: sql
+        rows: |
+          select 'shufersal' as chain, 'shufersal-deal' as store_type, date '2026-04-30' as day,
+                 '2000000000107' as barcode
+          union all
+          select 'shufersal', 'shufersal-deal', date '2026-05-01', '2000000000107'
+          union all
+          select 'shufersal', 'shufersal-sheli', date '2026-04-30', '2000000000107'
+          union all
+          select 'shufersal', 'shufersal-sheli', date '2026-04-30', '2000000000114'
+          union all
+          select 'shufersal', 'shufersal-sheli', date '2026-05-01', '2000000000114'
+    expect:
+      rows:
+        - {store_type: shufersal-deal, day: "2026-04-30", promotions: 1, at_most_branches: 1, at_some_branches: 0,
+           restricted: 0, with_min_spend: 0}
+        - {store_type: shufersal-deal, day: "2026-05-01", promotions: 1, at_most_branches: 1, at_some_branches: 0,
+           restricted: 0, with_min_spend: 0}
+        - {store_type: shufersal-sheli, day: "2026-04-30", promotions: 1, at_most_branches: 0, at_some_branches: 1,
+           restricted: 0, with_min_spend: 0}
