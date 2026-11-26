@@ -267,6 +267,32 @@ DBT_STG_PUBLISHED_STORE_PAGES = ("dbt/models/staging/stg_published_store_pages.s
 DBT_STG_PUBLISHED_BASKET = ("dbt/models/staging/stg_published_basket.sql", ["tests/test_dbt_units.py"])
 # A staging view that reads the clock, which the project's clock test must catch by itself.
 DBT_STG_PRICES_FOR_CLOCK = ("dbt/models/staging/stg_prices.sql", ["tests/test_dbt_project.py"])
+# A model's description file, which the project's description test must catch a column left out of.
+DBT_STG_PRICES_PROPERTIES = ("dbt/models/staging/stg_prices.yml", ["tests/test_dbt_project.py"])
+# The basket view's description file, whose unit test the unit run must miss when it is gone.
+DBT_STG_PUBLISHED_BASKET_PROPERTIES = ("dbt/models/staging/stg_published_basket.yml", ["tests/test_dbt_units.py"])
+# That file's unit test, from the blank line before it to the file's end, which a break drops.
+_DBT_BASKET_UNIT_TEST = (
+    '\n'
+    'unit_tests:\n'
+    '  - name: each_chain_s_item_is_a_row_its_code_without_leading_zeros\n'
+    '    model: stg_published_basket\n'
+    '    given:\n'
+    "      - input: source('published', 'basket_days')\n"
+    '        format: sql\n'
+    '        rows: |\n'
+    '          select\n'
+    "              date '2026-04-30' as day,\n"
+    "              ['2000000000121'] as items_in,\n"
+    '              map {\n'
+    "                  'osherad': {'total': '14.70',\n"
+    "                              'items': map {'02000000000121': {'median': '7.20', 'low': '7.10', 'high': '7.30',\n"
+    "                                                               'listing': 2, 'double_coded': 0}}}\n"
+    '              } as chains\n'
+    '    expect:\n'
+    '      rows:\n'
+    '        - {chain: osherad, day: "2026-04-30", barcode: "2000000000121", median: "7.20", low: "7.10", high: "7.30",\n'
+    '           listing: 2, double_coded: 0}\n')
 # the dbt layer (q28), Task 4's targets: the basket's models
 # the dbt layer (q28), Task 5's targets: the deals' models
 # the dbt layer (q28), Task 6's targets: the promotions' reach
@@ -3649,6 +3675,14 @@ MUTATIONS = {
         DBT_STG_PUBLISHED_BASKET, "ltrim(item_entry.key, '0') as barcode", "item_entry.key as barcode"),
     "a staging view reads the clock in dbt (q28 staging)": (
         DBT_STG_PRICES_FOR_CLOCK, '    "date" as day,\n', '    cast(current_localtimestamp() as date) as day,\n'),
+    # Task 2, fix round 1: the four rules that had tests and no planted bug
+    "the report's own day read for the folder's in dbt (q28 staging)": (
+        DBT_STG_STORE_TYPE_DAYS, '    report."date" as day,\n', '    cast(report.day as date) as day,\n'),
+    "an empty known-differences list given a row (q28 staging)": (DBT_KNOWN, "where false\n", "where true\n"),
+    "a column left undescribed in dbt (q28 staging)": (
+        DBT_STG_PRICES_PROPERTIES, "        description: The stored name of the file the row comes from.\n", ""),
+    "a staging view with a rule left without its unit test (q28 staging)": (
+        DBT_STG_PUBLISHED_BASKET_PROPERTIES, _DBT_BASKET_UNIT_TEST, ""),
     # the dbt layer (q28), Task 4's planted bugs: the basket's models
     # the dbt layer (q28), Task 5's planted bugs: the deals' models
     # the dbt layer (q28), Task 6's planted bugs: the promotions' reach
