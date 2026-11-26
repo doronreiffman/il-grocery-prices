@@ -7,7 +7,10 @@ data_tests:
       (int_counted_prices: rule B2's stores left out by number, B4's floor), GS1 codes alone: one price a store, its
       lowest over the codes with the same digits, then the median, the lowest and the highest over the stores. Both
       ways, on the chain-days both tables have: an items row with no price rows fails, and so do GS1 price rows with no
-      items row. Fails with one row for each chain, day and barcode whose figures differ or that one side lacks.
+      items row. It can fail on correct rows when a store publishes a price file the day's store list does not name:
+      the extraction leaves that store out (src/basket/stores.py, included), while the SQL, with no store list in the
+      tables, counts it (int_counted_prices). Fails with one row for each chain, day and barcode whose figures differ or
+      that one side lacks.
   - name: promotions_at_most_branches_agree_across_tables
     description: >-
       Rule P3: promotion_reach's count at most branches, from the promotions table, is the items table's, on each

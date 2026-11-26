@@ -250,6 +250,10 @@ DBT_SOURCES = ("dbt/models/sources.yml", ["tests/test_dbt_project.py"])
 GITIGNORE_FOR_DBT = (".gitignore", ["tests/test_dbt_project.py"])
 CI_FOR_DBT = (".github/workflows/ci.yml", ["tests/test_dbt_project.py"])
 DBT_RUN = ("tests/dbt_run.py", ["tests/test_dbt_units.py"])
+# The whole-branch review's fix wave: a model whose price goes through avg or median, which the project's
+# floating-point test must catch by itself (the staging view that reads the clock through age is
+# DBT_STG_PRICES_FOR_CLOCK's).
+DBT_BASKET_PRICES_FOR_PROJECT = ("dbt/models/marts/basket_prices.sql", ["tests/test_dbt_project.py"])
 # The items reports' source in dbt/models/sources.yml, from its name to its formatter line, which a break drops.
 _DBT_REPORTS_SOURCE = ('      - name: items_reports\n'
                        '        description: >-\n'
@@ -440,6 +444,12 @@ _DBT_WORKED_DAYS_LISTED = ("    from worked\n"
 _DBT_BASKET_DAYS_PRICED = ("    semi join (select distinct chain, day from {{ ref('stg_prices') }}) as priced\n"
                            "        on priced.chain = listed.chain\n"
                            "        and priced.day = listed.day\n")
+# The compared chain-days read from the day files' chains (the fix wave after the whole-branch review): a break reads
+# them from the published items, so a chain a day file names with no item is not compared.
+_DBT_BASKET_NAMED_DAYS = ("    from (\n"
+                          "        select basket_day.day, unnest(map_keys(basket_day.chains)) as chain\n"
+                          "        from {{ source('published', 'basket_days') }} as basket_day\n"
+                          "    ) as listed\n")
 # The basket's two sides, each read on the compared chain-days alone (a break reads it on every chain-day).
 _DBT_BASKET_PUBLISHED_DAYS = ("    from {{ ref('stg_published_basket') }} as item\n"
                               "    semi join compared_days\n"
@@ -3821,6 +3831,15 @@ MUTATIONS = {
     "two results of one name, the first hidden (q28 project)": (DBT_RUN, '        if name in results:\n', '        if False:\n'),
     "dbt's target folder left in dbt/ (q28 project)": (DBT_RUN, '"--target-path", str(work / TARGET), ', ''),
     "dbt's log folder left in dbt/ (q28 project)": (DBT_RUN, ', "--log-path", str(work / LOGS)]', ']'),
+    # The fix wave after the whole-branch review: the runner's DBT_ filter, and the project's guards on the clock
+    # (one-argument age) and on the floating-point aggregates (avg, median).
+    "every DBT_ variable let through to dbt (q28 project)": (DBT_RUN, 'not name.startswith("DBT_") and ', ''),
+    "a staging view reads the clock through age (q28 project)": (
+        DBT_STG_PRICES_FOR_CLOCK, '    "date" as day,\n', '    cast("date" + age("date") as date) as day,\n'),
+    "a store's price the mean of its codes' through avg (q28 project)": (
+        DBT_BASKET_PRICES_FOR_PROJECT, "min(price) as price", "avg(price) as price"),
+    "a store's price the median of its codes' through median (q28 project)": (
+        DBT_BASKET_PRICES_FOR_PROJECT, "min(price) as price", "median(price) as price"),
     # the dbt layer (q28), Task 2's planted bugs: the staging views and the two lists
     "Shufersal's online store kept in dbt (q28 staging)": (DBT_LEFT_OUT, "    ('shufersal', 'store', '413'),\n", ""),
     "Be left out as a store in dbt (q28 staging)": (DBT_LEFT_OUT, "('shufersal', 'sub_chain', '5')", "('shufersal', 'store', '5')"),
@@ -3994,6 +4013,10 @@ MUTATIONS = {
     # the YAML still loads, and the Python project test, which reads the reasons only as text of 30 or more, passes.
     "the owner's four not rendered as written (q28 golden)": (
         DBT_KNOWN_LIST_FOR_GOLDEN, "reason: &weighed >-", "reason: &weighed |-"),
+    # The fix wave after the whole-branch review: the prices' barcode read from the code as the file gives it, its
+    # leading zeros kept; Task 10's Yochananof code under a leading zero, at store 1, is then a second barcode.
+    "the prices' barcode read from their code (q28 golden)": (
+        DBT_STG_PRICES_FOR_GOLDEN, "    code_norm as barcode,\n", "    code as barcode,\n"),
     # the dbt layer (q28), Task 8's planted bugs: data tests on the prices and promotions tables
     "uniqueness allowing one repeat (q28 checks prices)": (
         DBT_UNIQUE_TOGETHER, "having count(*) > 1", "having count(*) > 2"),
@@ -4430,6 +4453,10 @@ MUTATIONS = {
         "    and known.key = differing.chain"),
     "a known basket day skipped whatever its chain (q28 checks published)": (
         DBT_PUBLISHED_DIFFERENCES, "\n    and known.key = differing.chain", ""),
+    # The fix wave after the whole-branch review: the compared chain-days read from the published items, so the
+    # bad rows' Shufersal of 28 April, named with no item, is not compared.
+    "a published chain with no item not compared (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, _DBT_BASKET_NAMED_DAYS, "    from {{ ref('stg_published_basket') }} as listed\n"),
     "Shufersal compared among the four chains (q28 checks published)": (
         DBT_PUBLISHED_BASKET, "differing.chain <> 'shufersal'", "differing.chain is not null"),
     "the four chains compared in Shufersal's warning (q28 checks published)": (

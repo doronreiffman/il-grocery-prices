@@ -1,10 +1,13 @@
--- Each published day known_differences lists has both sides and still differs, so the list can hide nothing and cannot
--- go stale (docs/dbt-layer.md, section 3, "The three that fail today", 2; _published.yml). The differences are the
--- comparisons' own (the macros in dbt/macros/published_differences.sql), before any listed day is skipped, and each is
--- read from a published page or basket's day, a basket's on a chain-day with a prices table alone: a listed day with no
--- published side, or a basket day with no prices table, has none. A store page differs when its N, M, a shown row or
--- its promotions count is not the model's, and a published page with no store_type_deals row is one; so a listed store
--- page must have that row as well. One row a listed day that lacks a side or no longer differs.
+-- Each published day known_differences lists has both sides and still differs in some figure (docs/dbt-layer.md,
+-- section 3, "The three that fail today", 2; _published.yml). The comparisons skip a listed day whole, so a further
+-- difference on it stays unseen while it is listed; and this test proves only that each listed day still differs in
+-- some figure, so a day whose stated reason is gone stays listed while it differs for another reason. The differences
+-- are the comparisons' own (the macros in dbt/macros/published_differences.sql), before any listed day is skipped, and
+-- each is read from a published page or basket's day, a basket's on a chain-day the day file names with a prices table
+-- alone: a listed day with no published side, or a basket day with no prices table, has none. A store page differs
+-- when its N, M, a shown row or its promotions count is not the model's, and a published page with no store_type_deals
+-- row is one; so a listed store page must have that row as well. One row a listed day that lacks a side or no longer
+-- differs.
 with modelled_pages as (
     select store_type, day from {{ ref('store_type_deals') }}
 ),

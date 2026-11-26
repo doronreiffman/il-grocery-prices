@@ -5,7 +5,9 @@ models:
       the chain's price rows that count (int_counted_prices) lists it that day; by rule B5, as src/basket/rules.py
       works it.
       A store counts once: one listing the product under more than one code with the same digits once leading zeros
-      are stripped is double-coded, and its price is the lowest of its rows'.
+      are stripped is double-coded, and its price is the lowest of its rows'. Its figures can differ from the site's
+      on correct rows when a store publishes a price file the day's store list does not name: the Python leaves that
+      store out (src/basket/stores.py, included), while int_counted_prices, with no store list in the tables, keeps it.
     columns:
       - name: chain
         description: The chain.

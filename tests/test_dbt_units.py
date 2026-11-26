@@ -1,6 +1,8 @@
 """The dbt layer's unit tests (docs/dbt-layer.md, section 4), run by dbt itself; what no dbt run here may do: run with
-telemetry on, or write outside its own temporary folders; and the runner's own rules (tests/dbt_run.py), each tried
-on a stand-in for dbt, which needs no .venv-dbt and reaches nothing.
+telemetry on, or write outside its own temporary folders; and the runner's own rules (tests/dbt_run.py). Its rule of
+no colour codes in dbt's output is read from the unit tests' real dbt run; the others, its environment, its time
+limit, its fresh folder and its one result a name, are each tried on a stand-in for dbt, which needs no .venv-dbt and
+reaches nothing.
 """
 import json
 import stat

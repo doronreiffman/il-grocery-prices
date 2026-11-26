@@ -23,14 +23,15 @@ DBT = ROOT / ".venv-dbt" / "bin" / "dbt"
 MISSING = "make .venv-dbt: docs/operations.md, Develop"
 TARGET, LOGS, HOME = "target", "logs", "home"   # a run's folders, under its work folder
 DATABASE = "dbt.duckdb"                          # a run's database, under its work folder, unless one is given
-# Taken out of a run's environment, besides every DBT_ variable. DO_NOT_TRACK, when set, turns dbt's telemetry off
-# whatever the project says (dbt-core 1.12.6, dbt/cli/flags.py), so a machine that sets it would hide the project's own
-# setting from the test that reads it.
+# Taken out of a run's environment, besides every DBT_ variable. DO_NOT_TRACK set to a true value (1, t, true, y or
+# yes, in any case) turns dbt's telemetry off whatever the project says (dbt-core 1.12.6, dbt/cli/flags.py), so a
+# machine that sets it so would hide the project's own setting from the test that reads it.
 CLEARED = ("GROCERY_DBT_DB", "DO_NOT_TRACK")
 # Seconds a dbt run may take before it is stopped. A dbt command here starts in 4 to 5 s (the design's section 6) and
-# the planned runs read small synthetic tables; the slowest, the golden build, is not yet measured. 600 s leaves it room
-# and still stops a run that waits forever (on the network, on a locked database) inside the 1,400 s the mutation check
-# gives each of its pytest runs (scripts/mutation_check.py, TIME_LIMIT).
+# the runs read small synthetic tables. The slowest are the golden's: the whole of tests/test_dbt_golden.py, its
+# extraction and its four dbt runs, took 24 to 39 s on an 8 GB Apple M2 (two runs, 26 November 2026). 600 s leaves
+# them room and still stops a run that waits forever (on the network, on a locked database) inside the 1,400 s the
+# mutation check gives each of its pytest runs (scripts/mutation_check.py, TIME_LIMIT).
 TIMEOUT = 600
 
 

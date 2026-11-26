@@ -52,11 +52,18 @@ PATHS = {"tables": "data/tables", "site": "site", "basket_file": "src/basket/bas
 
 # Every way a model could read the clock: DuckDB 1.5.6's clock functions and keywords (duckdb_functions(); `localtime`
 # alone is a keyword giving the time of day, so it is matched as a whole word), and dbt's own time of the run. The
-# longer names come first, so a finding names the function exactly.
+# longer names come first, so a finding names the function exactly. `age` with one argument is the time from it to
+# today; with two it reads no clock, so the pattern takes a call with no comma outside its own parentheses (two
+# levels of them inside).
 CLOCK = re.compile(r"current_localtimestamp|current_localtime|get_current_timestamp|get_current_time|transaction_timestamp"
                    r"|current_date|current_timestamp|current_time|localtimestamp|\blocaltime\b|\bnow\s*\(|\btoday\s*\("
+                   r"|\bage\s*\((?:[^(),]|\((?:[^()]|\([^()]*\))*\))*\)"
                    r"|run_started_at|modules\.datetime", re.IGNORECASE)
-FLOATING = re.compile(r"\b(?:double|float|float4|float8|real)\b", re.IGNORECASE)
+# The floating-point types, and two aggregates no price may go through in DuckDB 1.5.6: `avg` gives a DOUBLE, over
+# DECIMALs too; `median` gives a DOUBLE over whole numbers and over DECIMALs keeps their places, so the mean of two
+# middle prices loses its last digit (7.60 for 7.60 and 7.61, where rule B5's is 7.605). The median is the macro
+# median_price's.
+FLOATING = re.compile(r"\b(?:double|float|float4|float8|real)\b|\b(?:avg|median)\s*\(", re.IGNORECASE)
 
 # left_out_stores.sql holds one row a line: ('<chain>', 'sub_chain' or 'store', '<key>').
 LEFT_OUT = PROJECT / "models" / "lists" / "left_out_stores.sql"

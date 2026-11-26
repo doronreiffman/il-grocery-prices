@@ -305,7 +305,7 @@ EXPECTED_BAD: dict[str, tuple[str, int]] = {
     "product_deals_match_published_rows": ("fail", 6),
     "promotion_reach_matches_published": ("fail", 1),
     "basket_prices_match_published": ("fail", 7),
-    "basket_prices_at_shufersal_match_published": ("warn", 1),
+    "basket_prices_at_shufersal_match_published": ("warn", 4),
     "known_differences_still_differ": ("fail", 8),
 }
 # The GS1 test's four codes, synthetic, as basket.barcode.is_gs1 reads them; LONG's and SHORT's weighted sums, worked
@@ -540,7 +540,8 @@ def plant_bad_rows(tables: Path, site: Path) -> None:
     that differs, and a G4 item, which is no basket product; Osher Ad's G1 at 3 stores and G2 at 1 double-coded store;
     Shufersal's G6 at 6 stores (its standing warning); and, right, Osher Ad's G6 at 7.15, 7.10 and 7.19, the model's
     7.145 rounded half up. 28 April (new): Yochananof's G1 and G2 as the model gives them and no G6, which Yochananof's
-    copied prices table of that day prices."""
+    copied prices table of that day prices; and Shufersal named with no item and no total, as a day file names a chain
+    that prices none, where Shufersal's table of that day prices G1, G2 and G6 (three rows of its standing warning)."""
     day = f"date={day_of(LAST).isoformat()}"
     # Task 10's copies, from the golden's own tables before any other bad row (the docstring's "Across tables").
     for kind, slug, n in (("prices", "yochananof", LAST - 2), ("items", "yochananof", LAST - 2),
@@ -738,7 +739,8 @@ def plant_bad_rows(tables: Path, site: Path) -> None:
     publish(site, "days", basket_day)
     publish(site, "days", {"day": day_of(LAST - 2).isoformat(), "items_in": [G1, G2, G6], "chains": {
         "yochananof": {"total": "7.50", "items": {G1: basket_item("5.00", "5.00", "5.00", 2),
-                                                  G2: basket_item("2.50", "2.50", "2.50", 2)}}}})
+                                                  G2: basket_item("2.50", "2.50", "2.50", 2)}},
+        "shufersal": {"total": None, "items": {}}}})
 
 
 # The bad-rows build's known differences beyond the golden's two (BAD_VARS), each for a clause of

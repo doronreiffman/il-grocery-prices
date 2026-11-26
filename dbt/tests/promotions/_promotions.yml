@@ -11,7 +11,10 @@ data_tests:
   - name: promotions_run_today_and_start_before_they_end
     description: >-
       Rule P3: no promotion in the table ended before its day, and each starts on or before it ends. One that starts
-      after the day is kept. Fails with one row for each promotions row that breaks either.
+      after the day is kept. The extraction does not enforce the start on or before the end: it keeps a promotion that
+      starts after it ends when its end is on or after the day (src/shopper/promos.py, _read_file), so a failure of
+      that rule comes from the chain's file, not from the tables. Fails with one row for each promotions row that
+      breaks either.
   - name: promotions_kind_follows_the_reward_type
     description: >-
       Rule P3: a row's kind is its reward type's by the var kinds (1 and 10 N for M shekels, 2 percent off, 3 a fixed

@@ -95,15 +95,20 @@ anti join {{ ref('known_differences') }} as known
 
 -- The basket items whose median, lowest, highest, stores listing or double-coded stores the day file and basket_prices
 -- do not give alike, on the chain-days the day files publish that the prices table has: one row a chain, day and item,
--- published, priced or both. The site publishes every basket item with a price at the chain that day
--- (src/basket/rules.py, price_basket's `listed`), so an item on one side alone differs. The median is rounded half up
--- to two places, as src/basket/record.py's money rounds it, and every price is compared as the site writes it, text
--- with two places. A chain-day with no prices table is not compared: each run of the sync (scripts/sync.sh) brings the
--- prices tables of the one day it is given, so a published day may have none.
+-- published, priced or both. A chain-day is published when the day file names the chain, a key of its chains, with an
+-- item or with none, so the compared chain-days are read from the day files themselves, not from their items. The site
+-- publishes every basket item with a price at the chain that day (src/basket/rules.py, price_basket's `listed`), so an
+-- item on one side alone differs, a priced item at a chain the day file names with no item among them. The median is
+-- rounded half up to two places, as src/basket/record.py's money rounds it, and every price is compared as the site
+-- writes it, text with two places. A chain-day with no prices table is not compared: each run of the sync
+-- (scripts/sync.sh) brings the prices tables of the one day it is given, so a published day may have none.
 {% macro basket_differences() -%}
 with compared_days as (
     select distinct listed.chain, listed.day
-    from {{ ref('stg_published_basket') }} as listed
+    from (
+        select basket_day.day, unnest(map_keys(basket_day.chains)) as chain
+        from {{ source('published', 'basket_days') }} as basket_day
+    ) as listed
     semi join (select distinct chain, day from {{ ref('stg_prices') }}) as priced
         on priced.chain = listed.chain
         and priced.day = listed.day

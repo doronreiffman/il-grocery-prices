@@ -76,7 +76,7 @@ Beside the pipeline, a small dbt project ([dbt/](dbt/), design in [docs/dbt-laye
 
 Installing it fetches one compiled wheel from dbt's GitHub release, its parser's, checked against a fingerprint the package carries.
 
-- **Tests on the real rows.** Every build checks the day's tables against rules the design notes state: one row per store and barcode, a promotion marked "at most branches" only when half the branches carry it, and, at Rami Levy, Osher Ad and Yochananof, a listed price that is the median of the prices table's rows.
+- **Tests on the real rows.** Every build checks the day's tables against rules the design notes state: one price row per chain, store, item code and day, a promotion marked "at most branches" only when half the branches carry it, and, at Rami Levy, Osher Ad and Yochananof, a listed price that is the median of the prices table's rows.
 - **A second opinion on published numbers.** The models work out again, in SQL alone, each store page's "N of M promotions are actually deals" and the rows under it, and a test compares them with the files the site published. On 23 November 2026 all nine store types and all 800 rows agreed.
 - **A lineage map.**
 

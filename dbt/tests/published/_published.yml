@@ -25,10 +25,14 @@ data_tests:
     description: >-
       basket_prices gives each published basket figure at the chains but Shufersal: the median, rounded half up to two
       places as the site rounds it (src/basket/record.py, money), the lowest, the highest, the stores listing the item
-      and the double-coded ones among them. Both ways: the site publishes every basket item with a price at the chain
-      that day (src/basket/rules.py, price_basket), so a basket_prices row the day file lacks differs too. A chain-day
-      with no prices table is skipped, and so is a basket known_differences lists. Fails with one row for each chain,
-      day and item whose figures are not the model's, or that one side lacks.
+      and the double-coded ones among them. Compared on each chain-day a day file names, its chain a key of the day
+      file's chains with an item or with none, that has a prices table; a basket known_differences lists is skipped.
+      Both ways: the site publishes every basket item with a price at the chain that day (src/basket/rules.py,
+      price_basket), so a basket_prices row the day file lacks differs too, at a chain named with no item as well. It
+      can fail on correct rows when a store publishes a price file the day's store list does not name: the Python
+      leaves that store out (src/basket/stores.py, included), while the SQL, with no store list in the tables, counts
+      it (int_counted_prices). Fails with one row for each chain, day and item whose figures are not the model's, or
+      that one side lacks.
   - name: basket_prices_at_shufersal_match_published
     description: >-
       The same comparison at Shufersal, a standing warning, not an error. Store 678 is on every store list under
@@ -41,10 +45,13 @@ data_tests:
       severity: warn
   - name: known_differences_still_differ
     description: >-
-      Each published day known_differences lists has both sides and still differs, so the list can hide nothing and
-      cannot go stale (docs/dbt-layer.md, section 3, "The three that fail today", 2). A store page: a store_type_deals
-      row of it, and its published N, M, a shown row or its promotions count not the model's. A basket: a figure not
-      the model's or an item on one side alone, on a published chain-day with a prices table. The differences are the
+      Each published day known_differences lists has both sides and still differs in some figure (docs/dbt-layer.md,
+      section 3, "The three that fail today", 2). The comparisons skip a listed day whole, so a further difference on
+      it stays unseen while it is listed; and this test proves only that each listed day still differs in some figure,
+      so a day whose stated reason is gone stays listed while it differs for another reason, as a Shufersal basket day
+      can through store 678. A store page: a store_type_deals row of it, and its published N, M, a shown row or its
+      promotions count not the model's. A basket: a figure not the model's or an item on one side alone, on a chain-day
+      the day file names with a prices table. The differences are the
       comparisons' own, read on the days the files publish alone, so a listed day with nothing published, or a basket
       day with no prices table, has none. Fails with one row for each listed day that lacks a side or no longer
       differs.

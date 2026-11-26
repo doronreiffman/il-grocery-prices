@@ -20,15 +20,22 @@ data_tests:
   - name: items_on_promotion_follows_its_promotions
     description: >-
       Rule P3, as the extraction reads it: an items row is on promotion exactly when a promotion on it is wide, has a
-      kind and runs that day, whether its deal is valid or not; and its on_promotion is empty exactly when the chain's
-      promotions were not read, which the items report says by its promotions error. On a day they were read, an empty
-      on_promotion or promotions list breaks it, as the extraction writes both then. Fails with one row for each items
-      row that breaks either. A row under a store type the report lacks is left to the store-type test.
+      kind and runs that day, whether its deal is valid or not; and it has no on_promotion exactly when the chain's
+      promotions were not read, which the items report says by its promotions error. On a day they were read, no
+      on_promotion or no promotions list breaks it, as the extraction writes both then (an empty list for a row with no
+      promotion). The test reads each promotion's struct on the row, the link shown, with its dates, while the
+      extraction sets on_promotion from any wide link with a kind whose own dates run that day (src/shopper/items.py,
+      _on_item); so it could fail on a correct row whose promotion has two wide links with different dates, the shown
+      one not running, as each group and code of a promotion keeps the version of it most stores carry
+      (src/shopper/promos.py, _write). Not seen in the real items tables of 1 to 25 November 2026. Fails with one row
+      for each items row that breaks either. A row under a store type the report lacks is left to the store-type test.
   - name: items_promotions_start_before_they_end_run_today_and_appear_once
     description: >-
       Rule P3: each promotion on an items row starts on or before it ends and has not ended before the day, and the
-      row holds it once. One that starts after the day is kept, as the extraction keeps it. Fails with one row for each
-      row and promotion that breaks any of the three or has no start or end.
+      row holds it once. One that starts after the day is kept, as the extraction keeps it. The extraction does not
+      enforce the start on or before the end: it keeps a promotion that starts after it ends when its end is on or after
+      the day (src/shopper/promos.py, _read_file), so a failure of that rule comes from the chain's file, not from the
+      tables. Fails with one row for each row and promotion that breaks any of the three or has no start or end.
   - name: items_valid_deal_prices_are_above_an_agora_and_below_twice_the_listed
     description: >-
       A valid deal's price as shown, to the agora (the struct's price, as the design's section 3 checks it), is above
