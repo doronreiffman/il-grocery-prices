@@ -76,7 +76,7 @@ Beside the pipeline, a small dbt project ([dbt/](dbt/), design in [docs/dbt-laye
 
 Installing it fetches one compiled wheel from dbt's GitHub release, its parser's, checked against a fingerprint the package carries.
 
-- **Tests on the real rows.** Every build checks the day's tables against rules the design notes state: one row per store and barcode, a promotion marked "at most branches" only when half the branches carry it, a listed price that is the median of the prices table's rows.
+- **Tests on the real rows.** Every build checks the day's tables against rules the design notes state: one row per store and barcode, a promotion marked "at most branches" only when half the branches carry it, and, at Rami Levy, Osher Ad and Yochananof, a listed price that is the median of the prices table's rows.
 - **A second opinion on published numbers.** The models work out again, in SQL alone, each store page's "N of M promotions are actually deals" and the rows under it, and a test compares them with the files the site published. On 23 November 2026 all nine store types and all 800 rows agreed.
 - **A lineage map.**
 
@@ -110,7 +110,7 @@ graph LR
 ```
 <!-- end of dbt lineage -->
 
-The extraction itself is not in dbt. dbt runs SQL over tables, and the extraction is mostly something else: it reads gzipped XML in three layouts, decides from each chain's store list which stores count, and prices a promotion in exact fractions against the chain's own per-kilogram figure. Measured in this layer: the basket's prices, worked from the prices table alone, match the published ones at four chains (1,408 of 1,408 figures over 11 days). At Shufersal they miss by one store in 32 of 352 figures: the store list puts that store in a sub-chain the basket leaves out, and no table carries the store list. So the Python and DuckDB extraction stays as it is, and dbt tests and explains tables that already exist.
+The extraction itself is not in dbt. dbt runs SQL over tables, and the extraction is mostly something else: it reads XML in two layouts, each arriving as a gzip, a ZIP or plain XML; decides from each chain's store list which stores count; and prices a promotion in exact fractions against the chain's own per-kilogram figure. Measured in this layer: the basket's prices, worked from the prices table alone, match the published ones at four chains (1,408 of 1,408 figures over 11 days). At Shufersal they miss by one store in 32 of 352 figures: the store list puts that store in a sub-chain the basket leaves out, and no table carries the store list. So the Python and DuckDB extraction stays as it is, and dbt tests and explains tables that already exist.
 
 ## What's next
 

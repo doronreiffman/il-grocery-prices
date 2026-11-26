@@ -339,6 +339,10 @@ DBT_PROMOTION_REACH = ("dbt/models/marts/promotion_reach.sql", ["tests/test_dbt_
 DBT_LINEAGE = ("scripts/dbt_lineage.py", ["tests/test_dbt_lineage.py"])
 # The runbook's install of .venv-dbt, which the project's test holds to CI's.
 OPERATIONS_FOR_DBT = ("docs/operations.md", ["tests/test_dbt_project.py"])
+# Develop's install line, with the line before it: the dbt layer's section repeats the install, and both are held.
+_DEVELOP_DBT_INSTALL = ('pip install -r requirements-dev.txt\n'
+                        'python3.13 -m venv .venv-dbt && .venv-dbt/bin/pip install --no-deps packaging==26.3 && '
+                        '.venv-dbt/bin/pip install --no-deps --no-build-isolation -r requirements-dbt.txt')
 # scripts/local.env, which holds the reader's own AWS user, ignored by git (q42).
 GITIGNORE = (".gitignore", ["tests/test_scripts.py"])
 # The site run's timing script (Task 25a), its --make guard.
@@ -3873,7 +3877,9 @@ MUTATIONS = {
     "a stale README passing the check (q28 lineage)": (
         DBT_LINEAGE, '    if readme_block(Path(args.check).read_text(encoding="utf-8")) != block:\n', '    if False:\n'),
     "the runbook's dbt install with build isolation (q28 lineage)": (
-        OPERATIONS_FOR_DBT, ' --no-deps --no-build-isolation -r requirements-dbt.txt', ' --no-deps -r requirements-dbt.txt'),
+        OPERATIONS_FOR_DBT, _DEVELOP_DBT_INSTALL, _DEVELOP_DBT_INSTALL.replace(' --no-build-isolation', '')),
+    "the sources drawn unsorted (q28 lineage)": (
+        DBT_LINEAGE, '"graph LR", *sorted(tables), *[', '"graph LR", *tables, *['),
 }
 
 

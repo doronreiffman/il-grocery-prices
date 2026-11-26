@@ -7,7 +7,9 @@
 The block is a Mermaid diagram, which GitHub draws: each source as a table under the label its `meta` gives in
 dbt/models/sources.yml, then each edge between the sources and the models, one a line, parent first, both sorted.
 Only edges are drawn, so a model that reads nothing and that no model reads (known_differences, which only data tests
-read) is left out, and so are the data tests and the unit tests. README.md holds the block between START and END;
+read) is left out, and so are the data tests and the unit tests. A model's parent that is neither a model nor a source
+(a seed or a snapshot, of which the project has none) stops it with a KeyError. README.md holds the block between
+START and END;
 tests/test_dbt_lineage.py parses the project and holds the two equal. After a change to the models, from dbt/:
 `../.venv-dbt/bin/dbt parse`, then from the repository's root: `.venv/bin/python scripts/dbt_lineage.py
 dbt/target/manifest.json`, and the block printed goes between the two markers.
@@ -30,8 +32,7 @@ def mermaid(manifest: Mapping) -> str:
     models = {unique_id: node for unique_id, node in manifest["nodes"].items() if node["resource_type"] == "model"}
     names = sources | {unique_id: node["name"] for unique_id, node in models.items()}
     tables = [f"  {source['name']}[({source['meta']['label']})]" for source in manifest["sources"].values()]
-    edges = [(names[parent], node["name"]) for node in models.values() for parent in node["depends_on"]["nodes"]
-             if parent in names]
+    edges = [(names[parent], node["name"]) for node in models.values() for parent in node["depends_on"]["nodes"]]
     lines = ["```mermaid", "graph LR", *sorted(tables), *[f"  {parent} --> {child}" for parent, child in sorted(edges)],
              "```"]
     return "\n".join(lines)

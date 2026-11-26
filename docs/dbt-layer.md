@@ -4,6 +4,8 @@
 
 **Status:** approved by the owner on 2026-11-25. Nothing is built yet. Every figure was measured that day on the Mac, by read-only DuckDB queries over `data/tables/` and by a throwaway dbt project kept outside the repository. "Sources" says which. Anything not checked is marked UNVERIFIED. A choice that is not the owner's is a call, listed at the end; the owner can overturn any. The owner answered its four questions the same day (below). Revised the same day after a fact-check of every claim (17 held, 15 corrected, 1 marked UNVERIFIED) and after a probe of dbt v2 (section 6, "The version").
 
+**Amended 2026-11-26,** after the review of the lineage map and the docs, the code taken as the source: section 9's draft names Rami Levy, Osher Ad and Yochananof for its check of the listed price against the prices table, the three chains that test runs at (section 3, "Across tables"), and says the extraction reads "XML in two layouts, each arriving as a gzip, a ZIP or plain XML", as `src/basket/pricefile.py` reads it, where it said "gzipped XML in three layouts"; section 8's line on a machine with no published files says what a run there did: the two published staging views fail, `dbt run` exits 1 and the other twelve models build.
+
 ## Why
 
 The owner asked whether dbt earns its place over plain DuckDB here. The answer given: mostly for the job market. The project has three tables, one author and one engine, and much of the extraction is Python woven through its SQL. dbt does add two things: tests that run on the real rows at every build, and a lineage map a reader can follow.
@@ -285,7 +287,7 @@ cd dbt
 
 **The sync.** Today it brings the day's raw files and every day's items tables and published files. It does not bring the prices and promotions tables: the 12 days on the Mac came from extractions run there. **Call:** the sync also brings the named day's prices and promotions tables from the archive, about 95 MB a day (1.0 GB of prices and 119 MB of promotions for 12 days on the Mac), with `--exact-timestamps`; the promotion texts file is left out. So the layer reads the tables the morning wrote, and not a second extraction's. Each line gets a test and a planted bug in the script's own group. That the archive holds every day's tables is as [operations.md](operations.md) says ("Where things land"); not checked here.
 
-A machine with no synced published files cannot build: the two published sources find no file and stop, by design.
+On a machine with no synced published files, `dbt run` exits 1: the two staging views over them find no file and fail, while the other twelve models build (tried 2026-11-26), so nothing is compared with what the site published.
 
 **How long, on an 8 GB Apple M2, over the days present:**
 
@@ -313,11 +315,11 @@ The stack line gains "dbt (DuckDB adapter)". A new section, after "Engineering c
 
 > **A dbt layer, where it earns its place.** Beside the pipeline, a small dbt project ([dbt/](dbt/), design in [docs/dbt-layer.md](docs/dbt-layer.md)) reads the three tables the morning writes and builds four analysis models from them. It runs on a laptop, costs nothing, and never touches the live site.
 >
-> - **Tests on the real rows.** Every build checks the day's tables against rules the design notes state: one row per store and barcode, a promotion marked "at most branches" only when half the branches carry it, a listed price that is the median of the prices table's rows.
+> - **Tests on the real rows.** Every build checks the day's tables against rules the design notes state: one row per store and barcode, a promotion marked "at most branches" only when half the branches carry it, and, at Rami Levy, Osher Ad and Yochananof, a listed price that is the median of the prices table's rows.
 > - **A second opinion on published numbers.** The models work out again, in SQL alone, each store page's "N of M promotions are actually deals" and the rows under it, and a test compares them with the files the site published. On 23 November 2026 all nine store types and all 800 rows agreed.
 > - **A lineage map.** (the diagram)
 >
-> The extraction itself is not in dbt. dbt runs SQL over tables, and the extraction is mostly something else: it reads gzipped XML in three layouts, decides from each chain's store list which stores count, and prices a promotion in exact fractions against the chain's own per-kilogram figure. Measured in this layer: the basket's prices, worked from the prices table alone, match the published ones at four chains (1,408 of 1,408 figures over 11 days). At Shufersal they miss by one store in 32 of 352 figures: the store list puts that store in a sub-chain the basket leaves out, and no table carries the store list. So the Python and DuckDB extraction stays as it is, and dbt tests and explains tables that already exist.
+> The extraction itself is not in dbt. dbt runs SQL over tables, and the extraction is mostly something else: it reads XML in two layouts, each arriving as a gzip, a ZIP or plain XML; decides from each chain's store list which stores count; and prices a promotion in exact fractions against the chain's own per-kilogram figure. Measured in this layer: the basket's prices, worked from the prices table alone, match the published ones at four chains (1,408 of 1,408 figures over 11 days). At Shufersal they miss by one store in 32 of 352 figures: the store list puts that store in a sub-chain the basket leaves out, and no table carries the store list. So the Python and DuckDB extraction stays as it is, and dbt tests and explains tables that already exist.
 
 ## 10. Traps found in the probe
 
