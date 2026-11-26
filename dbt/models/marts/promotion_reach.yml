@@ -24,9 +24,12 @@ models:
         description: Those of them that fewer than half the counted stores carry on every one of those products.
       - name: restricted
         description: >-
-          Those at most branches whose ClubID names a restriction: a club, the chain's card or another (rule P5).
+          Those at most branches whose ClubID names a restriction (a club, the chain's card or another; rule P5) on
+          any of their rows counted, wide or not.
       - name: with_min_spend
-        description: Those at most branches with a minimum purchase above zero on one of their groups (rule P5).
+        description: >-
+          Those at most branches with a minimum purchase above zero on one of their groups (rule P5), on any of their
+          rows counted, wide or not.
 
 # Each test's rows are one store type's (shufersal-deal) on 30 April 2026 unless it says otherwise. A row of
 # stg_promotions gives only the columns the model reads, and group_id, so a reader sees the groups.
@@ -130,7 +133,8 @@ unit_tests:
            restricted: 0, with_min_spend: 0}
 
   # 69: wide, a club; 70: not wide, a club; 71: wide, a minimum spend; 72: wide, neither; 73: not wide, a minimum
-  # spend.
+  # spend; 76: two rows, wide on 107 with neither, not wide on 114 with a club and a minimum spend, so it is at most
+  # branches, restricted and with a minimum spend.
   - name: restrictions_and_minimum_spends_among_those_at_most_branches
     model: promotion_reach
     given:
@@ -153,15 +157,23 @@ unit_tests:
           union all
           select 'shufersal', 'shufersal-deal', date '2026-04-30', '73', '1', '2000000000107', true, 'fixed_price',
                  date '2026-04-01', date '2026-05-31', []::varchar[], 50.00::decimal(12,2), false
+          union all
+          select 'shufersal', 'shufersal-deal', date '2026-04-30', '76', '1', '2000000000107', true, 'fixed_price',
+                 date '2026-04-01', date '2026-05-31', []::varchar[], null, true
+          union all
+          select 'shufersal', 'shufersal-deal', date '2026-04-30', '76', '1', '2000000000114', true, 'fixed_price',
+                 date '2026-04-01', date '2026-05-31', ['club']::varchar[], 50.00::decimal(12,2), false
       - input: ref('stg_items')
         format: sql
         rows: |
           select 'shufersal' as chain, 'shufersal-deal' as store_type, date '2026-04-30' as day,
                  '2000000000107' as barcode
+          union all
+          select 'shufersal', 'shufersal-deal', date '2026-04-30', '2000000000114'
     expect:
       rows:
-        - {store_type: shufersal-deal, day: "2026-04-30", promotions: 5, at_most_branches: 3, at_some_branches: 2,
-           restricted: 1, with_min_spend: 1}
+        - {store_type: shufersal-deal, day: "2026-04-30", promotions: 6, at_most_branches: 4, at_some_branches: 2,
+           restricted: 2, with_min_spend: 2}
 
   # 74 runs at two store types over two days: a row for each pair where its product is listed. Its product 107 is
   # listed at shufersal-sheli on 30 April only, so 74 there on 1 May is no row; 75's product 114 is listed at

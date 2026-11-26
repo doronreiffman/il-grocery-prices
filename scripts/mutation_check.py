@@ -3770,6 +3770,18 @@ MUTATIONS = {
     "a promotion counted once a product (q28 reach)": (
         DBT_PROMOTION_REACH, "    group by promotion.store_type, promotion.day, promotion.promotion_id\n",
         "    group by promotion.store_type, promotion.day, promotion.promotion_id, promotion.barcode\n"),
+    "a promotion with no kind counted (q28 reach)": (DBT_PROMOTION_REACH, "        and promotion.kind is not null\n", ""),
+    "a promotion already ended counted (q28 reach)": (
+        DBT_PROMOTION_REACH, "        and promotion.day <= promotion.ends\n", ""),
+    "at most branches only when every row is (q28 reach)": (
+        DBT_PROMOTION_REACH, "bool_or(promotion.wide)", "bool_and(promotion.wide)"),
+    "the join without its store type (q28 reach)": (
+        DBT_PROMOTION_REACH, "        and item.store_type = promotion.store_type\n", ""),
+    "the join without its day (q28 reach)": (DBT_PROMOTION_REACH, "        and item.day = promotion.day\n", ""),
+    "a restriction counted only when every row has one (q28 reach)": (
+        DBT_PROMOTION_REACH, "bool_or(len(promotion.restrictions) > 0)", "bool_and(len(promotion.restrictions) > 0)"),
+    "a minimum spend counted only when every row has one (q28 reach)": (
+        DBT_PROMOTION_REACH, "bool_or(promotion.min_spend is not null)", "bool_and(promotion.min_spend is not null)"),
     # the dbt layer (q28), Task 7's planted bugs: the golden build
     # the dbt layer (q28), Task 8's planted bugs: data tests on the prices and promotions tables
     # the dbt layer (q28), Task 9's planted bugs: data tests on the items table and its reports

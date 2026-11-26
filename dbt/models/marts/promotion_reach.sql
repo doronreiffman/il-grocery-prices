@@ -2,7 +2,7 @@
 -- GS1 barcode, it has a kind, it runs on the day (rule P3: starts on or before it, ends on or after it) and the items
 -- table lists the product at that chain, store type and day. Each promotion is then one entry a store type and day:
 -- at most branches when any of its rows counting is wide (P3), with a restriction or a minimum spend (P5) when any
--- of them has one.
+-- of them has one, wide or not.
 with listed_promotions as (
     select
         promotion.store_type,
