@@ -30,6 +30,8 @@ import pytest
 
 from basket.barcode import is_gs1
 from basket.chains import SLUGS
+from collector.names import FileName, parse_file_name
+from collector.store import published_name
 from dbt_run import DbtRun, query, run_dbt
 from shopper.extract import extract_chain_day
 from shopper_golden import G1, G2, G6, U1, U2, U3, U4, U5, U6, U7, U8, day_of, write_basket, write_day
@@ -230,24 +232,35 @@ EXPECTED_BAD: dict[str, tuple[str, int]] = {
     "prices_gs1_is_the_check_digit": ("fail", 2),
     # the promotions tables
     "promotions_one_row_per_day_store_type_promotion_group_and_code": ("fail", 1),
-    "promotions_wide_is_half_the_counted_stores": ("fail", 2),
+    "promotions_wide_is_half_the_counted_stores": ("fail", 4),
     "promotions_run_today_and_start_before_they_end": ("fail", 2),
-    "promotions_kind_follows_the_reward_type": ("fail", 2),
+    "promotions_kind_follows_the_reward_type": ("fail", 3),
     "promotions_minimum_spend_above_zero": ("fail", 1),
-    "promotions_store_prices_in_order": ("fail", 2),
-    "promotions_counted_is_the_reports": ("fail", 1),
+    "promotions_store_prices_in_order": ("fail", 4),
+    "promotions_counted_is_the_reports": ("fail", 2),
 }
-# The GS1 test's three codes, synthetic, as basket.barcode.is_gs1 reads them.
+# The GS1 test's four codes, synthetic, as basket.barcode.is_gs1 reads them; LONG's and SHORT's weighted sums, worked
+# as is_gs1 works a sum, end in 0.
 WRONG_CHECK = "2000000000238"     # 13 digits, its check digit 8 where the rule gives 7
 VALID_13 = "2000000000244"        # 13 digits, its check digit right
 LONG = "200000000000251"          # 15 digits, its check digit right: GS1 but for its length
-assert not is_gs1(WRONG_CHECK) and is_gs1(WRONG_CHECK[:-1] + "7") and is_gs1(VALID_13) and not is_gs1(LONG)
-assert sum(int(digit) * (3 if place % 2 else 1) for place, digit in enumerate(reversed(LONG))) % 10 == 0
+SHORT = "2000008"                 # 7 digits, its check digit right: GS1 but for its length
+assert not is_gs1(WRONG_CHECK) and is_gs1(WRONG_CHECK[:-1] + "7") and is_gs1(VALID_13)
+assert not is_gs1(LONG) and not is_gs1(SHORT)
+assert all(sum(int(digit) * (3 if place % 2 else 1) for place, digit in enumerate(reversed(code))) % 10 == 0
+           for code in (LONG, SHORT))
 # Shufersal's file names the bad prices rows take, beside Universe's own of 30 April
 # (PriceFull7290027600007-008-08<n>-20260430-080000.gz).
 SECOND_FILE = "PriceFull7290027600007-008-082-20260430-090000.gz"   # a later full price file of store 82's day
 PRICE_FILE = "Price7290027600007-008-083-20260430-080000.gz"         # a price file of the day, not a full one
 DAY_BEFORE_FILE = "PriceFull7290027600007-008-081-20260429-080000.gz"   # a full price file of 29 April
+# Carrefour store 1's own name of 30 April (PriceFull7290055700007-001-001-20260430-080000.gz) in a shape the collector
+# also reads as that store's full price file of the day: the kind in lower case, the time run on into the date, the
+# extension in upper case and a conflict copy's suffix. Right, so it fails only a rule that refuses one of them.
+VARIANT_FILE = "pricefull7290055700007-001-001-202604300800.GZ.0123456789ab"
+assert parse_file_name(published_name(VARIANT_FILE)) == FileName(
+    raw=VARIANT_FILE.removesuffix(".0123456789ab"), kind="PriceFull", chain_id="7290055700007", store="001",
+    day=day_of(LAST), sub_chain="001")
 
 
 def _rewrite(path: Path, *statements: str) -> None:
@@ -290,18 +303,24 @@ def plant_bad_rows(tables: Path, site: Path) -> None:
     - store 82's U2 row under a second full price file of the day (one file per store and day);
     - every row of store 83 under a `Price` file of the day, and every row of store 81 under a `PriceFull` file of 29
       April (each row from a full price file of its day: one row a file);
-    - at store 82, three new codes: WRONG_CHECK flagged GS1, VALID_13 flagged not, and LONG flagged not, which is
-      right, so it fails only a rule that takes 15 digits (the GS1 flag is the check digit's).
+    - at store 82, four new codes: WRONG_CHECK flagged GS1 and VALID_13 flagged not; LONG and SHORT flagged not, which
+      is right, so they fail only a rule that takes 15 or 7 digits (the GS1 flag is the check digit's).
+
+    Carrefour's prices table: store 1's rows under VARIANT_FILE, which is right, so it fails only a rule that refuses
+    the kind in lower case, a time run on into the date or a conflict copy's name (each row from a full price file).
 
     Carrefour's promotions table, which is empty, gains City rows on U1 (`_at_city`): Carrefour does not list U1, so
-    neither promotion_reach nor the items table reads them. Promotion 901 twice (the uniqueness); 902 not wide at 2 of
-    2, and 903 at 2 stores of a promotion carried by 1 (wide: the clean build's promotion 69, 1 of 3 and not wide,
-    catches a weakened half); 904 ended on 29 April, and 905 starting after it ends (run today, start before the end);
-    906 of reward type 2 with the kind fixed_price, and 907 of reward type 6 (the kind follows the reward type); 908 at
-    a minimum spend of 0.00; 909 its lowest store price above the median, and 910 fixed-price with a count of stores
-    priced (the stores' prices in order, the counts on percent off only); 911 at 3 counted stores where the report
-    says 2. Shufersal's table gains Universe's promotion 60 on U1 under a second group, which is unique, so it fails
-    only a uniqueness without the group; promotion_reach counts a promotion once however many groups name it."""
+    neither promotion_reach nor the items table reads them. Promotion 901 twice (the uniqueness). Wide: 902 not wide at
+    2 of 2, 903 at 2 stores of a promotion carried by 1, 912 at no store, and 913 of a promotion carried by 3 of the 2
+    counted (the clean build's promotion 69, 1 of 3 and not wide, catches a weakened half). 904 ended on 29 April, and
+    905 starting after it ends (run today, start before the end). The kind: 906 of reward type 2 with the kind
+    fixed_price, 907 of reward type 6 and 918 of reward type 12. 908 at a minimum spend of 0.00. The stores' prices:
+    909 its lowest above the median, 916 with no lowest beside a median and a highest, and 917 with none of the three,
+    which is right; 910 fixed-price with a count of stores priced; 914 a percent-off row with more stores agreeing (2)
+    than priced (1), and 915 with 1 of 2, which is right. Counted: 911 at 3 counted stores where the report says 2, and
+    919 under carrefour-online, a store type no report holds; neither promotion_reach nor the items table reads it.
+    Shufersal's table gains Universe's promotion 60 on U1 under a second group, which is unique, so it fails only a
+    uniqueness without the group; promotion_reach counts a promotion once however many groups name it."""
     day = f"date={day_of(LAST).isoformat()}"
     _rewrite(tables / "prices" / "chain=shufersal" / day / "prices.parquet",
              f"insert into staged select * from staged where store = '81' and code = '{U1}'",
@@ -310,7 +329,9 @@ def plant_bad_rows(tables: Path, site: Path) -> None:
              f"update staged set file = '{DAY_BEFORE_FILE}' where store = '81'",
              *(f"insert into staged select * replace ('{code}' as code, '{code}' as code_norm, {flag} as gs1) "
                f"from staged where store = '82' and code = '{U7}'"
-               for code, flag in ((WRONG_CHECK, "true"), (VALID_13, "false"), (LONG, "false"))))
+               for code, flag in ((WRONG_CHECK, "true"), (VALID_13, "false"), (LONG, "false"), (SHORT, "false"))))
+    _rewrite(tables / "prices" / "chain=carrefour" / day / "prices.parquet",
+             f"update staged set file = '{VARIANT_FILE}' where store = '1'")
     universe = tables / "promotions" / "chain=shufersal" / day / "promotions.parquet"
     _rewrite(tables / "promotions" / "chain=carrefour" / day / "promotions.parquet",
              _at_city("901", universe), _at_city("901", universe),
@@ -323,7 +344,18 @@ def plant_bad_rows(tables: Path, site: Path) -> None:
              _at_city("908", universe, {"min_spend": "0.00"}),
              _at_city("909", universe, {"discounted_low": "9.950", "discounted_high": "9.950"}),
              _at_city("910", universe, {"with_store_price": "2"}),
-             _at_city("911", universe, {"counted": "3"}))
+             _at_city("911", universe, {"counted": "3"}),
+             _at_city("912", universe, {"stores": "0", "wide": "false"}),
+             _at_city("913", universe, {"promotion_stores": "3"}),
+             _at_city("914", universe, {"reward_type": "'2'", "kind": "'percent_off'", "with_store_price": "1",
+                                        "agrees_with_store": "2"}),
+             _at_city("915", universe, {"reward_type": "'2'", "kind": "'percent_off'", "with_store_price": "2",
+                                        "agrees_with_store": "1"}),
+             _at_city("916", universe, {"discounted_low": "null"}),
+             _at_city("917", universe, {"discounted_low": "null", "discounted_median": "null",
+                                        "discounted_high": "null"}),
+             _at_city("918", universe, {"reward_type": "'12'", "kind": "null"}),
+             _at_city("919", universe, {'"column"': "'carrefour-online'"}))
     _rewrite(universe, "insert into staged select * replace ('2' as group_id) from staged "
                        f"where \"column\" = 'shufersal-universe' and promotion_id = '60' and code = '{U1}'")
 
@@ -362,3 +394,17 @@ def test_the_bad_rows_trip_exactly_their_tests(bad):
 def test_every_data_test_has_its_bad_row(clean):
     """Every data test of the project is in EXPECTED_BAD, so each is proved to fail on bad rows of its own."""
     assert set(EXPECTED_BAD) == _nodes(clean, "test")
+
+
+def test_every_data_test_is_described(clean):
+    """Every data test has a description as dbt reads it (the clean build's manifest): a singular test's from its
+    folder's _<group>.yml, a generic test's from beside it."""
+    assert [node["name"] for node in clean.manifest["nodes"].values()
+            if node["resource_type"] == "test" and not (node.get("description") or "").strip()] == []
+
+
+def test_dbt_tags_the_prices_uniqueness_alone_slow(clean):
+    """dbt's own reading of the tags (the clean build's manifest), beside tests/test_dbt_project.py's reading of the
+    files (`test_the_one_slow_test_is_the_prices_uniqueness`): the one node tagged slow is the prices' uniqueness."""
+    assert {node["name"] for node in clean.manifest["nodes"].values() if "slow" in node.get("tags", [])} == {
+        "prices_one_row_per_chain_day_store_and_code"}

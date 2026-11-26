@@ -357,6 +357,16 @@ DBT_PROMOTIONS_KIND = ("dbt/tests/promotions/promotions_kind_follows_the_reward_
 DBT_PROMOTIONS_MIN_SPEND = ("dbt/tests/promotions/promotions_minimum_spend_above_zero.sql", ["tests/test_dbt_golden.py"])
 DBT_PROMOTIONS_STORE_PRICES = ("dbt/tests/promotions/promotions_store_prices_in_order.sql", ["tests/test_dbt_golden.py"])
 DBT_PROMOTIONS_COUNTED = ("dbt/tests/promotions/promotions_counted_is_the_reports.sql", ["tests/test_dbt_golden.py"])
+# Task 8, fix round 1: the GS1 test's own comparison, and the promotions tests' descriptions, which the golden's test of
+# the clean build's manifest reads.
+DBT_PRICES_GS1 = ("dbt/tests/prices/prices_gs1_is_the_check_digit.sql", ["tests/test_dbt_golden.py"])
+DBT_PROMOTIONS_DESCRIPTIONS = ("dbt/tests/promotions/_promotions.yml", ["tests/test_dbt_golden.py"])
+# The minimum spend test's entry in that file, its name and description, which a break leaves with its name alone.
+_DBT_MIN_SPEND_DESCRIBED = (
+    '  - name: promotions_minimum_spend_above_zero\n'
+    '    description: >-\n'
+    '      A minimum spend, when a row states one, is above zero: it is the largest minimum purchase above zero over the\n'
+    "      promotion's groups. Fails with one row for each promotions row whose minimum spend is zero or below.\n")
 # the dbt layer (q28), Task 9's targets: data tests on the items table and its reports
 # the dbt layer (q28), Task 10's targets: data tests across tables and against the published files
 # the dbt layer (q28), Task 11's targets: the lineage map
@@ -3936,6 +3946,28 @@ MUTATIONS = {
     "counted not the report's allowed (q28 checks promotions)": (
         DBT_PROMOTIONS_COUNTED, "where promotion.counted is distinct from report.counted",
         "where promotion.counted is distinct from promotion.counted"),
+    # Task 8, fix round 1: a bad row for each clause that had none (the review), and each clause's planted bug.
+    "a PriceFull name in lower case refused (q28 checks prices)": (DBT_PRICES_PRICEFULL, "'(?i:pricefull)", "'PriceFull"),
+    "a conflict copy's name refused (q28 checks prices)": (DBT_PRICES_PRICEFULL, "(\\.[0-9a-f]{12})?'", "'"),
+    "a time run on into the date refused (q28 checks prices)": (
+        DBT_PRICES_PRICEFULL, "([0-9]{4})?(-[0-9]+)?", "(-[0-9]+)?"),
+    "a GS1 code flagged not allowed (q28 checks prices)": (
+        DBT_PRICES_GS1, "gs1 is distinct from {{ is_gs1('barcode') }}", "gs1 and not {{ is_gs1('barcode') }}"),
+    "a 7-digit code taken as GS1 (q28 checks prices)": (DBT_IS_GS1, "'[1-9][0-9]{7,13}'", "'[1-9][0-9]{6,13}'"),
+    "a promotions row at no store allowed (q28 checks promotions)": (
+        DBT_PROMOTIONS_WIDE, "coalesce(1 <= stores", "coalesce(0 <= stores"),
+    "promotion stores above the counted allowed (q28 checks promotions)": (
+        DBT_PROMOTIONS_WIDE, " and promotion_stores <= counted, false)", ", false)"),
+    "the percent-off counts out of order allowed (q28 checks promotions)": (
+        DBT_PROMOTIONS_STORE_PRICES, "agrees_with_store <= with_store_price and ", ""),
+    "a store price missing beside the others allowed (q28 checks promotions)": (
+        DBT_PROMOTIONS_STORE_PRICES,
+        "        discounted_low is null and discounted_median is null and discounted_high is null\n", "        true\n"),
+    "reward type 12 allowed (q28 checks promotions)": (DBT_PROMOTIONS_KIND, "('6', '12')", "('6')"),
+    "a store type no report holds allowed (q28 checks promotions)": (
+        DBT_PROMOTIONS_COUNTED, "left join {{ ref('stg_store_type_days') }}", "join {{ ref('stg_store_type_days') }}"),
+    "a data test's description missing allowed (q28 checks promotions)": (
+        DBT_PROMOTIONS_DESCRIPTIONS, _DBT_MIN_SPEND_DESCRIBED, "  - name: promotions_minimum_spend_above_zero\n"),
     # the dbt layer (q28), Task 9's planted bugs: data tests on the items table and its reports
     # the dbt layer (q28), Task 10's planted bugs: data tests across tables and against the published files
     # the dbt layer (q28), Task 11's planted bugs: the lineage map
