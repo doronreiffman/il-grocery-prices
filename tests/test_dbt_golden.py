@@ -243,7 +243,7 @@ EXPECTED_BAD: dict[str, tuple[str, int]] = {
     "items_store_type_is_one_of_the_nine_under_its_chain": ("fail", 2),
     "items_listed_price_in_range_and_listed_somewhere": ("fail", 5),
     "items_wide_is_half_the_stores_with_a_file": ("fail", 2),
-    "items_on_promotion_follows_its_promotions": ("fail", 4),
+    "items_on_promotion_follows_its_promotions": ("fail", 6),
     "items_promotions_start_before_they_end_run_today_and_appear_once": ("fail", 4),
     "items_valid_deal_prices_are_above_an_agora_and_below_twice_the_listed": ("fail", 3),
     "items_report_holes_follow_their_counts": ("fail", 4),
@@ -278,8 +278,9 @@ LOW_ABOVE, HIGH_BELOW, ONE_AGORA, AT_NO_STORE, NO_LISTED, PROMOTED = (
     "2000000000305", "2000000000312", "2000000000329", "2000000000336", "2000000000343", "2000000000350")
 ONE_OF_FOUR, ON_UNKNOWN, DEALS, ONE_OF_THREE, NOT_ON, NO_KIND = (
     "2000000000367", "2000000000374", "2000000000381", "2000000000398", "2000000000404", "2000000000411")
+BOTH_UNKNOWN, LIST_UNKNOWN = ("2000000000428", "2000000000435")
 assert all(is_gs1(code) for code in (LOW_ABOVE, HIGH_BELOW, ONE_AGORA, AT_NO_STORE, NO_LISTED, PROMOTED, ONE_OF_FOUR,
-                                     ON_UNKNOWN, DEALS, ONE_OF_THREE, NOT_ON, NO_KIND))
+                                     ON_UNKNOWN, DEALS, ONE_OF_THREE, NOT_ON, NO_KIND, BOTH_UNKNOWN, LIST_UNKNOWN))
 UNREAD = "carrefour: a promotion file that does not read"   # the 28 April copy's promotions error, synthetic
 # The fields of a struct of an items row's promotions list, in the table's order (src/shopper/items.py, _STRUCT).
 PROMOTION_FIELDS = ("promotion_id", "description", "start", "end", "kind", "buy", "price", "price_exact", "per", "low",
@@ -353,8 +354,8 @@ def _report(folder: Path, columns: dict[str, dict], **fields) -> None:
 
 def plant_bad_rows(tables: Path, site: Path) -> None:
     """Plant the data tests' bad rows in a copy of the golden's tables (`tables`) and published files (`site`), on 30
-    April unless said. Each breaks one clause of one data test and keeps every other rule; none is in what another test
-    reads, unless said. The published files keep the golden's.
+    April unless said. Each breaks one clause of one data test and keeps every other rule, but DEALS's three promotions
+    (below); none is in what another test reads, unless said. The published files keep the golden's.
 
     Shufersal's prices table, at Universe's stores (U1 to U10 are no basket product):
     - store 81's U1 row twice (the one row per chain, day, store and code);
@@ -392,24 +393,32 @@ def plant_bad_rows(tables: Path, site: Path) -> None:
       error. With the two copies Carrefour lacks 29 April and the four other chains lack 1 May (every chain, every day:
       five warnings, where a chain checked to its own last day gives one).
     - 1 May: City's NOT_ON is not on promotion, with a wide fixed price running on it (5.00, twice its listed 2.500:
-      not valid) (on promotion); Market's NO_KIND has a wide promotion running with no kind and is not on promotion,
-      which is right, so it fails only a rule that drops the kind.
+      not valid) (on promotion); a rule that asked for a valid deal would clear it and fail the clean build's U10, on
+      promotion with a deal not valid. Market's NO_KIND has a wide promotion running with no kind and is not on
+      promotion, which is right, so it fails only a rule that drops the kind.
     - Market: G2 twice (the uniqueness); G1 not wide at 2 of 2 (wide); G6 on promotion with no promotion on it (on
-      promotion); LOW_ABOVE's lowest price above its listed one, HIGH_BELOW's highest below it, ONE_AGORA listed at
-      0.010, AT_NO_STORE listed at no store (so not wide, which is right) and NO_LISTED with no listed price (the listed
-      price); PROMOTED's five promotions, none running, wide and valid: 951 ended on 29 April, 952 starting after it
-      ends, 953 twice, from 1 May, and 954 with no start (start, end and once). PROMOTED is not on promotion, which is
-      right, so it fails only an on-promotion rule that drops the start or the end, and its report counts no valid deal,
-      so it fails only an agreement that does. Market's report is a hole with every file (the holes).
+      promotion); BOTH_UNKNOWN with no on_promotion and no promotions list, and LIST_UNKNOWN not on promotion with no
+      promotions list, on a day the promotions were read (on promotion); LOW_ABOVE's lowest price above its listed one,
+      HIGH_BELOW's highest below it, ONE_AGORA listed at 0.010, AT_NO_STORE listed at no store (so not wide, which is
+      right) and NO_LISTED with no listed price (the listed price); PROMOTED's six promotions, none running, wide and
+      valid: 951 ended on 29 April, 952 starting after it ends, 953 twice, from 1 May, and 954 with no start (start,
+      end and once), and 955 once, from 1 May, which is right, so it fails only a rule that drops a promotion starting
+      after the day. PROMOTED is not on promotion, which is right, so it fails only an on-promotion rule that drops the
+      start or the end, and its report counts no valid deal, so it fails only an agreement that does. Market's report
+      is a hole with every file (the holes).
     - City: its report's included stores and stores with a file are 4, so G1, G2 and G6, at 2 of 4, are wide at
       exactly half, which is right; ONE_OF_FOUR is wide at 1 of 4 (wide); ON_UNKNOWN has no on_promotion (on
       promotion); both hold promotion 964, wide with no kind, once each, which is right, so it fails only a rule that
       takes one promotion on two rows for one promotion twice on a row. DEALS has three valid deals, not wide: 961 at
-      0.01, 962 at 5.00, twice its listed 2.500, and 963 with no price (the valid deals). City's report has no
+      0.01, 962 at 5.00, twice its listed 2.500, and 963 with no price (the valid deals); City's report counts them, so
+      an agreement that counted wide deals alone would fail it. Each is at 1 store, which at City's 2 counted stores
+      rule P3 calls wide: the one rule these three break beyond their own, and no test reads a promotion's stores
+      against its wide. They are not wide so that no promotion counts at City on 30 April. City's report has no
       promotion file of its 2 counted stores and no promotion hole (the holes).
     - Rows under store types the report lacks (the store type): G2 under carrefour-express, and U1 under shufersal-deal,
       at 1 store, not wide, with no promotions and not on promotion, which a wide, on-promotion or agreement rule that
-      met reports without the chain would read against Shufersal Deal's.
+      met reports without the chain would read against Shufersal Deal's, and a wide or on-promotion rule that kept a
+      row meeting no report would fail.
     - Shufersal: Universe's ONE_OF_THREE at 1 of its 3 stores and not wide, which is right, so it fails only a weakened
       half. Express's report, of a store type with no store and no row: on 29 April 3 included, 1 with a file and a
       hole, 3 counted, 1 with a promotion file and a promotion hole; on 28 April 2 and 1 and no hole, 2 and 1 and no
@@ -473,7 +482,8 @@ def plant_bad_rows(tables: Path, site: Path) -> None:
     _report(after, {"carrefour-city": {"items": 4, "wide": 4}, "carrefour-market": {"items": 4, "wide": 4}})
     ended = _promotion("951", {"start": "date '2026-04-20'", "end": "date '2026-04-29'"})
     backwards = _promotion("952", {"start": "date '2026-05-07'", "end": "date '2026-05-06'"})
-    later = _promotion("953", {"start": "date '2026-05-01'", "end": "date '2026-05-05'"})
+    later, later_once = (_promotion(promotion_id, {"start": "date '2026-05-01'", "end": "date '2026-05-05'"})
+                         for promotion_id in ("953", "955"))
     no_start = _promotion("954", {"start": "null"})
     at_one_agora, at_twice, no_price = (
         _promotion(promotion_id, {"price": price, "price_exact": exact, "stores": "1", "wide": "false"})
@@ -488,7 +498,9 @@ def plant_bad_rows(tables: Path, site: Path) -> None:
              _item(AT_NO_STORE, "carrefour-market", {"listing": "0", "wide": "false"}),
              _item(NO_LISTED, "carrefour-market", {"listed": "null"}),
              _item(PROMOTED, "carrefour-market",
-                   {"promotions": f"[{ended}, {backwards}, {later}, {later}, {no_start}]"}),
+                   {"promotions": f"[{ended}, {backwards}, {later}, {later}, {no_start}, {later_once}]"}),
+             _item(BOTH_UNKNOWN, "carrefour-market", {"on_promotion": "null", "promotions": "null"}),
+             _item(LIST_UNKNOWN, "carrefour-market", {"promotions": "null"}),
              _item(ONE_OF_FOUR, "carrefour-city", {"listing": "1", "promotions": f"[{on_two_rows}]"}),
              _item(ON_UNKNOWN, "carrefour-city", {"on_promotion": "null", "promotions": f"[{on_two_rows}]"}),
              _item(DEALS, "carrefour-city", {"promotions": f"[{at_one_agora}, {at_twice}, {no_price}]"}),
@@ -496,7 +508,7 @@ def plant_bad_rows(tables: Path, site: Path) -> None:
              f"update staged set on_promotion = true where \"column\" = 'carrefour-market' and code = '{G6}'",
              f"insert into staged select * from staged where \"column\" = 'carrefour-market' and code = '{G2}'")
     _report(carrefour, {
-        "carrefour-market": {"hole": True, "items": 10, "wide": 8, "on_promotion": 1},
+        "carrefour-market": {"hole": True, "items": 12, "wide": 10, "on_promotion": 1},
         "carrefour-city": {"included": 4, "with_file": 4, "promo_files": 0, "items": 6, "wide": 6, "valid_deals": 3}})
     _rewrite(shufersal / day / "items.parquet",
              _item(ONE_OF_THREE, "shufersal-sheli", {'"column"': "'shufersal-universe'", "listing": "1",

@@ -4074,11 +4074,28 @@ MUTATIONS = {
     "on promotion from a promotion that has ended (q28 checks items)": (
         DBT_ITEMS_ON_PROMOTION, ' and item.day <= p."end"', ""),
     "a row on promotion with none running allowed (q28 checks items)": (
-        DBT_ITEMS_ON_PROMOTION, "else item.on_promotion is distinct from (", "else not item.on_promotion and ("),
+        DBT_ITEMS_ON_PROMOTION, "or item.on_promotion is distinct from (", "or not item.on_promotion and ("),
     "a row not on promotion with one running allowed (q28 checks items)": (
-        DBT_ITEMS_ON_PROMOTION, "else item.on_promotion is distinct from (", "else item.on_promotion and not ("),
-    "a row with no on_promotion allowed (q28 checks items)": (
-        DBT_ITEMS_ON_PROMOTION, "else item.on_promotion is distinct from (", "else item.on_promotion <> ("),
+        DBT_ITEMS_ON_PROMOTION, "or item.on_promotion is distinct from (", "or item.on_promotion and not ("),
+    # Fix round 1: the read day's NULL on_promotion caught by its own clause (the review's finding), so the NULL-safe
+    # comparison is held by a read day's row with no promotions list.
+    "a read day's row with no promotions list allowed (q28 checks items)": (
+        DBT_ITEMS_ON_PROMOTION, "or item.on_promotion is distinct from (", "or item.on_promotion <> ("),
+    "a read day's row with no on_promotion allowed (q28 checks items)": (
+        DBT_ITEMS_ON_PROMOTION, "else item.on_promotion is null\n            or item.on_promotion is distinct from (",
+        "else item.on_promotion is distinct from ("),
+    "on promotion only from a valid deal (q28 checks items)": (
+        DBT_ITEMS_ON_PROMOTION, "if p.wide and p.kind is not null", "if p.valid and p.wide and p.kind is not null"),
+    "the on-promotion test's rows meeting no report checked (q28 checks items)": (
+        DBT_ITEMS_ON_PROMOTION, "join {{ ref('stg_store_type_days') }} as report",
+        "left join {{ ref('stg_store_type_days') }} as report"),
+    "the wide test's rows meeting no report checked (q28 checks items)": (
+        DBT_ITEMS_WIDE, "join {{ ref('stg_store_type_days') }} as report",
+        "left join {{ ref('stg_store_type_days') }} as report"),
+    "a promotion starting after the day not kept (q28 checks items)": (
+        DBT_ITEMS_PROMOTIONS, 'promotion."end" >= day, false)', 'promotion."end" >= day and promotion."start" <= day, false)'),
+    "valid deals counted only when wide (q28 checks items)": (
+        DBT_ITEMS_AGREE, 'if p.valid and p."start"', 'if p.wide and p.valid and p."start"'),
     "the on-promotion test's join without its day (q28 checks items)": (
         DBT_ITEMS_ON_PROMOTION, "    and report.day = item.day\n", ""),
     "the on-promotion test's join without its store type (q28 checks items)": (

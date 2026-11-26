@@ -21,7 +21,8 @@ data_tests:
     description: >-
       Rule P3, as the extraction reads it: an items row is on promotion exactly when a promotion on it is wide, has a
       kind and runs that day, whether its deal is valid or not; and its on_promotion is empty exactly when the chain's
-      promotions were not read, which the items report says by its promotions error. Fails with one row for each items
+      promotions were not read, which the items report says by its promotions error. On a day they were read, an empty
+      on_promotion or promotions list breaks it, as the extraction writes both then. Fails with one row for each items
       row that breaks either. A row under a store type the report lacks is left to the store-type test.
   - name: items_promotions_start_before_they_end_run_today_and_appear_once
     description: >-
@@ -30,9 +31,11 @@ data_tests:
       row and promotion that breaks any of the three or has no start or end.
   - name: items_valid_deal_prices_are_above_an_agora_and_below_twice_the_listed
     description: >-
-      Rule P4: a valid deal's price, as the items table shows it, to the agora, is above 0.01 and below twice the
-      row's listed price. Fails with one row for each valid promotion on an items row that breaks either or has no
-      price.
+      A valid deal's price as shown, to the agora (the struct's price, as the design's section 3 checks it), is above
+      0.01 and below twice the row's listed price. The extraction judges rule P4 on the exact price, so the two can
+      differ only for a deal whose exact price is not a whole number of agorot and lies within half an agora above 0.01
+      or below twice the listed price, as 3 for ₪0.04, 1/75 of a shekel, shown as 0.01. Fails with one row for each
+      valid promotion on an items row that breaks either or has no price.
   - name: items_report_holes_follow_their_counts
     description: >-
       Rules B8 and S0, by store type: in the items report a store type's day is a hole exactly when it has no included
