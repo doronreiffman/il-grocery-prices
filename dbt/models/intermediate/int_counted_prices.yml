@@ -1,0 +1,102 @@
+models:
+  - name: int_counted_prices
+    description: >-
+      The price rows that count: rows whose store and sub-chain rule B2 does not leave out by number
+      (left_out_stores), each number at its own chain only, and whose price is above ₪0.01 (rule B4). A row with no
+      sub-chain is never left out by a sub-chain. B2 by number only: the Python also keeps only the stores the chain's
+      store list includes (src/basket/stores.py, included), a list the tables do not hold.
+    columns:
+      - name: chain
+        description: The chain, from the prices table's folder name.
+      - name: day
+        description: The day the prices table is filed under.
+      - name: store
+        description: >-
+          The store's number from the file's name, leading zeros stripped; never a store B2 leaves out by its number.
+      - name: sub_chain
+        description: >-
+          The sub-chain's number from the file's name, leading zeros stripped; NULL when the name has none; never a
+          sub-chain B2 leaves out.
+      - name: code
+        description: The item code as the file gives it.
+      - name: barcode
+        description: The code with leading zeros stripped, the digits a product is matched by.
+      - name: gs1
+        description: Whether the code is a real GS1 barcode.
+      - name: price
+        description: >-
+          The price, to two places, above ₪0.01: a price of ₪0.01 or less is a placeholder, and a row with no price
+          says nothing (rule B4).
+      - name: file
+        description: The stored name of the file the row comes from.
+
+unit_tests:
+  - name: left_out_by_number_at_their_own_chain_only
+    model: int_counted_prices
+    given:
+      - input: ref('stg_prices')
+        format: sql
+        rows: |
+          select * from (values
+              ('shufersal', date '2026-04-30', '300', '5', '2000000000121', '2000000000121', true,
+               cast(5.00 as decimal(12, 2)), 'PriceFull-300.gz'),
+              ('shufersal', date '2026-04-30', '413', '1', '2000000000121', '2000000000121', true, 5.00,
+               'PriceFull-413.gz'),
+              ('ramilevy', date '2026-04-30', '39', null, '2000000000121', '2000000000121', true, 5.00,
+               'PriceFull-39.gz'),
+              ('carrefour', date '2026-04-30', '471', null, '2000000000121', '2000000000121', true, 5.00,
+               'PriceFull-471.gz'),
+              ('shufersal', date '2026-04-30', '39', '1', '2000000000121', '2000000000121', true, 5.10,
+               'PriceFull-39.gz'),
+              ('ramilevy', date '2026-04-30', '413', null, '2000000000121', '2000000000121', true, 5.20,
+               'PriceFull-413.gz'),
+              ('shufersal', date '2026-04-30', '301', null, '2000000000121', '2000000000121', true, 5.30,
+               'PriceFull-301.gz')
+          ) as prices (chain, day, store, sub_chain, code, barcode, gs1, price, file)
+      - input: ref('left_out_stores')
+        format: sql
+        rows: |
+          select * from (values
+              ('shufersal', 'sub_chain', '5'),
+              ('shufersal', 'store', '413'),
+              ('ramilevy', 'store', '39'),
+              ('carrefour', 'store', '471')
+          ) as left_out (chain, kind, key)
+    expect:
+      rows:
+        - {chain: shufersal, day: "2026-04-30", store: "39", sub_chain: "1", code: "2000000000121",
+           barcode: "2000000000121", gs1: true, price: "5.10", file: PriceFull-39.gz}
+        - {chain: ramilevy, day: "2026-04-30", store: "413", sub_chain: null, code: "2000000000121",
+           barcode: "2000000000121", gs1: true, price: "5.20", file: PriceFull-413.gz}
+        - {chain: shufersal, day: "2026-04-30", store: "301", sub_chain: null, code: "2000000000121",
+           barcode: "2000000000121", gs1: true, price: "5.30", file: PriceFull-301.gz}
+
+  - name: a_price_of_one_agora_or_less_does_not_count
+    model: int_counted_prices
+    given:
+      - input: ref('stg_prices')
+        format: sql
+        rows: |
+          select * from (values
+              ('osherad', date '2026-04-30', '1', cast(null as varchar), '2000000000077', '2000000000077', true,
+               cast(0.00 as decimal(12, 2)), 'PriceFull-1.gz'),
+              ('osherad', date '2026-04-30', '1', null, '2000000000084', '2000000000084', true, 0.01,
+               'PriceFull-1.gz'),
+              ('osherad', date '2026-04-30', '1', null, '2000000000091', '2000000000091', true, null,
+               'PriceFull-1.gz'),
+              ('osherad', date '2026-04-30', '1', null, '2000000000107', '2000000000107', true, 0.02,
+               'PriceFull-1.gz')
+          ) as prices (chain, day, store, sub_chain, code, barcode, gs1, price, file)
+      - input: ref('left_out_stores')
+        format: sql
+        rows: |
+          select * from (values
+              ('shufersal', 'sub_chain', '5'),
+              ('shufersal', 'store', '413'),
+              ('ramilevy', 'store', '39'),
+              ('carrefour', 'store', '471')
+          ) as left_out (chain, kind, key)
+    expect:
+      rows:
+        - {chain: osherad, day: "2026-04-30", store: "1", sub_chain: null, code: "2000000000107",
+           barcode: "2000000000107", gs1: true, price: "0.02", file: PriceFull-1.gz}

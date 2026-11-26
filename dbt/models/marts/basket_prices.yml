@@ -1,0 +1,164 @@
+models:
+  - name: basket_prices
+    description: >-
+      What each chain lists for the basket's products: one row a chain, day and basket barcode, when at least one of
+      the chain's price rows that count (int_counted_prices) lists it that day; by rule B5, as src/basket/rules.py
+      works it.
+      A store counts once: one listing the product under more than one code with the same digits once leading zeros
+      are stripped is double-coded, and its price is the lowest of its rows'.
+    columns:
+      - name: chain
+        description: The chain.
+      - name: day
+        description: The day of the prices table the rows come from.
+      - name: barcode
+        description: >-
+          The basket's code with its leading zeros stripped, the digits the rows' codes are matched by.
+      - name: median
+        description: >-
+          The median of the chain's store prices, one a store: the middle price over the stores listing the product,
+          or the mean of the two middle ones; exact, to three places (rule B5).
+      - name: low
+        description: The lowest of those store prices.
+      - name: high
+        description: The highest of those store prices.
+      - name: stores_listing
+        description: How many of the chain's stores list the product that day.
+      - name: double_coded
+        description: How many of those stores list it under more than one code.
+
+unit_tests:
+  - name: the_median_of_an_odd_count_is_the_middle_store_s
+    model: basket_prices
+    given:
+      - input: ref('int_counted_prices')
+        format: sql
+        rows: |
+          select * from (values
+              ('shufersal', date '2026-04-30', '11', '1', '2000000000121', '2000000000121', true,
+               cast(8.00 as decimal(12, 2)), 'PriceFull-11.gz'),
+              ('shufersal', date '2026-04-30', '12', '1', '2000000000121', '2000000000121', true, 8.20,
+               'PriceFull-12.gz'),
+              ('shufersal', date '2026-04-30', '21', '1', '2000000000121', '2000000000121', true, 7.00,
+               'PriceFull-21.gz'),
+              ('shufersal', date '2026-04-30', '22', '1', '2000000000121', '2000000000121', true, 7.20,
+               'PriceFull-22.gz'),
+              ('shufersal', date '2026-04-30', '61', '1', '2000000000121', '2000000000121', true, 7.60,
+               'PriceFull-61.gz')
+          ) as counted (chain, day, store, sub_chain, code, barcode, gs1, price, file)
+      - input: source('repo', 'basket')
+        format: sql
+        rows: |
+          select [{'code': '2000000000121'}] as items
+    expect:
+      rows:
+        - {chain: shufersal, day: "2026-04-30", barcode: "2000000000121", median: "7.600", low: "7.00", high: "8.20",
+           stores_listing: 5, double_coded: 0}
+
+  - name: the_median_of_an_even_count_is_the_mean_of_the_middle_two_exactly
+    model: basket_prices
+    given:
+      - input: ref('int_counted_prices')
+        format: sql
+        rows: |
+          select * from (values
+              ('ramilevy', date '2026-04-30', '1', cast(null as varchar), '2000000000121', '2000000000121', true,
+               cast(7.40 as decimal(12, 2)), 'PriceFull-1.gz'),
+              ('ramilevy', date '2026-04-30', '2', null, '2000000000121', '2000000000121', true, 7.60,
+               'PriceFull-2.gz'),
+              ('osherad', date '2026-04-30', '1', null, '2000000000121', '2000000000121', true, 7.61,
+               'PriceFull-1.gz'),
+              ('osherad', date '2026-04-30', '2', null, '2000000000121', '2000000000121', true, 7.60,
+               'PriceFull-2.gz')
+          ) as counted (chain, day, store, sub_chain, code, barcode, gs1, price, file)
+      - input: source('repo', 'basket')
+        format: sql
+        rows: |
+          select [{'code': '2000000000121'}] as items
+    expect:
+      rows:
+        - {chain: ramilevy, day: "2026-04-30", barcode: "2000000000121", median: "7.500", low: "7.40", high: "7.60",
+           stores_listing: 2, double_coded: 0}
+        - {chain: osherad, day: "2026-04-30", barcode: "2000000000121", median: "7.605", low: "7.60", high: "7.61",
+           stores_listing: 2, double_coded: 0}
+
+  - name: a_double_coded_store_counts_once_at_its_lower_price
+    model: basket_prices
+    given:
+      - input: ref('int_counted_prices')
+        format: sql
+        rows: |
+          select * from (values
+              ('carrefour', date '2026-04-30', '1', cast(null as varchar), '2000000000121', '2000000000121', true,
+               cast(5.00 as decimal(12, 2)), 'PriceFull-1.gz'),
+              ('carrefour', date '2026-04-30', '1', null, '02000000000121', '2000000000121', true, 4.80,
+               'PriceFull-1.gz'),
+              ('carrefour', date '2026-04-30', '2', null, '2000000000121', '2000000000121', true, 5.20,
+               'PriceFull-2.gz')
+          ) as counted (chain, day, store, sub_chain, code, barcode, gs1, price, file)
+      - input: source('repo', 'basket')
+        format: sql
+        rows: |
+          select [{'code': '2000000000121'}] as items
+    expect:
+      rows:
+        - {chain: carrefour, day: "2026-04-30", barcode: "2000000000121", median: "5.000", low: "4.80", high: "5.20",
+           stores_listing: 2, double_coded: 1}
+
+  - name: only_the_basket_s_codes_their_leading_zeros_stripped
+    model: basket_prices
+    given:
+      - input: ref('int_counted_prices')
+        format: sql
+        rows: |
+          select * from (values
+              ('yochananof', date '2026-04-30', '1', cast(null as varchar), '2000000000121', '2000000000121', true,
+               cast(7.80 as decimal(12, 2)), 'PriceFull-1.gz'),
+              ('yochananof', date '2026-04-30', '1', null, '2000000000077', '2000000000077', true, 3.00,
+               'PriceFull-1.gz')
+          ) as counted (chain, day, store, sub_chain, code, barcode, gs1, price, file)
+      - input: source('repo', 'basket')
+        format: sql
+        rows: |
+          select [{'code': '02000000000121'}] as items
+    expect:
+      rows:
+        - {chain: yochananof, day: "2026-04-30", barcode: "2000000000121", median: "7.800", low: "7.80",
+           high: "7.80", stores_listing: 1, double_coded: 0}
+
+  - name: each_chain_and_day_on_its_own
+    model: basket_prices
+    given:
+      - input: ref('int_counted_prices')
+        format: sql
+        rows: |
+          select * from (values
+              ('osherad', date '2026-04-29', '1', cast(null as varchar), '2000000000121', '2000000000121', true,
+               cast(7.10 as decimal(12, 2)), 'PriceFull-1.gz'),
+              ('osherad', date '2026-04-29', '2', null, '2000000000121', '2000000000121', true, 7.30,
+               'PriceFull-2.gz'),
+              ('osherad', date '2026-04-30', '1', null, '2000000000121', '2000000000121', true, 7.20,
+               'PriceFull-1.gz'),
+              ('osherad', date '2026-04-30', '2', null, '2000000000121', '2000000000121', true, 7.40,
+               'PriceFull-2.gz'),
+              ('yochananof', date '2026-04-29', '1', null, '2000000000121', '2000000000121', true, 7.80,
+               'PriceFull-1.gz'),
+              ('yochananof', date '2026-04-29', '2', null, '2000000000121', '2000000000121', true, 8.00,
+               'PriceFull-2.gz'),
+              ('yochananof', date '2026-04-30', '1', null, '2000000000121', '2000000000121', true, 8.10,
+               'PriceFull-1.gz')
+          ) as counted (chain, day, store, sub_chain, code, barcode, gs1, price, file)
+      - input: source('repo', 'basket')
+        format: sql
+        rows: |
+          select [{'code': '2000000000121'}] as items
+    expect:
+      rows:
+        - {chain: osherad, day: "2026-04-29", barcode: "2000000000121", median: "7.200", low: "7.10", high: "7.30",
+           stores_listing: 2, double_coded: 0}
+        - {chain: osherad, day: "2026-04-30", barcode: "2000000000121", median: "7.300", low: "7.20", high: "7.40",
+           stores_listing: 2, double_coded: 0}
+        - {chain: yochananof, day: "2026-04-29", barcode: "2000000000121", median: "7.900", low: "7.80",
+           high: "8.00", stores_listing: 2, double_coded: 0}
+        - {chain: yochananof, day: "2026-04-30", barcode: "2000000000121", median: "8.100", low: "8.10",
+           high: "8.10", stores_listing: 1, double_coded: 0}

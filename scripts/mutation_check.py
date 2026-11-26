@@ -294,6 +294,12 @@ _DBT_BASKET_UNIT_TEST = (
     '        - {chain: osherad, day: "2026-04-30", barcode: "2000000000121", median: "7.20", low: "7.10", high: "7.30",\n'
     '           listing: 2, double_coded: 0}\n')
 # the dbt layer (q28), Task 4's targets: the basket's models
+DBT_COUNTED_PRICES = ("dbt/models/intermediate/int_counted_prices.sql", ["tests/test_dbt_units.py"])
+DBT_BASKET_PRICES = ("dbt/models/marts/basket_prices.sql", ["tests/test_dbt_units.py"])
+DBT_MEDIAN = ("dbt/macros/median_price.sql", ["tests/test_dbt_units.py"])
+# The median through a division, which the project's floating-point test must catch by itself: cast back to three
+# places, the DOUBLE gives every unit test's median the same.
+DBT_MEDIAN_FOR_PROJECT = ("dbt/macros/median_price.sql", ["tests/test_dbt_project.py"])
 # the dbt layer (q28), Task 5's targets: the deals' models
 DBT_DAY_PRICES = ("dbt/models/intermediate/int_day_prices.sql", ["tests/test_dbt_units.py"])
 DBT_PRODUCT_DEALS = ("dbt/models/marts/product_deals.sql", ["tests/test_dbt_units.py"])
@@ -3688,6 +3694,37 @@ MUTATIONS = {
     "a staging view with a rule left without its unit test (q28 staging)": (
         DBT_STG_PUBLISHED_BASKET_PROPERTIES, _DBT_BASKET_UNIT_TEST, ""),
     # the dbt layer (q28), Task 4's planted bugs: the basket's models
+    "a left-out store kept (q28 basket)": (
+        DBT_COUNTED_PRICES,
+        "anti join left_out_store\n    on left_out_store.chain = prices.chain and left_out_store.store = prices.store\n", ""),
+    "a left-out sub-chain kept (q28 basket)": (
+        DBT_COUNTED_PRICES,
+        "anti join left_out_sub_chain\n"
+        "    on left_out_sub_chain.chain = prices.chain and left_out_sub_chain.sub_chain = prices.sub_chain\n", ""),
+    "a store left out at another chain (q28 basket)": (
+        DBT_COUNTED_PRICES, "on left_out_store.chain = prices.chain and left_out_store.store = prices.store",
+        "on left_out_store.store = prices.store"),
+    # The sub-chains left out by a NOT IN: NULL NOT IN a list of one row or more is NULL, not true, so a row with no
+    # sub-chain at a chain that leaves a sub-chain out is dropped.
+    "a row with no sub-chain left out (q28 basket)": (
+        DBT_COUNTED_PRICES,
+        "anti join left_out_sub_chain\n"
+        "    on left_out_sub_chain.chain = prices.chain and left_out_sub_chain.sub_chain = prices.sub_chain\n"
+        "where prices.price > 0.01\n",
+        "where prices.price > 0.01\n"
+        "    and prices.sub_chain not in (select sub_chain from left_out_sub_chain where left_out_sub_chain.chain = prices.chain)\n"),
+    "a price of one agora counted (q28 basket)": (DBT_COUNTED_PRICES, "where prices.price > 0.01", "where prices.price >= 0.01"),
+    "the lower of the two middles taken (q28 basket)": (
+        DBT_MEDIAN, "({{ prices }}[len({{ prices }}) // 2] + {{ prices }}[len({{ prices }}) // 2 + 1]) * 0.5",
+        "{{ prices }}[len({{ prices }}) // 2]"),
+    "the median through a division (q28 basket)": (DBT_MEDIAN_FOR_PROJECT, ") * 0.5", ") / 2"),
+    "a store counted once a code (q28 basket)": (
+        DBT_BASKET_PRICES, "    group by chain, day, barcode, store\n", "    group by chain, day, barcode, store, code\n"),
+    "a double-coded store's higher price taken (q28 basket)": (DBT_BASKET_PRICES, "min(price) as price", "max(price) as price"),
+    "a double-coded store not counted (q28 basket)": (
+        DBT_BASKET_PRICES, "count(*) filter (where codes > 1)", "count(*) filter (where codes > 2)"),
+    "a basket code's leading zeros kept (q28 basket)": (
+        DBT_BASKET_PRICES, "ltrim(item.code, '0') as barcode", "item.code as barcode"),
     # the dbt layer (q28), Task 5's planted bugs: the deals' models
     "a promotion at some stores counted (q28 deals)": (DBT_DAY_PRICES, "if p.wide and p.valid and", "if p.valid and"),
     "an unread deal counted (q28 deals)": (DBT_DAY_PRICES, "p.wide and p.valid and p.kind", "p.wide and p.kind"),
