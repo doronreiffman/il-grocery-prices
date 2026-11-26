@@ -1,0 +1,35 @@
+# The promotions tables' singular data tests (docs/dbt-layer.md, section 3), one a file beside this one, each named by
+# its file. Their one generic test, one row per day, store type, promotion, group and code, is on the source
+# (models/sources.yml).
+data_tests:
+  - name: promotions_wide_is_half_the_counted_stores
+    description: >-
+      Rule P3, by store type: a row is wide exactly when at least half the store type's counted stores carry the
+      promotion on the code; and the stores carrying it on the code are at least one and no more than the stores
+      carrying the promotion at all, which are no more than the counted stores. Fails with one row for each
+      promotions row that breaks either.
+  - name: promotions_run_today_and_start_before_they_end
+    description: >-
+      Rule P3: no promotion in the table ended before its day, and each starts on or before it ends. One that starts
+      after the day is kept. Fails with one row for each promotions row that breaks either.
+  - name: promotions_kind_follows_the_reward_type
+    description: >-
+      Rule P3: a row's kind is its reward type's by the var kinds (1 and 10 N for M shekels, 2 percent off, 3 a fixed
+      price, none for any other), and no row is of reward type 6 or 12, a gift or a basket reward, whose promotion the
+      extraction drops whole. Fails with one row for each promotions row that breaks either.
+  - name: promotions_minimum_spend_above_zero
+    description: >-
+      A minimum spend, when a row states one, is above zero: it is the largest minimum purchase above zero over the
+      promotion's groups. Fails with one row for each promotions row whose minimum spend is zero or below.
+  - name: promotions_store_prices_in_order
+    description: >-
+      The carrying stores' discounted prices are in order, the lowest no more than the median and the median no more
+      than the highest, or none of the three when no store's price was read; and two counts are on percent off
+      alone, and in order there: the stores whose discounted price agrees with their own price are no more than the
+      stores whose own price was found, and those no more than the stores carrying the promotion on the code. Fails
+      with one row for each promotions row that breaks either.
+  - name: promotions_counted_is_the_reports
+    description: >-
+      Rule P3: the stores counted are the store type's counted stores of rule P2, as the items report of the chain and
+      day gives them. Fails with one row for each promotions row whose counted is not the report's, or whose store type
+      and day no report holds.

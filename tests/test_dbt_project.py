@@ -303,3 +303,35 @@ def test_the_runbook_installs_the_dbt_environment_as_ci_does():
     assert installs != []
     for line in installs:
         assert [command.strip() for command in line.split("&&")] == ["python3.13 -m venv .venv-dbt", *ci]
+
+
+# The slow test (Task 8): one data test alone is tagged slow, the prices' one row per chain, day, store and code over
+# every day's rows (docs/dbt-layer.md, section 3), so the runbook's `dbt test --exclude tag:slow` (docs/operations.md)
+# leaves out that one and no other.
+SLOW = [("models/sources.yml", "prices_one_row_per_chain_day_store_and_code")]
+
+
+def _tagged_slow(node) -> list[str | None]:
+    """The names of the entries a loaded YAML file tags slow, at any depth: by the entry's `tags` or `+tags`, or its
+    config's, a list or one tag."""
+    if isinstance(node, list):
+        return [name for value in node for name in _tagged_slow(value)]
+    if not isinstance(node, dict):
+        return []
+    config = node.get("config") if isinstance(node.get("config"), dict) else {}
+    found = [node.get("name") for tags in (node.get("tags"), node.get("+tags"), config.get("tags"), config.get("+tags"))
+             if tags == "slow" or (isinstance(tags, list) and "slow" in tags)]
+    return found + [name for key, value in node.items() if key != "config" for name in _tagged_slow(value)]
+
+
+def test_the_one_slow_test_is_the_prices_uniqueness():
+    # Every YAML and SQL file under dbt/ but dbt/target/ and dbt/logs/, where dbt writes; a SQL file tags a test
+    # through its config call, inside {{ }}.
+    skipped = (PROJECT / "target", PROJECT / "logs")
+    files = sorted(path for path in PROJECT.rglob("*") if path.suffix in (".yml", ".sql")
+                   and not any(folder in path.parents for folder in skipped))
+    found = [(str(path.relative_to(PROJECT)), name) for path in files if path.suffix == ".yml"
+             for name in _tagged_slow(_load(path))]
+    found += [(str(path.relative_to(PROJECT)), path.stem) for path in files if path.suffix == ".sql"
+              and re.search(r"\{\{[^}]*\bslow\b[^}]*\}\}", path.read_text())]
+    assert found == SLOW

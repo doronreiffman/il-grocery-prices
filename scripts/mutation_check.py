@@ -341,6 +341,22 @@ DBT_STG_PROMOTIONS_FOR_GOLDEN = ("dbt/models/staging/stg_promotions.sql", ["test
 # list with Python alone, so a break it lets through must be caught where dbt builds the list.
 DBT_KNOWN_LIST_FOR_GOLDEN = ("dbt/dbt_project.yml", ["tests/test_dbt_golden.py"])
 # the dbt layer (q28), Task 8's targets: data tests on the prices and promotions tables
+# The data tests, their two macros and the generic tests' arguments: the bad-rows build must catch a rule weakened in
+# any of them by a count that moves. The slow tag is DBT_SOURCES', since the project test reads it.
+DBT_UNIQUE_TOGETHER = ("dbt/macros/unique_together.sql", ["tests/test_dbt_golden.py"])
+DBT_IS_GS1 = ("dbt/macros/is_gs1.sql", ["tests/test_dbt_golden.py"])
+DBT_SOURCES_FOR_GOLDEN = ("dbt/models/sources.yml", ["tests/test_dbt_golden.py"])
+DBT_PRICES_ONE_FILE = ("dbt/tests/prices/prices_one_file_per_store_and_day.sql", ["tests/test_dbt_golden.py"])
+DBT_PRICES_PRICEFULL = ("dbt/tests/prices/prices_each_row_from_a_pricefull_file_of_its_day.sql",
+                        ["tests/test_dbt_golden.py"])
+DBT_PROMOTIONS_WIDE = ("dbt/tests/promotions/promotions_wide_is_half_the_counted_stores.sql",
+                       ["tests/test_dbt_golden.py"])
+DBT_PROMOTIONS_RUN_TODAY = ("dbt/tests/promotions/promotions_run_today_and_start_before_they_end.sql",
+                            ["tests/test_dbt_golden.py"])
+DBT_PROMOTIONS_KIND = ("dbt/tests/promotions/promotions_kind_follows_the_reward_type.sql", ["tests/test_dbt_golden.py"])
+DBT_PROMOTIONS_MIN_SPEND = ("dbt/tests/promotions/promotions_minimum_spend_above_zero.sql", ["tests/test_dbt_golden.py"])
+DBT_PROMOTIONS_STORE_PRICES = ("dbt/tests/promotions/promotions_store_prices_in_order.sql", ["tests/test_dbt_golden.py"])
+DBT_PROMOTIONS_COUNTED = ("dbt/tests/promotions/promotions_counted_is_the_reports.sql", ["tests/test_dbt_golden.py"])
 # the dbt layer (q28), Task 9's targets: data tests on the items table and its reports
 # the dbt layer (q28), Task 10's targets: data tests across tables and against the published files
 # the dbt layer (q28), Task 11's targets: the lineage map
@@ -3882,6 +3898,44 @@ MUTATIONS = {
     "the owner's four not rendered as written (q28 golden)": (
         DBT_KNOWN_LIST_FOR_GOLDEN, "reason: &weighed >-", "reason: &weighed |-"),
     # the dbt layer (q28), Task 8's planted bugs: data tests on the prices and promotions tables
+    "uniqueness allowing one repeat (q28 checks prices)": (
+        DBT_UNIQUE_TOGETHER, "having count(*) > 1", "having count(*) > 2"),
+    "two files of a store's day allowed (q28 checks prices)": (
+        DBT_PRICES_ONE_FILE, "having count(distinct file) > 1", "having count(distinct file) > 2"),
+    "a file of another day allowed (q28 checks prices)": (
+        DBT_PRICES_PRICEFULL, "strftime(day, '%Y%m%d')", "'[0-9]{8}'"),
+    "a file of another kind allowed (q28 checks prices)": (
+        DBT_PRICES_PRICEFULL, "'(?i:pricefull)", "'(?i:price(full)?)"),
+    "the check digit weighted from the left (q28 checks prices)": (
+        DBT_IS_GS1, "string_split(reverse(substr({{ barcode }}, 1, len({{ barcode }}) - 1)), '')",
+        "string_split(substr({{ barcode }}, 1, len({{ barcode }}) - 1), '')"),
+    "a 15-digit code taken as GS1 (q28 checks prices)": (DBT_IS_GS1, "'[1-9][0-9]{7,13}'", "'[1-9][0-9]{7,14}'"),
+    "the slow tag lost (q28 checks prices)": (DBT_SOURCES, "tags: [slow]", "tags: []"),
+    "the promotions' uniqueness without the group (q28 checks promotions)": (
+        DBT_SOURCES_FOR_GOLDEN, "'\"column\"', promotion_id, group_id, code]", "'\"column\"', promotion_id, code]"),
+    "wide at a third of the stores (q28 checks promotions)": (
+        DBT_PROMOTIONS_WIDE, "wide is distinct from (stores * 2 >= counted)", "wide is distinct from (stores * 3 >= counted)"),
+    "stores above the promotion's stores allowed (q28 checks promotions)": (
+        DBT_PROMOTIONS_WIDE, "1 <= stores and stores <= promotion_stores and promotion_stores",
+        "1 <= stores and promotion_stores"),
+    "an ended promotion allowed (q28 checks promotions)": (
+        DBT_PROMOTIONS_RUN_TODAY, "coalesce(ends >= day, false)", "coalesce(ends >= day - 1, false)"),
+    "a start after the end allowed (q28 checks promotions)": (
+        DBT_PROMOTIONS_RUN_TODAY, "coalesce(starts <= ends, false)", "coalesce(starts <= ends + 1, false)"),
+    "a kind not its reward type's allowed (q28 checks promotions)": (
+        DBT_PROMOTIONS_KIND, "where kind is distinct from (", "where kind is null and kind is distinct from ("),
+    "reward type 6 allowed (q28 checks promotions)": (
+        DBT_PROMOTIONS_KIND, "reward_type in ('6', '12')", "reward_type in ('12')"),
+    "a minimum spend of zero allowed (q28 checks promotions)": (
+        DBT_PROMOTIONS_MIN_SPEND, "where min_spend <= 0", "where min_spend < 0"),
+    "the stores' prices out of order allowed (q28 checks promotions)": (
+        DBT_PROMOTIONS_STORE_PRICES, "discounted_low <= discounted_median and discounted_median <= discounted_high,",
+        "discounted_median <= discounted_high,"),
+    "percent-off counts on another kind allowed (q28 checks promotions)": (
+        DBT_PROMOTIONS_STORE_PRICES, "else with_store_price is not null or agrees_with_store is not null", "else false"),
+    "counted not the report's allowed (q28 checks promotions)": (
+        DBT_PROMOTIONS_COUNTED, "where promotion.counted is distinct from report.counted",
+        "where promotion.counted is distinct from promotion.counted"),
     # the dbt layer (q28), Task 9's planted bugs: data tests on the items table and its reports
     # the dbt layer (q28), Task 10's planted bugs: data tests across tables and against the published files
     # the dbt layer (q28), Task 11's planted bugs: the lineage map

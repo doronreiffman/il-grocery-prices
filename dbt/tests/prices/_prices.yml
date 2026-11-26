@@ -1,0 +1,16 @@
+# The prices tables' singular data tests (docs/dbt-layer.md, section 3), one a file beside this one, each named by its
+# file. Their one generic test, one row per chain, day, store and code, is on the source (models/sources.yml).
+data_tests:
+  - name: prices_one_file_per_store_and_day
+    description: >-
+      Rule B1: a store's rows of a day come from one price file, its latest of the day. Fails with one row for each
+      store and day whose rows come from more than one file.
+  - name: prices_each_row_from_a_pricefull_file_of_its_day
+    description: >-
+      Rule B1: each price row comes from a full price file (PriceFull) of the table's own day, its name read as the
+      collector reads a file name. Fails with one row for each file whose name is not a PriceFull name of that day.
+  - name: prices_gs1_is_the_check_digit
+    description: >-
+      The prices tables' GS1 flag is the code's, as the extraction works it (src/basket/barcode.py, is_gs1): 8 to 14 digits
+      once leading zeros are stripped, the last the GS1 check digit. Fails with one row for each barcode and flag
+      that disagree.

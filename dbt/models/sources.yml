@@ -10,6 +10,17 @@ sources:
         config:
           meta: {label: prices}
           external_location: "read_parquet('{{ var(\"tables\") }}/prices/*/*/prices.parquet', hive_partitioning = true)"
+        data_tests:
+          - unique_together:
+              name: prices_one_row_per_chain_day_store_and_code
+              description: >-
+                Rule B3: one price row per chain, day, store and code, the last of a code's rows in a file winning.
+                Fails with one row for each key that repeats. Tagged slow, the one data test that dbt test --exclude
+                tag:slow leaves out: it groups every day's price rows by four columns.
+              arguments:
+                columns: ['"date"', chain, store, code]
+              config:
+                tags: [slow]
       - name: items
         description: The items tables, items/chain=<chain>/date=<day>/items.parquet.
         config:
@@ -20,6 +31,14 @@ sources:
         config:
           meta: {label: promotions}
           external_location: "read_parquet('{{ var(\"tables\") }}/promotions/*/*/promotions.parquet', hive_partitioning = true)"
+        data_tests:
+          - unique_together:
+              name: promotions_one_row_per_day_store_type_promotion_group_and_code
+              description: >-
+                One promotions row per day, store type, promotion, group and item code (docs/operations.md, "Where
+                things land"). Fails with one row for each key that repeats.
+              arguments:
+                columns: ['"date"', '"column"', promotion_id, group_id, code]
       - name: items_reports
         description: >-
           The report beside each items table, for its counts and flags by store type and the promotions' error alone;

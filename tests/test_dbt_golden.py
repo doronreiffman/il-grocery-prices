@@ -14,16 +14,23 @@ the dbt sources read, laid out as the site lays them out, for the comparisons wi
 
 The build (`clean`) is `dbt build` with the unit tests left out, on its own temporary database and folders
 (tests/dbt_run.py), its vars (`GOLDEN_VARS`) the golden's folders and no known difference.
+
+The data tests (docs/dbt-layer.md, section 3) pass on the clean build, and each is proved to fail on bad rows of its
+own: `plant_bad_rows` breaks a copy of the golden's tables, each bad row one clause of one test, and the bad-rows build
+(`bad`) must give each data test exactly its count (`EXPECTED_BAD`), so a weakened rule shows as a count that moved.
 """
 import json
+import shutil
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 
+import duckdb
 import pytest
 
+from basket.barcode import is_gs1
 from basket.chains import SLUGS
-from dbt_run import query, run_dbt
+from dbt_run import DbtRun, query, run_dbt
 from shopper.extract import extract_chain_day
 from shopper_golden import G1, G2, G6, U1, U2, U3, U4, U5, U6, U7, U8, day_of, write_basket, write_day
 from test_dbt_project import OWNER_S_FOUR
@@ -209,3 +216,149 @@ def test_the_owner_s_four_known_differences_render_as_written(tmp_path):
     assert {(kind, key, day.isoformat()): reason for kind, key, day, reason in found} == {
         ("basket", "shufersal", "2026-11-09"): SLOW_MORNING, ("store_page", "ramilevy", "2026-11-21"): WEIGHED,
         ("store_page", "ramilevy", "2026-11-22"): WEIGHED, ("store_page", "yochananof", "2026-11-22"): WEIGHED}
+
+
+# The data tests on the bad rows (Tasks 8 to 10 of docs/dbt-layer-plan.md). Each data test's name, to the status and
+# the failures (the rows it returns, one for each row, file, key or barcode its description names) it must give on the
+# bad rows `plant_bad_rows` plants. A test fails on its own bad rows alone, so a rule weakened in a test shows as a
+# count that moved, and a bad row that broke a second test shows there.
+EXPECTED_BAD: dict[str, tuple[str, int]] = {
+    # the prices tables
+    "prices_one_row_per_chain_day_store_and_code": ("fail", 1),
+    "prices_one_file_per_store_and_day": ("fail", 1),
+    "prices_each_row_from_a_pricefull_file_of_its_day": ("fail", 2),
+    "prices_gs1_is_the_check_digit": ("fail", 2),
+    # the promotions tables
+    "promotions_one_row_per_day_store_type_promotion_group_and_code": ("fail", 1),
+    "promotions_wide_is_half_the_counted_stores": ("fail", 2),
+    "promotions_run_today_and_start_before_they_end": ("fail", 2),
+    "promotions_kind_follows_the_reward_type": ("fail", 2),
+    "promotions_minimum_spend_above_zero": ("fail", 1),
+    "promotions_store_prices_in_order": ("fail", 2),
+    "promotions_counted_is_the_reports": ("fail", 1),
+}
+# The GS1 test's three codes, synthetic, as basket.barcode.is_gs1 reads them.
+WRONG_CHECK = "2000000000238"     # 13 digits, its check digit 8 where the rule gives 7
+VALID_13 = "2000000000244"        # 13 digits, its check digit right
+LONG = "200000000000251"          # 15 digits, its check digit right: GS1 but for its length
+assert not is_gs1(WRONG_CHECK) and is_gs1(WRONG_CHECK[:-1] + "7") and is_gs1(VALID_13) and not is_gs1(LONG)
+assert sum(int(digit) * (3 if place % 2 else 1) for place, digit in enumerate(reversed(LONG))) % 10 == 0
+# Shufersal's file names the bad prices rows take, beside Universe's own of 30 April
+# (PriceFull7290027600007-008-08<n>-20260430-080000.gz).
+SECOND_FILE = "PriceFull7290027600007-008-082-20260430-090000.gz"   # a later full price file of store 82's day
+PRICE_FILE = "Price7290027600007-008-083-20260430-080000.gz"         # a price file of the day, not a full one
+DAY_BEFORE_FILE = "PriceFull7290027600007-008-081-20260429-080000.gz"   # a full price file of 29 April
+
+
+def _rewrite(path: Path, *statements: str) -> None:
+    """Run `statements` over the Parquet file at `path`, read as the table `staged`, and write it back in place with
+    every column's type kept: `staged` takes the file's types, a row inserted or changed is cast to them, and the file
+    written is checked to have them. The folder's chain and day are not columns of the file (hive_partitioning off)."""
+    def read(file: Path) -> str:
+        return f"read_parquet('{file}', hive_partitioning = false)"
+    written = path.with_suffix(".rewritten")
+    with duckdb.connect() as con:
+        types = con.execute(f"describe select * from {read(path)}").fetchall()
+        con.execute(f"create table staged as select * from {read(path)}")
+        for statement in statements:
+            con.execute(statement)
+        con.execute(f"copy staged to '{written}' (format parquet)")
+        assert con.execute(f"describe select * from {read(written)}").fetchall() == types
+    written.replace(path)
+
+
+def _at_city(promotion_id: str, template: Path, changes: dict[str, str] | None = None) -> str:
+    """An insert of a Carrefour City promotions row on U1, which Carrefour does not list: Universe's promotion 60 on U1
+    (in `template`, Shufersal's table of the day) under `promotion_id`, at City's 2 counted stores, both carrying it,
+    and wide. So it is right by every rule but its `changes`, each a column (quoted where SQL needs it) and its new
+    value as SQL."""
+    values = {'"column"': "'carrefour-city'", "promotion_id": f"'{promotion_id}'", "stores": "2",
+              "promotion_stores": "2", "counted": "2", "wide": "true", **(changes or {})}
+    replaced = ", ".join(f"{value} as {column}" for column, value in values.items())
+    return (f"insert into staged select * replace ({replaced}) from read_parquet('{template}', "
+            f"hive_partitioning = false) where \"column\" = 'shufersal-universe' and promotion_id = '60' "
+            f"and group_id = '1' and code = '{U1}'")
+
+
+def plant_bad_rows(tables: Path, site: Path) -> None:
+    """Plant the data tests' bad rows in a copy of the golden's tables (`tables`) and published files (`site`), all on
+    30 April. Each breaks one clause of one data test and keeps every other rule; none is in what another test reads,
+    unless said. The published files keep the golden's.
+
+    Shufersal's prices table, at Universe's stores (U1 to U10 are no basket product):
+    - store 81's U1 row twice (the one row per chain, day, store and code);
+    - store 82's U2 row under a second full price file of the day (one file per store and day);
+    - every row of store 83 under a `Price` file of the day, and every row of store 81 under a `PriceFull` file of 29
+      April (each row from a full price file of its day: one row a file);
+    - at store 82, three new codes: WRONG_CHECK flagged GS1, VALID_13 flagged not, and LONG flagged not, which is
+      right, so it fails only a rule that takes 15 digits (the GS1 flag is the check digit's).
+
+    Carrefour's promotions table, which is empty, gains City rows on U1 (`_at_city`): Carrefour does not list U1, so
+    neither promotion_reach nor the items table reads them. Promotion 901 twice (the uniqueness); 902 not wide at 2 of
+    2, and 903 at 2 stores of a promotion carried by 1 (wide: the clean build's promotion 69, 1 of 3 and not wide,
+    catches a weakened half); 904 ended on 29 April, and 905 starting after it ends (run today, start before the end);
+    906 of reward type 2 with the kind fixed_price, and 907 of reward type 6 (the kind follows the reward type); 908 at
+    a minimum spend of 0.00; 909 its lowest store price above the median, and 910 fixed-price with a count of stores
+    priced (the stores' prices in order, the counts on percent off only); 911 at 3 counted stores where the report
+    says 2. Shufersal's table gains Universe's promotion 60 on U1 under a second group, which is unique, so it fails
+    only a uniqueness without the group; promotion_reach counts a promotion once however many groups name it."""
+    day = f"date={day_of(LAST).isoformat()}"
+    _rewrite(tables / "prices" / "chain=shufersal" / day / "prices.parquet",
+             f"insert into staged select * from staged where store = '81' and code = '{U1}'",
+             f"update staged set file = '{SECOND_FILE}' where store = '82' and code = '{U2}'",
+             f"update staged set file = '{PRICE_FILE}' where store = '83'",
+             f"update staged set file = '{DAY_BEFORE_FILE}' where store = '81'",
+             *(f"insert into staged select * replace ('{code}' as code, '{code}' as code_norm, {flag} as gs1) "
+               f"from staged where store = '82' and code = '{U7}'"
+               for code, flag in ((WRONG_CHECK, "true"), (VALID_13, "false"), (LONG, "false"))))
+    universe = tables / "promotions" / "chain=shufersal" / day / "promotions.parquet"
+    _rewrite(tables / "promotions" / "chain=carrefour" / day / "promotions.parquet",
+             _at_city("901", universe), _at_city("901", universe),
+             _at_city("902", universe, {"wide": "false"}),
+             _at_city("903", universe, {"promotion_stores": "1"}),
+             _at_city("904", universe, {'"start"': "date '2026-04-20'", '"end"': "date '2026-04-29'"}),
+             _at_city("905", universe, {'"start"': "date '2026-05-07'", '"end"': "date '2026-05-06'"}),
+             _at_city("906", universe, {"reward_type": "'2'"}),
+             _at_city("907", universe, {"reward_type": "'6'", "kind": "null"}),
+             _at_city("908", universe, {"min_spend": "0.00"}),
+             _at_city("909", universe, {"discounted_low": "9.950", "discounted_high": "9.950"}),
+             _at_city("910", universe, {"with_store_price": "2"}),
+             _at_city("911", universe, {"counted": "3"}))
+    _rewrite(universe, "insert into staged select * replace ('2' as group_id) from staged "
+                       f"where \"column\" = 'shufersal-universe' and promotion_id = '60' and code = '{U1}'")
+
+
+@pytest.fixture(scope="module")
+def BAD_VARS(golden, GOLDEN_VARS, tmp_path_factory) -> dict:
+    """The bad-rows build's vars: GOLDEN_VARS on a copy of the golden's tables and published files, the bad rows
+    planted in the copy. Shared by every test in the module, as GOLDEN_VARS is: copy it, never change it."""
+    root = tmp_path_factory.mktemp("dbt-bad")
+    tables, site = root / "tables", root / "site"
+    shutil.copytree(golden.tables, tables)
+    shutil.copytree(golden.site, site)
+    plant_bad_rows(tables, site)
+    return {**GOLDEN_VARS, "tables": str(tables), "site": str(site)}
+
+
+@pytest.fixture(scope="module")
+def bad(BAD_VARS, tmp_path_factory) -> tuple[DbtRun, DbtRun]:
+    """Every model built on the bad rows (`dbt run`), then every data test run on them, the unit tests left out (`dbt
+    test`), on one database. Not one `dbt build`: there a failing test on a source stops the models built from it
+    (docs/dbt-layer.md, section 3), and their tests could not be seen to fail."""
+    root = tmp_path_factory.mktemp("bad")
+    database = root / "bad.duckdb"
+    built = run_dbt(["run"], root / "run", BAD_VARS, database=database)
+    return built, run_dbt(["test", "--exclude", "test_type:unit"], root / "test", BAD_VARS, database=database)
+
+
+def test_the_bad_rows_trip_exactly_their_tests(bad):
+    """On the bad rows every model still builds, and every data test fails, or warns, with exactly its own count."""
+    built, tested = bad
+    assert built.code == 0, built.output
+    assert tested.code == 1, tested.output
+    assert tested.results == EXPECTED_BAD
+
+
+def test_every_data_test_has_its_bad_row(clean):
+    """Every data test of the project is in EXPECTED_BAD, so each is proved to fail on bad rows of its own."""
+    assert set(EXPECTED_BAD) == _nodes(clean, "test")
