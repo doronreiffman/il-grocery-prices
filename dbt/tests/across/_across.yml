@@ -1,0 +1,16 @@
+# The data tests across tables (docs/dbt-layer.md, section 3), one a file beside this one, each named by its file.
+data_tests:
+  - name: listed_price_is_the_median_of_the_prices_table
+    description: >-
+      Rules P2 and B5: at each chain of one store type (the var store_types), an items row's listed price, lowest and
+      highest price and the stores listing it are rule B5 worked again from the prices table's rows that count
+      (int_counted_prices: rule B2's stores left out by number, B4's floor), GS1 codes alone: one price a store, its
+      lowest over the codes with the same digits, then the median, the lowest and the highest over the stores. Both
+      ways, on the chain-days both tables have: an items row with no price rows fails, and so do GS1 price rows with no
+      items row. Fails with one row for each chain, day and barcode whose figures differ or that one side lacks.
+  - name: promotions_at_most_branches_agree_across_tables
+    description: >-
+      Rule P3: promotion_reach's count at most branches, from the promotions table, is the items table's, on each
+      store-type day of the items reports whose chain has a promotions row that day: the promotions on the store type's
+      items rows that are wide, have a kind and run that day, each counted once however many rows carry it. A side with
+      none counts 0. Fails with one row for each store-type day whose two counts differ.

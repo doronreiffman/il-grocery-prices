@@ -1,0 +1,47 @@
+# The data tests against the files the site published (docs/dbt-layer.md, section 3), one a file beside this one, each
+# named by its file. The differences they read are the macros' in dbt/macros/published_differences.sql.
+data_tests:
+  - name: store_type_deals_match_published
+    description: >-
+      store_type_deals gives each published store page's N, the deals on its front list, and M, the products with a
+      promotion that counts that day and passing the front list's bar (docs/store-first.md, "The front page's list").
+      A store page known_differences lists is skipped. Fails with one row for each published store-type day whose N or
+      M is not the model's, or that store_type_deals has no row for.
+  - name: product_deals_match_published_rows
+    description: >-
+      product_deals gives each row a published store page shows: today's price, the usual price and the saving, as the
+      site writes them, text with two places, and its days, the days with a day price its reason rests on (the site
+      writes len(found.priced), the model's days_priced). A store page known_differences lists is skipped. Fails with
+      one row for each shown row that is not the model's, or that product_deals has no row for.
+  - name: promotion_reach_matches_published
+    description: >-
+      promotion_reach's count at most branches gives each published store page's promotions count, the promotions
+      line's number (src/shopper/build.py, _today: the wide promotions with a kind running that day, distinct by id).
+      Compared on a published store-type day of the items reports that is no hole and no promotion hole, days the site
+      counts no promotion on and publishes no count for, and whose chain has a promotions row that day: with none the
+      chain has no promotions table to count from. A store type with no promotion_reach row that day counts 0. Fails
+      with one row for each store-type day whose two counts differ.
+  - name: basket_prices_match_published
+    description: >-
+      basket_prices gives each published basket figure at the chains but Shufersal: the median, rounded half up to two
+      places as the site rounds it (src/basket/record.py, money), the lowest, the highest, the stores listing the item
+      and the double-coded ones among them. A chain-day with no prices table is skipped, and so is a basket
+      known_differences lists. Fails with one row for each published item whose figures are not the model's, or that
+      basket_prices has no row for.
+  - name: basket_prices_at_shufersal_match_published
+    description: >-
+      The same comparison at Shufersal, a standing warning, not an error. Store 678 is on every store list under
+      sub-chain 5 (Be), which the basket leaves out, while its files are named under sub-chain 2; the prices table
+      carries the file name's sub-chain alone, so SQL over the table counts one store more than the site did
+      (docs/dbt-layer.md, section 3, "The three that fail today", 3). Warns with one row for each published item whose
+      figures are not the model's, or that basket_prices has no row for.
+    config:
+      severity: warn
+  - name: known_differences_still_differ
+    description: >-
+      Each published day known_differences lists has both sides and still differs, so the list can hide nothing and
+      cannot go stale (docs/dbt-layer.md, section 3, "The three that fail today", 2). A store page: a store_type_deals
+      row of it, and its published N, M or a shown row not the model's. A basket: a published figure not the model's,
+      on a chain-day with a prices table. The differences are the comparisons' own, read from the published files
+      alone, so a listed day with nothing published, or a basket day with no prices table, has none. Fails with one row
+      for each listed day that lacks a side or no longer differs.

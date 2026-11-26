@@ -405,6 +405,53 @@ _DBT_ITEMS_ONCE_A_CHAIN_DAY = (
                                   "max(store_type) as store_types, day, barcode,")
     .replace("group by chain, store_type, day, barcode,", "group by chain, day, barcode,"))
 # the dbt layer (q28), Task 10's targets: data tests across tables and against the published files
+# The data tests, the macros the published ones share and their descriptions' file, which holds Shufersal's severity:
+# the bad-rows build must catch a rule weakened in any of them by a count that moves, or the clean build by a test
+# that no longer passes.
+_DBT_ACROSS, _DBT_PUBLISHED = "dbt/tests/across/", "dbt/tests/published/"
+DBT_ACROSS_LISTED = (_DBT_ACROSS + "listed_price_is_the_median_of_the_prices_table.sql", ["tests/test_dbt_golden.py"])
+DBT_ACROSS_PROMOTIONS = (_DBT_ACROSS + "promotions_at_most_branches_agree_across_tables.sql",
+                         ["tests/test_dbt_golden.py"])
+DBT_PUBLISHED_DIFFERENCES = ("dbt/macros/published_differences.sql", ["tests/test_dbt_golden.py"])
+DBT_PUBLISHED_PAGES = (_DBT_PUBLISHED + "store_type_deals_match_published.sql", ["tests/test_dbt_golden.py"])
+DBT_PUBLISHED_ROWS = (_DBT_PUBLISHED + "product_deals_match_published_rows.sql", ["tests/test_dbt_golden.py"])
+DBT_PUBLISHED_PROMOTIONS = (_DBT_PUBLISHED + "promotion_reach_matches_published.sql", ["tests/test_dbt_golden.py"])
+DBT_PUBLISHED_BASKET = (_DBT_PUBLISHED + "basket_prices_match_published.sql", ["tests/test_dbt_golden.py"])
+DBT_PUBLISHED_SHUFERSAL = (_DBT_PUBLISHED + "basket_prices_at_shufersal_match_published.sql",
+                           ["tests/test_dbt_golden.py"])
+DBT_PUBLISHED_STILL_DIFFER = (_DBT_PUBLISHED + "known_differences_still_differ.sql", ["tests/test_dbt_golden.py"])
+DBT_PUBLISHED_DESCRIPTIONS = (_DBT_PUBLISHED + "_published.yml", ["tests/test_dbt_golden.py"])
+# A known difference's skip as the two store-page comparisons write it, and as the macro basket_compared writes it:
+# a break drops it whole.
+_DBT_STORE_PAGE_SKIP = ("anti join {{ ref('known_differences') }} as known\n"
+                        "    on known.kind = 'store_page'\n"
+                        "    and known.key = differing.store_type\n"
+                        "    and known.day = differing.day\n")
+_DBT_BASKET_SKIP = ("anti join {{ ref('known_differences') }} as known\n"
+                    "    on known.kind = 'basket'\n"
+                    "    and known.key = differing.chain\n"
+                    "    and known.day = differing.day\n")
+# The filters on chain-days: an items row's day with GS1 price rows, a worked figure's day with items rows, a published
+# basket's day with a prices table, a store-type day whose chain has a promotions row (across and published); a break
+# drops each whole.
+_DBT_LISTED_DAYS_PRICED = ("    from item_rows\n"
+                           "    semi join (select distinct chain, day from worked) as priced\n"
+                           "        on priced.chain = item_rows.chain\n"
+                           "        and priced.day = item_rows.day\n")
+_DBT_WORKED_DAYS_LISTED = ("    from worked\n"
+                           "    semi join (select distinct chain, day from item_rows) as listed_days\n"
+                           "        on listed_days.chain = worked.chain\n"
+                           "        and listed_days.day = worked.day\n")
+_DBT_BASKET_DAYS_PRICED = ("semi join (select distinct chain, day from {{ ref('stg_prices') }}) as priced\n"
+                           "    on priced.chain = published.chain\n"
+                           "    and priced.day = published.day\n")
+_DBT_ACROSS_PROMOTED = ("    from {{ ref('stg_store_type_days') }} as report\n"
+                        "    semi join promoted_days\n"
+                        "        on promoted_days.chain = report.chain\n"
+                        "        and promoted_days.day = report.day\n")
+_DBT_PUBLISHED_PROMOTED = ("semi join promoted_days\n"
+                           "    on promoted_days.chain = report.chain\n"
+                           "    and promoted_days.day = report.day\n")
 # the dbt layer (q28), Task 11's targets: the lineage map
 DBT_LINEAGE = ("scripts/dbt_lineage.py", ["tests/test_dbt_lineage.py"])
 # The runbook's install of .venv-dbt, which the project's test holds to CI's.
@@ -4155,6 +4202,240 @@ MUTATIONS = {
     "the agreement's join without its chain (q28 checks items)": (
         DBT_ITEMS_AGREE, "on item.chain = report.chain\n        and item.store_type", "on item.store_type"),
     # the dbt layer (q28), Task 10's planted bugs: data tests across tables and against the published files
+    "the listed price compared one way only (q28 checks across)": (
+        DBT_ACROSS_LISTED, "from items\nfull join figures\n", "from items\nleft join figures\n"),
+    "the prices table's left-out stores counted (q28 checks across)": (
+        DBT_ACROSS_LISTED, "    from {{ ref('int_counted_prices') }} as prices\n",
+        "    from {{ ref('stg_prices') }} as prices\n"),
+    "the reach compared with the items' promotions at some stores (q28 checks across)": (
+        DBT_ACROSS_PROMOTIONS, "    where entry.wide and entry.kind is not null", "    where entry.kind is not null"),
+    "N not compared (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "where page.deals is distinct from model.deals\n    or page.checked",
+        "where page.checked"),
+    "M not compared (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "\n    or page.checked is distinct from model.checked", ""),
+    "a known store page compared (q28 checks published)": (DBT_PUBLISHED_PAGES, _DBT_STORE_PAGE_SKIP, ""),
+    "a shown row's usual price not compared (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "\n    or shown.usual is distinct from cast(deal.usual_price as varchar)", ""),
+    "a known store page's rows compared (q28 checks published)": (DBT_PUBLISHED_ROWS, _DBT_STORE_PAGE_SKIP, ""),
+    "the promotions count not compared (q28 checks published)": (
+        DBT_PUBLISHED_PROMOTIONS, "\n    and page.promotions is distinct from coalesce(reach.at_most_branches, 0)",
+        "\n    and false"),
+    "the basket's median not rounded half up (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "cast(round(basket.median, 2) as varchar)",
+        "cast(trunc(basket.median, 2) as varchar)"),
+    "a known basket day compared (q28 checks published)": (DBT_PUBLISHED_DIFFERENCES, _DBT_BASKET_SKIP, ""),
+    "a chain-day with no table compared (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, _DBT_BASKET_DAYS_PRICED, ""),
+    "Shufersal's basket an error (q28 checks published)": (
+        DBT_PUBLISHED_DESCRIPTIONS, "      severity: warn\n", "      severity: error\n"),
+    "a known store page that matches allowed (q28 checks published)": (
+        DBT_PUBLISHED_STILL_DIFFER, " or page_differing.day is null)", ")"),
+    "a known basket day that matches allowed (q28 checks published)": (
+        DBT_PUBLISHED_STILL_DIFFER, "\n    and basket_differing.day is null", "\n    and false"),
+    # Beyond the brief's 3 and 12: a bad row for every clause its counts left without one, or a row that must pass where
+    # a clause lets right rows through, and each such clause's planted bug. The listed price against the prices table.
+    "the listed price compared from the prices table only (q28 checks across)": (
+        DBT_ACROSS_LISTED, "from items\nfull join figures\n", "from items\nright join figures\n"),
+    "a code not GS1 counted in the listed price (q28 checks across)": (DBT_ACROSS_LISTED, "    where prices.gs1\n", ""),
+    "a double-coded store's highest price taken for the listed price (q28 checks across)": (
+        DBT_ACROSS_LISTED, "min(prices.price) as price", "max(prices.price) as price"),
+    "a double-coded store counted once a code for the listed price (q28 checks across)": (
+        DBT_ACROSS_LISTED, "    group by prices.chain, prices.day, prices.barcode, prices.store\n",
+        "    group by prices.chain, prices.day, prices.barcode, prices.store, prices.code\n"),
+    "the worked lowest price taken from the highest (q28 checks across)": (
+        DBT_ACROSS_LISTED, "        min(price) as low,\n", "        max(price) as low,\n"),
+    "the worked highest price taken from the lowest (q28 checks across)": (
+        DBT_ACROSS_LISTED, "        max(price) as high,\n", "        min(price) as high,\n"),
+    "a chain of more than one store type compared (q28 checks across)": (
+        DBT_ACROSS_LISTED, "    having count(*) = 1\n", "    having count(*) >= 1\n"),
+    "every chain's prices worked (q28 checks across)": (
+        DBT_ACROSS_LISTED, "    semi join one_store_type on one_store_type.chain = prices.chain\n", ""),
+    "the items' days with no prices table compared (q28 checks across)": (
+        DBT_ACROSS_LISTED, _DBT_LISTED_DAYS_PRICED, "    from item_rows\n"),
+    "the items' days with prices read without their chain (q28 checks across)": (
+        DBT_ACROSS_LISTED, "        on priced.chain = item_rows.chain\n        and priced.day",
+        "        on priced.day"),
+    "the items' days with prices read without their day (q28 checks across)": (
+        DBT_ACROSS_LISTED, "\n        and priced.day = item_rows.day", ""),
+    "the prices table's days with no items compared (q28 checks across)": (
+        DBT_ACROSS_LISTED, _DBT_WORKED_DAYS_LISTED, "    from worked\n"),
+    "the prices table's days with items read without their chain (q28 checks across)": (
+        DBT_ACROSS_LISTED, "        on listed_days.chain = worked.chain\n        and listed_days.day",
+        "        on listed_days.day"),
+    "the prices table's days with items read without their day (q28 checks across)": (
+        DBT_ACROSS_LISTED, "\n        and listed_days.day = worked.day", ""),
+    "the listed price not compared (q28 checks across)": (
+        DBT_ACROSS_LISTED, "where items.listed is distinct from figures.listed\n    or items.low", "where items.low"),
+    "the lowest price not compared across tables (q28 checks across)": (
+        DBT_ACROSS_LISTED, "    or items.low is distinct from figures.low\n", ""),
+    "the highest price not compared across tables (q28 checks across)": (
+        DBT_ACROSS_LISTED, "    or items.high is distinct from figures.high\n", ""),
+    "the stores listing not compared across tables (q28 checks across)": (
+        DBT_ACROSS_LISTED, "\n    or items.listing is distinct from figures.listing", ""),
+    "the listed price's join without its day (q28 checks across)": (
+        DBT_ACROSS_LISTED, "    and figures.day = items.day\n", ""),
+    "the listed price's join without its chain (q28 checks across)": (
+        DBT_ACROSS_LISTED, "    on figures.chain = items.chain\n    and figures.day", "    on figures.day"),
+    "the listed price's join without its barcode (q28 checks across)": (
+        DBT_ACROSS_LISTED, "\n    and figures.barcode = items.barcode", ""),
+    # The promotions at most branches across tables.
+    "the items' promotions with no kind counted (q28 checks across)": (
+        DBT_ACROSS_PROMOTIONS, 'entry.wide and entry.kind is not null and entry."start"',
+        'entry.wide and entry."start"'),
+    "the items' promotions yet to start counted (q28 checks across)": (
+        DBT_ACROSS_PROMOTIONS, ' and entry."start" <= item.day and item.day', " and item.day"),
+    "the items' promotions that have ended counted (q28 checks across)": (
+        DBT_ACROSS_PROMOTIONS, ' and item.day <= entry."end"\n', "\n"),
+    "a promotion on two items rows counted twice (q28 checks across)": (
+        DBT_ACROSS_PROMOTIONS, "count(distinct entry.promotion_id)", "count(entry.promotion_id)"),
+    "a store-type day with no promotions table compared across tables (q28 checks across)": (
+        DBT_ACROSS_PROMOTIONS, _DBT_ACROSS_PROMOTED, "    from {{ ref('stg_store_type_days') }} as report\n"),
+    "the promotions' days read without their chain across tables (q28 checks across)": (
+        DBT_ACROSS_PROMOTIONS, "        on promoted_days.chain = report.chain\n        and promoted_days.day",
+        "        on promoted_days.day"),
+    "the promotions' days read without their day across tables (q28 checks across)": (
+        DBT_ACROSS_PROMOTIONS, "\n        and promoted_days.day = report.day", ""),
+    "the reach joined to the reports without its day (q28 checks across)": (
+        DBT_ACROSS_PROMOTIONS, "    and reach.day = compared.day\n", ""),
+    "the reach joined to the reports without its store type (q28 checks across)": (
+        DBT_ACROSS_PROMOTIONS, "    on reach.store_type = compared.store_type\n    and reach.day", "    on reach.day"),
+    "the items' count joined to the reports without its day (q28 checks across)": (
+        DBT_ACROSS_PROMOTIONS, "\n    and listed_entries.day = compared.day", ""),
+    "the items' count joined to the reports without its store type (q28 checks across)": (
+        DBT_ACROSS_PROMOTIONS, "    on listed_entries.store_type = compared.store_type\n    and listed_entries.day",
+        "    on listed_entries.day"),
+    "a store-type day with no reach row not read as 0 across tables (q28 checks across)": (
+        DBT_ACROSS_PROMOTIONS, "where coalesce(reach.at_most_branches, 0) is distinct from",
+        "where reach.at_most_branches is distinct from"),
+    "a store-type day with no promotion on its items not read as 0 (q28 checks across)": (
+        DBT_ACROSS_PROMOTIONS, "is distinct from coalesce(listed_entries.at_most_branches, 0)",
+        "is distinct from listed_entries.at_most_branches"),
+    # The store pages' N and M.
+    "a published store page with no model row allowed (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "left join {{ ref('store_type_deals') }} as model",
+        "join {{ ref('store_type_deals') }} as model"),
+    "the store pages' join without its day (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "\n    and model.day = page.day", ""),
+    "the store pages' join without its store type (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "    on model.store_type = page.store_type\n    and model.day", "    on model.day"),
+    "a known store page skipped whatever its kind (q28 checks published)": (
+        DBT_PUBLISHED_PAGES, "    on known.kind = 'store_page'\n    and known.key", "    on known.key"),
+    "a known store page skipped whatever its day (q28 checks published)": (
+        DBT_PUBLISHED_PAGES, "\n    and known.day = differing.day", ""),
+    "a known store page skipped whatever its store type (q28 checks published)": (
+        DBT_PUBLISHED_PAGES, "\n    and known.key = differing.store_type", ""),
+    # The rows a store page shows.
+    "a shown row's price today not compared (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "where shown.today is distinct from cast(deal.today_price as varchar)\n    or ",
+        "where "),
+    "a shown row's saving not compared (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "\n    or shown.saving is distinct from cast(deal.saving as varchar)", ""),
+    "a shown row's days not compared (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "\n    or shown.days is distinct from deal.days_priced", ""),
+    "a shown row with no model row allowed (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "left join {{ ref('product_deals') }} as deal",
+        "join {{ ref('product_deals') }} as deal"),
+    "the shown rows' join without its store type (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "    on deal.store_type = shown.store_type\n    and deal.day", "    on deal.day"),
+    "the shown rows' join without its day (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "\n    and deal.day = shown.day", ""),
+    "the shown rows' join without its barcode (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "\n    and deal.barcode = shown.barcode", ""),
+    "a known store page's rows skipped whatever its kind (q28 checks published)": (
+        DBT_PUBLISHED_ROWS, "    on known.kind = 'store_page'\n    and known.key", "    on known.key"),
+    "a known store page's rows skipped whatever its day (q28 checks published)": (
+        DBT_PUBLISHED_ROWS, "\n    and known.day = differing.day", ""),
+    "a known store page's rows skipped whatever its store type (q28 checks published)": (
+        DBT_PUBLISHED_ROWS, "\n    and known.key = differing.store_type", ""),
+    # The promotions count.
+    "a store type with no reach row not read as 0 against the published count (q28 checks published)": (
+        DBT_PUBLISHED_PROMOTIONS, "page.promotions is distinct from coalesce(reach.at_most_branches, 0)",
+        "page.promotions is distinct from reach.at_most_branches"),
+    "a chain with no promotions row that day compared (q28 checks published)": (
+        DBT_PUBLISHED_PROMOTIONS, _DBT_PUBLISHED_PROMOTED, ""),
+    "the promotions' days read without their chain for the published count (q28 checks published)": (
+        DBT_PUBLISHED_PROMOTIONS, "    on promoted_days.chain = report.chain\n    and promoted_days.day",
+        "    on promoted_days.day"),
+    "the promotions' days read without their day for the published count (q28 checks published)": (
+        DBT_PUBLISHED_PROMOTIONS, "\n    and promoted_days.day = report.day", ""),
+    "a hole's promotions count compared (q28 checks published)": (
+        DBT_PUBLISHED_PROMOTIONS, "where not report.hole\n    and not report.promo_hole",
+        "where not report.promo_hole"),
+    "a promotion hole's promotions count compared (q28 checks published)": (
+        DBT_PUBLISHED_PROMOTIONS, "\n    and not report.promo_hole", ""),
+    "the published count's report joined without its day (q28 checks published)": (
+        DBT_PUBLISHED_PROMOTIONS, "\n    and report.day = page.day", ""),
+    "the published count's report joined without its store type (q28 checks published)": (
+        DBT_PUBLISHED_PROMOTIONS, "    on report.store_type = page.store_type\n    and report.day",
+        "    on report.day"),
+    "the published count's reach joined without its day (q28 checks published)": (
+        DBT_PUBLISHED_PROMOTIONS, "\n    and reach.day = page.day", ""),
+    "the published count's reach joined without its store type (q28 checks published)": (
+        DBT_PUBLISHED_PROMOTIONS, "    on reach.store_type = page.store_type\n    and reach.day", "    on reach.day"),
+    # The basket.
+    "the basket's table filter without its day (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "\n    and priced.day = published.day", ""),
+    "the basket's table filter without its chain (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "    on priced.chain = published.chain\n    and priced.day", "    on priced.day"),
+    "the basket's median not compared (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES,
+        "where published.median is distinct from cast(round(basket.median, 2) as varchar)\n    or published.low",
+        "where published.low"),
+    "the basket's lowest not compared (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "\n    or published.low is distinct from cast(basket.low as varchar)", ""),
+    "the basket's highest not compared (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "\n    or published.high is distinct from cast(basket.high as varchar)", ""),
+    "the basket's stores listing not compared (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "\n    or published.listing is distinct from basket.stores_listing", ""),
+    "the basket's double-coded stores not compared (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "\n    or published.double_coded is distinct from basket.double_coded", ""),
+    "a published basket item with no model row allowed (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "left join {{ ref('basket_prices') }} as basket",
+        "join {{ ref('basket_prices') }} as basket"),
+    "the basket's join without its day (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "\n    and basket.day = published.day", ""),
+    "the basket's join without its chain (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "    on basket.chain = published.chain\n    and basket.day", "    on basket.day"),
+    "the basket's join without its barcode (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "\n    and basket.barcode = published.barcode", ""),
+    "a known basket day skipped whatever its kind (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "    on known.kind = 'basket'\n    and known.key", "    on known.key"),
+    "a known basket day skipped whatever its day (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "\n    and known.day = differing.day", ""),
+    "a known basket day skipped whatever its chain (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "\n    and known.key = differing.chain", ""),
+    "Shufersal compared among the four chains (q28 checks published)": (
+        DBT_PUBLISHED_BASKET, "differing.chain <> 'shufersal'", "differing.chain is not null"),
+    "the four chains compared in Shufersal's warning (q28 checks published)": (
+        DBT_PUBLISHED_SHUFERSAL, "differing.chain = 'shufersal'", "differing.chain is not null"),
+    # The known differences, each listed day held to both sides and a difference.
+    "a listed store page with no model row allowed (q28 checks published)": (
+        DBT_PUBLISHED_STILL_DIFFER, "(page_modelled.day is null or page_differing", "(page_differing"),
+    "a listed store page's N and M not read (q28 checks published)": (
+        DBT_PUBLISHED_STILL_DIFFER,
+        "    select store_type, day from ({{ store_page_differences() }})\n    union\n", ""),
+    "a listed store page's rows not read (q28 checks published)": (
+        DBT_PUBLISHED_STILL_DIFFER, "\n    union\n    select store_type, day from ({{ shown_row_differences() }})", ""),
+    "a listed store page's model row read whatever its store type (q28 checks published)": (
+        DBT_PUBLISHED_STILL_DIFFER, "    on page_modelled.store_type = page.key\n    and page_modelled.day",
+        "    on page_modelled.day"),
+    "a listed store page's model row read whatever its day (q28 checks published)": (
+        DBT_PUBLISHED_STILL_DIFFER, "\n    and page_modelled.day = page.day", ""),
+    "a listed store page's differences read whatever its store type (q28 checks published)": (
+        DBT_PUBLISHED_STILL_DIFFER, "    on page_differing.store_type = page.key\n    and page_differing.day",
+        "    on page_differing.day"),
+    "a listed store page's differences read whatever its day (q28 checks published)": (
+        DBT_PUBLISHED_STILL_DIFFER, "\n    and page_differing.day = page.day", ""),
+    "a listed basket day's differences read whatever its chain (q28 checks published)": (
+        DBT_PUBLISHED_STILL_DIFFER, "    on basket_differing.chain = basket.key\n    and basket_differing.day",
+        "    on basket_differing.day"),
+    "a listed basket day's differences read whatever its day (q28 checks published)": (
+        DBT_PUBLISHED_STILL_DIFFER, "\n    and basket_differing.day = basket.day", ""),
+    "a listed basket day held as a store page (q28 checks published)": (
+        DBT_PUBLISHED_STILL_DIFFER, "where page.kind = 'store_page'\n    and (", "where ("),
+    "a listed store page held as a basket day (q28 checks published)": (
+        DBT_PUBLISHED_STILL_DIFFER, "where basket.kind = 'basket'\n    and basket_differing", "where basket_differing"),
     # the dbt layer (q28), Task 11's planted bugs: the lineage map
     "a source drawn as a model (q28 lineage)": (
         DBT_LINEAGE, "f\"  {source['name']}[({source['meta']['label']})]\"", "f\"  {source['name']}\""),

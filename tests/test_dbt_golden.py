@@ -10,10 +10,12 @@ three stores. Shufersal is extracted on each of its 29 days, 92 to 120, the four
 chain-days. So Universe's whole history is here, and every chain's 30 April.
 
 The published files are synthetic too (`published`): the numbers the golden's docstring works by hand, in the fields
-the dbt sources read, laid out as the site lays them out, for the comparisons with the published files to read.
+the dbt sources read, laid out as the site lays them out, for the comparisons with the published files to read. Two of
+their store-type and chain days are not what the golden build gives, each a known difference (`GOLDEN_VARS`), and the
+basket's day file of 29 April gives the four chains with no table that day wrong figures, which no comparison may read.
 
 The build (`clean`) is `dbt build` with the unit tests left out, on its own temporary database and folders
-(tests/dbt_run.py), its vars (`GOLDEN_VARS`) the golden's folders and no known difference.
+(tests/dbt_run.py), its vars (`GOLDEN_VARS`) the golden's folders and its two known differences.
 
 The data tests (docs/dbt-layer.md, section 3) pass on the clean build, and each is proved to fail on bad rows of its
 own: `plant_bad_rows` breaks a copy of the golden's tables, each bad row one clause of one test, and the bad-rows build
@@ -34,7 +36,8 @@ from collector.names import FileName, parse_file_name
 from collector.store import published_name
 from dbt_run import DbtRun, query, run_dbt
 from shopper.extract import extract_chain_day
-from shopper_golden import G1, G2, G6, U1, U2, U3, U4, U5, U6, U7, U8, day_of, write_basket, write_day
+from shopper_golden import G1, G2, G3, G4, G5, G6, U1, U2, U3, U4, U5, U6, U7, U8, day_of, write_basket, write_day
+from test_build import CHAIN_IDS
 from test_dbt_project import OWNER_S_FOUR
 
 GOLDEN_DAYS = (1, *range(92, 121))      # day 1 for the store lists; Shufersal's last 29 days, 92 to 120
@@ -57,46 +60,77 @@ class Golden:
     basket_file: Path
 
 
+def front(deals: int, checked: int, promotions: int | None, products: int | None,
+          rows: tuple[tuple[str, str, str, str, int], ...] = ()) -> dict:
+    """A store type's block in a site-day file, as src/shopper/siteday.py's `_column` writes the fields the dbt source
+    reads: N (`deals`), M (`checked`), the promotions line's promotions and products (None on a hole or a promotion
+    hole) and the rows shown, each (barcode, today's price, the usual price, the saving, its days with a day price)."""
+    return {"front": {"deals": deals, "checked": checked, "promotions": promotions, "products": products,
+                      "rows": [{"barcode": code, "today": today, "usual": usual, "saving": saving, "days": days}
+                               for code, today, usual, saving, days in rows]}}
+
+
+def basket_item(median: str, low: str, high: str, listing: int, double_coded: int = 0) -> dict:
+    """An item of a chain in a basket day file, as src/basket/record.py writes it: money as text, two places."""
+    return {"median": median, "low": low, "high": high, "listing": listing, "double_coded": double_coded}
+
+
+def basket_chain(total: str, g6: tuple[str, str, str], stores: int) -> dict:
+    """A chain's block in a basket day file: G1 at 5.00 and G2 at 2.50 at every store, G6 as given, its total."""
+    return {"total": total, "items": {G1: basket_item("5.00", "5.00", "5.00", stores),
+                                      G2: basket_item("2.50", "2.50", "2.50", stores), G6: basket_item(*g6, stores)}}
+
+
+def publish(site: Path, folder: str, body: dict) -> None:
+    """Write `body` as `<folder>/<its day>.json` under `site`, keys sorted, as `basket.page.render_day` writes the
+    basket's day files and the site-day files alike."""
+    (site / folder).mkdir(parents=True, exist_ok=True)
+    (site / folder / f"{body['day']}.json").write_text(json.dumps(body, sort_keys=True, indent=1, ensure_ascii=False),
+                                                       encoding="utf-8")
+
+
+# The rows Universe's front shows on 30 April, by saving ("The verdicts", Universe, day 120), each with the days its
+# reason rests on.
+UNIVERSE_SHOWN = ((U2, "6.90", "8.90", "2.00", 27), (U3, "7.90", "9.90", "2.00", 26), (U8, "4.50", "6.00", "1.50", 27),
+                  (U7, "4.00", "5.00", "1.00", 27))
+# A basket day's figures for a chain with no prices table that day, wrong on purpose: no comparison may read them.
+NO_TABLE = {"total": "0.30", "items": {code: basket_item("0.10", "0.10", "0.10", 9) for code in (G1, G2, G6)}}
+
+
 def published(site: Path) -> None:
-    """The synthetic published files of 30 April under `site`: the fields the dbt sources read, laid out as the site
-    lays them out (keys sorted, as `basket.page.render_day` writes the basket's day files and the site-day files
-    alike), the numbers from the golden's docstring:
+    """The synthetic published files under `site`: the fields the dbt sources read, laid out as the site lays them
+    out, the numbers from the golden's docstring but where said:
 
     - `site-days/2026-04-30.json`: Shufersal Universe's front ("The verdicts", Universe, day 120): the front list's 4
       deals of the 6 checked, its rows U2, U3, U8 and U7 by saving, each with the days its reason rests on; and the 9
       promotions on 9 products of the promotions line, Universe's promotions running on day 120 at its three stores
       (60 and 62 to 68 and 70; 69 at store 81 alone does not count). Shufersal Deal's front: no promotion runs there
-      on day 120 (G1's run of 110 to 116 and G5's promotion 50 of 99 to 106 have ended), so 0 of 0.
+      on day 120 (G1's run of 110 to 116 and G5's promotion 50 of 99 to 106 have ended), so 0 of 0 and 0 promotions.
+      Shufersal Sheli's front as the full golden's 90 days give it ("The verdicts", G3 at Sheli, day 120): 1 deal of
+      1, G3 3.00 off its usual 10.90 over 90 days, its promotion 30 on one product. The golden build reads Shufersal's
+      last 29 days alone, on all of which G3 is on sale at 7.90, so it gives 0 of 1: a known difference.
     - `days/2026-04-30.json`: each chain's G1, G2 and G6 ("The basket": G6 the median of the chain's stores, G1 and G2
-      one price at every store) and its total, Osher Ad 14.70, Rami Levy 15.00, Shufersal 15.10, Yochananof 15.40 and
-      Carrefour 15.80.
+      one price at every store) and its total, Osher Ad 14.70, Rami Levy 15.00, Shufersal 15.10 and Carrefour 15.80;
+      Yochananof's G6 published at 7.80, its total 15.30, where its two stores' 7.80 and 8.00 give 7.90: a known
+      difference.
+    - `days/2026-04-29.json`: Shufersal's figures, the same as on 30 April (its five stores outside Universe list the
+      basket at the same prices every day), and the four other chains' wrong on purpose (NO_TABLE): they have no prices
+      table that day.
     """
     day = day_of(LAST).isoformat()
-    rows = ((U2, "6.90", "8.90", "2.00", 27), (U3, "7.90", "9.90", "2.00", 26), (U8, "4.50", "6.00", "1.50", 27),
-            (U7, "4.00", "5.00", "1.00", 27))
-    shown = [{"barcode": code, "today": today, "usual": usual, "saving": saving, "days": days}
-             for code, today, usual, saving, days in rows]
-    site_day = {"day": day, "columns": {
-        "shufersal-universe": {"front": {"deals": 4, "checked": 6, "promotions": 9, "products": 9, "rows": shown}},
-        "shufersal-deal": {"front": {"deals": 0, "checked": 0, "promotions": 0, "products": 0, "rows": []}}}}
-
-    def item(median: str, low: str, high: str, listing: int) -> dict:
-        return {"median": median, "low": low, "high": high, "listing": listing, "double_coded": 0}
-
-    def chain(total: str, g6: tuple[str, str, str], stores: int) -> dict:
-        return {"total": total, "items": {G1: item("5.00", "5.00", "5.00", stores),
-                                          G2: item("2.50", "2.50", "2.50", stores), G6: item(*g6, stores)}}
-
-    basket_day = {"day": day, "items_in": [G1, G2, G6], "chains": {
-        "shufersal": chain("15.10", ("7.60", "7.00", "8.20"), 5),
-        "ramilevy": chain("15.00", ("7.50", "7.40", "7.60"), 2),
-        "osherad": chain("14.70", ("7.20", "7.10", "7.30"), 2),
-        "carrefour": chain("15.80", ("8.30", "7.90", "8.60"), 5),
-        "yochananof": chain("15.40", ("7.90", "7.80", "8.00"), 2)}}
-    for folder, body in (("site-days", site_day), ("days", basket_day)):
-        (site / folder).mkdir(parents=True, exist_ok=True)
-        (site / folder / f"{day}.json").write_text(json.dumps(body, sort_keys=True, indent=1, ensure_ascii=False),
-                                                   encoding="utf-8")
+    publish(site, "site-days", {"day": day, "columns": {
+        "shufersal-universe": front(4, 6, 9, 9, UNIVERSE_SHOWN),
+        "shufersal-deal": front(0, 0, 0, 0),
+        "shufersal-sheli": front(1, 1, 1, 1, ((G3, "7.90", "10.90", "3.00", 90),))}})
+    shufersal = basket_chain("15.10", ("7.60", "7.00", "8.20"), 5)
+    publish(site, "days", {"day": day, "items_in": [G1, G2, G6], "chains": {
+        "shufersal": shufersal,
+        "ramilevy": basket_chain("15.00", ("7.50", "7.40", "7.60"), 2),
+        "osherad": basket_chain("14.70", ("7.20", "7.10", "7.30"), 2),
+        "carrefour": basket_chain("15.80", ("8.30", "7.90", "8.60"), 5),
+        "yochananof": basket_chain("15.30", ("7.80", "7.80", "8.00"), 2)}})
+    publish(site, "days", {"day": day_of(LAST - 1).isoformat(), "items_in": [G1, G2, G6], "chains": {
+        "shufersal": shufersal, **{slug: NO_TABLE for slug in SLUGS if slug != "shufersal"}}})
 
 
 @pytest.fixture(scope="module")
@@ -116,13 +150,27 @@ def golden(tmp_path_factory) -> Golden:
     return Golden(tables, site, write_basket(root / "basket.json"))
 
 
+def known(kind: str, key: str, n: int, reason: str) -> dict:
+    """An entry of the var known_differences: a published day of day n today's tables no longer give, and why."""
+    return {"kind": kind, "key": key, "day": day_of(n).isoformat(), "reason": reason}
+
+
+# The golden's two known differences (`published`), each with its reason.
+GOLDEN_KNOWN = (
+    known("store_page", "shufersal-sheli", LAST, "published from the full golden's 90 days; the golden build reads "
+                                                 "Shufersal's last 29 days alone, which give 0 of 1"),
+    known("basket", "yochananof", LAST, "published at 7.80 for G6 on purpose, where the golden's two stores give 7.90"),
+)
+
+
 @pytest.fixture(scope="module")
 def GOLDEN_VARS(golden) -> dict:
-    """The golden build's vars: the golden's folders and no known difference. A fixture, as the folders are the
-    module's temporary ones; named as the plan names it. The dict is shared by every test in the module: a test that
-    needs another list copies it (`[*GOLDEN_VARS["known_differences"], ...]`), never changes it in place."""
+    """The golden build's vars: the golden's folders and its two known differences (GOLDEN_KNOWN). A fixture, as the
+    folders are the module's temporary ones; named as the plan names it. The dict is shared by every test in the
+    module: a test that needs another list copies it (`[*GOLDEN_VARS["known_differences"], ...]`), never changes it in
+    place."""
     return {"tables": str(golden.tables), "site": str(golden.site), "basket_file": str(golden.basket_file),
-            "known_differences": []}
+            "known_differences": list(GOLDEN_KNOWN)}
 
 
 @pytest.fixture(scope="module")
@@ -249,6 +297,16 @@ EXPECTED_BAD: dict[str, tuple[str, int]] = {
     "items_report_holes_follow_their_counts": ("fail", 4),
     "items_every_chain_every_day": ("warn", 5),
     "items_agree_with_their_reports": ("fail", 4),
+    # across tables
+    "listed_price_is_the_median_of_the_prices_table": ("fail", 7),
+    "promotions_at_most_branches_agree_across_tables": ("fail", 1),
+    # against the published files
+    "store_type_deals_match_published": ("fail", 4),
+    "product_deals_match_published_rows": ("fail", 6),
+    "promotion_reach_matches_published": ("fail", 1),
+    "basket_prices_match_published": ("fail", 6),
+    "basket_prices_at_shufersal_match_published": ("warn", 1),
+    "known_differences_still_differ": ("fail", 8),
 }
 # The GS1 test's four codes, synthetic, as basket.barcode.is_gs1 reads them; LONG's and SHORT's weighted sums, worked
 # as is_gs1 works a sum, end in 0.
@@ -281,6 +339,16 @@ ONE_OF_FOUR, ON_UNKNOWN, DEALS, ONE_OF_THREE, NOT_ON, NO_KIND = (
 BOTH_UNKNOWN, LIST_UNKNOWN = ("2000000000428", "2000000000435")
 assert all(is_gs1(code) for code in (LOW_ABOVE, HIGH_BELOW, ONE_AGORA, AT_NO_STORE, NO_LISTED, PROMOTED, ONE_OF_FOUR,
                                      ON_UNKNOWN, DEALS, ONE_OF_THREE, NOT_ON, NO_KIND, BOTH_UNKNOWN, LIST_UNKNOWN))
+# The codes of the bad rows across tables (`plant_bad_rows`, Task 10), synthetic GS1 barcodes that no golden file
+# lists, and a chain's internal code, not GS1.
+PRICED_ONLY, LEFT_OUT_ONLY, DOUBLE, NO_PRICES = ("2000000000442", "2000000000459", "2000000000466", "2000000000473")
+INTERNAL = "12345"
+assert all(is_gs1(code) for code in (PRICED_ONLY, LEFT_OUT_ONLY, DOUBLE, NO_PRICES)) and not is_gs1(INTERNAL)
+# Rami Levy store 39's full price file of 30 April, a store B2 leaves out by number; its sub-chain is Rami Levy's.
+STORE_39_FILE = f"PriceFull{CHAIN_IDS['ramilevy']}-001-039-20260430-080000.gz"
+# The days with a day price of Sheli's G3 on 30 April in the bad-rows build: its 28 days of records before it, 2 to 29
+# April, but the promotion hole of 28 April and the hole of 29 April (`plant_bad_rows`), each a day not tracked.
+SHELI_G3_DAYS = 26
 UNREAD = "carrefour: a promotion file that does not read"   # the 28 April copy's promotions error, synthetic
 # The fields of a struct of an items row's promotions list, in the table's order (src/shopper/items.py, _STRUCT).
 PROMOTION_FIELDS = ("promotion_id", "description", "start", "end", "kind", "buy", "price", "price_exact", "per", "low",
@@ -425,8 +493,64 @@ def plant_bad_rows(tables: Path, site: Path) -> None:
       promotion hole: right, so they fail only a weakened half or a hole at exactly half. On 27 April 2 included, none
       with a file and no hole; on 26 April 2 counted, both with a promotion file and a promotion hole (the holes).
     - The agreement, each report one count off its table: Express's of 30 April 1 row where its table has none, Rami
-      Levy's 3 wide of its 4, Yochananof's 1 on promotion of none, and Sheli's 2 valid deals of 1."""
+      Levy's 3 wide of its 4, Yochananof's 1 on promotion of none, and Sheli's 2 valid deals of 1.
+
+    Across tables (Task 10), at the three chains of one store type unless said. First, copies made from the golden's
+    own tables before any other bad row, each a day the golden lacks: Yochananof's prices and items tables of 30 April
+    under 28 April, its store 1's G6 at 7.70 and the items row moved with it (listed 7.850, lowest 7.70), and its items
+    table alone under 29 April; Rami Levy's prices table alone under 28 April, its store 1's G6 at 7.30; Osher Ad's
+    items table alone under 28 and 29 April. A copied prices table's file names carry its own day. Each chain still
+    lacks 1 May alone, so every chain, every day keeps its five warnings.
+    - The listed price against the prices table: Rami Levy store 2's G4 at 70.10, its items row left at 69.90 (G4 is no
+      basket product); PRICED_ONLY, a GS1 code at Rami Levy store 1 with no items row; Yochananof's items rows of G6 at a
+      listed 7.950, of G2 at a lowest 2.40 and of G1 at a highest 5.10, and Osher Ad's of G1 at 3 stores, each the one
+      figure that differs; and Osher Ad's NO_PRICES, an items row (`_item`'s) that no price row lists. Right, so each
+      fails only a check without one of its rules: Rami Levy store 39's price file of the day (STORE_39_FILE), G4 at
+      68.90 and LEFT_OUT_ONLY, a store B2 leaves out by number (the rows that count); INTERNAL, a code not GS1, at Rami
+      Levy store 1; Yochananof's DOUBLE at store 1 under two codes with the same digits at 3.00 and 3.10, its items row
+      3.00 at 1 store (one price a store, its lowest); Osher Ad's G6 at 7.10 and 7.19, the items row moved with it
+      (listed 7.145, highest 7.19); Yochananof's 28 April (the join's day); its 29 April and Osher Ad's 28 and 29
+      April, an items table and no prices table (Osher Ad's 28 April on a day Yochananof and Rami Levy have one); and
+      Rami Levy's 28 April, a prices table and no items table (on a day Yochananof and Osher Ad have one).
+    - The promotions at most branches: Osher Ad's promotions table gains 982 on G2, wide, a fixed price running, which
+      no items row carries. Right: Rami Levy's 981 on G1 and G2 in both tables, one promotion on two rows (both items
+      rows on promotion, the report's on promotion and valid deals 2); Yochananof's 29 April G2 carrying 983, wide and
+      running, on a day Yochananof has no promotions row (its report's on promotion and valid deals 1); and Task 9's
+      rows at Carrefour, none wide, with a kind and running on 30 April, and NOT_ON's 971 on 1 May, a day Carrefour has
+      no promotions row.
+
+    Against the published files (Task 10). Shufersal Sheli's report of 28 April is a promotion hole (no promotion file of
+    its 2 counted stores) and of 29 April a hole (no included store): neither day has a product_deals row at Sheli, and
+    their pages publish 0 of 0 and no promotions count, as the site writes such a day. The site-day files:
+    - 30 April: Universe's M 7 (N 4 right) and its promotions 8; its shown rows U2's usual 8.80, U3's today 7.80, U8's
+      saving 1.40 and U7's days 26, each the one figure that differs; Carrefour City's N 1 where the model gives 0 of
+      0, M right, and its promotions 0 (Carrefour has promotions rows, none on a product it lists); Yochananof's 1 of 1
+      where the model gives 0 of 0, its 2 promotions on a day Yochananof has no promotions row, and a shown row of G3
+      with Sheli's figures for G3 (product_deals has a G3 row at Sheli that day, none at Yochananof); Osher Ad's 0 of 0
+      and 1 promotion (982), as the model gives.
+    - 29 April (new): Sheli's hole; City's, on a day Carrefour has no items table; Deal's 1 of 0 where the model gives 0
+      of 0; Universe's 2 of 3 and 3 promotions as the model gives, but U3's shown usual 9.80.
+    - 28 April (new): Sheli's promotion hole. 1 May (new): Deal's 1 of 1 and a shown row of G5, on a day Shufersal has
+      no items table; City's 0 of 0 and 3 promotions, on a day Carrefour has no promotions row.
+    The basket day files: 30 April: Rami Levy's G6 median 7.40, G1 lowest 4.90 and G2 highest 2.60, each the one figure
+    that differs, and a G4 item, which is no basket product; Osher Ad's G1 at 3 stores and G2 at 1 double-coded store;
+    Shufersal's G6 at 6 stores (its standing warning); and, right, Osher Ad's G6 at 7.15, 7.10 and 7.19, the model's
+    7.145 rounded half up."""
     day = f"date={day_of(LAST).isoformat()}"
+    # Task 10's copies, from the golden's own tables before any other bad row (the docstring's "Across tables").
+    for kind, slug, n in (("prices", "yochananof", LAST - 2), ("items", "yochananof", LAST - 2),
+                          ("items", "yochananof", LAST - 1), ("prices", "ramilevy", LAST - 2),
+                          ("items", "osherad", LAST - 2), ("items", "osherad", LAST - 1)):
+        shutil.copytree(tables / kind / f"chain={slug}" / day,
+                        tables / kind / f"chain={slug}" / f"date={day_of(n).isoformat()}")
+    on_28 = f"date={day_of(LAST - 2).isoformat()}"
+    for slug in ("yochananof", "ramilevy"):
+        _rewrite(tables / "prices" / f"chain={slug}" / on_28 / "prices.parquet",
+                 "update staged set file = replace(file, '-20260430-', '-20260428-')",
+                 f"update staged set price = {'7.70' if slug == 'yochananof' else '7.30'} "
+                 f"where store = '1' and code = '{G6}'")
+    _rewrite(tables / "items" / "chain=yochananof" / on_28 / "items.parquet",
+             f"update staged set listed = 7.850, low = 7.70 where code = '{G6}'")
     _rewrite(tables / "prices" / "chain=shufersal" / day / "prices.parquet",
              f"insert into staged select * from staged where store = '81' and code = '{U1}'",
              f"update staged set file = '{SECOND_FILE}' where store = '82' and code = '{U2}'",
@@ -524,18 +648,125 @@ def plant_bad_rows(tables: Path, site: Path) -> None:
         _report(shufersal / f"date={day_of(n).isoformat()}", {"shufersal-express": express})
     _report(items / "chain=ramilevy" / day, {"ramilevy": {"wide": 3}})
     _report(items / "chain=yochananof" / day, {"yochananof": {"on_promotion": 1}})
+    # Task 10: across tables (the docstring's "Across tables"). The prices tables of 30 April.
+    _rewrite(tables / "prices" / "chain=ramilevy" / day / "prices.parquet",
+             f"update staged set price = 70.10 where store = '2' and code = '{G4}'",
+             *(f"insert into staged select * replace ('{code}' as code, '{code}' as code_norm, {flag} as gs1) "
+               f"from staged where store = '1' and code = '{G2}'" for code, flag in ((PRICED_ONLY, "true"),
+                                                                                    (INTERNAL, "false"))),
+             *(f"insert into staged select * replace ('39' as store, '{STORE_39_FILE}' as file, '{code}' as code, "
+               f"'{code}' as code_norm, {price} as price) from staged where store = '1' and code = '{source}'"
+               for code, price, source in ((G4, "68.90", G4), (LEFT_OUT_ONLY, "2.50", G2))))
+    _rewrite(tables / "prices" / "chain=osherad" / day / "prices.parquet",
+             f"update staged set price = 7.19 where store = '2' and code = '{G6}'")
+    _rewrite(tables / "prices" / "chain=yochananof" / day / "prices.parquet",
+             *(f"insert into staged select * replace ('{code}' as code, '{DOUBLE}' as code_norm, {price} as price) "
+               f"from staged where store = '1' and code = '{G2}'" for code, price in ((DOUBLE, "3.00"),
+                                                                                     ("0" + DOUBLE, "3.10"))))
+    # The items tables and their reports, each count moved with its rows.
+    _rewrite(items / "chain=osherad" / day / "items.parquet",
+             f"update staged set listed = 7.145, high = 7.19 where code = '{G6}'",
+             f"update staged set listing = 3 where code = '{G1}'",
+             _item(NO_PRICES, "osherad"))
+    _report(items / "chain=osherad" / day, {"osherad": {"items": 4, "wide": 4}})
+    _rewrite(items / "chain=yochananof" / day / "items.parquet",
+             f"update staged set listed = 7.950 where code = '{G6}'",
+             f"update staged set low = 2.40 where code = '{G2}'",
+             f"update staged set high = 5.10 where code = '{G1}'",
+             _item(DOUBLE, "yochananof", {"listed": "3.000", "low": "3.00", "high": "3.00", "listing": "1"}))
+    _report(items / "chain=yochananof" / day, {"yochananof": {"items": 4, "wide": 4}})
+    _rewrite(items / "chain=ramilevy" / day / "items.parquet",
+             f"update staged set on_promotion = true, promotions = [{_promotion('981')}] "
+             f"where code in ('{G1}', '{G2}')")
+    _report(items / "chain=ramilevy" / day, {"ramilevy": {"on_promotion": 2, "valid_deals": 2}})
+    on_29 = items / "chain=yochananof" / f"date={day_of(LAST - 1).isoformat()}"
+    from_29 = _promotion("983", {"start": "date '2026-04-29'"})
+    _rewrite(on_29 / "items.parquet",
+             f"update staged set on_promotion = true, promotions = [{from_29}] where code = '{G2}'")
+    _report(on_29, {"yochananof": {"on_promotion": 1, "valid_deals": 1}})
+    # The promotions tables of 30 April: each row Universe's promotion 60 on U1 under another store type and code,
+    # running from 30 April to 6 May at the store type's 2 counted stores, wide.
+    def running(promotion_id: str, column: str, code: str) -> str:
+        return _at_city(promotion_id, universe, {'"column"': f"'{column}'", "code": f"'{code}'",
+                                                 "code_norm": f"'{code}'", '"start"': "date '2026-04-30'",
+                                                 '"end"': "date '2026-05-06'"})
+    _rewrite(tables / "promotions" / "chain=osherad" / day / "promotions.parquet", running("982", "osherad", G2))
+    _rewrite(tables / "promotions" / "chain=ramilevy" / day / "promotions.parquet",
+             running("981", "ramilevy", G1), running("981", "ramilevy", G2))
+    # Against the published files (the docstring's "Against the published files"): Sheli's reports.
+    _report(shufersal / f"date={day_of(LAST - 2).isoformat()}",
+            {"shufersal-sheli": {"promo_files": 0, "promo_hole": True}})
+    _report(shufersal / f"date={day_of(LAST - 1).isoformat()}", {"shufersal-sheli": {"included": 0, "hole": True}})
+    # The site-day files.
+    site_day = json.loads((site / "site-days" / f"{day_of(LAST).isoformat()}.json").read_text(encoding="utf-8"))
+    columns = site_day["columns"]
+    universe_shown = [(U2, "6.90", "8.80", "2.00", 27), (U3, "7.80", "9.90", "2.00", 26),
+                      (U8, "4.50", "6.00", "1.40", 27), (U7, "4.00", "5.00", "1.00", 26)]
+    columns["shufersal-universe"] = front(4, 7, 8, 9, tuple(universe_shown))
+    columns["carrefour-city"] = front(1, 0, 0, 0)
+    columns["yochananof"] = front(1, 1, 2, 2, ((G3, "7.90", "7.90", "0.00", SHELI_G3_DAYS),))
+    columns["osherad"] = front(0, 0, 1, 1)
+    publish(site, "site-days", site_day)
+    publish(site, "site-days", {"day": day_of(LAST - 1).isoformat(), "columns": {
+        "shufersal-sheli": front(0, 0, None, None), "carrefour-city": front(0, 0, 0, 0),
+        "shufersal-deal": front(1, 0, 0, 0),
+        "shufersal-universe": front(2, 3, 3, 3, ((U2, "6.90", "8.90", "2.00", 26),
+                                                 (U3, "7.90", "9.80", "2.00", 25)))}})
+    publish(site, "site-days", {"day": day_of(LAST - 2).isoformat(), "columns": {
+        "shufersal-sheli": front(0, 0, None, None)}})
+    publish(site, "site-days", {"day": day_of(LAST + 1).isoformat(), "columns": {
+        "shufersal-deal": front(1, 1, 0, 0, ((G5, "4.50", "6.00", "1.50", 88),)), "carrefour-city": front(0, 0, 3, 3)}})
+    # The basket day files.
+    basket_day = json.loads((site / "days" / f"{day_of(LAST).isoformat()}.json").read_text(encoding="utf-8"))
+    chains = basket_day["chains"]
+    chains["ramilevy"]["items"][G6]["median"] = "7.40"
+    chains["ramilevy"]["items"][G1]["low"] = "4.90"
+    chains["ramilevy"]["items"][G2]["high"] = "2.60"
+    chains["ramilevy"]["items"][G4] = basket_item("69.90", "69.90", "69.90", 2)
+    chains["osherad"]["items"][G6] = basket_item("7.15", "7.10", "7.19", 2)
+    chains["osherad"]["items"][G1]["listing"] = 3
+    chains["osherad"]["items"][G2]["double_coded"] = 1
+    chains["shufersal"]["items"][G6]["listing"] = 6
+    publish(site, "days", basket_day)
+
+
+# The bad-rows build's known differences beyond the golden's two (BAD_VARS), each for a clause of
+# known_differences_still_differ or of a comparison's skip, its reason saying why it must fail or pass there.
+PLANTED = "planted: "
+BAD_KNOWN = (
+    # Each must fail known_differences_still_differ: it matches, or lacks a side.
+    known("basket", "carrefour", LAST, PLANTED + "matches: Carrefour's published basket is the model's, while Rami "
+                                                 "Levy's differs that day"),
+    known("store_page", "shufersal-deal", LAST, PLANTED + "matches: Deal's published 0 of 0 is the model's, while "
+                                                         "City's differs that day and Deal's on 29 April and 1 May"),
+    known("store_page", "osherad", LAST, PLANTED + "matches: Osher Ad's published 0 of 0 is the model's; a store page "
+                                                   "under a chain's name, which no basket skip may take for a basket"),
+    known("basket", "shufersal", LAST - 1, PLANTED + "matches on 29 April, while Shufersal's basket differs on 30 "
+                                                     "April"),
+    known("store_page", "carrefour-city", LAST - 1, PLANTED + "no items report that day, while City has one on 28 "
+                                                              "and 30 April and Deal has one that day"),
+    known("store_page", "yochananof", LAST - 1, PLANTED + "no page published that day, so none differs"),
+    known("basket", "ramilevy", LAST - 2, PLANTED + "no basket published that day, so none differs; Rami Levy's "
+                                                    "differs on 30 April"),
+    known("basket", "yochananof", LAST - 1, PLANTED + "no prices table that day, so nothing published is compared"),
+    # Each must pass it: it differs by one comparison alone.
+    known("store_page", "shufersal-deal", LAST - 1, PLANTED + "differs by N alone"),
+    known("store_page", "shufersal-universe", LAST - 1, PLANTED + "differs by a shown row alone"),
+)
 
 
 @pytest.fixture(scope="module")
 def BAD_VARS(golden, GOLDEN_VARS, tmp_path_factory) -> dict:
     """The bad-rows build's vars: GOLDEN_VARS on a copy of the golden's tables and published files, the bad rows
-    planted in the copy. Shared by every test in the module, as GOLDEN_VARS is: copy it, never change it."""
+    planted in the copy, and the known differences BAD_KNOWN beside the golden's two. Shared by every test in the
+    module, as GOLDEN_VARS is: copy it, never change it."""
     root = tmp_path_factory.mktemp("dbt-bad")
     tables, site = root / "tables", root / "site"
     shutil.copytree(golden.tables, tables)
     shutil.copytree(golden.site, site)
     plant_bad_rows(tables, site)
-    return {**GOLDEN_VARS, "tables": str(tables), "site": str(site)}
+    return {**GOLDEN_VARS, "tables": str(tables), "site": str(site),
+            "known_differences": [*GOLDEN_VARS["known_differences"], *BAD_KNOWN]}
 
 
 @pytest.fixture(scope="module")
