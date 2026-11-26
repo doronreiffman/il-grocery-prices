@@ -51,7 +51,9 @@ unit_tests:
               ('ramilevy', date '2026-04-30', '413', null, '2000000000121', '2000000000121', true, 5.20,
                'PriceFull-413.gz'),
               ('shufersal', date '2026-04-30', '301', null, '2000000000121', '2000000000121', true, 5.30,
-               'PriceFull-301.gz')
+               'PriceFull-301.gz'),
+              ('ramilevy', date '2026-04-30', '50', '5', '2000000000121', '2000000000121', true, 5.40,
+               'PriceFull-50.gz')
           ) as prices (chain, day, store, sub_chain, code, barcode, gs1, price, file)
       - input: ref('left_out_stores')
         format: sql
@@ -70,6 +72,8 @@ unit_tests:
            barcode: "2000000000121", gs1: true, price: "5.20", file: PriceFull-413.gz}
         - {chain: shufersal, day: "2026-04-30", store: "301", sub_chain: null, code: "2000000000121",
            barcode: "2000000000121", gs1: true, price: "5.30", file: PriceFull-301.gz}
+        - {chain: ramilevy, day: "2026-04-30", store: "50", sub_chain: "5", code: "2000000000121",
+           barcode: "2000000000121", gs1: true, price: "5.40", file: PriceFull-50.gz}
 
   - name: a_price_of_one_agora_or_less_does_not_count
     model: int_counted_prices

@@ -300,6 +300,31 @@ DBT_MEDIAN = ("dbt/macros/median_price.sql", ["tests/test_dbt_units.py"])
 # The median through a division, which the project's floating-point test must catch by itself: cast back to three
 # places, the DOUBLE gives every unit test's median the same.
 DBT_MEDIAN_FOR_PROJECT = ("dbt/macros/median_price.sql", ["tests/test_dbt_project.py"])
+# basket_prices.sql's two groupings, the store's price and the chain's, from the first select to the second group by.
+# DuckDB refuses a selected column that is in no group by, so a break that pools a key takes it out of both group bys
+# and reads it through max() in both selects.
+_DBT_BASKET_GROUPING = ("    select chain, day, barcode, store, min(price) as price, count(*) as codes\n"
+                        "    from {{ ref('int_counted_prices') }}\n"
+                        "    where barcode in (select barcode from basket)\n"
+                        "    group by chain, day, barcode, store\n"
+                        "),\n"
+                        "\n"
+                        "chain_prices as (\n"
+                        "    select\n"
+                        "        chain,\n"
+                        "        day,\n"
+                        "        barcode,\n"
+                        "        list_sort(list(price)) as prices,\n"
+                        "        count(*) as stores_listing,\n"
+                        "        count(*) filter (where codes > 1) as double_coded\n"
+                        "    from store_prices\n"
+                        "    group by chain, day, barcode\n")
+_DBT_BASKET_DAYS_POOLED = (_DBT_BASKET_GROUPING.replace("select chain, day,", "select chain, max(day) as day,")
+                           .replace("        day,\n", "        max(day) as day,\n")
+                           .replace("group by chain, day, ", "group by chain, "))
+_DBT_BASKET_CHAINS_POOLED = (_DBT_BASKET_GROUPING.replace("select chain, day,", "select max(chain) as chain, day,")
+                             .replace("        chain,\n", "        max(chain) as chain,\n")
+                             .replace("group by chain, ", "group by "))
 # the dbt layer (q28), Task 5's targets: the deals' models
 DBT_DAY_PRICES = ("dbt/models/intermediate/int_day_prices.sql", ["tests/test_dbt_units.py"])
 DBT_PRODUCT_DEALS = ("dbt/models/marts/product_deals.sql", ["tests/test_dbt_units.py"])
@@ -3725,6 +3750,18 @@ MUTATIONS = {
         DBT_BASKET_PRICES, "count(*) filter (where codes > 1)", "count(*) filter (where codes > 2)"),
     "a basket code's leading zeros kept (q28 basket)": (
         DBT_BASKET_PRICES, "ltrim(item.code, '0') as barcode", "item.code as barcode"),
+    "a sub-chain left out at another chain (q28 basket)": (
+        DBT_COUNTED_PRICES, "on left_out_sub_chain.chain = prices.chain and left_out_sub_chain.sub_chain = prices.sub_chain",
+        "on left_out_sub_chain.sub_chain = prices.sub_chain"),
+    "every code priced, not only the basket's (q28 basket)": (
+        DBT_BASKET_PRICES, "    where barcode in (select barcode from basket)\n", ""),
+    "the middle of an odd count one too low (q28 basket)": (
+        DBT_MEDIAN, "then {{ prices }}[len({{ prices }}) // 2 + 1]", "then {{ prices }}[len({{ prices }}) // 2]"),
+    "the prices not sorted before the median (q28 basket)": (
+        DBT_BASKET_PRICES, "list_sort(list(price)) as prices", "list(price) as prices"),
+    "the highest price taken from the wrong end (q28 basket)": (DBT_BASKET_PRICES, "prices[-1] as high", "prices[1] as high"),
+    "the days pooled (q28 basket)": (DBT_BASKET_PRICES, _DBT_BASKET_GROUPING, _DBT_BASKET_DAYS_POOLED),
+    "the chains pooled (q28 basket)": (DBT_BASKET_PRICES, _DBT_BASKET_GROUPING, _DBT_BASKET_CHAINS_POOLED),
     # the dbt layer (q28), Task 5's planted bugs: the deals' models
     "a promotion at some stores counted (q28 deals)": (DBT_DAY_PRICES, "if p.wide and p.valid and", "if p.valid and"),
     "an unread deal counted (q28 deals)": (DBT_DAY_PRICES, "p.wide and p.valid and p.kind", "p.wide and p.kind"),
