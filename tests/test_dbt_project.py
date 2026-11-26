@@ -64,6 +64,13 @@ CLOCK = re.compile(r"current_localtimestamp|current_localtime|get_current_timest
 # middle prices loses its last digit (7.60 for 7.60 and 7.61, where rule B5's is 7.605). The median is the macro
 # median_price's.
 FLOATING = re.compile(r"\b(?:double|float|float4|float8|real)\b|\b(?:avg|median)\s*\(", re.IGNORECASE)
+# DuckDB 1.5.6's regular-expression functions, each called with its pattern second. A pattern that is a string
+# literal is compiled once; one built from a row's values ('...' || strftime(day, ...) || '...') is compiled again for
+# every row. And DuckDB runs a filter that reads only a group-by's keys below the group-by, so a check written to match
+# once a file still matches once a row: on the Mac's tables of 2026-11-26 such a pattern took about 57 microseconds a
+# row, and the file-name check ran past 36 minutes over 68,541,233 price rows without finishing.
+REGEXP = re.compile(r"\bregexp_[a-z_]+\s*\(", re.IGNORECASE)
+LITERAL = re.compile(r"'(?:[^']|'')*'")
 
 # left_out_stores.sql holds one row a line: ('<chain>', 'sub_chain' or 'store', '<key>').
 LEFT_OUT = PROJECT / "models" / "lists" / "left_out_stores.sql"
@@ -269,6 +276,46 @@ def test_no_model_reads_the_clock_or_a_floating_point_type():
         # A DECIMAL divided by a whole number is a DOUBLE in DuckDB 1.5.6: no division but the whole-number one.
         if "/" in code.replace("//", ""):
             found.append((name, "/"))
+    assert found == []
+
+
+def _arguments(code: str, opening: int) -> list[str]:
+    """The arguments of the call whose opening parenthesis is at `opening`, split at the commas outside any other
+    bracket, any quoted text and any Jinja braces. A doubled quote closes the text and opens it again."""
+    arguments, depth, quoted, start = [], 0, False, opening + 1
+    for at in range(opening, len(code)):
+        char = code[at]
+        if quoted:
+            quoted = char != "'"
+        elif char == "'":
+            quoted = True
+        elif char in "([{":
+            depth += 1
+        elif char in ")]}":
+            depth -= 1
+            if depth == 0:
+                return [*arguments, code[start:at]]
+        elif char == "," and depth == 1:
+            arguments.append(code[start:at])
+            start = at + 1
+    raise AssertionError(f"no closing parenthesis after {code[opening:opening + 40]!r}")
+
+
+def test_every_regular_expression_s_pattern_is_a_literal():
+    # Every .sql file on disk under the folders the project names, as in the clock check above.
+    project, target = _project(), PROJECT / "target"
+    folders = [PROJECT / folder for key in ("model-paths", "macro-paths", "test-paths") for folder in project[key]]
+    with_calls, found = set(), []
+    for path in sorted(path for folder in folders for path in folder.rglob("*.sql") if target not in path.parents):
+        code = "\n".join(line.partition("--")[0] for line in path.read_text().splitlines())
+        for call in REGEXP.finditer(code):
+            with_calls.add(path.relative_to(PROJECT).as_posix())
+            pattern = _arguments(code, call.end() - 1)[1].strip()
+            if not LITERAL.fullmatch(pattern):
+                found.append((str(path.relative_to(PROJECT)), pattern))
+    # The file-name check, the one this test was written for, is among the files with a call, so the test cannot pass
+    # on is_gs1.sql's call alone while that check's pattern goes unread.
+    assert "tests/prices/prices_each_row_from_a_pricefull_file_of_its_day.sql" in with_calls
     assert found == []
 
 

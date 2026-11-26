@@ -43,10 +43,12 @@ ROOT = Path(__file__).resolve().parent.parent
 # Seconds a mutation's pytest run may take (q25), and the same tests' run unmutated after a time-out. The slowest target
 # tests are tests/test_golden_90.py: 417 to 552 s run alone on the Mac (docs/shopper-site-plan.md, Task 25 and its
 # speed-ups; 448 s on 2026-11-11) and about 689 s for its two big tests inside a full run beside another copy's (the
-# same doc). The other 92 target sets (each distinct list of target tests in MUTATIONS) took at most 57 s each unmutated
+# same doc). The other 99 target sets (each distinct list of target tests in MUTATIONS) took at most 57 s each unmutated
 # (tests/test_basket_handler.py, 2026-11-11; the five added since, at most 3 s each, 2026-11-16; the appendix's, under
-# 1 s, 2026-11-17). CI's runner is about as fast: the whole suite in 914 s (CI run 42925889780's pytest step) against
-# 750 to 933 s on the Mac (749.7 s in this change's own full run on 2026-11-11; 933 s in the same doc, at Task 25).
+# 1 s, 2026-11-17; on 2026-11-26, by pytest's summary line: tests/test_wordindex.py 9.8 s, tests/test_wordprobe.py
+# 0.3 s, tests/test_suite_time_limit.py 5.3 s, and the dbt layer's four 0.6 to 24.4 s, tests/test_dbt_golden.py's the
+# longest). CI's runner is about as fast: the whole suite in 914 s (CI run 42925889780's pytest step) against 750 to
+# 933 s on the Mac (749.7 s in this change's own full run on 2026-11-11; 933 s in the same doc, at Task 25).
 # 1,400 s is twice the loaded run; the clean run has the same limit, so a clean golden run under load reads as passing.
 # A run that hangs costs the check this long, and its tests' clean run after it.
 TIME_LIMIT = 1400
@@ -353,6 +355,8 @@ DBT_SOURCES_FOR_GOLDEN = ("dbt/models/sources.yml", ["tests/test_dbt_golden.py"]
 DBT_PRICES_ONE_FILE = ("dbt/tests/prices/prices_one_file_per_store_and_day.sql", ["tests/test_dbt_golden.py"])
 DBT_PRICES_PRICEFULL = ("dbt/tests/prices/prices_each_row_from_a_pricefull_file_of_its_day.sql",
                         ["tests/test_dbt_golden.py"])
+DBT_PRICES_PRICEFULL_PATTERN = ("dbt/tests/prices/prices_each_row_from_a_pricefull_file_of_its_day.sql",
+                                ["tests/test_dbt_project.py"])
 DBT_PROMOTIONS_WIDE = ("dbt/tests/promotions/promotions_wide_is_half_the_counted_stores.sql",
                        ["tests/test_dbt_golden.py"])
 DBT_PROMOTIONS_RUN_TODAY = ("dbt/tests/promotions/promotions_run_today_and_start_before_they_end.sql",
@@ -4023,9 +4027,9 @@ MUTATIONS = {
     "two files of a store's day allowed (q28 checks prices)": (
         DBT_PRICES_ONE_FILE, "having count(distinct file) > 1", "having count(distinct file) > 2"),
     "a file of another day allowed (q28 checks prices)": (
-        DBT_PRICES_PRICEFULL, "strftime(day, '%Y%m%d')", "'[0-9]{8}'"),
+        DBT_PRICES_PRICEFULL, ") is distinct from strftime(day, '%Y%m%d')\n", ") = ''\n"),
     "a file of another kind allowed (q28 checks prices)": (
-        DBT_PRICES_PRICEFULL, "'(?i:pricefull)", "'(?i:price(full)?)"),
+        DBT_PRICES_PRICEFULL, "'^(?i:pricefull)", "'^(?i:price(?:full)?)"),
     "the check digit weighted from the left (q28 checks prices)": (
         DBT_IS_GS1, "string_split(reverse(substr({{ barcode }}, 1, len({{ barcode }}) - 1)), '')",
         "string_split(substr({{ barcode }}, 1, len({{ barcode }}) - 1), '')"),
@@ -4057,10 +4061,16 @@ MUTATIONS = {
         DBT_PROMOTIONS_COUNTED, "where promotion.counted is distinct from report.counted",
         "where promotion.counted is distinct from promotion.counted"),
     # Task 8, fix round 1: a bad row for each clause that had none (the review), and each clause's planted bug.
-    "a PriceFull name in lower case refused (q28 checks prices)": (DBT_PRICES_PRICEFULL, "'(?i:pricefull)", "'PriceFull"),
-    "a conflict copy's name refused (q28 checks prices)": (DBT_PRICES_PRICEFULL, "(\\.[0-9a-f]{12})?'", "'"),
+    "a PriceFull name in lower case refused (q28 checks prices)": (
+        DBT_PRICES_PRICEFULL, "'^(?i:pricefull)", "'^PriceFull"),
+    "a conflict copy's name refused (q28 checks prices)": (
+        DBT_PRICES_PRICEFULL, "(?:\\.[0-9a-f]{12})?$'", "$'"),
     "a time run on into the date refused (q28 checks prices)": (
-        DBT_PRICES_PRICEFULL, "([0-9]{4})?(-[0-9]+)?", "(-[0-9]+)?"),
+        DBT_PRICES_PRICEFULL, "(?:[0-9]{4})?(?:-[0-9]+)?", "(?:-[0-9]+)?"),
+    # Task 13: the file-name check ran past 36 minutes on the Mac's tables, its pattern built from each row's day and
+    # its filter run below the group-by; the pattern is now a literal, and every regular expression's is.
+    "the name's pattern built from each row's day (q28 checks prices)": (
+        DBT_PRICES_PRICEFULL_PATTERN, "-([0-9]{8})", "-(' || strftime(day, '%Y%m%d') || ')"),
     "a GS1 code flagged not allowed (q28 checks prices)": (
         DBT_PRICES_GS1, "gs1 is distinct from {{ is_gs1('barcode') }}", "gs1 and not {{ is_gs1('barcode') }}"),
     "a 7-digit code taken as GS1 (q28 checks prices)": (DBT_IS_GS1, "'[1-9][0-9]{7,13}'", "'[1-9][0-9]{6,13}'"),

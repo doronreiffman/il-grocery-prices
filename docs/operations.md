@@ -759,16 +759,19 @@ A data test is a query that must return no rows. `dbt test` prints each one's re
 
 ### How long
 
-Measured on an 8 GB Apple M2 on 25 November 2026 with the design's prototype (11 models, 12 data tests and a unit test, not the layer as built), over the 12 days of prices then on the Mac ([dbt-layer.md](dbt-layer.md), section 8). The built layer's own figures replace these ([dbt-layer-plan.md](dbt-layer-plan.md), Task 13).
+Measured on an 8 GB Apple M2 on 26 November 2026, the layer as built, over 14 days of prices (68,541,233 rows), 14 of promotions and 26 of items (3,383,876 rows). Each figure is one run. Other programs shared the Mac and its memory ran short, so the steps' times varied between runs, the listed-price check's most (below). For the same reason the most a command held resident understates the memory it used, since part of it was swapped out: `dbt run` held at most 1.2 GB resident at a peak memory footprint of 2.6 GB.
 
 | Step | Measured |
 |---|---|
-| The prototype's build, without the slow test | 64.5 s by dbt's own count (67.8 s for the command) |
-| Of it: the listed-price check across tables | 41.6 s (6.2 s as a direct query) |
-| Of it: `basket_prices` | 12.1 s (0.5 s as a direct query) |
-| Of it: `int_day_prices`, 2,991,201 rows, and `product_deals`, 653,699 rows | 3.3 s and 4.5 s |
-| The slow test, uniqueness over 58,254,923 price rows | 79.7 s |
-| dbt's own start and parse | 4 to 5 s a command |
-| `dbt docs generate --static` | 4.2 s |
+| `dbt run`, the 14 models | 34.9 s by dbt's own count (50.5 s for the command), a peak memory footprint of 2.6 GB |
+| Of it: `product_deals`, 746,425 rows; `int_day_prices`, 3,383,876 rows; `basket_prices`, 2,240 rows | 15.0 s, 9.1 s and 7.1 s |
+| `dbt test`, 29 data tests and 40 unit tests | 250.4 s by dbt's own count (253.9 s for the command), at most 1.5 GB resident |
+| Of it: the slow test, uniqueness over 68,541,233 price rows | 182.5 s |
+| Of it: the listed-price check across tables | 48.5 s |
+| Of it: the promotions at most branches across tables | 12.2 s |
+| Of it: the 40 unit tests | 1.9 s in all |
+| `dbt test --exclude tag:slow` | 47.6 s by dbt's own count (50.7 s for the command), at most 2.1 GB resident |
+| `dbt docs generate --static` | 3.4 s for the command |
+| Each command beyond dbt's own count: its start, parse and finish | 3.1 to 3.5 s; 15.7 s for the first, with no saved parse |
 
-The layer has about 30 data tests against the prototype's 12, and the others each ran in under 6 s as queries. So, an estimate: about 3 minutes for everything, about 1.5 minutes without the slow test. Growth, an estimate: the slow test grows by about 7 to 9 s for each day of prices kept; `product_deals` reads up to 90 days back for every day, so its time grows faster than the days.
+So about 5 minutes for `dbt run` then `dbt test` (304 s), and under 2 minutes without the slow test (101 s). The listed-price check reads the price rows that count, through the left-out filter's two anti-joins (`int_counted_prices`). In dbt it took 103.8 s, 48.5 s and 23.3 s in three runs, each over the 20 s line the plan set beside the design's direct query, 6.2 s over 12 days on 25 November ([dbt-layer-plan.md](dbt-layer-plan.md), Task 13). The runs varied too much under the machine's load to show the left-out filter's share of that time. Growth, an estimate: the slow test reads every day of prices kept, so it grows with them; `product_deals` reads up to 90 days back for every day, so its time grows faster than the days.
