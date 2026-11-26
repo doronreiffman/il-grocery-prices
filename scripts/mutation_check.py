@@ -421,12 +421,7 @@ DBT_PUBLISHED_SHUFERSAL = (_DBT_PUBLISHED + "basket_prices_at_shufersal_match_pu
                            ["tests/test_dbt_golden.py"])
 DBT_PUBLISHED_STILL_DIFFER = (_DBT_PUBLISHED + "known_differences_still_differ.sql", ["tests/test_dbt_golden.py"])
 DBT_PUBLISHED_DESCRIPTIONS = (_DBT_PUBLISHED + "_published.yml", ["tests/test_dbt_golden.py"])
-# A known difference's skip as the two store-page comparisons write it, and as the macro basket_compared writes it:
-# a break drops it whole.
-_DBT_STORE_PAGE_SKIP = ("anti join {{ ref('known_differences') }} as known\n"
-                        "    on known.kind = 'store_page'\n"
-                        "    and known.key = differing.store_type\n"
-                        "    and known.day = differing.day\n")
+# A known basket day's skip as the macro basket_compared writes it: a break drops it whole.
 _DBT_BASKET_SKIP = ("anti join {{ ref('known_differences') }} as known\n"
                     "    on known.kind = 'basket'\n"
                     "    and known.key = differing.chain\n"
@@ -442,9 +437,18 @@ _DBT_WORKED_DAYS_LISTED = ("    from worked\n"
                            "    semi join (select distinct chain, day from item_rows) as listed_days\n"
                            "        on listed_days.chain = worked.chain\n"
                            "        and listed_days.day = worked.day\n")
-_DBT_BASKET_DAYS_PRICED = ("semi join (select distinct chain, day from {{ ref('stg_prices') }}) as priced\n"
-                           "    on priced.chain = published.chain\n"
-                           "    and priced.day = published.day\n")
+_DBT_BASKET_DAYS_PRICED = ("    semi join (select distinct chain, day from {{ ref('stg_prices') }}) as priced\n"
+                           "        on priced.chain = listed.chain\n"
+                           "        and priced.day = listed.day\n")
+# The basket's two sides, each read on the compared chain-days alone (a break reads it on every chain-day).
+_DBT_BASKET_PUBLISHED_DAYS = ("    from {{ ref('stg_published_basket') }} as item\n"
+                              "    semi join compared_days\n"
+                              "        on compared_days.chain = item.chain\n"
+                              "        and compared_days.day = item.day\n")
+_DBT_BASKET_PRICED_DAYS = ("    from {{ ref('basket_prices') }} as model\n"
+                           "    semi join compared_days\n"
+                           "        on compared_days.chain = model.chain\n"
+                           "        and compared_days.day = model.day\n")
 _DBT_ACROSS_PROMOTED = ("    from {{ ref('stg_store_type_days') }} as report\n"
                         "    semi join promoted_days\n"
                         "        on promoted_days.chain = report.chain\n"
@@ -4214,12 +4218,16 @@ MUTATIONS = {
         "where page.checked"),
     "M not compared (q28 checks published)": (
         DBT_PUBLISHED_DIFFERENCES, "\n    or page.checked is distinct from model.checked", ""),
-    "a known store page compared (q28 checks published)": (DBT_PUBLISHED_PAGES, _DBT_STORE_PAGE_SKIP, ""),
+    "a known store page compared (q28 checks published)": (
+        DBT_PUBLISHED_PAGES, "{{ without_known_store_pages(store_page_differences()) }}",
+        "{{ store_page_differences() }}"),
     "a shown row's usual price not compared (q28 checks published)": (
         DBT_PUBLISHED_DIFFERENCES, "\n    or shown.usual is distinct from cast(deal.usual_price as varchar)", ""),
-    "a known store page's rows compared (q28 checks published)": (DBT_PUBLISHED_ROWS, _DBT_STORE_PAGE_SKIP, ""),
+    "a known store page's rows compared (q28 checks published)": (
+        DBT_PUBLISHED_ROWS, "{{ without_known_store_pages(shown_row_differences()) }}",
+        "{{ shown_row_differences() }}"),
     "the promotions count not compared (q28 checks published)": (
-        DBT_PUBLISHED_PROMOTIONS, "\n    and page.promotions is distinct from coalesce(reach.at_most_branches, 0)",
+        DBT_PUBLISHED_DIFFERENCES, "\n    and page.promotions is distinct from coalesce(reach.at_most_branches, 0)",
         "\n    and false"),
     "the basket's median not rounded half up (q28 checks published)": (
         DBT_PUBLISHED_DIFFERENCES, "cast(round(basket.median, 2) as varchar)",
@@ -4303,8 +4311,10 @@ MUTATIONS = {
     "the items' count joined to the reports without its day (q28 checks across)": (
         DBT_ACROSS_PROMOTIONS, "\n    and listed_entries.day = compared.day", ""),
     "the items' count joined to the reports without its store type (q28 checks across)": (
-        DBT_ACROSS_PROMOTIONS, "    on listed_entries.store_type = compared.store_type\n    and listed_entries.day",
-        "    on listed_entries.day"),
+        DBT_ACROSS_PROMOTIONS, "\n    and listed_entries.store_type = compared.store_type", ""),
+    "the items' count joined to the reports without its chain (q28 checks across)": (
+        DBT_ACROSS_PROMOTIONS, "    on listed_entries.chain = compared.chain\n    and listed_entries.store_type",
+        "    on listed_entries.store_type"),
     "a store-type day with no reach row not read as 0 across tables (q28 checks across)": (
         DBT_ACROSS_PROMOTIONS, "where coalesce(reach.at_most_branches, 0) is distinct from",
         "where reach.at_most_branches is distinct from"),
@@ -4320,11 +4330,12 @@ MUTATIONS = {
     "the store pages' join without its store type (q28 checks published)": (
         DBT_PUBLISHED_DIFFERENCES, "    on model.store_type = page.store_type\n    and model.day", "    on model.day"),
     "a known store page skipped whatever its kind (q28 checks published)": (
-        DBT_PUBLISHED_PAGES, "    on known.kind = 'store_page'\n    and known.key", "    on known.key"),
+        DBT_PUBLISHED_DIFFERENCES, "    on known.kind = 'store_page'\n    and known.key", "    on known.key"),
     "a known store page skipped whatever its day (q28 checks published)": (
-        DBT_PUBLISHED_PAGES, "\n    and known.day = differing.day", ""),
+        DBT_PUBLISHED_DIFFERENCES, "    and known.key = differing.store_type\n    and known.day = differing.day",
+        "    and known.key = differing.store_type"),
     "a known store page skipped whatever its store type (q28 checks published)": (
-        DBT_PUBLISHED_PAGES, "\n    and known.key = differing.store_type", ""),
+        DBT_PUBLISHED_DIFFERENCES, "\n    and known.key = differing.store_type", ""),
     # The rows a store page shows.
     "a shown row's price today not compared (q28 checks published)": (
         DBT_PUBLISHED_DIFFERENCES, "where shown.today is distinct from cast(deal.today_price as varchar)\n    or ",
@@ -4342,42 +4353,54 @@ MUTATIONS = {
         DBT_PUBLISHED_DIFFERENCES, "\n    and deal.day = shown.day", ""),
     "the shown rows' join without its barcode (q28 checks published)": (
         DBT_PUBLISHED_DIFFERENCES, "\n    and deal.barcode = shown.barcode", ""),
-    "a known store page's rows skipped whatever its kind (q28 checks published)": (
-        DBT_PUBLISHED_ROWS, "    on known.kind = 'store_page'\n    and known.key", "    on known.key"),
-    "a known store page's rows skipped whatever its day (q28 checks published)": (
-        DBT_PUBLISHED_ROWS, "\n    and known.day = differing.day", ""),
-    "a known store page's rows skipped whatever its store type (q28 checks published)": (
-        DBT_PUBLISHED_ROWS, "\n    and known.key = differing.store_type", ""),
     # The promotions count.
+    "a known store page's promotions count compared (q28 checks published)": (
+        DBT_PUBLISHED_PROMOTIONS, "{{ without_known_store_pages(promotion_count_differences()) }}",
+        "{{ promotion_count_differences() }}"),
     "a store type with no reach row not read as 0 against the published count (q28 checks published)": (
-        DBT_PUBLISHED_PROMOTIONS, "page.promotions is distinct from coalesce(reach.at_most_branches, 0)",
+        DBT_PUBLISHED_DIFFERENCES, "page.promotions is distinct from coalesce(reach.at_most_branches, 0)",
         "page.promotions is distinct from reach.at_most_branches"),
     "a chain with no promotions row that day compared (q28 checks published)": (
-        DBT_PUBLISHED_PROMOTIONS, _DBT_PUBLISHED_PROMOTED, ""),
+        DBT_PUBLISHED_DIFFERENCES, _DBT_PUBLISHED_PROMOTED, ""),
     "the promotions' days read without their chain for the published count (q28 checks published)": (
-        DBT_PUBLISHED_PROMOTIONS, "    on promoted_days.chain = report.chain\n    and promoted_days.day",
+        DBT_PUBLISHED_DIFFERENCES, "    on promoted_days.chain = report.chain\n    and promoted_days.day",
         "    on promoted_days.day"),
     "the promotions' days read without their day for the published count (q28 checks published)": (
-        DBT_PUBLISHED_PROMOTIONS, "\n    and promoted_days.day = report.day", ""),
+        DBT_PUBLISHED_DIFFERENCES, "\n    and promoted_days.day = report.day", ""),
     "a hole's promotions count compared (q28 checks published)": (
-        DBT_PUBLISHED_PROMOTIONS, "where not report.hole\n    and not report.promo_hole",
+        DBT_PUBLISHED_DIFFERENCES, "where not report.hole\n    and not report.promo_hole",
         "where not report.promo_hole"),
     "a promotion hole's promotions count compared (q28 checks published)": (
-        DBT_PUBLISHED_PROMOTIONS, "\n    and not report.promo_hole", ""),
+        DBT_PUBLISHED_DIFFERENCES, "\n    and not report.promo_hole", ""),
     "the published count's report joined without its day (q28 checks published)": (
-        DBT_PUBLISHED_PROMOTIONS, "\n    and report.day = page.day", ""),
+        DBT_PUBLISHED_DIFFERENCES, "\n    and report.day = page.day", ""),
     "the published count's report joined without its store type (q28 checks published)": (
-        DBT_PUBLISHED_PROMOTIONS, "    on report.store_type = page.store_type\n    and report.day",
+        DBT_PUBLISHED_DIFFERENCES, "    on report.store_type = page.store_type\n    and report.day",
         "    on report.day"),
     "the published count's reach joined without its day (q28 checks published)": (
-        DBT_PUBLISHED_PROMOTIONS, "\n    and reach.day = page.day", ""),
+        DBT_PUBLISHED_DIFFERENCES, "\n    and reach.day = page.day", ""),
     "the published count's reach joined without its store type (q28 checks published)": (
-        DBT_PUBLISHED_PROMOTIONS, "    on reach.store_type = page.store_type\n    and reach.day", "    on reach.day"),
+        DBT_PUBLISHED_DIFFERENCES, "    on reach.store_type = page.store_type\n    and reach.day", "    on reach.day"),
     # The basket.
     "the basket's table filter without its day (q28 checks published)": (
-        DBT_PUBLISHED_DIFFERENCES, "\n    and priced.day = published.day", ""),
+        DBT_PUBLISHED_DIFFERENCES, "\n        and priced.day = listed.day", ""),
     "the basket's table filter without its chain (q28 checks published)": (
-        DBT_PUBLISHED_DIFFERENCES, "    on priced.chain = published.chain\n    and priced.day", "    on priced.day"),
+        DBT_PUBLISHED_DIFFERENCES, "        on priced.chain = listed.chain\n        and priced.day",
+        "        on priced.day"),
+    "the published basket read on every chain-day (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, _DBT_BASKET_PUBLISHED_DAYS, "    from {{ ref('stg_published_basket') }} as item\n"),
+    "the published basket's compared days read without their chain (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "        on compared_days.chain = item.chain\n        and compared_days.day",
+        "        on compared_days.day"),
+    "the published basket's compared days read without their day (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "\n        and compared_days.day = item.day", ""),
+    "the priced basket read on every chain-day (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, _DBT_BASKET_PRICED_DAYS, "    from {{ ref('basket_prices') }} as model\n"),
+    "the priced basket's compared days read without their chain (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "        on compared_days.chain = model.chain\n        and compared_days.day",
+        "        on compared_days.day"),
+    "the priced basket's compared days read without their day (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "\n        and compared_days.day = model.day", ""),
     "the basket's median not compared (q28 checks published)": (
         DBT_PUBLISHED_DIFFERENCES,
         "where published.median is distinct from cast(round(basket.median, 2) as varchar)\n    or published.low",
@@ -4391,8 +4414,9 @@ MUTATIONS = {
     "the basket's double-coded stores not compared (q28 checks published)": (
         DBT_PUBLISHED_DIFFERENCES, "\n    or published.double_coded is distinct from basket.double_coded", ""),
     "a published basket item with no model row allowed (q28 checks published)": (
-        DBT_PUBLISHED_DIFFERENCES, "left join {{ ref('basket_prices') }} as basket",
-        "join {{ ref('basket_prices') }} as basket"),
+        DBT_PUBLISHED_DIFFERENCES, "from published\nfull join basket\n", "from published\nright join basket\n"),
+    "a priced basket item the day file lacks allowed (q28 checks published)": (
+        DBT_PUBLISHED_DIFFERENCES, "from published\nfull join basket\n", "from published\nleft join basket\n"),
     "the basket's join without its day (q28 checks published)": (
         DBT_PUBLISHED_DIFFERENCES, "\n    and basket.day = published.day", ""),
     "the basket's join without its chain (q28 checks published)": (
@@ -4402,7 +4426,8 @@ MUTATIONS = {
     "a known basket day skipped whatever its kind (q28 checks published)": (
         DBT_PUBLISHED_DIFFERENCES, "    on known.kind = 'basket'\n    and known.key", "    on known.key"),
     "a known basket day skipped whatever its day (q28 checks published)": (
-        DBT_PUBLISHED_DIFFERENCES, "\n    and known.day = differing.day", ""),
+        DBT_PUBLISHED_DIFFERENCES, "    and known.key = differing.chain\n    and known.day = differing.day",
+        "    and known.key = differing.chain"),
     "a known basket day skipped whatever its chain (q28 checks published)": (
         DBT_PUBLISHED_DIFFERENCES, "\n    and known.key = differing.chain", ""),
     "Shufersal compared among the four chains (q28 checks published)": (
@@ -4415,6 +4440,9 @@ MUTATIONS = {
     "a listed store page's N and M not read (q28 checks published)": (
         DBT_PUBLISHED_STILL_DIFFER,
         "    select store_type, day from ({{ store_page_differences() }})\n    union\n", ""),
+    "a listed store page's promotions count not read (q28 checks published)": (
+        DBT_PUBLISHED_STILL_DIFFER,
+        "\n    union\n    select store_type, day from ({{ promotion_count_differences() }})", ""),
     "a listed store page's rows not read (q28 checks published)": (
         DBT_PUBLISHED_STILL_DIFFER, "\n    union\n    select store_type, day from ({{ shown_row_differences() }})", ""),
     "a listed store page's model row read whatever its store type (q28 checks published)": (

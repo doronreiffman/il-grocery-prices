@@ -11,6 +11,6 @@ data_tests:
   - name: promotions_at_most_branches_agree_across_tables
     description: >-
       Rule P3: promotion_reach's count at most branches, from the promotions table, is the items table's, on each
-      store-type day of the items reports whose chain has a promotions row that day: the promotions on the store type's
-      items rows that are wide, have a kind and run that day, each counted once however many rows carry it. A side with
-      none counts 0. Fails with one row for each store-type day whose two counts differ.
+      store-type day of the items reports whose chain has a promotions row that day: the promotions on the items rows of
+      the store type at its chain that are wide, have a kind and run that day, each counted once however many rows
+      carry it. A side with none counts 0. Fails with one row for each store-type day whose two counts differ.

@@ -304,7 +304,7 @@ EXPECTED_BAD: dict[str, tuple[str, int]] = {
     "store_type_deals_match_published": ("fail", 4),
     "product_deals_match_published_rows": ("fail", 6),
     "promotion_reach_matches_published": ("fail", 1),
-    "basket_prices_match_published": ("fail", 6),
+    "basket_prices_match_published": ("fail", 7),
     "basket_prices_at_shufersal_match_published": ("warn", 1),
     "known_differences_still_differ": ("fail", 8),
 }
@@ -484,9 +484,9 @@ def plant_bad_rows(tables: Path, site: Path) -> None:
       against its wide. They are not wide so that no promotion counts at City on 30 April. City's report has no
       promotion file of its 2 counted stores and no promotion hole (the holes).
     - Rows under store types the report lacks (the store type): G2 under carrefour-express, and U1 under shufersal-deal,
-      at 1 store, not wide, with no promotions and not on promotion, which a wide, on-promotion or agreement rule that
-      met reports without the chain would read against Shufersal Deal's, and a wide or on-promotion rule that kept a
-      row meeting no report would fail.
+      at 1 store, not wide, with no promotions (but Task 10's 984, below) and not on promotion, which a wide,
+      on-promotion or agreement rule that met reports without the chain would read against Shufersal Deal's, and a wide
+      or on-promotion rule that kept a row meeting no report would fail.
     - Shufersal: Universe's ONE_OF_THREE at 1 of its 3 stores and not wide, which is right, so it fails only a weakened
       half. Express's report, of a store type with no store and no row: on 29 April 3 included, 1 with a file and a
       hole, 3 counted, 1 with a promotion file and a promotion hole; on 28 April 2 and 1 and no hole, 2 and 1 and no
@@ -517,7 +517,9 @@ def plant_bad_rows(tables: Path, site: Path) -> None:
       rows on promotion, the report's on promotion and valid deals 2); Yochananof's 29 April G2 carrying 983, wide and
       running, on a day Yochananof has no promotions row (its report's on promotion and valid deals 1); and Task 9's
       rows at Carrefour, none wide, with a kind and running on 30 April, and NOT_ON's 971 on 1 May, a day Carrefour has
-      no promotions row.
+      no promotions row. And, right, Task 9's U1 under shufersal-deal in Carrefour's table carries 984, wide, a fixed
+      price running (its on_promotion left false, a row meeting no report): read by store type and day without the
+      chain, it would count at Shufersal Deal.
 
     Against the published files (Task 10). Shufersal Sheli's report of 28 April is a promotion hole (no promotion file of
     its 2 counted stores) and of 29 April a hole (no included store): neither day has a product_deals row at Sheli, and
@@ -530,12 +532,15 @@ def plant_bad_rows(tables: Path, site: Path) -> None:
       and 1 promotion (982), as the model gives.
     - 29 April (new): Sheli's hole; City's, on a day Carrefour has no items table; Deal's 1 of 0 where the model gives 0
       of 0; Universe's 2 of 3 and 3 promotions as the model gives, but U3's shown usual 9.80.
-    - 28 April (new): Sheli's promotion hole. 1 May (new): Deal's 1 of 1 and a shown row of G5, on a day Shufersal has
+    - 28 April (new): Sheli's promotion hole; Universe's 2 of 3 as the model gives, but its promotions 4 where the model
+      gives 3 (listed: it differs by its promotions count alone). 1 May (new): Deal's 1 of 1 and a shown row of G5, on a
+      day Shufersal has
       no items table; City's 0 of 0 and 3 promotions, on a day Carrefour has no promotions row.
     The basket day files: 30 April: Rami Levy's G6 median 7.40, G1 lowest 4.90 and G2 highest 2.60, each the one figure
     that differs, and a G4 item, which is no basket product; Osher Ad's G1 at 3 stores and G2 at 1 double-coded store;
     Shufersal's G6 at 6 stores (its standing warning); and, right, Osher Ad's G6 at 7.15, 7.10 and 7.19, the model's
-    7.145 rounded half up."""
+    7.145 rounded half up. 28 April (new): Yochananof's G1 and G2 as the model gives them and no G6, which Yochananof's
+    copied prices table of that day prices."""
     day = f"date={day_of(LAST).isoformat()}"
     # Task 10's copies, from the golden's own tables before any other bad row (the docstring's "Across tables").
     for kind, slug, n in (("prices", "yochananof", LAST - 2), ("items", "yochananof", LAST - 2),
@@ -684,6 +689,9 @@ def plant_bad_rows(tables: Path, site: Path) -> None:
     _rewrite(on_29 / "items.parquet",
              f"update staged set on_promotion = true, promotions = [{from_29}] where code = '{G2}'")
     _report(on_29, {"yochananof": {"on_promotion": 1, "valid_deals": 1}})
+    at_deal = _promotion("984")
+    _rewrite(carrefour / "items.parquet",
+             f"update staged set promotions = [{at_deal}] where \"column\" = 'shufersal-deal' and code = '{U1}'")
     # The promotions tables of 30 April: each row Universe's promotion 60 on U1 under another store type and code,
     # running from 30 April to 6 May at the store type's 2 counted stores, wide.
     def running(promotion_id: str, column: str, code: str) -> str:
@@ -713,7 +721,7 @@ def plant_bad_rows(tables: Path, site: Path) -> None:
         "shufersal-universe": front(2, 3, 3, 3, ((U2, "6.90", "8.90", "2.00", 26),
                                                  (U3, "7.90", "9.80", "2.00", 25)))}})
     publish(site, "site-days", {"day": day_of(LAST - 2).isoformat(), "columns": {
-        "shufersal-sheli": front(0, 0, None, None)}})
+        "shufersal-sheli": front(0, 0, None, None), "shufersal-universe": front(2, 3, 4, 3)}})
     publish(site, "site-days", {"day": day_of(LAST + 1).isoformat(), "columns": {
         "shufersal-deal": front(1, 1, 0, 0, ((G5, "4.50", "6.00", "1.50", 88),)), "carrefour-city": front(0, 0, 3, 3)}})
     # The basket day files.
@@ -728,6 +736,9 @@ def plant_bad_rows(tables: Path, site: Path) -> None:
     chains["osherad"]["items"][G2]["double_coded"] = 1
     chains["shufersal"]["items"][G6]["listing"] = 6
     publish(site, "days", basket_day)
+    publish(site, "days", {"day": day_of(LAST - 2).isoformat(), "items_in": [G1, G2, G6], "chains": {
+        "yochananof": {"total": "7.50", "items": {G1: basket_item("5.00", "5.00", "5.00", 2),
+                                                  G2: basket_item("2.50", "2.50", "2.50", 2)}}}})
 
 
 # The bad-rows build's known differences beyond the golden's two (BAD_VARS), each for a clause of
@@ -752,6 +763,7 @@ BAD_KNOWN = (
     # Each must pass it: it differs by one comparison alone.
     known("store_page", "shufersal-deal", LAST - 1, PLANTED + "differs by N alone"),
     known("store_page", "shufersal-universe", LAST - 1, PLANTED + "differs by a shown row alone"),
+    known("store_page", "shufersal-universe", LAST - 2, PLANTED + "differs by its promotions count alone"),
 )
 
 
