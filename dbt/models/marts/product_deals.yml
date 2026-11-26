@@ -1,0 +1,350 @@
+models:
+  - name: product_deals
+    description: >-
+      Is this promotion a deal, at this store type, today? One row a store type, product and day on which a
+      promotion counts (rule S3) on a tracked day (rule S0), for a product covered by that day (rule P1: wide at some
+      store type, on a day with no hole there, that day or before it), judged as src/shopper/verdict.py judges it.
+      The history of a row is the same store type's and product's rows on the read_days (90) days before its day, the
+      day itself left out. The usual price (rule S2) is the middle of the day prices of the history's tracked days,
+      sorted, the higher middle of an even count, so a product on sale on exactly half its days keeps its shelf price
+      as usual; a sale day of unknown price has no day price, so it never pushes the usual price up. The verdict
+      (rule S4): no verdict when no tracked day has a day price, or when more than half the tracked days are sale
+      days of unknown price; else a deal when the saving is deal_min (1.00 shekel) or more; else no deal. A row is
+      checked, one of the store page's M, when it passes the front list's bar: at least min_front_days (20) days with
+      records in the recent_days (30) days before its day, a promotion hole being a record.
+    columns:
+      - name: store_type
+        description: The store type.
+      - name: barcode
+        description: The product's barcode, leading zeros stripped.
+      - name: day
+        description: The day judged.
+      - name: today_price
+        description: The lowest price among the promotions that count that day (rule S3), to the agora.
+      - name: usual_price
+        description: >-
+          The usual price (rule S2): of the day prices of the history's tracked days, sorted, the element at
+          len // 2 + 1 counting from 1, the middle and the higher middle of an even count; NULL with no day price.
+      - name: saving
+        description: usual_price less today_price; NULL with no usual price.
+      - name: days_tracked
+        description: The history's tracked days (rule S0).
+      - name: days_priced
+        description: The history's tracked days with a day price.
+      - name: days_on_sale
+        description: The history's tracked days on sale, sale days of unknown price included (rule S7).
+      - name: days_unknown
+        description: The history's tracked days with no day price, the sale days of unknown price.
+      - name: days_recorded
+        description: >-
+          The days with records in the recent_days (30) days before the day: the product listed and the store type no
+          hole that day; a promotion hole is a record.
+      - name: checked
+        description: >-
+          Whether the row passes the front list's bar, so the store page counts it in its M: days_recorded at least
+          min_front_days (20).
+      - name: verdict
+        description: >-
+          deal, no deal or no verdict (rule S4). No verdict covers the site's calls new, mostly unknown and no
+          history.
+
+unit_tests:
+  - name: always_on_is_no_deal
+    model: product_deals
+    given:
+      - input: ref('int_day_prices')
+        format: sql
+        rows: |
+          -- Wide from today on (P1), so the history's days on sale are no rows of their own.
+          select 'shufersal-universe' as store_type, '2000000000201' as barcode, day, false as wide, false as hole,
+              day = date '2026-04-20' as promo_hole, day <> date '2026-04-20' as tracked,
+              day <> date '2026-04-20' as on_sale,
+              cast(case when day <> date '2026-04-20' then 9.90 end as decimal(12,2)) as sale_price,
+              cast(case when day <> date '2026-04-20' then 9.90 else 12.90 end as decimal(13,2)) as day_price
+          from (select date '2026-04-02' + cast(i as integer) as day from range(28) as days(i)) as history
+          union all
+          select 'shufersal-universe', '2000000000201', date '2026-04-30', true, false, false, true, true, 9.90, 9.90
+    expect:
+      rows:
+        - {store_type: shufersal-universe, barcode: "2000000000201", day: "2026-04-30", today_price: 9.90,
+           usual_price: 9.90, saving: 0.00, days_tracked: 27, days_priced: 27, days_on_sale: 27, days_unknown: 0,
+           days_recorded: 28, checked: true, verdict: no deal}
+
+  - name: a_monthly_sale_is_a_deal
+    model: product_deals
+    given:
+      - input: ref('int_day_prices')
+        format: sql
+        rows: |
+          -- Wide from today on (P1), so the history's days on sale are no rows of their own.
+          select 'shufersal-universe' as store_type, '2000000000202' as barcode, day, false as wide, false as hole,
+              day = date '2026-04-20' as promo_hole, day <> date '2026-04-20' as tracked, sale as on_sale,
+              cast(case when sale then 6.90 end as decimal(12,2)) as sale_price,
+              cast(case when sale then 6.90 else 8.90 end as decimal(13,2)) as day_price
+          from (select day, day between date '2026-04-05' and date '2026-04-11' or day >= date '2026-04-27' as sale
+                from (select date '2026-04-02' + cast(i as integer) as day from range(28) as days(i)) as listed
+               ) as history
+          union all
+          select 'shufersal-universe', '2000000000202', date '2026-04-30', true, false, false, true, true, 6.90, 6.90
+    expect:
+      rows:
+        - {store_type: shufersal-universe, barcode: "2000000000202", day: "2026-04-30", today_price: 6.90,
+           usual_price: 8.90, saving: 2.00, days_tracked: 27, days_priced: 27, days_on_sale: 10, days_unknown: 0,
+           days_recorded: 28, checked: true, verdict: deal}
+
+  - name: on_sale_exactly_half_its_days_keeps_its_shelf_price
+    model: product_deals
+    given:
+      - input: ref('int_day_prices')
+        format: sql
+        rows: |
+          -- Wide from today on (P1), so the history's days on sale are no rows of their own.
+          select 'shufersal-universe' as store_type, '2000000000203' as barcode, day, false as wide, false as hole,
+              day = date '2026-04-20' as promo_hole, day <> date '2026-04-20' as tracked, sale as on_sale,
+              cast(case when sale then 7.90 end as decimal(12,2)) as sale_price,
+              cast(case when sale then 7.90 else 9.90 end as decimal(13,2)) as day_price
+          from (select day, day >= date '2026-04-16' and day <> date '2026-04-20' as sale
+                from (select date '2026-04-03' + cast(i as integer) as day from range(27) as days(i)) as listed
+               ) as history
+          union all
+          select 'shufersal-universe', '2000000000203', date '2026-04-30', true, false, false, true, true, 7.90, 7.90
+    expect:
+      rows:
+        - {store_type: shufersal-universe, barcode: "2000000000203", day: "2026-04-30", today_price: 7.90,
+           usual_price: 9.90, saving: 2.00, days_tracked: 26, days_priced: 26, days_on_sale: 13, days_unknown: 0,
+           days_recorded: 27, checked: true, verdict: deal}
+
+  - name: a_short_history_is_judged_and_not_checked
+    model: product_deals
+    given:
+      - input: ref('int_day_prices')
+        format: sql
+        rows: |
+          select 'shufersal-universe' as store_type, '2000000000204' as barcode,
+              date '2026-04-25' + cast(i as integer) as day, true as wide, false as hole, false as promo_hole,
+              true as tracked, false as on_sale, cast(null as decimal(12,2)) as sale_price,
+              cast(4.50 as decimal(13,2)) as day_price
+          from range(5) as days(i)
+          union all
+          select 'shufersal-universe', '2000000000204', date '2026-04-30', true, false, false, true, true, 3.20, 3.20
+    expect:
+      rows:
+        - {store_type: shufersal-universe, barcode: "2000000000204", day: "2026-04-30", today_price: 3.20,
+           usual_price: 4.50, saving: 1.30, days_tracked: 5, days_priced: 5, days_on_sale: 0, days_unknown: 0,
+           days_recorded: 5, checked: false, verdict: deal}
+
+  - name: new_today_has_no_verdict
+    model: product_deals
+    given:
+      - input: ref('int_day_prices')
+        format: sql
+        rows: |
+          select 'shufersal-universe' as store_type, '2000000000205' as barcode, date '2026-04-30' as day,
+              true as wide, false as hole, false as promo_hole, true as tracked, true as on_sale,
+              cast(5.00 as decimal(12,2)) as sale_price, cast(5.00 as decimal(13,2)) as day_price
+    expect:
+      rows:
+        - {store_type: shufersal-universe, barcode: "2000000000205", day: "2026-04-30", today_price: 5.00,
+           usual_price: null, saving: null, days_tracked: 0, days_priced: 0, days_on_sale: 0, days_unknown: 0,
+           days_recorded: 0, checked: false, verdict: no verdict}
+
+  - name: a_saving_of_99_agorot_is_no_deal
+    model: product_deals
+    given:
+      - input: ref('int_day_prices')
+        format: sql
+        rows: |
+          select 'shufersal-universe' as store_type, '2000000000206' as barcode, day, true as wide, false as hole,
+              day = date '2026-04-20' as promo_hole, day <> date '2026-04-20' as tracked, false as on_sale,
+              cast(null as decimal(12,2)) as sale_price, cast(5.00 as decimal(13,2)) as day_price
+          from (select date '2026-04-02' + cast(i as integer) as day from range(28) as days(i)) as history
+          union all
+          select 'shufersal-universe', '2000000000206', date '2026-04-30', true, false, false, true, true, 4.01, 4.01
+    expect:
+      rows:
+        - {store_type: shufersal-universe, barcode: "2000000000206", day: "2026-04-30", today_price: 4.01,
+           usual_price: 5.00, saving: 0.99, days_tracked: 27, days_priced: 27, days_on_sale: 0, days_unknown: 0,
+           days_recorded: 28, checked: true, verdict: no deal}
+
+  - name: a_saving_of_one_shekel_is_a_deal
+    model: product_deals
+    given:
+      - input: ref('int_day_prices')
+        format: sql
+        rows: |
+          select 'shufersal-universe' as store_type, '2000000000207' as barcode, day, true as wide, false as hole,
+              day = date '2026-04-20' as promo_hole, day <> date '2026-04-20' as tracked, false as on_sale,
+              cast(null as decimal(12,2)) as sale_price, cast(5.00 as decimal(13,2)) as day_price
+          from (select date '2026-04-02' + cast(i as integer) as day from range(28) as days(i)) as history
+          union all
+          select 'shufersal-universe', '2000000000207', date '2026-04-30', true, false, false, true, true, 4.00, 4.00
+    expect:
+      rows:
+        - {store_type: shufersal-universe, barcode: "2000000000207", day: "2026-04-30", today_price: 4.00,
+           usual_price: 5.00, saving: 1.00, days_tracked: 27, days_priced: 27, days_on_sale: 0, days_unknown: 0,
+           days_recorded: 28, checked: true, verdict: deal}
+
+  - name: a_day_whose_promotions_were_not_read_is_a_record_but_not_tracked
+    model: product_deals
+    given:
+      - input: ref('int_day_prices')
+        format: sql
+        rows: |
+          select 'shufersal-universe' as store_type, '2000000000208' as barcode, day, true as wide, false as hole,
+              day = date '2026-04-20' as promo_hole, day <> date '2026-04-20' as tracked, false as on_sale,
+              cast(null as decimal(12,2)) as sale_price, cast(6.00 as decimal(13,2)) as day_price
+          from (select date '2026-04-02' + cast(i as integer) as day from range(28) as days(i)) as history
+          union all
+          select 'shufersal-universe', '2000000000208', date '2026-04-30', true, false, false, true, true, 4.50, 4.50
+    expect:
+      rows:
+        - {store_type: shufersal-universe, barcode: "2000000000208", day: "2026-04-30", today_price: 4.50,
+           usual_price: 6.00, saving: 1.50, days_tracked: 27, days_priced: 27, days_on_sale: 0, days_unknown: 0,
+           days_recorded: 28, checked: true, verdict: deal}
+
+  - name: a_sale_day_of_unknown_price_is_on_sale_but_not_priced
+    model: product_deals
+    given:
+      - input: ref('int_day_prices')
+        format: sql
+        rows: |
+          select 'shufersal-universe' as store_type, '2000000000209' as barcode, day, true as wide, false as hole,
+              day = date '2026-04-20' as promo_hole, day <> date '2026-04-20' as tracked,
+              day <= date '2026-04-08' as on_sale, cast(null as decimal(12,2)) as sale_price,
+              cast(case when day > date '2026-04-08' then 5.00 end as decimal(13,2)) as day_price
+          from (select date '2026-04-02' + cast(i as integer) as day from range(28) as days(i)) as history
+          union all
+          select 'shufersal-universe', '2000000000209', date '2026-04-30', true, false, false, true, true, 4.00, 4.00
+    expect:
+      rows:
+        - {store_type: shufersal-universe, barcode: "2000000000209", day: "2026-04-30", today_price: 4.00,
+           usual_price: 5.00, saving: 1.00, days_tracked: 27, days_priced: 20, days_on_sale: 7, days_unknown: 7,
+           days_recorded: 28, checked: true, verdict: deal}
+
+  - name: more_than_half_the_days_unknown_has_no_verdict
+    model: product_deals
+    given:
+      - input: ref('int_day_prices')
+        format: sql
+        rows: |
+          select 'shufersal-universe' as store_type, '2000000000210' as barcode, day, true as wide, false as hole,
+              day = date '2026-04-20' as promo_hole, day <> date '2026-04-20' as tracked,
+              day <= date '2026-04-15' as on_sale, cast(null as decimal(12,2)) as sale_price,
+              cast(case when day > date '2026-04-15' then 5.00 end as decimal(13,2)) as day_price
+          from (select date '2026-04-02' + cast(i as integer) as day from range(28) as days(i)) as history
+          union all
+          select 'shufersal-universe', '2000000000210', date '2026-04-30', true, false, false, true, true, 4.00, 4.00
+          union all
+          select 'shufersal-universe', '2000000000211', day, true, false, day = date '2026-04-20',
+              day <> date '2026-04-20', day <= date '2026-04-15', null,
+              case when day > date '2026-04-15' then 5.00 end
+          from (select date '2026-04-03' + cast(i as integer) as day from range(27) as days(i)) as history
+          union all
+          select 'shufersal-universe', '2000000000211', date '2026-04-30', true, false, false, true, true, 4.00, 4.00
+    expect:
+      rows:
+        - {store_type: shufersal-universe, barcode: "2000000000210", day: "2026-04-30", today_price: 4.00,
+           usual_price: 5.00, saving: 1.00, days_tracked: 27, days_priced: 13, days_on_sale: 14, days_unknown: 14,
+           days_recorded: 28, checked: true, verdict: no verdict}
+        - {store_type: shufersal-universe, barcode: "2000000000211", day: "2026-04-30", today_price: 4.00,
+           usual_price: 5.00, saving: 1.00, days_tracked: 26, days_priced: 13, days_on_sale: 13, days_unknown: 13,
+           days_recorded: 27, checked: true, verdict: deal}
+
+  - name: a_product_never_covered_is_not_judged
+    model: product_deals
+    given:
+      - input: ref('int_day_prices')
+        format: sql
+        rows: |
+          -- 2000000000212 never wide; 2000000000213 wide only on a hole day; 2000000000214 wide only after the
+          -- day; 2000000000215 wide the day before at another store type, so covered.
+          select 'shufersal-universe' as store_type, '2000000000212' as barcode, date '2026-04-30' as day,
+              false as wide, false as hole, false as promo_hole, true as tracked, true as on_sale,
+              cast(4.00 as decimal(12,2)) as sale_price, cast(4.00 as decimal(13,2)) as day_price
+          union all
+          select 'shufersal-universe', '2000000000213', date '2026-04-10', true, true, false, false, false, null, 5.00
+          union all
+          select 'shufersal-universe', '2000000000213', date '2026-04-30', false, false, false, true, true, 4.00, 4.00
+          union all
+          select 'shufersal-deal', '2000000000214', date '2026-05-01', true, false, false, true, false, null, 5.00
+          union all
+          select 'shufersal-universe', '2000000000214', date '2026-04-30', false, false, false, true, true, 4.00, 4.00
+          union all
+          select 'shufersal-sheli', '2000000000215', date '2026-04-29', true, false, false, true, false, null, 5.00
+          union all
+          select 'shufersal-universe', '2000000000215', date '2026-04-30', false, false, false, true, true, 4.00, 4.00
+    expect:
+      rows:
+        - {store_type: shufersal-universe, barcode: "2000000000215", day: "2026-04-30", today_price: 4.00,
+           usual_price: null, saving: null, days_tracked: 0, days_priced: 0, days_on_sale: 0, days_unknown: 0,
+           days_recorded: 0, checked: false, verdict: no verdict}
+
+  - name: the_history_is_the_90_days_before_today
+    model: product_deals
+    given:
+      - input: ref('int_day_prices')
+        format: sql
+        rows: |
+          -- 2026-01-30 is 90 days before 2026-04-30, and 2026-01-29 is 91.
+          select 'shufersal-universe' as store_type, '2000000000216' as barcode, date '2026-01-29' as day,
+              true as wide, false as hole, false as promo_hole, true as tracked, false as on_sale,
+              cast(null as decimal(12,2)) as sale_price, cast(9.00 as decimal(13,2)) as day_price
+          union all
+          select 'shufersal-universe', '2000000000216', date '2026-01-30', true, false, false, true, false, null, 5.00
+          union all
+          select 'shufersal-universe', '2000000000216', date '2026-04-30', true, false, false, true, true, 4.00, 4.00
+    expect:
+      rows:
+        - {store_type: shufersal-universe, barcode: "2000000000216", day: "2026-04-30", today_price: 4.00,
+           usual_price: 5.00, saving: 1.00, days_tracked: 1, days_priced: 1, days_on_sale: 0, days_unknown: 0,
+           days_recorded: 0, checked: false, verdict: deal}
+
+  - name: the_bar_reads_the_30_days_before_today
+    model: product_deals
+    given:
+      - input: ref('int_day_prices')
+        format: sql
+        rows: |
+          -- 20 days with records from 2026-03-31, 30 days before 2026-04-30; and 20 from 2026-03-30, 31 before.
+          select 'shufersal-universe' as store_type, '2000000000217' as barcode,
+              date '2026-03-31' + cast(i as integer) as day, true as wide, false as hole, false as promo_hole,
+              true as tracked, false as on_sale, cast(null as decimal(12,2)) as sale_price,
+              cast(5.00 as decimal(13,2)) as day_price
+          from range(20) as days(i)
+          union all
+          select 'shufersal-universe', '2000000000217', date '2026-04-30', true, false, false, true, true, 4.00, 4.00
+          union all
+          select 'shufersal-universe', '2000000000218', date '2026-03-30' + cast(i as integer), true, false, false,
+              true, false, null, 5.00
+          from range(20) as days(i)
+          union all
+          select 'shufersal-universe', '2000000000218', date '2026-04-30', true, false, false, true, true, 4.00, 4.00
+    expect:
+      rows:
+        - {store_type: shufersal-universe, barcode: "2000000000217", day: "2026-04-30", today_price: 4.00,
+           usual_price: 5.00, saving: 1.00, days_tracked: 20, days_priced: 20, days_on_sale: 0, days_unknown: 0,
+           days_recorded: 20, checked: true, verdict: deal}
+        - {store_type: shufersal-universe, barcode: "2000000000218", day: "2026-04-30", today_price: 4.00,
+           usual_price: 5.00, saving: 1.00, days_tracked: 20, days_priced: 20, days_on_sale: 0, days_unknown: 0,
+           days_recorded: 19, checked: false, verdict: deal}
+
+  - name: no_row_without_a_promotion_counting_on_a_tracked_today
+    model: product_deals
+    given:
+      - input: ref('int_day_prices')
+        format: sql
+        rows: |
+          -- Each product covered the day before; today 2000000000219 is at a hole, 2000000000220 at a promotion
+          -- hole, and 2000000000221 has no promotion that counts.
+          select 'shufersal-universe' as store_type, barcode, date '2026-04-29' as day, true as wide,
+              false as hole, false as promo_hole, true as tracked, false as on_sale,
+              cast(null as decimal(12,2)) as sale_price, cast(5.00 as decimal(13,2)) as day_price
+          from (values ('2000000000219'), ('2000000000220'), ('2000000000221')) as products(barcode)
+          union all
+          select 'shufersal-universe', '2000000000219', date '2026-04-30', true, true, false, false, true, 4.00, 4.00
+          union all
+          select 'shufersal-universe', '2000000000220', date '2026-04-30', true, false, true, false, true, 4.00, 4.00
+          union all
+          select 'shufersal-universe', '2000000000221', date '2026-04-30', true, false, false, true, false, null, 5.00
+    expect:
+      rows: []

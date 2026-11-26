@@ -1,0 +1,209 @@
+models:
+  - name: int_day_prices
+    description: >-
+      Each store type's price for each product on each day it lists it, worked as the shopper site works it
+      (src/shopper/verdict.py): one row a store type, product and day of the items tables, with that day's report.
+      A promotion counts on a day (rule S3) when it is carried by at least half the store type's counted stores
+      (wide), its price was read (valid), it has a kind, and it runs that day, its first and last days included. The
+      day price (rule S1) is the lower of the listed price, to the agora half up, and the lowest promotion that
+      counts. A day on sale with no promotion that counts is a sale day of unknown price, and has no day price. A day
+      is tracked (rule S0) when the store type's prices and promotions were both read that day: neither a hole nor a
+      promotion hole.
+    columns:
+      - name: chain
+        description: The chain.
+      - name: store_type
+        description: The store type.
+      - name: barcode
+        description: The product's barcode, leading zeros stripped.
+      - name: day
+        description: The day of the items table and of its report.
+      - name: wide
+        description: >-
+          Whether the stores listing the product are at least half the store type's stores with a file (rule B6, by
+          store type).
+      - name: listed_shown
+        description: >-
+          The listed price, the median over the store type's stores listing the product, to the agora half up, as
+          the site shows it.
+      - name: sale_price
+        description: The lowest price among the promotions that count that day (rule S3); NULL when none counts.
+      - name: on_sale
+        description: >-
+          Whether a promotion on the product is wide, has a kind and runs that day, its price read or not (the
+          items table's on_promotion); false when the chain's promotions were not read.
+      - name: hole
+        description: Whether the store type's day is a hole, from its report.
+      - name: promo_hole
+        description: Whether the store type's day is a promotion hole, from its report.
+      - name: tracked
+        description: Whether the day is tracked (rule S0), neither a hole nor a promotion hole.
+      - name: day_price
+        description: >-
+          The day price (rule S1): the lower of listed_shown and sale_price when a promotion counts; NULL on a sale
+          day of unknown price (on sale, no promotion counting); else listed_shown.
+
+unit_tests:
+  - name: the_day_price_is_the_listed_price_to_the_agora_half_up
+    model: int_day_prices
+    given:
+      - input: ref('stg_items')
+        format: sql
+        rows: |
+          select 'osherad' as chain, 'osherad' as store_type, date '2026-04-30' as day, '2000000000101' as barcode,
+              cast(4.995 as decimal(13,3)) as listed, true as wide, false as on_promotion,
+              cast([] as struct(kind varchar, price decimal(12,2), "start" date, "end" date, wide boolean,
+                                valid boolean)[]) as promotions
+          union all
+          select 'osherad', 'osherad', date '2026-04-30', '2000000000102', 4.994, true, false, []
+      - input: ref('stg_store_type_days')
+        format: sql
+        rows: |
+          select 'osherad' as chain, 'osherad' as store_type, date '2026-04-30' as day, false as hole,
+              false as promo_hole
+    expect:
+      rows:
+        - {chain: osherad, store_type: osherad, barcode: "2000000000101", day: "2026-04-30", wide: true,
+           listed_shown: 5.00, sale_price: null, on_sale: false, hole: false, promo_hole: false, tracked: true,
+           day_price: 5.00}
+        - {chain: osherad, store_type: osherad, barcode: "2000000000102", day: "2026-04-30", wide: true,
+           listed_shown: 4.99, sale_price: null, on_sale: false, hole: false, promo_hole: false, tracked: true,
+           day_price: 4.99}
+
+  - name: the_lowest_promotion_that_counts_sets_the_day_price
+    model: int_day_prices
+    given:
+      - input: ref('stg_items')
+        format: sql
+        rows: |
+          select 'osherad' as chain, 'osherad' as store_type, date '2026-04-30' as day, '2000000000103' as barcode,
+              cast(5.00 as decimal(13,3)) as listed, true as wide, true as on_promotion,
+              [{'kind': 'fixed_price', 'price': cast(4.00 as decimal(12,2)), 'start': date '2026-04-25',
+                'end': date '2026-05-05', 'wide': true, 'valid': true},
+               {'kind': 'n_for_m', 'price': 3.80, 'start': date '2026-04-25', 'end': date '2026-05-05',
+                'wide': true, 'valid': true},
+               {'kind': 'fixed_price', 'price': 3.00, 'start': date '2026-04-25', 'end': date '2026-05-05',
+                'wide': false, 'valid': true},
+               {'kind': 'fixed_price', 'price': 2.00, 'start': date '2026-04-25', 'end': date '2026-05-05',
+                'wide': true, 'valid': false},
+               {'kind': null, 'price': 1.00, 'start': date '2026-04-25', 'end': date '2026-05-05',
+                'wide': true, 'valid': true},
+               {'kind': 'fixed_price', 'price': 2.50, 'start': date '2026-05-01', 'end': date '2026-05-05',
+                'wide': true, 'valid': true},
+               {'kind': 'fixed_price', 'price': 2.40, 'start': date '2026-04-20', 'end': date '2026-04-29',
+                'wide': true, 'valid': true}] as promotions
+      - input: ref('stg_store_type_days')
+        format: sql
+        rows: |
+          select 'osherad' as chain, 'osherad' as store_type, date '2026-04-30' as day, false as hole,
+              false as promo_hole
+    expect:
+      rows:
+        - {chain: osherad, store_type: osherad, barcode: "2000000000103", day: "2026-04-30", wide: true,
+           listed_shown: 5.00, sale_price: 3.80, on_sale: true, hole: false, promo_hole: false, tracked: true,
+           day_price: 3.80}
+
+  - name: a_promotion_on_its_first_and_its_last_day_counts
+    model: int_day_prices
+    given:
+      - input: ref('stg_items')
+        format: sql
+        rows: |
+          select 'osherad' as chain, 'osherad' as store_type, date '2026-04-30' as day, '2000000000104' as barcode,
+              cast(5.00 as decimal(13,3)) as listed, true as wide, true as on_promotion,
+              [{'kind': 'fixed_price', 'price': cast(4.00 as decimal(12,2)), 'start': date '2026-04-30',
+                'end': date '2026-05-07', 'wide': true, 'valid': true}] as promotions
+          union all
+          select 'osherad', 'osherad', date '2026-04-30', '2000000000105', 5.00, true, true,
+              [{'kind': 'fixed_price', 'price': 4.50, 'start': date '2026-04-23', 'end': date '2026-04-30',
+                'wide': true, 'valid': true}]
+      - input: ref('stg_store_type_days')
+        format: sql
+        rows: |
+          select 'osherad' as chain, 'osherad' as store_type, date '2026-04-30' as day, false as hole,
+              false as promo_hole
+    expect:
+      rows:
+        - {chain: osherad, store_type: osherad, barcode: "2000000000104", day: "2026-04-30", wide: true,
+           listed_shown: 5.00, sale_price: 4.00, on_sale: true, hole: false, promo_hole: false, tracked: true,
+           day_price: 4.00}
+        - {chain: osherad, store_type: osherad, barcode: "2000000000105", day: "2026-04-30", wide: true,
+           listed_shown: 5.00, sale_price: 4.50, on_sale: true, hole: false, promo_hole: false, tracked: true,
+           day_price: 4.50}
+
+  - name: a_sale_above_the_listed_price_leaves_the_listed_price
+    model: int_day_prices
+    given:
+      - input: ref('stg_items')
+        format: sql
+        rows: |
+          select 'osherad' as chain, 'osherad' as store_type, date '2026-04-30' as day, '2000000000106' as barcode,
+              cast(5.00 as decimal(13,3)) as listed, true as wide, true as on_promotion,
+              [{'kind': 'fixed_price', 'price': cast(6.00 as decimal(12,2)), 'start': date '2026-04-25',
+                'end': date '2026-05-05', 'wide': true, 'valid': true}] as promotions
+      - input: ref('stg_store_type_days')
+        format: sql
+        rows: |
+          select 'osherad' as chain, 'osherad' as store_type, date '2026-04-30' as day, false as hole,
+              false as promo_hole
+    expect:
+      rows:
+        - {chain: osherad, store_type: osherad, barcode: "2000000000106", day: "2026-04-30", wide: true,
+           listed_shown: 5.00, sale_price: 6.00, on_sale: true, hole: false, promo_hole: false, tracked: true,
+           day_price: 5.00}
+
+  - name: a_sale_day_of_unknown_price_has_no_day_price
+    model: int_day_prices
+    given:
+      - input: ref('stg_items')
+        format: sql
+        rows: |
+          select 'osherad' as chain, 'osherad' as store_type, date '2026-04-30' as day, '2000000000107' as barcode,
+              cast(5.00 as decimal(13,3)) as listed, true as wide, true as on_promotion,
+              [{'kind': 'percent_off', 'price': cast(null as decimal(12,2)), 'start': date '2026-04-25',
+                'end': date '2026-05-05', 'wide': true, 'valid': false}] as promotions
+      - input: ref('stg_store_type_days')
+        format: sql
+        rows: |
+          select 'osherad' as chain, 'osherad' as store_type, date '2026-04-30' as day, false as hole,
+              false as promo_hole
+    expect:
+      rows:
+        - {chain: osherad, store_type: osherad, barcode: "2000000000107", day: "2026-04-30", wide: true,
+           listed_shown: 5.00, sale_price: null, on_sale: true, hole: false, promo_hole: false, tracked: true,
+           day_price: null}
+
+  - name: a_day_is_tracked_only_with_its_prices_and_promotions_read
+    model: int_day_prices
+    given:
+      - input: ref('stg_items')
+        format: sql
+        rows: |
+          select 'osherad' as chain, 'osherad' as store_type, date '2026-04-28' as day, '2000000000108' as barcode,
+              cast(5.00 as decimal(13,3)) as listed, true as wide, false as on_promotion,
+              cast([] as struct(kind varchar, price decimal(12,2), "start" date, "end" date, wide boolean,
+                                valid boolean)[]) as promotions
+          union all
+          select 'osherad', 'osherad', date '2026-04-29', '2000000000108', 5.00, true, null, null
+          union all
+          select 'osherad', 'osherad', date '2026-04-30', '2000000000108', 5.00, true, false, []
+      - input: ref('stg_store_type_days')
+        format: sql
+        rows: |
+          select 'osherad' as chain, 'osherad' as store_type, date '2026-04-28' as day, true as hole,
+              false as promo_hole
+          union all
+          select 'osherad', 'osherad', date '2026-04-29', false, true
+          union all
+          select 'osherad', 'osherad', date '2026-04-30', false, false
+    expect:
+      rows:
+        - {chain: osherad, store_type: osherad, barcode: "2000000000108", day: "2026-04-28", wide: true,
+           listed_shown: 5.00, sale_price: null, on_sale: false, hole: true, promo_hole: false, tracked: false,
+           day_price: 5.00}
+        - {chain: osherad, store_type: osherad, barcode: "2000000000108", day: "2026-04-29", wide: true,
+           listed_shown: 5.00, sale_price: null, on_sale: false, hole: false, promo_hole: true, tracked: false,
+           day_price: 5.00}
+        - {chain: osherad, store_type: osherad, barcode: "2000000000108", day: "2026-04-30", wide: true,
+           listed_shown: 5.00, sale_price: null, on_sale: false, hole: false, promo_hole: false, tracked: true,
+           day_price: 5.00}

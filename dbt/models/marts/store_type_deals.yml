@@ -1,0 +1,79 @@
+models:
+  - name: store_type_deals
+    description: >-
+      At each store type today, how many of the promotions are deals? One row for each store type and day of the
+      items reports: M, the products checked (product_deals' rows that pass the front list's bar), and N, the deals
+      among them, the store page's headline (docs/store-first.md, "The front page's list"); beside them, how many of
+      the M were on sale on every tracked day of their history, and on more than half of those days. A store type's
+      day with nothing checked is 0 of 0.
+    columns:
+      - name: store_type
+        description: The store type.
+      - name: day
+        description: The day of the items report.
+      - name: checked
+        description: M, the store page's products checked that day (product_deals' checked rows).
+      - name: deals
+        description: N, the checked rows whose verdict is deal.
+      - name: on_sale_every_tracked_day
+        description: The checked rows with at least one tracked day, on sale on every one of them.
+      - name: on_sale_more_than_half
+        description: The checked rows on sale on more than half their tracked days.
+
+unit_tests:
+  - name: m_and_n_count_the_checked_products_and_their_deals
+    model: store_type_deals
+    given:
+      - input: ref('product_deals')
+        format: sql
+        rows: |
+          select 'shufersal-universe' as store_type, barcode, date '2026-04-30' as day, checked, verdict,
+              27 as days_tracked, 0 as days_on_sale
+          from (values ('2000000000301', true, 'deal'), ('2000000000302', true, 'deal'),
+                       ('2000000000303', true, 'no deal'), ('2000000000304', true, 'no verdict'),
+                       ('2000000000305', false, 'deal')) as products(barcode, checked, verdict)
+      - input: ref('stg_store_type_days')
+        format: sql
+        rows: |
+          select 'shufersal' as chain, 'shufersal-universe' as store_type, date '2026-04-30' as day
+    expect:
+      rows:
+        - {store_type: shufersal-universe, day: "2026-04-30", checked: 4, deals: 2, on_sale_every_tracked_day: 0,
+           on_sale_more_than_half: 0}
+
+  - name: on_sale_every_tracked_day_and_on_more_than_half
+    model: store_type_deals
+    given:
+      - input: ref('product_deals')
+        format: sql
+        rows: |
+          select 'shufersal-universe' as store_type, barcode, date '2026-04-30' as day, checked,
+              'no deal' as verdict, days_tracked, days_on_sale
+          from (values ('2000000000306', true, 27, 27), ('2000000000307', true, 26, 13),
+                       ('2000000000308', true, 27, 14), ('2000000000309', true, 0, 0),
+                       ('2000000000310', false, 27, 27)) as products(barcode, checked, days_tracked, days_on_sale)
+      - input: ref('stg_store_type_days')
+        format: sql
+        rows: |
+          select 'shufersal' as chain, 'shufersal-universe' as store_type, date '2026-04-30' as day
+    expect:
+      rows:
+        - {store_type: shufersal-universe, day: "2026-04-30", checked: 4, deals: 0, on_sale_every_tracked_day: 1,
+           on_sale_more_than_half: 2}
+
+  - name: a_store_type_day_with_nothing_checked_is_0_of_0
+    model: store_type_deals
+    given:
+      - input: ref('product_deals')
+        format: sql
+        rows: |
+          select 'shufersal-sheli' as store_type, '2000000000311' as barcode, date '2026-04-30' as day,
+              true as checked, 'deal' as verdict, 27 as days_tracked, 0 as days_on_sale
+      - input: ref('stg_store_type_days')
+        format: sql
+        rows: |
+          select 'shufersal' as chain, 'shufersal-universe' as store_type, date '2026-04-30' as day
+    expect:
+      rows:
+        - {store_type: shufersal-universe, day: "2026-04-30", checked: 0, deals: 0, on_sale_every_tracked_day: 0,
+           on_sale_more_than_half: 0}

@@ -295,6 +295,9 @@ _DBT_BASKET_UNIT_TEST = (
     '           listing: 2, double_coded: 0}\n')
 # the dbt layer (q28), Task 4's targets: the basket's models
 # the dbt layer (q28), Task 5's targets: the deals' models
+DBT_DAY_PRICES = ("dbt/models/intermediate/int_day_prices.sql", ["tests/test_dbt_units.py"])
+DBT_PRODUCT_DEALS = ("dbt/models/marts/product_deals.sql", ["tests/test_dbt_units.py"])
+DBT_STORE_TYPE_DEALS = ("dbt/models/marts/store_type_deals.sql", ["tests/test_dbt_units.py"])
 # the dbt layer (q28), Task 6's targets: the promotions' reach
 # the dbt layer (q28), Task 7's targets: the golden build
 # the dbt layer (q28), Task 8's targets: data tests on the prices and promotions tables
@@ -3685,6 +3688,69 @@ MUTATIONS = {
         DBT_STG_PUBLISHED_BASKET_PROPERTIES, _DBT_BASKET_UNIT_TEST, ""),
     # the dbt layer (q28), Task 4's planted bugs: the basket's models
     # the dbt layer (q28), Task 5's planted bugs: the deals' models
+    "a promotion at some stores counted (q28 deals)": (DBT_DAY_PRICES, "if p.wide and p.valid and", "if p.valid and"),
+    "an unread deal counted (q28 deals)": (DBT_DAY_PRICES, "p.wide and p.valid and p.kind", "p.wide and p.kind"),
+    "a promotion with no kind counted (q28 deals)": (
+        DBT_DAY_PRICES, 'p.valid and p.kind is not null and p."start"', 'p.valid and p."start"'),
+    "a promotion starting tomorrow counted (q28 deals)": (
+        DBT_DAY_PRICES, 'p."start" <= day and', 'p."start" <= day + 1 and'),
+    "a promotion ended yesterday counted (q28 deals)": (
+        DBT_DAY_PRICES, 'and day <= p."end"]', 'and day - 1 <= p."end"]'),
+    "the highest promotion taken (q28 deals)": (DBT_DAY_PRICES, "list_min([p.price", "list_max([p.price"),
+    "a sale above the listed price taken (q28 deals)": (
+        DBT_DAY_PRICES, "then least(listed_shown, sale_price)", "then sale_price"),
+    "a sale day of unknown price given the listed price (q28 deals)": (
+        DBT_DAY_PRICES, "when on_sale then null", "when on_sale then listed_shown"),
+    "the listed price not to the agora (q28 deals)": (
+        DBT_DAY_PRICES, "round(listed, 2) as listed_shown", "listed as listed_shown"),
+    "a promotion hole tracked (q28 deals)": (
+        DBT_DAY_PRICES, "not hole and not promo_hole as tracked", "not hole as tracked"),
+    "a hole tracked (q28 deals)": (
+        DBT_DAY_PRICES, "not hole and not promo_hole as tracked", "not promo_hole as tracked"),
+    "the usual price the lower middle (q28 deals)": (
+        DBT_PRODUCT_DEALS, "prices[len(prices) // 2 + 1]", "prices[(len(prices) + 1) // 2]"),
+    "a saving of 99 agorot called a deal (q28 deals)": (DBT_PRODUCT_DEALS, ">= {{ var('deal_min') }}", ">= 0.99"),
+    "a saving of one shekel not a deal (q28 deals)": (
+        DBT_PRODUCT_DEALS, "today_price >= {{ var('deal_min') }}", "today_price > {{ var('deal_min') }}"),
+    "today in its own history (q28 deals)": (DBT_PRODUCT_DEALS, "and t.day - 1\n", "and t.day\n"),
+    "the history one day short (q28 deals)": (
+        DBT_PRODUCT_DEALS, "between t.day - {{ var('read_days') }} and",
+        "between t.day - {{ var('read_days') }} + 1 and"),
+    "the history one day long (q28 deals)": (
+        DBT_PRODUCT_DEALS, "between t.day - {{ var('read_days') }} and",
+        "between t.day - {{ var('read_days') }} - 1 and"),
+    "the bar's window one day short (q28 deals)": (
+        DBT_PRODUCT_DEALS, "seen >= day - {{ var('recent_days') }})", "seen >= day - {{ var('recent_days') }} + 1)"),
+    "the bar's window one day long (q28 deals)": (
+        DBT_PRODUCT_DEALS, "seen >= day - {{ var('recent_days') }})", "seen >= day - {{ var('recent_days') }} - 1)"),
+    "the bar at 19 days (q28 deals)": (
+        DBT_PRODUCT_DEALS, "days_recorded >= {{ var('min_front_days') }} as checked",
+        "days_recorded >= {{ var('min_front_days') }} - 1 as checked"),
+    "a promotion hole not a record for the bar (q28 deals)": (
+        DBT_PRODUCT_DEALS, "not h.hole as recorded", "h.tracked as recorded"),
+    "an untracked day priced (q28 deals)": (
+        DBT_PRODUCT_DEALS, "h.tracked and h.day_price is not null as priced", "h.day_price is not null as priced"),
+    "a sale day of unknown price not on sale (q28 deals)": (
+        DBT_PRODUCT_DEALS, "h.tracked and h.on_sale as on_sale",
+        "h.tracked and h.on_sale and h.day_price is not null as on_sale"),
+    "mostly unknown given a verdict (q28 deals)": (
+        DBT_PRODUCT_DEALS, "when days_priced = 0 or 2 * days_unknown > days_tracked then", "when days_priced = 0 then"),
+    "exactly half unknown given no verdict (q28 deals)": (
+        DBT_PRODUCT_DEALS, "2 * days_unknown > days_tracked", "2 * days_unknown >= days_tracked"),
+    "a product never covered judged (q28 deals)": (
+        DBT_PRODUCT_DEALS, "    join covered as c on c.barcode = d.barcode and c.since <= d.day\n", ""),
+    "covered on a hole day (q28 deals)": (DBT_PRODUCT_DEALS, "    where wide and not hole\n", "    where wide\n"),
+    "a promotion hole today judged (q28 deals)": (
+        DBT_PRODUCT_DEALS, "    where d.tracked and d.sale_price is not null\n",
+        "    where not d.hole and d.sale_price is not null\n"),
+    "M counting products under the bar (q28 deals)": (
+        DBT_STORE_TYPE_DEALS, "count(p.barcode) filter (where p.checked) as checked", "count(p.barcode) as checked"),
+    "N counting no deals (q28 deals)": (DBT_STORE_TYPE_DEALS, "p.verdict = 'deal'", "p.verdict <> 'no verdict'"),
+    "on sale every day with no tracked day (q28 deals)": (DBT_STORE_TYPE_DEALS, "p.days_tracked > 0 and ", ""),
+    "on sale more than half at exactly half (q28 deals)": (
+        DBT_STORE_TYPE_DEALS, "2 * p.days_on_sale > p.days_tracked", "2 * p.days_on_sale >= p.days_tracked"),
+    "a store-type day with nothing checked left out (q28 deals)": (
+        DBT_STORE_TYPE_DEALS, "left join {{ ref('product_deals') }}", "join {{ ref('product_deals') }}"),
     # the dbt layer (q28), Task 6's planted bugs: the promotions' reach
     # the dbt layer (q28), Task 7's planted bugs: the golden build
     # the dbt layer (q28), Task 8's planted bugs: data tests on the prices and promotions tables
