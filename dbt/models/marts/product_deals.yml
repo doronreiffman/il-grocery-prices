@@ -9,9 +9,11 @@ models:
       sorted, the higher middle of an even count, so a product on sale on exactly half its days keeps its shelf price
       as usual; a sale day of unknown price has no day price, so it never pushes the usual price up. The verdict
       (rule S4): no verdict when no tracked day has a day price, or when more than half the tracked days are sale
-      days of unknown price; else a deal when the saving is deal_min (1.00 shekel) or more; else no deal. A row is
-      checked, one of the store page's M, when it passes the front list's bar: at least min_front_days (20) days with
-      records in the recent_days (30) days before its day, a promotion hole being a record.
+      days of unknown price, the owner's choice over judging on the readable days alone (docs/store-first.md); else a
+      deal when the saving is deal_min (1.00 shekel) or more; else no deal. As on the site, only a deal or no deal has
+      a usual price and a saving. A row is checked, one of the store page's M, when it passes the front list's bar:
+      at least min_front_days (20) days with records in the recent_days (30) days before its day, a promotion hole
+      being a record.
     columns:
       - name: store_type
         description: The store type.
@@ -24,9 +26,10 @@ models:
       - name: usual_price
         description: >-
           The usual price (rule S2): of the day prices of the history's tracked days, sorted, the element at
-          len // 2 + 1 counting from 1, the middle and the higher middle of an even count; NULL with no day price.
+          len // 2 + 1 counting from 1, the middle and the higher middle of an even count; NULL when the verdict is
+          no verdict.
       - name: saving
-        description: usual_price less today_price; NULL with no usual price.
+        description: usual_price less today_price; NULL when the verdict is no verdict.
       - name: days_tracked
         description: The history's tracked days (rule S0).
       - name: days_priced
@@ -244,7 +247,7 @@ unit_tests:
     expect:
       rows:
         - {store_type: shufersal-universe, barcode: "2000000000210", day: "2026-04-30", today_price: 4.00,
-           usual_price: 5.00, saving: 1.00, days_tracked: 27, days_priced: 13, days_on_sale: 14, days_unknown: 14,
+           usual_price: null, saving: null, days_tracked: 27, days_priced: 13, days_on_sale: 14, days_unknown: 14,
            days_recorded: 28, checked: true, verdict: no verdict}
         - {store_type: shufersal-universe, barcode: "2000000000211", day: "2026-04-30", today_price: 4.00,
            usual_price: 5.00, saving: 1.00, days_tracked: 26, days_priced: 13, days_on_sale: 13, days_unknown: 13,

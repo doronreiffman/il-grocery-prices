@@ -3737,6 +3737,9 @@ MUTATIONS = {
         DBT_PRODUCT_DEALS, "when days_priced = 0 or 2 * days_unknown > days_tracked then", "when days_priced = 0 then"),
     "exactly half unknown given no verdict (q28 deals)": (
         DBT_PRODUCT_DEALS, "2 * days_unknown > days_tracked", "2 * days_unknown >= days_tracked"),
+    "a mostly unknown row given a usual price (q28 deals)": (
+        DBT_PRODUCT_DEALS, "case when verdict <> 'no verdict' then middle_price end as usual_price",
+        "middle_price as usual_price"),
     "a product never covered judged (q28 deals)": (
         DBT_PRODUCT_DEALS, "    join covered as c on c.barcode = d.barcode and c.since <= d.day\n", ""),
     "covered on a hole day (q28 deals)": (DBT_PRODUCT_DEALS, "    where wide and not hole\n", "    where wide\n"),

@@ -27,7 +27,11 @@ models:
           The listed price, the median over the store type's stores listing the product, to the agora half up, as
           the site shows it.
       - name: sale_price
-        description: The lowest price among the promotions that count that day (rule S3); NULL when none counts.
+        description: >-
+          The lowest price among the promotions that count that day (rule S3), from each one's price to the agora;
+          NULL when none counts. A promotion that counts with no such price, which the items table writes when it
+          would not fit DECIMAL(12,2) (ten billion shekels or more), is left out here, unlike on the site, which
+          counts it from its exact price.
       - name: on_sale
         description: >-
           Whether a promotion on the product is wide, has a kind and runs that day, its price read or not (the

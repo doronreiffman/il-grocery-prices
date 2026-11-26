@@ -59,10 +59,22 @@ counted as (
     group by store_type, barcode, day, today_price
 ),
 
-judged as (
+middled as (
     -- S2: the middle of the sorted day prices, the higher middle of an even count (lists count from 1).
-    select *, prices[len(prices) // 2 + 1] as usual_price
+    select *, prices[len(prices) // 2 + 1] as middle_price
     from counted
+),
+
+judged as (
+    -- S4: no verdict with no day price or with more than half the tracked days of unknown price.
+    select
+        *,
+        case
+            when days_priced = 0 or 2 * days_unknown > days_tracked then 'no verdict'
+            when middle_price - today_price >= {{ var('deal_min') }} then 'deal'
+            else 'no deal'
+        end as verdict
+    from middled
 )
 
 select
@@ -70,18 +82,14 @@ select
     barcode,
     day,
     today_price,
-    usual_price,
-    usual_price - today_price as saving,
+    -- As on the site, only a deal or no deal has a usual price and a saving (S4).
+    case when verdict <> 'no verdict' then middle_price end as usual_price,
+    case when verdict <> 'no verdict' then middle_price - today_price end as saving,
     days_tracked,
     days_priced,
     days_on_sale,
     days_unknown,
     days_recorded,
     days_recorded >= {{ var('min_front_days') }} as checked,
-    -- S4: no verdict with no day price or with more than half the tracked days of unknown price.
-    case
-        when days_priced = 0 or 2 * days_unknown > days_tracked then 'no verdict'
-        when usual_price - today_price >= {{ var('deal_min') }} then 'deal'
-        else 'no deal'
-    end as verdict
+    verdict
 from judged
