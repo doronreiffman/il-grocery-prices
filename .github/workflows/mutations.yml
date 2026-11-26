@@ -2,8 +2,10 @@ name: Mutation check
 
 # The full mutation check: every planted bug in scripts/mutation_check.py, each expected to fail a test. Its last full run took
 # 1 h 51 min on a Mac (2,338 mutations, 2026-11-09), so it is scheduled weekly on main (Saturday 03:00 UTC) and runs on demand from
-# the Actions tab, not on every push (owner, 2026-11-09). Every push still runs the tests, with
-# tests/test_mutation_targets.py (ci.yml).
+# the Actions tab, not on every push (owner, 2026-11-09). With the dbt layer's planted bugs a run is estimated at 3 h 45 min to
+# 4 h 5 min, under timeout-minutes: the weekly run of 2026-11-21 took 1 h 55 min for 2,683, the dbt layer's 338 and one older one
+# re-pointed took 1 h 42 min on a Mac (2026-11-26), and the 142 others added since are estimated at 6 to 28 min. Every push still
+# runs the tests, with tests/test_mutation_targets.py (ci.yml).
 
 on:
   schedule:
