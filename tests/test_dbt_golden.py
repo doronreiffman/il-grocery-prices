@@ -26,11 +26,18 @@ from basket.chains import SLUGS
 from dbt_run import query, run_dbt
 from shopper.extract import extract_chain_day
 from shopper_golden import G1, G2, G6, U1, U2, U3, U4, U5, U6, U7, U8, day_of, write_basket, write_day
+from test_dbt_project import OWNER_S_FOUR
 
 GOLDEN_DAYS = (1, *range(92, 121))      # day 1 for the store lists; Shufersal's last 29 days, 92 to 120
 SHUFERSAL_DAYS = range(92, 121)          # the days Shufersal is extracted; the four other chains are on LAST alone
 LAST = 120                               # 30 April 2026, the golden's last day
 D = Decimal
+# The owner's reasons for the four known differences (2026-11-25), each whole as dbt/dbt_project.yml's folded text
+# gives it; tests/test_dbt_project.py holds their kind, key and day (OWNER_S_FOUR), not their words.
+WEIGHED = ("published before the 22 November fix to weighed N for ₪M prices; that chain's items tables of 1 to 22 "
+           "November were written again after it")
+SLOW_MORNING = ("published from 171 Shufersal stores' files, the slow morning's; that day's prices table was rebuilt "
+                "later from 416")
 
 
 @dataclass(frozen=True)
@@ -103,7 +110,8 @@ def golden(tmp_path_factory) -> Golden:
 @pytest.fixture(scope="module")
 def GOLDEN_VARS(golden) -> dict:
     """The golden build's vars: the golden's folders and no known difference. A fixture, as the folders are the
-    module's temporary ones; named as the plan names it."""
+    module's temporary ones; named as the plan names it. The dict is shared by every test in the module: a test that
+    needs another list copies it (`[*GOLDEN_VARS["known_differences"], ...]`), never changes it in place."""
     return {"tables": str(golden.tables), "site": str(golden.site), "basket_file": str(golden.basket_file),
             "known_differences": []}
 
@@ -186,3 +194,18 @@ def test_promotion_reach_at_universe_on_its_last_day(clean):
                                  "from promotion_reach "
                                  "where store_type = 'shufersal-universe' and day = date '2026-04-30'") == [
         (10, 9, 1, 0, 0)]
+
+
+def test_the_owner_s_four_known_differences_render_as_written(tmp_path):
+    """known_differences built from the project's own list, with no list given in its place: its anchor and alias,
+    its folded text, the ₪ sign and each apostrophe, doubled in the SQL, give the owner's four rows, each reason
+    whole. `run`, so the model alone is built: `build` would also run every data test that reads it, and under the
+    project's own vars such a test would read the checkout's data/ and site/."""
+    done = run_dbt(["run", "--select", "known_differences"], tmp_path / "work")
+    assert done.code == 0, done.output
+    assert done.results == {"known_differences": ("success", None)}
+    found = query(done.database, "select kind, key, day, reason from known_differences")
+    assert sorted((kind, key, day.isoformat()) for kind, key, day, _ in found) == OWNER_S_FOUR
+    assert {(kind, key, day.isoformat()): reason for kind, key, day, reason in found} == {
+        ("basket", "shufersal", "2026-11-09"): SLOW_MORNING, ("store_page", "ramilevy", "2026-11-21"): WEIGHED,
+        ("store_page", "ramilevy", "2026-11-22"): WEIGHED, ("store_page", "yochananof", "2026-11-22"): WEIGHED}

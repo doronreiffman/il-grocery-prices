@@ -337,6 +337,9 @@ DBT_PROMOTION_REACH = ("dbt/models/marts/promotion_reach.sql", ["tests/test_dbt_
 DBT_STG_PRICES_FOR_GOLDEN = ("dbt/models/staging/stg_prices.sql", ["tests/test_dbt_golden.py"])
 DBT_STG_ITEMS_FOR_GOLDEN = ("dbt/models/staging/stg_items.sql", ["tests/test_dbt_golden.py"])
 DBT_STG_PROMOTIONS_FOR_GOLDEN = ("dbt/models/staging/stg_promotions.sql", ["tests/test_dbt_golden.py"])
+# The owner's four known differences in dbt/dbt_project.yml, as dbt renders them: tests/test_dbt_project.py reads the
+# list with Python alone, so a break it lets through must be caught where dbt builds the list.
+DBT_KNOWN_LIST_FOR_GOLDEN = ("dbt/dbt_project.yml", ["tests/test_dbt_golden.py"])
 # the dbt layer (q28), Task 8's targets: data tests on the prices and promotions tables
 # the dbt layer (q28), Task 9's targets: data tests on the items table and its reports
 # the dbt layer (q28), Task 10's targets: data tests across tables and against the published files
@@ -3874,6 +3877,10 @@ MUTATIONS = {
         DBT_STG_ITEMS_FOR_GOLDEN, '    "column" as store_type,\n', "    chain as store_type,\n"),
     "the promotions' start and end swapped (q28 golden)": (
         DBT_STG_PROMOTIONS_FOR_GOLDEN, '    "start" as starts,\n    "end" as ends,\n', '    "end" as starts,\n    "start" as ends,\n'),
+    # Fix round 1: the shared reason's folded text made literal, so a line break enters the three rows that name it;
+    # the YAML still loads, and the Python project test, which reads the reasons only as text of 30 or more, passes.
+    "the owner's four not rendered as written (q28 golden)": (
+        DBT_KNOWN_LIST_FOR_GOLDEN, "reason: &weighed >-", "reason: &weighed |-"),
     # the dbt layer (q28), Task 8's planted bugs: data tests on the prices and promotions tables
     # the dbt layer (q28), Task 9's planted bugs: data tests on the items table and its reports
     # the dbt layer (q28), Task 10's planted bugs: data tests across tables and against the published files
